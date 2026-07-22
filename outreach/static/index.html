@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quantum Outreach</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="login" class="login-screen hidden">
+    <div class="login-card">
+      <p class="brand">Quantum Outreach</p>
+      <h1>Вход</h1>
+      <p class="muted">Токен из <code>OUTREACH_UI_TOKEN</code> на сервере.</p>
+      <input id="tokenInput" type="password" placeholder="UI token" autocomplete="current-password" />
+      <button id="loginBtn" type="button">Открыть панель</button>
+      <p id="loginError" class="error"></p>
+    </div>
+  </div>
+
+  <div id="app" class="app hidden">
+    <header class="top">
+      <div>
+        <p class="brand">Quantum Outreach</p>
+        <h1 id="pageTitle">Обзор</h1>
+      </div>
+      <div class="top-actions">
+        <span id="runStateBadge" class="badge">Stop</span>
+        <div class="transport" role="group" aria-label="Управление рассылкой">
+          <button type="button" id="runPlayBtn" class="play">Play</button>
+          <button type="button" id="runPauseBtn" class="ghost">Pause</button>
+          <button type="button" id="runStopBtn" class="danger">Stop</button>
+        </div>
+        <button type="button" class="ghost" id="refreshBtn">Обновить</button>
+      </div>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button type="button" data-tab="dash" class="active">Обзор</button>
+      <button type="button" data-tab="report">Отчёт</button>
+      <button type="button" data-tab="clients">Клиенты</button>
+      <button type="button" data-tab="outbox">Очередь</button>
+      <button type="button" data-tab="replies">Ответы</button>
+      <button type="button" data-tab="inbox">Inbox</button>
+      <button type="button" data-tab="letter">Письмо</button>
+      <button type="button" data-tab="antiban">Anti-ban</button>
+      <button type="button" data-tab="schedule">Расписание</button>
+      <button type="button" data-tab="settings">Настройки</button>
+    </nav>
+
+    <main>
+      <section id="tab-dash" class="panel active">
+        <div class="stat-grid" id="statGrid"></div>
+        <div class="two-col">
+          <div class="block">
+            <h2>Отправки по дням</h2>
+            <div id="dailyChart" class="bars"></div>
+          </div>
+            <div class="block">
+            <h2>Действия</h2>
+            <div class="oneshot-box">
+              <h2>Одно письмо (тест себе)</h2>
+              <label>Кому<input id="oneTo" type="email" placeholder="you@quantumlabs.ru" /></label>
+              <label>Имя в письме<input id="oneName" type="text" placeholder="коллега" /></label>
+              <div class="action-row">
+                <button type="button" class="ghost" id="oneDryBtn">Превью</button>
+                <button type="button" id="oneSendBtn">Отправить одно</button>
+              </div>
+              <p class="muted">Не требует OUTREACH_ENABLED. Лимит one-shot: до 5/сутки. Массовая очередь не трогается.</p>
+            </div>
+            <div class="action-row">
+              <button type="button" id="syncBtn">Sync Bitrix</button>
+              <button type="button" id="checkRepliesBtn">Проверить ответы</button>
+              <button type="button" id="dryRunBtn">Dry-run ×5</button>
+            </div>
+            <div class="action-row">
+              <label>Отправить N
+                <input id="sendN" type="number" min="1" max="20" value="1" />
+              </label>
+              <button type="button" id="sendBtn" class="danger">Send batch</button>
+            </div>
+            <p class="muted">Batch работает только при <strong>Play</strong> (массовая рассылка).</p>
+            <pre id="actionLog" class="log"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-report" class="panel">
+        <div class="block">
+          <div class="toolbar report-toolbar">
+            <h2 style="margin:0">Воронка доставки и чтения</h2>
+            <label>Дней
+              <input id="reportDays" type="number" min="7" max="90" value="14" />
+            </label>
+            <button type="button" id="reportReload">Обновить отчёт</button>
+          </div>
+          <p class="muted" id="reportMeta"></p>
+          <div class="stat-grid" id="reportFunnel"></div>
+          <div class="rates-row" id="reportRates"></div>
+          <div class="funnel-viz" id="reportFunnelBars" aria-label="Воронка"></div>
+          <div class="two-col" style="margin-top:1rem">
+            <div class="block" style="margin:0;padding:0;border:0;box-shadow:none;background:transparent">
+              <h2>По дням</h2>
+              <div id="reportDaily" class="bars"></div>
+            </div>
+            <div class="block" style="margin:0;padding:0;border:0;box-shadow:none;background:transparent">
+              <h2>Что это значит</h2>
+              <ul class="notes-list" id="reportNotes"></ul>
+            </div>
+          </div>
+          <h2 style="margin-top:1.2rem">Последние письма</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Статус</th><th>Кому</th><th>Компания</th><th>Тема</th>
+                  <th>Отправлено</th><th>Открыто</th><th>Bounce</th><th>Ответ</th>
+                </tr>
+              </thead>
+              <tbody id="reportRecent"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-clients" class="panel">
+        <div class="block">
+          <h2>Локальная база клиентов</h2>
+          <p class="muted">Зеркало Bitrix в <code>data/clients.db</code>. Рассылка может идти из неё, даже если Bitrix недоступен.</p>
+          <div id="clientsStats" class="stat-grid"></div>
+          <div class="action-row">
+            <button type="button" id="clientsSyncBtn">Скачать из Bitrix</button>
+            <button type="button" class="ghost" id="clientsRebuildBtn">Обновить очередь из локальной БД</button>
+            <button type="button" class="ghost" id="clientsReloadBtn">Обновить список</button>
+          </div>
+          <pre id="clientsLog" class="log"></pre>
+
+          <div class="oneshot-box" style="margin-top:1rem">
+            <h2>DaData по ИНН</h2>
+            <p class="muted" id="dadataMeta">Ключ: <code>DADATA_API_KEY</code> в <code>/opt/ava-outreach/.env</code></p>
+            <div class="action-row">
+              <label>ИНН
+                <input id="dadataInn" type="text" placeholder="7707083893" maxlength="12" />
+              </label>
+              <button type="button" id="dadataLookupBtn">Найти</button>
+              <button type="button" class="ghost" id="dadataLookupForceBtn">Найти (force)</button>
+            </div>
+            <div class="action-row">
+              <label>Обогатить N компаний без ФИО
+                <input id="dadataEnrichN" type="number" min="1" max="500" value="50" />
+              </label>
+              <button type="button" id="dadataEnrichBtn">Обогатить batch</button>
+              <button type="button" id="dadataPushBitrixBtn">Записать в Bitrix</button>
+              <button type="button" class="ghost" id="dadataCacheBtn">Кэш</button>
+            </div>
+            <p class="muted">В Bitrix уходят: ФИО директора, должность, название, КПП/ОГРН/ОКВЭД, юр. адрес и др. поля из DaData.</p>
+            <pre id="dadataLog" class="log"></pre>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ИНН</th><th>Компания</th><th>Руководитель</th><th>Должность</th><th>ОКВЭД</th><th>Fetched</th>
+                  </tr>
+                </thead>
+                <tbody id="dadataBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="toolbar">
+            <input id="clientsQ" type="search" placeholder="Поиск email / название" />
+            <button type="button" id="clientsSearchBtn">Найти</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Email</th><th>Имя</th><th>Источник</th><th>Bitrix ID</th><th>Company</th></tr>
+              </thead>
+              <tbody id="clientsBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-outbox" class="panel">
+        <div class="toolbar">
+          <input id="outboxQ" type="search" placeholder="Поиск email / компания" />
+          <select id="outboxStatus">
+            <option value="">Все статусы</option>
+            <option value="pending">pending</option>
+            <option value="sent">sent</option>
+            <option value="opened">opened (в трекинге)</option>
+            <option value="replied">replied</option>
+            <option value="bounced">bounced</option>
+            <option value="failed">failed</option>
+            <option value="skipped">skipped</option>
+          </select>
+          <button type="button" id="outboxLoad">Загрузить</button>
+        </div>
+        <p class="muted" id="outboxMeta"></p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>Email</th><th>Компания</th><th>Статус</th><th>Sent</th><th>Deal</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="outboxBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-replies" class="panel">
+        <button type="button" id="repliesLoad">Обновить ответы</button>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Когда</th><th>От кого</th><th>Тема</th><th>Deal</th></tr>
+            </thead>
+            <tbody id="repliesBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-inbox" class="panel">
+        <div class="action-row">
+          <button type="button" id="inboxLoad">Необработанные ответы</button>
+          <button type="button" class="ghost" id="inboxLoadAll">Все</button>
+          <button type="button" class="ghost" id="seqStatusBtn">Sequences</button>
+        </div>
+        <div id="inboxStats" class="stat-grid"></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Когда</th><th>От</th><th>Класс</th><th>Тема</th><th>Company</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="inboxBody"></tbody>
+          </table>
+        </div>
+        <pre id="seqLog" class="log"></pre>
+      </section>
+
+      <section id="tab-letter" class="panel">
+        <div class="two-col">
+          <div class="block">
+            <label>Тема<input id="letterSubject" type="text" /></label>
+            <label>Компания (подпись)<input id="letterCompany" type="text" /></label>
+            <label>Сайт<input id="letterWebsite" type="text" /></label>
+            <label>Телефон<input id="letterPhone" type="text" /></label>
+            <label>Plain
+              <textarea id="letterPlain" rows="14"></textarea>
+            </label>
+            <label>HTML
+              <textarea id="letterHtml" rows="14"></textarea>
+            </label>
+            <p class="muted">Плейсхолдеры: <code>{name}</code> <code>{company}</code> <code>{website}</code> <code>{unsub}</code> <code>{phone_line}</code> <code>{phone_html}</code></p>
+            <div class="action-row">
+              <button type="button" id="letterPreview">Превью</button>
+              <button type="button" id="letterSave">Сохранить письмо</button>
+            </div>
+          </div>
+          <div class="block">
+            <h2>Превью</h2>
+            <p id="previewSubject" class="preview-subject"></p>
+            <iframe id="previewFrame" title="preview"></iframe>
+            <pre id="previewPlain" class="log"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-antiban" class="panel">
+        <div class="two-col">
+          <div class="block">
+            <h2>Защита от банов</h2>
+            <div id="antibanStats" class="stat-grid"></div>
+            <label class="check"><input id="warmupEnabled" type="checkbox" /> Warm-up (плавный рост дневного лимита)</label>
+            <label>Лимит писем на один домен / сутки<input id="domainCap" type="number" min="1" max="20" /></label>
+            <label class="check"><input id="openTracking" type="checkbox" /> Трекинг открытий (pixel в HTML)</label>
+            <label class="check"><input id="plusReply" type="checkbox" /> Plus Reply-To <code>office+au.id.sig@…</code> (эксперимент)</label>
+            <p class="muted">
+              Правильный формат: <code>office+au.123.abcdef@quantumlabs.ru</code>.<br/>
+              Неверно: <code>au1+office@…</code> — это другой ящик.<br/>
+              From всегда стабильный <code>office@</code>. Цепочки держим по Message-ID; plus — опционально после smoke-теста Mail.ru.
+            </p>
+            <button type="button" id="antibanSave">Сохранить anti-ban</button>
+            <button type="button" class="ghost" id="plusPreviewBtn">Пример plus-адреса</button>
+            <pre id="antibanLog" class="log"></pre>
+          </div>
+          <div class="block">
+            <h2>Suppression (стоп-лист)</h2>
+            <div class="action-row">
+              <input id="suppEmail" type="email" placeholder="email@company.ru" />
+              <input id="suppReason" type="text" placeholder="причина" value="manual" />
+              <button type="button" id="suppAdd">Добавить</button>
+            </div>
+            <button type="button" class="ghost" id="suppReload">Обновить список</button>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Email</th><th>Причина</th><th>Источник</th><th></th></tr></thead>
+                <tbody id="suppBody"></tbody>
+              </table>
+            </div>
+            <h2 style="margin-top:1.2rem">Последние send events</h2>
+            <button type="button" class="ghost" id="eventsReload">Обновить события</button>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>ID</th><th>Email</th><th>Статус</th><th>Открыто</th><th>Bounce</th><th>Message-ID</th></tr></thead>
+                <tbody id="eventsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-schedule" class="panel">
+          <div class="block narrow">
+          <label class="check"><input id="schedEnabled" type="checkbox" disabled /> Авто (зеркало Play — только чтение)</label>
+          <label class="check"><input id="runRespectWindow" type="checkbox" /> Учитывать окно часов при Play</label>
+          <label>Окно с (час)<input id="schedStart" type="number" min="0" max="23" /></label>
+          <label>Окно до (час)<input id="schedEnd" type="number" min="1" max="24" /></label>
+          <label>Часовой пояс<input id="schedTz" type="text" /></label>
+          <label>Размер батча за тик<input id="schedBatch" type="number" min="1" max="20" /></label>
+          <label>Пауза между батчами, сек<input id="schedTick" type="number" min="30" max="3600" /></label>
+          <p class="muted">Управление рассылкой — кнопки <strong>Play / Pause / Stop</strong> сверху. One-shot тест себе — отдельно, без Play.</p>
+          <button type="button" id="schedSave">Сохранить окно</button>
+        </div>
+      </section>
+
+      <section id="tab-settings" class="panel">
+        <div class="block narrow">
+          <p class="muted">Массовая отправка управляется Play/Pause/Stop. Чекбокс ниже — только отображение legacy-флага.</p>
+          <label class="check"><input id="setEnabled" type="checkbox" disabled /> OUTREACH_ENABLED (legacy, синхронизируется с Play)</label>
+          <label>Дневной лимит<input id="setDaily" type="number" min="1" max="500" /></label>
+          <label>Delay min, сек<input id="setDelayMin" type="number" min="0" /></label>
+          <label>Delay max, сек<input id="setDelayMax" type="number" min="0" /></label>
+          <label class="check"><input id="setDeal" type="checkbox" /> Создавать сделку в Bitrix</label>
+          <label>Assigned BY ID<input id="setAssigned" type="number" min="1" /></label>
+          <label>Deal stage<input id="setStage" type="text" /></label>
+          <label class="check"><input id="setReplyWatch" type="checkbox" /> IMAP reply watcher</label>
+          <button type="button" id="settingsSave">Сохранить настройки</button>
+          <p class="muted" id="settingsMeta"></p>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

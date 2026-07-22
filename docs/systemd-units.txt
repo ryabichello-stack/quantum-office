@@ -1,0 +1,48 @@
+# /etc/systemd/system/ava-outreach.service
+[Unit]
+Description=Quantum Labs AVA Bitrix Outreach (SMTP)
+After=network.target
+# Isolated from telephony (asterisk / AVA docker / mango). Do not add those deps.
+
+[Service]
+User=root
+WorkingDirectory=/opt/ava-outreach
+EnvironmentFile=/opt/ava-outreach/.env
+ExecStart=/opt/ava-outreach/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8012
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
+# /etc/systemd/system/ava-mailer.service
+[Unit]
+Description=AVA Mailer FastAPI
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/ava-mailer
+ExecStart=/opt/ava-mailer/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+
+# /etc/systemd/system/ava-text-bot.service
+[Unit]
+Description=Quantum Labs AVA Text Bot (Telegram)
+After=network.target ava-mailer.service
+Wants=ava-mailer.service
+
+[Service]
+User=root
+WorkingDirectory=/opt/ava-text-bot
+EnvironmentFile=/opt/ava-text-bot/.env
+ExecStart=/opt/ava-text-bot/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8011
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

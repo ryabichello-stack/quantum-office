@@ -1,0 +1,15 @@
+[Unit]
+Description=Quantum Labs AVA Bitrix Outreach (SMTP)
+After=network.target
+# Isolated from telephony (asterisk / AVA docker / mango). Do not add those deps.
+
+[Service]
+User=root
+WorkingDirectory=/opt/ava-outreach
+EnvironmentFile=/opt/ava-outreach/.env
+ExecStart=/opt/ava-outreach/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8012
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
