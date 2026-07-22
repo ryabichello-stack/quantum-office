@@ -40,4 +40,5 @@
 | `mailer/` | `/opt/ava-mailer` |
 | `calendar/` | `/opt/ava-calendar` (deploy later) |
 | `conference/` | `/opt/ava-conference` (deploy later) |
+| `files/` | `/opt/ava-files` (deploy later) |
 | `text-bot/` | `/opt/ava-text-bot` |
