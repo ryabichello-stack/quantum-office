@@ -12,6 +12,7 @@
 | `ava-mailer` | `/opt/ava-mailer` | `0.0.0.0:8000` | post-call / legacy calendar+Telemost still here |
 | `ava-calendar` | `/opt/ava-calendar` | `127.0.0.1:8014` | **planned** Mail.ru CalDAV check/suggest/create |
 | `ava-conference` | `/opt/ava-conference` | `127.0.0.1:8013` | **planned** standalone Telemost + invites |
+| `ava-files` | `/opt/ava-files` | `127.0.0.1:8015` | **planned** disks/repo → email/Telegram |
 | `ava-text-bot` | `/opt/ava-text-bot` | `127.0.0.1:8011` | Telegram text bot |
 
 ## Public routes
