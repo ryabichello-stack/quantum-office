@@ -5,9 +5,12 @@
 ## Что здесь
 
 - `outreach/` — Bitrix outreach (FastAPI, `:8012`)
-- `mailer/` — post-call письма, календарь, Телемост (`:8000`)
+- `mailer/` — post-call письма, календарь (`:8000`); Telemost внутри calendar пока остаётся
+- `conference/` — **отдельный** сервис Телемост + email-приглашения (`:8013`, on-demand)
 - `text-bot/` — Telegram-бот (`:8011`)
 - `docs/` — карта прода и состояние
+
+Голосовой сценарий «создай конференцию, пригласи …» → `POST /api/conferences` в `conference/`. См. `docs/CONFERENCE_SERVICE.md`.
 
 ## Прод (справочно)
 

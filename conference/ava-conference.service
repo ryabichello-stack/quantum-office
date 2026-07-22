@@ -1,0 +1,15 @@
+[Unit]
+Description=Quantum Labs Conference (Telemost + invites)
+After=network.target
+# Isolated from Asterisk / AVA docker / Polyhub trading.
+
+[Service]
+User=root
+WorkingDirectory=/opt/ava-conference
+EnvironmentFile=/opt/ava-conference/.env
+ExecStart=/opt/ava-conference/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8013
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

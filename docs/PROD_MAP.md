@@ -9,7 +9,8 @@
 | systemd | path | bind | notes |
 |---------|------|------|-------|
 | `ava-outreach` | `/opt/ava-outreach` | `127.0.0.1:8012` | Bitrix outreach + UI under `/_ava_outreach/` |
-| `ava-mailer` | `/opt/ava-mailer` | `0.0.0.0:8000` | calendar / Telemost / post-call |
+| `ava-mailer` | `/opt/ava-mailer` | `0.0.0.0:8000` | calendar / post-call (Telemost still embedded in calendar/create) |
+| `ava-conference` | `/opt/ava-conference` | `127.0.0.1:8013` | **planned** standalone Telemost + invites |
 | `ava-text-bot` | `/opt/ava-text-bot` | `127.0.0.1:8011` | Telegram text bot |
 
 ## Public routes
@@ -35,4 +36,5 @@
 |-----|------|
 | `outreach/` | `/opt/ava-outreach` |
 | `mailer/` | `/opt/ava-mailer` |
+| `conference/` | `/opt/ava-conference` (deploy later) |
 | `text-bot/` | `/opt/ava-text-bot` |
