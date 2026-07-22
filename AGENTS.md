@@ -5,12 +5,13 @@
 ## Что здесь
 
 - `outreach/` — Bitrix outreach (FastAPI, `:8012`)
-- `mailer/` — post-call письма, календарь (`:8000`); Telemost внутри calendar пока остаётся
-- `conference/` — **отдельный** сервис Телемост + email-приглашения (`:8013`, on-demand)
+- `mailer/` — post-call письма (`:8000`); legacy calendar/Telemost ещё внутри, не ломаем
+- `calendar/` — **отдельный** CalDAV check/suggest/create (`:8014`)
+- `conference/` — **отдельный** Телемост + email-приглашения (`:8013`)
 - `text-bot/` — Telegram-бот (`:8011`)
 - `docs/` — карта прода и состояние
 
-Голосовой сценарий «создай конференцию, пригласи …» → `POST /api/conferences` в `conference/`. См. `docs/CONFERENCE_SERVICE.md`.
+См. `docs/CALENDAR_SERVICE.md`, `docs/CONFERENCE_SERVICE.md`.
 
 ## Прод (справочно)
 
