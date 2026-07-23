@@ -27,13 +27,20 @@ See: [ADR-0001](./ADR-0001-second-brain.md), [Roadmap](./SECOND_BRAIN_ROADMAP.md
 
 ## Critical gaps vs Second Brain
 
-- No `visibility` / ACL  
-- No document types / frontmatter  
-- No entity graph  
-- No vector / hybrid search  
-- No indexer pipeline  
-- No MCP / principal-aware retrieve  
-- Dual SoT drift risk (`/root/ava` vs git)  
+- ~~No visibility / ACL~~ → ADR Accepted; Phase 0 schemas/tests in `knowledge/platform/` (runtime ACL not wired yet)
+- No document types / frontmatter in live corpus  
+- No entity graph / vector / hybrid in runtime  
+- No indexer pipeline / MCP  
+- Dual SoT drift risk (`/root/ava` vs git); Vault target = private `quantum-brain`  
+
+## Phase 0 security (done in office repo, no prod runtime change)
+
+- Full ACL + tenant + classification + publication models  
+- Negative-security tests (in-query ACL, principals, cache, audit, quarantine)  
+- Service principals: voice-public / voice-office / text-secretary / outreach / cursor-admin  
+- Physical index split + manual publish policy documented  
+
+**Do not switch voice/text** onto the new platform without a separate approval.
 
 ## Non-negotiables for any change
 

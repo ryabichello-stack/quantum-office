@@ -1,0 +1,38 @@
+# Service principals — default policy is deny all (ADR-0001 §4.12).
+# Canonical copy will move to quantum-brain/vault/_meta/.
+
+default_access: deny
+
+principals:
+  service:voice-public:
+    indexes: [knowledge_public]
+    visibilities: [public]
+    channels: []
+    notes: "Published public materials only. No credentials to private index."
+
+  service:voice-office:
+    indexes: [knowledge_public, knowledge_private]
+    visibilities: [public]
+    channels: [office-assistant]
+    notes: "public + assistant-safe collection; NOT blanket company."
+
+  service:text-secretary:
+    indexes: [knowledge_public, knowledge_private]
+    visibilities: [public]
+    channels: [office-assistant]
+    notes: "Same as voice-office for knowledge scope."
+
+  service:outreach:
+    indexes: [knowledge_public, knowledge_private]
+    visibilities: [public, "team:sales"]
+    channels: [outreach]
+
+  service:cursor-admin:
+    indexes: [knowledge_public, knowledge_private, knowledge_secret]
+    requires_personal_admin_auth: true
+    notes: "Denied unless personal admin authorization is present."
+
+  unknown:
+    indexes: []
+    visibilities: []
+    notes: "deny all"

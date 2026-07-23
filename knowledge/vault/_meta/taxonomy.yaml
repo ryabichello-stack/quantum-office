@@ -1,0 +1,53 @@
+# Phase 0 meta stubs — canonical copies will live in private repo quantum-brain.
+
+default_tenant: quantum-labs
+
+visibility_levels:
+  - public          # only after manual publication approval
+  - company
+  - team            # team:<name>
+  - restricted      # requires explicit ACL allow-list
+  - secret
+
+classification_levels:
+  - public
+  - internal
+  - confidential
+  - secret
+
+document_types:
+  - doc
+  - api
+  - sop
+  - adr
+  - research
+  - meeting
+  - protocol
+  - email
+  - idea
+  - task
+  - requirement
+  - policy
+  - company
+  - bank
+  - product
+  - legal
+  - article_public
+  - article_internal
+  - reference
+  - faq
+  - incident
+  - timeline
+
+channels:
+  - office-assistant   # assistant-safe collection for voice-office / text-secretary
+  - outreach
+
+indexes:
+  - knowledge_public
+  - knowledge_private
+  # knowledge_secret recommended for highly sensitive material
+
+vector_backend_v1: pgvector
+graph_store_v1: postgres
+vault_location: quantum-brain  # separate private repository

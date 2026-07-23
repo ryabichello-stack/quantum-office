@@ -1,9 +1,12 @@
-# Knowledge Vault (Second Brain) — preparatory
+# Knowledge Vault — transitional freeze (office repo)
 
-Статус: **подготовка к миграции**. Платформа Second Brain **не реализована** до Accept ADR-0001.
+**ADR-0001:** Accepted with required security amendments.
 
-- `legacy/` — замороженный снимок текущего корпуса (не удалять)
-- `_meta/` — сюда попадут taxonomy/acl после Phase 1
-- Целевая архитектура: `docs/architecture/ADR-0001-second-brain.md`
+- `legacy/` — frozen snapshot of current corpus (do not delete)
+- `_meta/` — Phase 0 taxonomy / principals / ACL stubs
 
-Runtime агентов пока читает `knowledge/content/` + `/root/ava/config/knowledge/quantum_labs.md` через `ava-knowledge :8017`.
+**Canonical Vault** after Phase 1 lives in the private repository **`quantum-brain`**.  
+This tree must not become the long-term home for contracts/client materials.
+
+Runtime agents still read `knowledge/content/` (+ prod `/root/ava/...`) via `ava-knowledge :8017`.  
+Voice/text switch to Second Brain requires a **separate approval**.

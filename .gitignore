@@ -9,6 +9,9 @@
 **/secrets/
 **/*credentials*
 **/*secret*
+# secretary.py is the dialogue core, not a secrets file
+!**/secretary.py
+!**/*secretary*
 
 # Python
 __pycache__/

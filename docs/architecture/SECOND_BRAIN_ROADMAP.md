@@ -1,222 +1,229 @@
 # Second Brain — поэтапный roadmap (без потери данных)
 
 Связан с: [`ADR-0001-second-brain.md`](./ADR-0001-second-brain.md)  
-**Правило:** каждый этап обратим, имеет тесты и критерий «можно откатиться на legacy `:8017` keyword».
+**Статус ADR:** Accepted with required security amendments (2026-07-23)  
+**Правило:** каждый этап обратим, имеет тесты и критерий «можно откатиться на legacy `:8017` keyword».  
+**Security principle:** ACL обеспечивается инфраструктурой до LLM, не промптом.
 
-Статус: **Draft — ждём утверждения ADR**. Код платформы не пишем до Accept.
+Утверждённые выборы v1: **pgvector**, **Postgres graph**, **Vault в `quantum-brain`**, **physical public/private**, **default deny**, **manual publish only**.
 
 ---
 
-## Phase 0 — Заморозка и инвентаризация (1 шаг, низкий риск)
+## Phase 0 — Security foundation + freeze (без смены production runtime)
 
-**Цель:** зафиксировать SoT «как есть».
+**Цель:** зафиксировать SoT «как есть» + контракты безопасности. **Не** менять поведение `:8017` / voice / text.
 
 ### Работы
 1. Снимок `quantum_labs.md` → `knowledge/vault/legacy/quantum_labs.v1.md` (+ sha256).
 2. Снимок `index.yaml` → `vault/legacy/index.v1.yaml`.
-3. `import-manifest.yaml` (скелет): список всех H2/H3 + предложенный `type` / `visibility` / целевой путь (ещё без переноса).
-4. Документировать dual-path (`/root/ava` vs git) и выбрать канон на переходный период.
+3. `import-manifest` (скелет): H2/H3 + предложенный `type` / `visibility` / ACL / classification.
+4. JSON Schema / pydantic: `tenant_id`, ACL, classification, publication, `ai_processing`, chunk metadata.
+5. Service principals + default-deny policies (`voice-public`, `voice-office`, `text-secretary`, `outreach`, `cursor-admin`).
+6. Contract tests + **negative-security tests** (post-filter-only запрещён концептуально; restricted без allow-list; cache key; audit redaction; public publish).
+7. Документировать dual-path и план переноса канона в `quantum-brain`.
+
+### Не делаем
+- Смена поискового движка на проде  
+- Переключение voice/text на новую платформу  
+- Embeddings / graph runtime  
 
 ### Тесты / проверки
-- diff sha256 legacy == prod MD  
-- `POST :8017/query` smoke без изменений поведения  
+- diff sha256 legacy == content MD в git  
+- `POST :8017/query` smoke без изменений поведения (prod)  
+- pytest: schema + negative-security  
 
 ### Rollback
 - ничего не меняли в runtime → N/A  
 
 ### Exit criteria
-- [ ] Манифест покрывает 100% секций монолита  
-- [ ] ADR Accepted  
+- [x] ADR Accepted with security amendments  
+- [ ] Манифест покрывает 100% секций монолита (черновик есть)  
+- [ ] Contract + negative-security tests зелёные  
+- [ ] Отдельный approval на дальнейшие фазы / switch агентов  
 
 ---
 
-## Phase 1 — Vault skeleton + frontmatter schema (обратимо)
+## Phase 1 — Platform skeleton + Vault repo bootstrap
 
-**Цель:** структура папок и схема метаданных **без** смены поискового движка.
+**Цель:** `knowledge/platform/` + репозиторий `quantum-brain` с `_meta/`; runtime `:8017` ещё на legacy.
 
 ### Работы
-1. Создать дерево `vault/` (`products/`, `meetings/`, …) + `_meta/taxonomy.yaml`, `acl-roles.yaml`.
-2. JSON Schema / pydantic-модель frontmatter (`visibility` required).
-3. Скрипт `validate_vault.py` (CI): все `.md` в vault имеют валидный frontmatter.
-4. Compat: runtime `:8017` **пока** продолжает читать legacy MD.
-
-### Не делаем
-- embeddings, graph DB, нарезку всех файлов  
+1. Создать private repo `quantum-brain` с деревом `vault/` + `_meta/` (taxonomy, acl-roles, service-principals).
+2. В office-репо: `platform/` пакеты Permission, Safety, schemas; CI validate.
+3. JSON Schema / pydantic обязательны: `tenant_id`, ACL, publication.
+4. Compat: runtime `:8017` **продолжает** читать legacy MD.
 
 ### Exit criteria
 - [ ] CI валидирует schema  
 - [ ] Legacy query e2e зелёный  
+- [ ] `quantum-brain` private, без копирования secrets в office image  
 
 ---
 
 ## Phase 2 — Миграция контента (шардинг без удаления)
 
-**Цель:** разрезать монолит на документы **копированием**.
+**Цель:** разрезать монолит на документы **копированием** в `quantum-brain`.
 
 ### Стратегия нарезки
 | Источник (пример) | Цель | visibility (черновик) |
 |--------------------|------|------------------------|
-| FAQ / продукт | `products/quantum-payouts/faq/*.md` | `company` |
-| Legal / «не обещать» | `products/quantum-payouts/legal/*.md` | `team:sales` или `company` |
-| AVA contacts / ops | `products/ava/ops/*.md` | `team:ops` |
+| FAQ / продукт | `products/quantum-payouts/faq/*.md` | `company` (+ channel `assistant-safe` после review) |
+| Legal / «не обещать» | `products/quantum-payouts/legal/*.md` | `team:sales` или `restricted` |
+| AVA contacts / ops | `products/ava/ops/*.md` | `team:ops` / `restricted` |
 | Call scripts | `products/quantum-payouts/playbooks/*.md` | `team:sales` |
-| Неясно | `vault/legacy/unsorted/*.md` | `restricted` |
+| Неясно / sensitive | `vault/legacy/unsorted/*.md` | `restricted` + allow-list |
 
-Каждый шард: frontmatter + `source: legacy/...#anchor`.  
-Монолит остаётся в `vault/legacy/`.
+`public` — **только** после manual publish approval.  
+Каждый шард: полный security frontmatter + `source: legacy/...#anchor`.
 
 ### Работы
-1. Авто-сплит по H2/H3 + ручной review манифеста.  
-2. Feature flag `KNOWLEDGE_READ_MODE=legacy|vault|dual`.  
-3. В `dual`: query склеивает результаты; приоритет vault при равной релевантности.
+1. Авто-сплит по H2/H3 + ручной review.  
+2. Feature flag `KNOWLEDGE_READ_MODE=legacy|vault|dual` (ещё не включать на voice без approval).  
+3. Safety scan на каждый импорт → quarantine при credentials.
 
 ### Тесты
-- Число символов vault shards + legacy ≥ legacy (нет потерь)  
-- Spot-check: «комиссия», «СБП», «НПД» возвращают ≥ качество legacy  
-- Contract: voice/mailer proxy response shape  
+- Нет потери символов (shards + legacy ≥ legacy)  
+- Negative ACL: guest / voice-public не видит company/restricted  
+- Contract: voice/mailer response shape на compat path  
 
 ### Rollback
 - `KNOWLEDGE_READ_MODE=legacy`  
 
-### Exit criteria
-- [ ] dual mode стабилен на проде ≥ N дней  
-- [ ] unsorted < порога (например 5%)  
-
 ---
 
-## Phase 3 — Permission Service + ACL в поиске
+## Phase 3 — Permission Service + in-query ACL
 
-**Цель:** visibility начинает **реально** фильтровать.
+**Цель:** ACL реально фильтрует **внутри** FTS / (позже) vector / graph.
 
 ### Работы
-1. `PermissionService`: principal (agent/user/role) → набор visibility.  
-2. Маппинг: voice office → `{public, company}`; owner secretary → шире; guest web → `{public}` (+опционально company FAQ).  
-3. Индексы/поиск принимают `allowed_visibilities`; **filter before LLM**.  
-4. Audit log table/file.  
-5. Negative tests: `secret` doc никогда не попадает в guest retrieve.
+1. `PermissionService`: principal → mandatory SQL/filter predicate (`tenant_id` + ACL).  
+2. Маппинг service principals (см. ADR §4.12); default **deny**.  
+3. Post-filter только как defense-in-depth.  
+4. Audit log: redacted preview / query hash, doc ids, denied count.  
+5. Cache keys: tenant + principal + groups + permission_revision + index_revision.  
+6. Negative tests: secret/restricted never in voice-public retrieve; unknown principal → empty.
 
 ### Exit criteria
-- [ ] Набор ACL e2e тестов красный→зелёный  
-- [ ] Compat API использует explicit principal (не «весь корпус»)  
+- [ ] Набор ACL e2e красный→зелёный  
+- [ ] Compat API с explicit principal (не «весь корпус»)  
 
 ---
 
-## Phase 4 — Indexer pipeline + смысловой chunking
+## Phase 4 — Indexer + safety + physical indexes
 
-**Цель:** автоматическое обновление производных индексов из Vault.
+**Цель:** pipeline + `knowledge_public` / `knowledge_private`.
 
 ### Pipeline
 ```
-MD change → Normalize → Chunk(by type) → Metadata →
-  EntityExtract(candidates) → Embed → Upsert Vector → Upsert Graph → Ready
+MD change → Safety scan → Classify → Normalize → Chunk(inherit ACL) →
+  Embed(по ai_processing) → Upsert FTS/Vector/Graph (tenant+ACL) → Ready
+  OR quarantine
 ```
 
 ### Работы
-1. Chunkers: markdown-H2/H3, FAQ Q/A, meeting sections.  
-2. Job runner (сначала sync CLI `kb index`, потом watcher).  
-3. Content hash / version на документ → инкрементальный reindex.
+1. Chunkers + обязательные chunk fields (`tenant_id`, `acl_revision`, …).  
+2. Транзакционное обновление ACL документа → chunks.  
+3. Manual publish → копирование в public index.  
+4. Отдельные credentials: public services без доступа к private.
 
 ### Exit criteria
 - [ ] `kb index` идемпотентен  
-- [ ] Изменение одного MD обновляет только его chunks  
+- [ ] Credential doc → quarantine, не в индексе  
+- [ ] voice-public credentials не открывают private DB/index  
 
 ---
 
-## Phase 5 — Vector abstraction + Hybrid search
+## Phase 5 — Vector (pgvector) + Hybrid search
 
-**Цель:** semantic + hybrid без привязки к одному вендору.
+**Цель:** semantic + hybrid на pgvector с in-query ACL.
 
 ### Работы
-1. Interface `VectorStore` + реализации: **pgvector** (предпочтительно v1, один Postgres) и/или **Qdrant**.  
-2. Embedding provider pluggable (OpenAI / local) — конфиг, не хардкод.  
-3. Search modes: `keyword | semantic | hybrid`.  
-4. Hybrid = RRF(keyword, semantic) ± graph boost (если Phase 6 готов).
-
-### Решение на утверждении ADR
-- Default v1 backend: ___________  
+1. Interface `VectorStore` + реализация **pgvector only** в v1.  
+2. Embedding provider pluggable + AI processing policy.  
+3. Modes: `keyword | semantic | hybrid` (RRF), все с ACL в запросе.  
+4. Qdrant — **не** внедрять до измеримой perf-проблемы.
 
 ### Exit criteria
-- [ ] Смена backend = конфиг, без правки агентов  
-- [ ] Hybrid ≥ keyword на наборе регрессионных запросов  
+- [ ] Смена backend = конфиг (абстракция готова)  
+- [ ] Hybrid ≥ keyword на регрессионном наборе  
+- [ ] Restricted/secret не уходят во внешний embedding API  
 
 ---
 
-## Phase 6 — Entity Graph + Timeline
+## Phase 6 — Entity Graph (Postgres)
 
-**Цель:** связи между компаниями, продуктами, встречами, ADR.
+**Цель:** entities/edges в Postgres с tenant + visibility.
 
 ### Работы
-1. Таблицы/стор: entities, edges.  
-2. Extractor: frontmatter entities + LLM propose (review queue для restricted/secret).  
-3. API: `related(id)`, timeline по project.  
-4. Авто-обновление при index.
+1. Таблицы ADR §4.15.  
+2. Extractor: frontmatter + LLM propose **только** если policy позволяет.  
+3. API: `related`, timeline; ACL в SQL.  
 
 ### Exit criteria
-- [ ] Демо-граф: Quantum Payouts → банк → номинальный счёт → meeting  
-- [ ] Guest не видит edges на secret nodes  
+- [ ] Демо-граф Quantum Payouts → банк → номинальный счёт → meeting  
+- [ ] Guest / voice-public не видит edges на secret/private nodes  
 
 ---
 
-## Phase 7 — RAG Service + MCP Gateway (LLM-agnostic)
+## Phase 7 — RAG + MCP Gateway
 
-**Цель:** единая корпоративная память для всех AI-инструментов.
+**Цель:** единая память для агентов; **switch voice/text — отдельный approval**.
 
 ### Работы
-1. `RAG.retrieve(query, principal, token_budget)` → только allowed chunks.  
-2. MCP server: `kb.search`, `kb.get`, `kb.related`, `kb.upsert` (ACL write).  
-3. OpenAPI стабилизирован; SDK не обязателен.  
-4. Подключить text-bot и (опционально) voice tool URL к новому RAG, сохранив compat path.
+1. `RAG.retrieve(query, principal, token_budget)`.  
+2. MCP: `kb.search`, `kb.get`, `kb.related`, `kb.upsert`, `kb.reindex`.  
+3. Подключение агентов только после explicit approval.  
 
 ### Exit criteria
-- [ ] Cursor / внешний агент успешно ищут через MCP с ACL  
-- [ ] Один и тот же ответный контракт для всех LLM  
+- [ ] Cursor ищет через MCP с ACL  
+- [ ] Voice/text не переключены без approval gate  
 
 ---
 
-## Phase 8 — Admin UI + операционка
+## Phase 8 — Admin UI + publish workflow
 
-**Цель:** люди могут править Vault без git-only (git остаётся SoT через sync).
-
-### Работы
-- Browse / filter by visibility  
-- Reindex button  
-- Review entity proposals  
-- Diff legacy vs vault  
+**Цель:** browse, ACL, reindex, **publish approval**, quarantine review.
 
 ---
 
-## Рекомендуемый порядок утверждения (чекбокс для владельца)
+## Чеклист владельца (актуализирован)
 
-1. [ ] Accept ADR-0001  
-2. [ ] Vault живёт в `quantum-office/knowledge/vault` (да/нет → отдельный repo)  
-3. [ ] Vector v1: pgvector / Qdrant / defer  
-4. [ ] Graph v1: Postgres / Neo4j / defer  
-5. [ ] Default principal policies для voice / text-owner / text-guest  
-6. [ ] Стартовать Phase 0  
+1. [x] Accept ADR-0001 with security amendments  
+2. [x] Vault → отдельный `quantum-brain`  
+3. [x] Vector v1 → pgvector  
+4. [x] Graph v1 → Postgres  
+5. [x] Service principals + default deny + assistant-safe  
+6. [ ] Phase 0 tests зелёные  
+7. [ ] Создать private repo `quantum-brain`  
+8. [ ] Отдельный approval на switch voice/text  
 
 ---
 
 ## Что сознательно не делаем «сразу»
 
 - Не удаляем `quantum_labs.md` и не выключаем keyword `:8017`  
-- Не включаем `WEBHOOK_TOKEN` на knowledge без обновления mailer proxy  
-- Не тащим secret/legal в `public`  
-- Не строим отдельную KB «только для Cursor»  
+- Не переключаем voice/text на Second Brain без approval  
+- Не даём voice/text blanket `company`  
+- Не авто-publish в `public`  
+- Не шлём restricted/secret во внешний embedding API  
+- Не внедряем Qdrant / Neo4j в v1  
+- Не кешируем только по тексту запроса  
+- Не пишем полный чувствительный query в обычный audit log  
 
 ---
 
-## Краткая оценка готовности текущего `knowledge/` как фундамента
+## Краткая оценка готовности текущего `knowledge/`
 
 | Требование Second Brain | Готовность | Комментарий |
 |-------------------------|------------|-------------|
-| MD как SoT | 🟡 | Файл есть, но dual-path и нет frontmatter |
+| MD как SoT | 🟡 | Freeze есть; канон → `quantum-brain` |
 | Типы документов | 🔴 | Один смешанный корпус |
-| Visibility/ACL | 🔴 | Нет |
-| Entity graph | 🔴 | Нет |
-| Semantic/Hybrid | 🔴 | Только keyword |
-| Indexer pipeline | 🔴 | Только `/reload` |
-| LLM-agnostic MCP | 🔴 | Только REST + OpenAI tools |
-| Compat для агентов | 🟢 | Voice/text уже на общем API |
-| Миграция без потери | 🟢 | Реалистична через legacy/ + manifest |
+| Tenant + ACL + classification | 🟡 | Схемы/тесты Phase 0; runtime ещё нет |
+| Physical public/private | 🔴 | Закреплено в ADR |
+| Entity graph | 🔴 | Postgres v1 в плане |
+| Semantic/Hybrid (pgvector) | 🔴 | |
+| Safety / quarantine | 🟡 | Контракты Phase 0 |
+| LLM-agnostic MCP | 🔴 | |
+| Compat для агентов | 🟢 | Voice/text на общем API; switch заблокирован |
 
-**Вывод:** текущий `ava-knowledge` — правильный **совместимый фундамент и anti-corruption layer**. Second Brain нужно наращивать **над ним** (Vault + indexes + ACL + MCP), а не выкидывать и писать с нуля.
+**Вывод:** `ava-knowledge` остаётся anti-corruption / compat слоем. Second Brain наращивается над ним с security-first Phase 0.

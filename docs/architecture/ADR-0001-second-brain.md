@@ -1,11 +1,29 @@
 # ADR-0001: Quantum Labs Second Brain — корпоративная платформа знаний
 
-- **Status:** Proposed (ожидает утверждения; реализация НЕ начата)
+- **Status:** Accepted with required security amendments
 - **Date:** 2026-07-23
+- **Accepted:** 2026-07-23
 - **Authors:** Knowledge Architect (Cursor agent) + Quantum Labs
 - **Deciders:** владелец продукта / CTO
 - **Supersedes:** ad-hoc `quantum_labs.md` + keyword search в `ava-mailer` / `ava-knowledge`
 - **Related:** `knowledge/` (`ava-knowledge` `:8017`), voice AVA `/root/ava`, text-bot `:8011`
+- **Security principle:** разделение доступа обеспечивается инфраструктурой **до** того, как модель увидит документ — не промптом и не самой LLM.
+
+---
+
+## 0. Approved architecture choices
+
+| Решение | Выбор v1 |
+|---------|----------|
+| `vector_backend_v1` | **PostgreSQL + pgvector** (абстракция `VectorStore` сохраняется; Qdrant — только при измеримой проблеме производительности) |
+| `graph_store_v1` | **PostgreSQL tables** (`entities`, `entity_aliases`, `edges`, `document_entities`, `entity_versions`); Neo4j не внедрять сейчас |
+| `vault_location` | **Отдельный приватный репозиторий `quantum-brain`** (Vault); код платформы остаётся в текущем репозитории (`knowledge/platform/`) |
+| `public_private_separation` | **Physical** — минимум `knowledge_public` и `knowledge_private` |
+| `default_access` | **deny all** |
+| `public_publish` | **manual-approval-only** |
+| Voice/text switch | **Запрещён** без отдельного approval после Phase 0 security tests |
+
+Реализация runtime (смена поискового движка / переключение агентов) начинается **только после** Phase 0 security tests и обновлённого ADR. Текущий production `:8017` keyword runtime **не меняется** в Phase 0.
 
 ---
 
@@ -22,7 +40,7 @@
 | Источник сборки | docx → md скриптом `/root/ava/scripts/build_quantum_knowledge_base.py` (вне репо office) |
 | Поиск | aliases + keyword score по H2/H3, без embeddings |
 | Потребители | text-bot напрямую; voice AVA через mailer `:8000` proxy |
-| ACL / visibility | нет |
+| ACL / visibility / tenant | нет |
 | Graph / entities | нет |
 | Vector DB | нет |
 | MCP / LLM-agnostic API | только тонкий REST; tool-схемы заточены под OpenAI в text-bot |
@@ -40,9 +58,9 @@ flowchart LR
   ML --> VOICE[voice AVA]
 ```
 
-### 1.3. Классификация текущего корпуса (эвристика по заголовкам)
+### 1.3. Классификация текущего корпуса
 
-Примерно: FAQ / продукт / legal-safety / sales-scripts / AVA-ops — всё в одном файле без `visibility`, без `type`, без связей.
+Примерно: FAQ / продукт / legal-safety / sales-scripts / AVA-ops — всё в одном файле без `tenant_id`, `visibility`, `acl`, `classification`, без связей.
 
 ---
 
@@ -50,15 +68,13 @@ flowchart LR
 
 Текущая Knowledge — **хороший FAQ-поиск для секретаря**, но не корпоративная память:
 
-1. **Нет SoT-дисциплины** — dual path (`/root/ava` vs git vs `/opt`), непонятно, куда писать.
-2. **Смешение аудиторий** — внутренние запреты («чего не говорить») лежат рядом с клиентским FAQ; ACL отсутствует → риск утечки при росте корпуса.
-3. **Нет типизации** — нельзя отличить ADR от протокола встречи, договора, API-спеки.
-4. **Нет графа** — «Сбер ↔ номинальный счёт ↔ клиент ↔ встреча» не моделируется.
-5. **Поиск слабый** — только keyword/alias; нет semantic/hybrid.
-6. **Нет пайплайна** — нет normalize → chunk → embed → graph → index.
-7. **Не LLM-agnostic** — каждый агент сам знает HTTP/tool names; нет единого MCP/API контракта с правами.
+1. **Нет SoT-дисциплины** — dual path (`/root/ava` vs git vs `/opt`).
+2. **Смешение аудиторий** — внутренние запреты рядом с клиентским FAQ; ACL отсутствует.
+3. **Нет типизации**, графа, hybrid search, indexer pipeline.
+4. **Не LLM-agnostic** — нет единого MCP/API контракта с правами.
+5. **Нет tenant isolation**, физической изоляции public/private, AI processing policy, secret scanning.
 
-**Цель:** превратить `knowledge/` в **Second Brain** — единый Source of Truth для всех AI-агентов Quantum Labs, с visibility, графом, hybrid search и обратимой миграцией без потери данных.
+**Цель:** Second Brain — единый Source of Truth для AI-агентов Quantum Labs, с tenant + ACL + classification, физическим разделением индексов, hybrid search и обратимой миграцией без потери данных.
 
 ---
 
@@ -68,187 +84,367 @@ flowchart LR
 |---|---------|
 | D1 | Markdown = канон; vector/graph — производные индексы |
 | D2 | Ноль потери информации; старые документы остаются доступны |
-| D3 | Visibility обязателен; фильтр ACL **до** выдачи в LLM |
-| D4 | Не ломать voice (`:8000/api/knowledge/query`) и text-bot tools |
+| D3 | **Security filtering внутри каждого backend-запроса**; post-filter — только доп. проверка |
+| D4 | Не ломать voice (`:8000/api/knowledge/query`) и text-bot tools без отдельного approval |
 | D5 | LLM-agnostic: любой агент через REST и/или MCP |
 | D6 | Малые обратимые шаги + тесты + rollback |
 | D7 | Не трогать Asterisk / Polyhub / Mango / VPN |
+| D8 | Default deny; public только через manual publish |
+| D9 | Не отправлять company/restricted/secret во внешние embedding/LLM API без явной policy |
+| D10 | Vault и код платформы — разные репозитории и жизненные циклы |
 
 ---
 
 ## 4. Decision — целевая архитектура
 
-### 4.1. Принцип: Vault + Indexes
+### 4.1. Принцип: Vault + Indexes (+ physical security zones)
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  KNOWLEDGE VAULT (Git + FS) — Source of Truth           │
+│  KNOWLEDGE VAULT (private repo quantum-brain) — SoT     │
 │  Markdown + YAML frontmatter + attachments              │
 └───────────────────────────┬─────────────────────────────┘
-                            │ index pipeline
+                            │ index pipeline + safety scan
         ┌───────────────────┼───────────────────┐
         ▼                   ▼                   ▼
    Keyword/FTS          Vector Index         Knowledge Graph
-   (pg / meili)      (pgvector|Qdrant)     (entities+edges)
+   (Postgres)        (pgvector v1)         (Postgres tables)
         └───────────────────┬───────────────────┘
+                            ▼
+   physical zones: knowledge_public | knowledge_private [| knowledge_secret]
                             ▼
               Search / RAG / Permission / MCP Gateway
                             ▼
-         voice · text-bot · outreach · Cursor · другие агенты
+   voice-public · voice-office · text-secretary · outreach · cursor-admin
 ```
 
 **Правило:** если vector и MD расходятся — прав MD, индексы пересобираются. Vector **никогда** не SoT.
 
-### 4.2. Целевое дерево Vault (предложение)
+**Prod:** read-only checkout или release bundle Vault из `quantum-brain`. Код платформы — в `quantum-office/knowledge/platform/`.
+
+### 4.2. Расположение артефактов
 
 ```
-knowledge/
-  vault/                          # канон (git)
+quantum-office/                          # этот репозиторий
+  knowledge/
+    content/                             # TRANSITIONAL runtime :8017
+    platform/                            # код Second Brain (схемы, ACL, indexer, …)
+    vault/                               # TRANSITIONAL freeze/snapshots only
+      legacy/                            # снимки для миграции (Phase 0)
+  docs/architecture/
+
+quantum-brain/                           # ОТДЕЛЬНЫЙ приватный репозиторий
+  vault/                                 # канон знаний (products, meetings, …)
     _meta/
-      taxonomy.yaml               # types, visibility levels, entity kinds
-      acl-roles.yaml              # role → allowed visibility
-    legacy/                       # неизменяемый архив импорта
-      quantum_labs.v1.md          # полный исходный монолит
-      import-manifest.yaml        # карта секция → новый путь
-    products/
-      quantum-payouts/
-      quantum-outreach/
-      ava/
-    companies/
-    people/
-    projects/
-    decisions/adr/
-    research/
-    meetings/
-    articles/
-      public/
-      internal/
-    apis/
-    incidents/
-    ideas/
-    requirements/
-    policies/                     # регламенты
-    legal/
-    timeline/
-  content/                        # TRANSITIONAL (текущий runtime для :8017)
-    quantum_labs.md
-    index.yaml
-  services/                       # код платформы (поэтапно)
-    ...
+      taxonomy.yaml
+      acl-roles.yaml
+      service-principals.yaml
 ```
 
-Старые материалы **не удаляются**: полный монолит живёт в `vault/legacy/`; шарды — производные с `source:` ссылкой на legacy.
+В этом репозитории Phase 0 держит freeze + схемы платформы; канонический Vault после Phase 1 живёт в `quantum-brain`.
 
-### 4.3. Документная модель + frontmatter
+### 4.3. Tenant isolation (обязательно)
 
-Каждый канонический MD:
+Даже при одной компании сейчас:
+
+- В frontmatter каждого документа: `tenant_id: quantum-labs` (или иной tenant).
+- Во **всех** индексах, таблицах entities/edges, chunks, audit: колонка/поле `tenant_id`.
+- Во всех API: **`tenant_id` не принимается произвольно из тела запроса**; определяется из токена principal (claims).
+- Каждый поисковый запрос включает **mandatory** `tenant_id = …` filter.
+
+Это защищает от смешивания корпусов при появлении дочерних компаний, клиентов, партнёров, white-label.
+
+### 4.4. Документная модель + frontmatter (security-complete)
 
 ```yaml
 ---
 id: kp-faq-commission-001
+tenant_id: quantum-labs          # ОБЯЗАТЕЛЬНО
 title: Какая комиссия?
-type: faq                 # см. taxonomy
-visibility: company       # ОБЯЗАТЕЛЬНО
+type: faq
+visibility: restricted           # public|company|team:<name>|restricted|secret
+acl:
+  allow_users: []                # user:denis
+  allow_groups:                  # group:management
+    - group:sales
+  allow_services: []             # service:contract-analyzer
+  deny_users: []
+  deny_groups: []
+classification:
+  level: confidential            # public|internal|confidential|secret
+  contains_personal_data: false
+  contains_bank_secret: false
+  contains_credentials: false
+publication:
+  status: unpublished            # unpublished|pending_review|published|revoked
+  approved_by: null
+  approved_at: null
+  public_version: null
+channels: []                     # office-assistant | outreach | …
+ai_processing:
+  external_llm_allowed: false
+  external_embedding_allowed: false
+  local_processing_required: true
 owner: product
 created: 2026-06-02
 updated: 2026-07-23
 tags: [tariffs, sbp]
 entities: [product:quantum-payouts]
-projects: [quantum-payouts]
-companies: []
-people: []
-status: active            # draft|active|deprecated
+status: active                   # draft|active|deprecated|quarantine
 version: 1
+acl_revision: 1
 source: legacy/quantum_labs.v1.md#8.5
 ---
 ```
 
+**Инварианты ACL:**
+
+- `visibility: restricted` **без** непустого `allow_users` / `allow_groups` / `allow_services` — **запрещён** (валидация отклоняет документ).
+- `visibility: public` **нельзя** выставить классификатором; только через `publication.status: published` + `approved_by` / `approved_at`.
+- Default для новых/сомнительных импортов: не выше `company`; при чувствительных данных — `restricted`.
+- Default access для неизвестного principal: **deny all**.
+
 **Типы (`type`)** минимум:  
 `doc`, `api`, `sop`, `adr`, `research`, `meeting`, `protocol`, `email`, `idea`, `task`, `requirement`, `policy`, `company`, `bank`, `product`, `legal`, `article_public`, `article_internal`, `reference`, `faq`, `incident`, `timeline`.
 
-### 4.4. Visibility (обязательно)
+### 4.5. Visibility + ACL + classification
 
-| Level | Кто видит |
-|-------|-----------|
-| `public` | все агенты / публичные каналы |
-| `company` | сотрудники Quantum Labs |
-| `team:<name>` | команда (finance, legal, eng, …) |
-| `restricted` | allow-list пользователей |
-| `secret` | только admins |
+| Layer | Назначение |
+|-------|------------|
+| `visibility` | грубый уровень (public / company / team / restricted / secret) |
+| `acl` | явные allow/deny для users, groups, **services** |
+| `classification` | PII / bank secret / credentials — влияет на AI processing и quarantine |
+| `channels` | куда документ можно отдавать (например `office-assistant`), отдельно от company |
 
-**Инвариант поиска:**  
-`allowed = PermissionService.resolve(principal)` →  
-`Search.filter(visibility ∈ allowed)` → **только потом** chunk’и в LLM.
+`restricted` без конкретного allow-list **ничего не означает** и поэтому запрещён.
 
-Лог: `principal`, `query`, `doc_ids`, `visibility`, `ts` (audit).
+Голосовой бот, Cursor и внутренний аналитик — **разные** service principals с разными правами.
 
-### 4.5. Entity Graph
+### 4.6. Security search pipeline (обязательный)
 
-Сущности: `Company`, `Person`, `Product`, `Project`, `Decision`, `Research`, `Meeting`, `Article`, `API`, `Incident`, `Idea`, `TimelineEvent`.
+```
+Authenticate principal
+        ↓
+Resolve tenant + user + groups + service identity
+        ↓
+Build mandatory ACL filter (+ tenant_id)
+        ↓
+Keyword search  WITH ACL filter   (Postgres FTS)
+Vector search   WITH ACL filter   (pgvector)
+Graph traversal WITH ACL filter   (Postgres)
+        ↓
+Fusion/rerank только разрешённых результатов
+        ↓
+Defense-in-depth post-filter (доп. проверка, не основной механизм)
+        ↓
+Context assembly
+        ↓
+LLM
+```
 
-Связи (пример): `USES`, `PARTNER_OF`, `DISCUSSED_IN`, `DECIDED_IN`, `SUPERSEDES`, `OWNED_BY`, `MENTIONS`.
+**Запрещено:**
 
-Извлечение: сначала rules/frontmatter; затем LLM-extractor с human review queue для `secret/restricted`.
+```
+найти top-100 по всей базе → потом отфильтровать запрещённое
+```
 
-### 4.6. Сервисы (логические границы)
+Почему:
+
+- запрещённый документ влияет на ранжирование;
+- утечка через score, titles, snippets, telemetry;
+- после фильтра может не остаться результатов;
+- кеш может содержать смешанные данные.
+
+**Закреплено:** каждый backend обязан выполнять security filtering **непосредственно в запросе**. Post-filtering — только дополнительная защитная проверка.
+
+### 4.7. ACL на документах и chunks
+
+Каждый chunk **наследует** ACL исходного документа:
+
+```json
+{
+  "chunk_id": "doc-123:chunk-04",
+  "document_id": "doc-123",
+  "tenant_id": "quantum-labs",
+  "visibility": "team",
+  "allowed_group_ids": ["sales"],
+  "classification": "confidential",
+  "acl_revision": 3,
+  "document_status": "active",
+  "document_version": 2,
+  "embedding": []
+}
+```
+
+Нельзя индексировать chunk без: `tenant_id`, `document_id`, `acl_revision`, уровня конфиденциальности, статуса документа, версии документа.
+
+При изменении ACL документа все его chunks **транзакционно** обновляются или переиндексируются (документ + chunks + ACL в одной транзакции Postgres).
+
+### 4.8. Физическое разделение индексов
+
+| Index | Содержимое | Кто имеет credentials / сеть |
+|-------|------------|------------------------------|
+| `knowledge_public` | только `publication.status: published` | публичные агенты (`voice-public`) |
+| `knowledge_private` | company / team / restricted | внутренний gateway |
+| `knowledge_secret` (рекомендуется) | особо чувствительные | отдельные ключи и service accounts |
+
+Минимум — **два** индекса: `knowledge_public` и `knowledge_private`.
+
+Публичный бот **не должен** иметь сетевого доступа или credentials к private index. Ошибка одного metadata-фильтра не должна открыть корпоративные документы публичному боту.
+
+### 4.9. Manual publish only
+
+```
+Новый документ
+    ↓
+visibility = restricted или company  (не public)
+    ↓
+review
+    ↓
+явное действие publish (approved_by, approved_at)
+    ↓
+publication.status = published
+    ↓
+копирование / индексация в knowledge_public
+```
+
+Автоматический классификатор **не может** назначить `public` / опубликовать документ.
+
+### 4.10. AI processing policy
+
+```yaml
+ai_processing:
+  external_llm_allowed: false
+  external_embedding_allowed: false
+  local_processing_required: true
+```
+
+| Класс | Embeddings | LLM extraction |
+|-------|------------|----------------|
+| public | внешний API допустим | допустим |
+| company | утверждённый провайдер или локально | по политике |
+| restricted | **локально** | локально или отключено |
+| secret | локально либо **без** embeddings | только вручную / локально |
+
+Особенно нельзя передавать наружу: токены, пароли, ключи API, банковские документы, клиентские реестры, ПДн, условия договоров (если запрещено политикой).
+
+### 4.11. Safety pipeline перед индексацией
+
+```
+Document
+   ↓
+Secret scanner
+   ↓
+PII detector
+   ↓
+Credential detector
+   ↓
+Classification policy
+   ↓
+Index  OR  quarantine (status: quarantine)
+```
+
+Минимально: API keys, JWT, пароли, private keys, connection strings, банковские реквизиты, телефоны/email, паспортные данные, номера счетов/карт.
+
+При обнаружении credentials документ **не** индексируется автоматически → quarantine.
+
+### 4.12. Service principals и default deny
+
+| Principal | Доступ |
+|-----------|--------|
+| `service:voice-public` | только опубликованный `public` (`knowledge_public`) |
+| `service:voice-office` | public + коллекция/канал `assistant-safe` |
+| `service:text-secretary` | public + `assistant-safe` |
+| `service:outreach` | public + `team:sales` (по каналу `outreach`) |
+| `service:cursor-admin` | только при персональной авторизации администратора |
+| неизвестный | **deny all** |
+
+**Нельзя** давать voice/text общий blanket-доступ ко всему уровню `company`. Не каждый company-документ разрешено озвучивать по телефону → метка `channels` / коллекция `assistant-safe`.
+
+### 4.13. Cache isolation
+
+**Запрещено:** `cache_key = hash(query)`.
+
+**Обязательно:**
+
+```
+cache_key = hash(
+  tenant_id,
+  principal_id,
+  groups,
+  permission_revision,
+  query,
+  search_mode,
+  index_revision
+)
+```
+
+Либо кешировать только результаты, безопасные для одного уровня доступа. LLM response cache также разделён по security context.
+
+### 4.14. Audit logging (без полного закрытого текста)
+
+```json
+{
+  "principal_id": "user:123",
+  "tenant_id": "quantum-labs",
+  "query_hash": "...",
+  "query_preview_redacted": "...",
+  "retrieved_doc_ids": [],
+  "denied_doc_count": 0,
+  "purpose": "assistant-query",
+  "timestamp": "...",
+  "request_id": "..."
+}
+```
+
+Полный запрос — только при необходимости и с ограниченным сроком хранения. Обычный audit log **не** хранит чувствительный полный текст.
+
+### 4.15. Entity Graph (Postgres v1)
+
+Таблицы:
+
+```
+entities (
+  id, tenant_id, kind, canonical_name, metadata,
+  visibility, created_at, updated_at
+)
+entity_aliases (...)
+edges (
+  id, tenant_id, source_entity_id, target_entity_id,
+  relation_type, source_document_id, confidence,
+  review_status, visibility
+)
+document_entities (...)
+entity_versions (...)
+```
+
+Все graph queries — с `tenant_id` + ACL filter в SQL.
+
+### 4.16. Сервисы (логические границы)
 
 | Service | Responsibility | Interface |
 |---------|----------------|-----------|
-| **Storage** | Vault FS/Git, read/write docs, versions | `DocsRepository` |
-| **Permission** | principal → visibility set; doc ACL check | `can_read(principal, doc)` |
-| **Indexer** | watch/commit → normalize → chunk → publish jobs | pipeline events |
-| **Embedding** | text → vector (model pluggable) | `embed(texts[])` |
-| **Entity Extractor** | doc → entities+edges candidates | `extract(doc)` |
-| **Graph** | store/query entities & relations | `GraphStore` |
-| **Vector Index** | abstract backend | `VectorStore` (pgvector \| Qdrant) |
-| **Search** | keyword + semantic + hybrid + graph expand | `search(q, principal, mode)` |
-| **RAG** | assemble allowed context for agents | `retrieve(q, principal, budget)` |
-| **API Gateway** | REST + MCP tools | OpenAPI + MCP |
-| **Admin UI** | browse, ACL, reindex, review extractions | later phase |
-| **Compat Adapter** | legacy `/api/knowledge/query|topics|get` | сохраняет voice/text |
+| **Storage** | Vault FS/Git (`quantum-brain`), versions | `DocsRepository` |
+| **Permission** | principal → ACL filter; `can_read` | mandatory pre-query filter builder |
+| **Safety** | secret/PII/credential scan → quarantine | `scan(doc)` |
+| **Indexer** | normalize → chunk → embed (по policy) → upsert | pipeline events |
+| **Embedding** | pluggable; respects `ai_processing` | `embed(texts[], policy)` |
+| **Entity Extractor** | candidates + review queue | `extract(doc)` |
+| **Graph** | Postgres tables | `GraphStore` |
+| **Vector Index** | pgvector v1 | `VectorStore` |
+| **Search** | FTS + vector + graph **with in-query ACL** | `search(q, principal, mode)` |
+| **RAG** | assemble only allowed context | `retrieve(q, principal, budget)` |
+| **API Gateway** | REST + MCP; tenant from token | OpenAPI + MCP |
+| **Compat Adapter** | legacy `/api/knowledge/query|topics|get` | без switch без approval |
+| **Admin UI** | browse, ACL, reindex, publish approval | later |
 
-На старте допустимо **modular monolith** (`knowledge/platform/`) с чёткими пакетами = сервисы; вынос в процессы — после стабилизации контрактов.
+Modular monolith first: `knowledge/platform/`.
 
-### 4.7. Chunking (смысловой)
+### 4.17. Chunking / search modes / MCP
 
-| Тип | Граница chunk |
-|-----|----------------|
-| Article/doc | H2/H3 |
-| API | endpoint / method |
-| Meeting | agenda item / decision / action |
-| ADR | Context / Decision / Consequences |
-| Code (если появится) | class/function |
-| Legacy FAQ | один «Вопрос/Ответ» |
+Без изменений по смыслу предыдущей редакции: смысловой chunking; modes `keyword | semantic | hybrid`; MCP tools `kb.search|get|related|upsert|reindex` — всегда с principal из gateway auth.
 
-Запрещено: тупой split по N символов как единственная стратегия.
-
-### 4.8. Search modes
-
-1. **Keyword** — FTS по title/body/tags  
-2. **Semantic** — top-k по embeddings  
-3. **Hybrid** — fusion (RRF) + optional graph expansion  
-Все три — **после** ACL filter (или с filter в самом запросе к индексу, где visibility — обязательное поле).
-
-### 4.9. LLM-agnostic / MCP
-
-Единый контракт для Cursor, Claude, GPT, внутренних агентов:
-
-MCP tools (минимум):
-- `kb.search` `{query, mode, limit}` — уже отфильтровано по principal
-- `kb.get` `{id}`
-- `kb.list_entities` / `kb.related`
-- `kb.upsert` (только роли с write)
-- `kb.reindex` (admin)
-
-Principal передаётся через gateway auth (service token + user/role claims), не «на честном слове» промпта.
-
-### 4.10. Compat layer (критично для миграции)
-
-Пока существует Second Brain, **legacy API остаётся**:
-
-- `POST /api/knowledge/query` → внутри вызывает `RAG.retrieve` с principal=`voice|secretary|...` и visibility policy по умолчанию (`company` для office agents, без `secret`)
-- `GET /api/knowledge/topics` → виртуальный каталог из taxonomy + tags
-- mailer proxy без изменений контракта ответа (`ok/topic/text/chars`)
+Compat API сохраняется; **переключение** voice/text на новую платформу — только после отдельного approval.
 
 ---
 
@@ -256,26 +452,28 @@ Principal передаётся через gateway auth (service token + user/rol
 
 ### Positive
 
-- Единая память для всех агентов  
-- Контролируемые утечки (visibility)  
-- Масштабируемый корпус (встречи, ADR, клиенты)  
-- Смена LLM/vector backend без переписывания агентов  
+- Единая память с инфраструктурным ACL (не «на честном слове» LLM)
+- Tenant + physical index separation → граница при ошибке фильтра
+- Manual publish + secret scan → меньше случайных утечек
+- pgvector + Postgres graph → меньше компонентов, транзакционный ACL
+- Vault в отдельном repo → код ≠ договоры/клиентские материалы
 
 ### Negative / costs
 
-- Сложность выше, чем у одного MD  
-- Нужна дисциплина frontmatter и review extractor’а  
-- Инфра: Postgres (±pgvector) или Qdrant  
-- Миграция монолита — ручная классификация + авто-шард  
+- Выше сложность frontmatter и indexer
+- Два+ физических индекса и раздельные credentials
+- Локальные embeddings для restricted/secret
+- Отдельный lifecycle `quantum-brain`
 
 ### Risks
 
 | Risk | Mitigation |
 |------|------------|
-| Сломать voice/text | Compat adapter + e2e контрактные тесты |
-| Утечка secret в public RAG | ACL до поиска; audit log; тесты на negative retrieval |
-| Dual SoT drift | один Vault в git; `/root/ava/...` становится read-only mirror или symlink на legacy export |
-| Over-engineering | phased roadmap; modular monolith first |
+| Сломать voice/text | Compat + no switch без approval; e2e контракты |
+| Утечка через post-filter / cache / audit | in-query ACL; principal-scoped cache; redacted audit |
+| Внешний embedding уносит секреты | AI processing policy + quarantine |
+| Dual SoT drift | Vault SoT в `quantum-brain`; prod = release bundle |
+| Over-engineering | pgvector/Postgres v1; Qdrant/Neo4j отложены |
 
 ---
 
@@ -283,46 +481,51 @@ Principal передаётся через gateway auth (service token + user/rol
 
 | Alternative | Why rejected / deferred |
 |-------------|-------------------------|
-| Только улучшить keyword в `:8017` | Не закрывает ACL/graph/LLM-agnostic |
-| Notion/Confluence as SoT | Хуже для git/agents; vendor lock; сложнее ACL в RAG |
-| Vector-only DB as SoT | Нарушает требование «MD канон» |
-| Отдельная KB на каждого агента | Дубли и рассинхрон — антицель |
-| Сразу микросервисы в k8s | Слишком рано; сначала контракты |
+| Только visibility без ACL | `restricted` бессмысленен без allow-list; нет service principals |
+| Post-filter после top-k | утечки через ranking/snippets/cache; закреплено как запрет |
+| Один логический индекс public+private | ошибка фильтра = утечка; нужен physical split |
+| Vault внутри app repo | риск попадания знаний в image/CI; разные ACL жизненных циклов |
+| Qdrant / Neo4j в v1 | избыточно при текущем объёме; Postgres уже нужен для ACL/audit |
+| Blanket `company` для voice/text | озвучивание закрытых company-доков по телефону |
+| Auto-publish public | классификатор не должен публиковать |
 
 ---
 
 ## 7. Migration principles (no data loss)
 
-1. **Copy, never delete** — `vault/legacy/quantum_labs.v1.md` = полный байт-в-байт снимок.  
-2. **Import manifest** — каждая секция → новый путь + `source` anchor; можно восстановить.  
-3. **Dual-read period** — runtime читает legacy OR vault shards; feature flag.  
-4. **Compat API** всегда зелёный в CI.  
-5. **Rollback** = выключить flag, снова только legacy MD.  
-6. **Visibility default при импорте:**  
-   - sales FAQ / product → `company` (не `public`, пока не review)  
-   - «чего не говорить», internal scripts → `company` или `team:sales`  
-   - contacts/ops AVA → `team:ops`  
-   - всё сомнительное → `restricted` до разбора  
+1. **Copy, never delete** — `vault/legacy/quantum_labs.v1.md` = полный снимок.  
+2. **Import manifest** — секция → путь + `source`.  
+3. **Dual-read period** — feature flag; Phase 0 **не** меняет production runtime.  
+4. **Compat API** зелёный в CI.  
+5. **Rollback** = legacy MD / выключить flag.  
+6. **Import visibility default:** не выше `company`; чувствительное → `restricted`; `public` только после manual publish.  
+7. **Phase 0 security tests** обязательны до любой реализации indexer/RAG.
 
 ---
 
 ## 8. Out of scope (для ADR)
 
 - Полный Admin UI в первой волне  
-- Автоматический импорт всей почты/Bitrix без политики  
+- Автоимпорт всей почты/Bitrix без политики  
 - Замена Bitrix CRM  
 - Обучение собственных embedding-моделей  
+- Qdrant / Neo4j в v1  
+- Переключение voice/text на Second Brain без отдельного approval  
 
 ---
 
-## 9. Approval gate
+## 9. Approval gate — RESOLVED
 
-**Реализация начинается только после явного утверждения** этого ADR (статус → Accepted) и выбора:
-
-- [ ] Vector backend v1: `pgvector` / `Qdrant` / отложить vectors до Phase 2  
-- [ ] Graph store v1: Postgres tables / Neo4j / отложить graph до Phase 2  
-- [ ] Где живёт Vault: этот репозиторий `knowledge/vault` / отдельный `quantum-brain` repo  
-- [ ] Default visibility policy для office agents (voice/text)
+| Вопрос | Решение |
+|--------|---------|
+| Vector backend v1 | **pgvector** (абстракция `VectorStore` сохранена) |
+| Graph store v1 | **PostgreSQL tables** (абстракция `GraphStore` сохранена) |
+| Vault location | **separate-private-repository `quantum-brain`** |
+| Public/private | **physical** (`knowledge_public` / `knowledge_private`) |
+| Default access | **deny all** |
+| Public publish | **manual-approval-only** |
+| Office agents | отдельные service principals; **не** blanket company; канал `assistant-safe` |
+| Start implementation | только после Phase 0 security tests; **без** смены prod runtime в Phase 0 |
 
 ---
 
@@ -331,4 +534,6 @@ Principal передаётся через gateway auth (service token + user/rol
 - Current service: `knowledge/README.md`  
 - Topic catalog: `knowledge/content/index.yaml`  
 - Roadmap: `docs/architecture/SECOND_BRAIN_ROADMAP.md`  
+- Platform schemas: `knowledge/platform/schemas/`  
+- Security contracts/tests: `knowledge/platform/tests/`  
 - Prod constraints: `AGENTS.md`

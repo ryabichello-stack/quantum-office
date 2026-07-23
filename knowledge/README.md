@@ -52,9 +52,14 @@
 ## Дальше: Second Brain
 
 Текущий сервис — совместимый FAQ/keyword слой для агентов.  
-Целевая корпоративная память (Vault + ACL + graph + hybrid + MCP) описана в:
+ADR-0001 **Accepted** (security amendments). Код платформы: `platform/` (Phase 0 schemas + negative-security tests).  
+Канонический Vault → отдельный private repo **`quantum-brain`**. Production `:8017` в Phase 0 **не меняется**; switch voice/text — только с отдельным approval.
 
 - [`docs/architecture/ADR-0001-second-brain.md`](../docs/architecture/ADR-0001-second-brain.md)
 - [`docs/architecture/SECOND_BRAIN_ROADMAP.md`](../docs/architecture/SECOND_BRAIN_ROADMAP.md)
+- [`platform/README.md`](./platform/README.md)
 
-**Реализацию платформы не начинать**, пока ADR не Accepted.
+```bash
+PYTHONPATH=. pytest knowledge/platform/tests -q
+```
+
