@@ -260,7 +260,7 @@ MD change → Safety scan → Classify → Normalize → Chunk(inherit ACL) →
 | Entity graph + contacts | 🔴 | tables in PG schema; API later |
 | Semantic/Hybrid (pgvector) | 🟡 | cutover `BRAIN_STORE=postgres` |
 | Safety / quarantine | 🟡 | Контракты Phase 0 |
-| LLM-agnostic MCP | 🔴 | |
+| LLM-agnostic MCP | 🟡 | Cursor MCP stdio + REST `/api/brain/*` |
 | Compat для агентов | 🟢 | Voice/text на общем API; switch заблокирован |
 
 **Вывод:** Second Brain на проде — операционная память + hybrid search; cutover search на Postgres/pgvector. Дальше: physical zones, vault, graph API, voice switch.
