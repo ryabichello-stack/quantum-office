@@ -285,6 +285,7 @@ Meetings/CRM    ┘     + publish pipeline  ├──►  Graph (entities/edges)
   - `brain` = faq-safe Second Brain primary (`service:voice-office`), legacy fallback if empty/error.
   - Rollback: `KNOWLEDGE_READ_MODE=legacy` + restart `ava-knowledge`.
   - Mailer proxy inherits mode via `:8017` (no separate mailer flag).
+- **Self-knowledge:** vault `platform/second-brain-*.md` ingested (overview, architecture, ACL/modes, status, FAQ, ops, plan stages).
 
 **Дальше:** private GitHub `quantum-brain`, Postgres-only writes (drop SQLite write SoT), full physical zone split.
 
