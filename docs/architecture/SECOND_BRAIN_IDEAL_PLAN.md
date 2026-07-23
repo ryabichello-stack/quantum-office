@@ -265,7 +265,7 @@ Meetings/CRM    ┘     + publish pipeline  ├──►  Graph (entities/edges)
 - [ ] Нет dual path `/root/ava` vs git vs индекс
 - [x] Граф: человек–компания–тред–документ
 - [x] Ingest: почта/файлы/vault/CRM; без дублей и без потери
-- [ ] Voice+text+Cursor на `/api/brain` (после approval)
+- [x] Voice+text+Cursor на brain (voice via `KNOWLEDGE_READ_MODE=brain` + ACL; text-bot tools; Cursor MCP)
 - [x] Eval ≥ порога; цитаты в ответах
 - [x] Public только manual publish; default deny
 
@@ -281,8 +281,11 @@ Meetings/CRM    ┘     + publish pipeline  ├──►  Graph (entities/edges)
 - **V1–V4 lite:** vault shards + publish bundle + `export-monolith` → generated `quantum_labs.md`.
 - **A2:** Cursor MCP tools.
 - **Dual-write:** `BRAIN_DUAL_WRITE` copies touched SQLite rows → Postgres on ingest.
-- **A3 prep:** `KNOWLEDGE_READ_MODE=legacy|dual_compare` + `/api/knowledge/compare` (voice text stays legacy).
+- **A3:** `KNOWLEDGE_READ_MODE=legacy|dual_compare|brain` + `/api/knowledge/compare`.
+  - `brain` = faq-safe Second Brain primary (`service:voice-office`), legacy fallback if empty/error.
+  - Rollback: `KNOWLEDGE_READ_MODE=legacy` + restart `ava-knowledge`.
+  - Mailer proxy inherits mode via `:8017` (no separate mailer flag).
 
-**Дальше:** A3 voice cutover (нужен явный OK), private GitHub `quantum-brain`, Postgres-only writes.
+**Дальше:** private GitHub `quantum-brain`, Postgres-only writes (drop SQLite write SoT), full physical zone split.
 
-Нужно от вас: OK на voice switch; создать private repo `quantum-brain`.
+Нужно от вас: создать private repo `quantum-brain`.
