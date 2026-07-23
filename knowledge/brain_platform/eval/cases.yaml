@@ -160,3 +160,12 @@ cases:
     min_chars: 40
     expect_any: ["сельхоз", "ЛПХ", "закуп", "продукц", "ферм"]
     require_citation: true
+
+  - id: vertical-mfo
+    query: "МФО микрозаймы массовые выплаты Quantum"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["МФО", "микрозайм", "займ", "выплат"]
+    require_citation: true
+

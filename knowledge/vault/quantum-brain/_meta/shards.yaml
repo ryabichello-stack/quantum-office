@@ -60,3 +60,5 @@ shards:
     path: lombards/mass-payouts-kb-2026.md
   - id: canonical-knowledge-2026
     path: products/canonical-knowledge-2026.md
+  - id: mfo-mass-payouts
+    path: verticals/mfo-mass-payouts.md

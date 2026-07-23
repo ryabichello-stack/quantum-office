@@ -23,6 +23,7 @@ shard: verticals-catalog
 | Страхование | `verticals/insurance-mass-payouts.md` | ОСАГО/каско/розничные выплаты физлицам |
 | Trade-in / выкуп | `verticals/trade-in-mass-payouts.md` | автодилеры, электроника, обратный выкуп |
 | Сельхоззакупки | `verticals/agro-buyback-payouts.md` | выкуп продукции у ЛПХ/физлиц |
+| МФО | `verticals/mfo-mass-payouts.md` | выдача микрозаймов физлицам/бизнесу |
 | Канон компании | `products/canonical-knowledge-2026.md` | модель Quantum Labs, принципы, банки, продажи |
 
 Общее правило позиционирования: Quantum — оркестратор выплат через банк-партнёр, не банк и не хранение денег клиентов.
