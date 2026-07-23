@@ -1,7 +1,7 @@
 # Structure pack — never commit secrets or dumps
 .env
 *.env.local
-data/**
+data/*
 !data/README.md
 !data/.gitignore
 **/__pycache__/

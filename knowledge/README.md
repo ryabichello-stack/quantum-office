@@ -68,3 +68,11 @@ PYTHONPATH=/opt/ava-knowledge /opt/ava-knowledge/venv/bin/python -m brain_platfo
 
 Документы: ADR-0001, OPERATIONAL_MEMORY, `brain_platform/README.md`.
 
+## Structure pack (без знаний)
+
+Каркас vault + Postgres schema + docker/systemd для быстрого развёртывания **без контента**:
+
+→ [`quantum-brain-structure/`](./quantum-brain-structure/) (`README.md`, `DEPLOY.md`).
+
+Его же можно вынести в private repo `quantum-brain` через `git subtree split` (см. README pack’а).
+

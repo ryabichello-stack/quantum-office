@@ -286,7 +286,8 @@ Meetings/CRM    ┘     + publish pipeline  ├──►  Graph (entities/edges)
   - Rollback: `KNOWLEDGE_READ_MODE=legacy` + restart `ava-knowledge`.
   - Mailer proxy inherits mode via `:8017` (no separate mailer flag).
 - **Self-knowledge:** vault `platform/second-brain-*.md` ingested (overview, architecture, ACL/modes, status, FAQ, ops, plan stages).
+- **Structure pack (no content):** `knowledge/quantum-brain-structure/` — vault stubs, SQL schema, docker-compose, systemd, bootstrap scripts (ready to split into private `quantum-brain`).
 
-**Дальше:** private GitHub `quantum-brain`, Postgres-only writes (drop SQLite write SoT), full physical zone split.
+**Дальше:** private GitHub `quantum-brain` (создать вручную — agent token без `repo create`), Postgres-only writes (drop SQLite write SoT), full physical zone split.
 
-Нужно от вас: создать private repo `quantum-brain`.
+Нужно от вас: создать private repo `quantum-brain` (можно запушить subtree из `knowledge/quantum-brain-structure/`).
