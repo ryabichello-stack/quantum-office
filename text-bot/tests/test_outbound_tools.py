@@ -90,7 +90,9 @@ def test_await_outbound_result_matches_phone(monkeypatch):
     assert out["ok"] is True
     assert out["call_id"] == "new.2"
     assert "устрицы" in out["conversation"][1]["content"]
-    assert "выплаты" not in json.dumps(out, ensure_ascii=False)
+    conv_blob = json.dumps(out.get("conversation") or [], ensure_ascii=False)
+    assert "выплаты" not in conv_blob
+    assert "суббота" in conv_blob
 
 
 def test_outbound_dial_requires_confirm(monkeypatch):
