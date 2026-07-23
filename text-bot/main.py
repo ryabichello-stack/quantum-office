@@ -118,7 +118,12 @@ def generate_reply(chat_id: str, user_text: str) -> str:
                 args = json.loads(fn.arguments or "{}")
             except json.JSONDecodeError:
                 args = {}
-            result = run_tool(fn.name, args, mailer_base=AVA_MAILER_BASE)
+            result = run_tool(
+                fn.name,
+                args,
+                mailer_base=AVA_MAILER_BASE,
+                telegram_chat_id=chat_id,
+            )
             tool_msg = {
                 "role": "tool",
                 "tool_call_id": tc.id,
@@ -227,4 +232,12 @@ def health() -> dict[str, Any]:
         "openai_configured": bool(OPENAI_API_KEY),
         "model": OPENAI_MODEL,
         "mailer_base": AVA_MAILER_BASE,
+        "tools": [
+            "get_company_knowledge",
+            "check_calendar",
+            "suggest_calendar_slots",
+            "create_calendar_event",
+            "create_conference",
+            "send_file",
+        ],
     }
