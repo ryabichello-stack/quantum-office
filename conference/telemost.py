@@ -15,10 +15,10 @@ logger = logging.getLogger(__name__)
 
 TELEMOST_ENABLED = os.getenv("TELEMOST_ENABLED", "true").lower() in ("1", "true", "yes", "on")
 TELEMOST_WAITING_ROOM_LEVEL = os.getenv("TELEMOST_WAITING_ROOM_LEVEL", "PUBLIC").strip() or "PUBLIC"
-TELEMOST_API_URL = os.getenv(
-    "TELEMOST_API_URL",
-    "https://cloud-api.yandex.net/v1/telemost-api/conferences",
-).strip()
+TELEMOST_API_URL = (
+    os.getenv("TELEMOST_API_URL", "").strip()
+    or "https://cloud-api.yandex.net/v1/telemost-api/conferences"
+)
 TELEMOST_TIMEOUT_SECONDS = float(os.getenv("TELEMOST_TIMEOUT_SECONDS", "6") or "6")
 
 
