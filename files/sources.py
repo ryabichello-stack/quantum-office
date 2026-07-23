@@ -7,6 +7,7 @@ import json
 import logging
 import mimetypes
 import os
+import xml.etree.ElementTree as ET
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -14,7 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 from allowlist import default_local_allowlist, parse_allowlist, resolve_under_allowlist
-from models import FetchedFile, SourceError
+from models import FetchedFile, ListedEntry, SourceError
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +208,212 @@ def fetch_mailru(path: str) -> FetchedFile:
     )
 
 
+def _normalize_dir_path(path: str) -> str:
+    clean = (path or "/").strip() or "/"
+    if not clean.startswith("/"):
+        clean = "/" + clean
+    # Keep root as "/", other dirs without trailing slash for stable paths
+    if clean != "/":
+        clean = clean.rstrip("/")
+    return clean
+
+
+def _webdav_href_to_path(href: str) -> str:
+    """Convert WebDAV href (absolute or relative) to cloud path starting with /."""
+    raw = (href or "").strip()
+    if not raw:
+        return "/"
+    parsed = urllib.parse.urlparse(raw)
+    path = urllib.parse.unquote(parsed.path or raw)
+    # Strip webdav root prefix if present
+    for prefix in ("/webdav",):
+        if path.startswith(prefix + "/") or path == prefix:
+            path = path[len(prefix) :] or "/"
+    if not path.startswith("/"):
+        path = "/" + path
+    if path != "/":
+        path = path.rstrip("/")
+    return path or "/"
+
+
+def list_mailru(path: str = "/") -> list[ListedEntry]:
+    """List one directory level on Mail.ru Cloud via WebDAV PROPFIND Depth:1."""
+    if not (MAILRU_WEBDAV_USER and MAILRU_WEBDAV_PASSWORD):
+        raise SourceError(
+            "mailru_not_configured",
+            "Set MAILRU_WEBDAV_USER/PASSWORD (or MAIL_USERNAME/MAIL_PASSWORD) in .env",
+        )
+    clean = _normalize_dir_path(path)
+    # WebDAV collections usually want a trailing slash
+    list_path = clean if clean.endswith("/") else clean + "/"
+    url = _mailru_url(list_path)
+    body = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<d:propfind xmlns:d="DAV:">'
+        "<d:prop><d:resourcetype/><d:displayname/><d:getcontentlength/></d:prop>"
+        "</d:propfind>"
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        method="PROPFIND",
+        headers={
+            "Authorization": _mailru_auth_header(),
+            "User-Agent": "ava-files/mailru-webdav",
+            "Depth": "1",
+            "Content-Type": "application/xml; charset=utf-8",
+            "Accept": "application/xml, text/xml, */*",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            xml_bytes = resp.read()
+    except urllib.error.HTTPError as exc:
+        err = exc.read().decode("utf-8", errors="replace")[:400]
+        raise SourceError("mailru_http_error", f"Mail.ru Cloud {exc.code}: {err}") from exc
+    except Exception as exc:
+        raise SourceError("mailru_error", str(exc)) from exc
+
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError as exc:
+        raise SourceError("mailru_xml_error", f"bad PROPFIND xml: {exc}") from exc
+
+    ns = {"d": "DAV:"}
+    self_path = _normalize_dir_path(clean)
+    entries: list[ListedEntry] = []
+    seen: set[str] = set()
+    for resp_el in root.findall(".//d:response", ns):
+        href_el = resp_el.find("d:href", ns)
+        if href_el is None or not (href_el.text or "").strip():
+            continue
+        entry_path = _webdav_href_to_path(href_el.text or "")
+        if _normalize_dir_path(entry_path) == self_path:
+            continue
+        prop = resp_el.find("d:propstat/d:prop", ns)
+        if prop is None:
+            prop = resp_el.find(".//d:prop", ns)
+        is_dir = False
+        size: Optional[int] = None
+        display = Path(entry_path).name or entry_path
+        if prop is not None:
+            rt = prop.find("d:resourcetype", ns)
+            if rt is not None and rt.find("d:collection", ns) is not None:
+                is_dir = True
+            dn = prop.find("d:displayname", ns)
+            if dn is not None and (dn.text or "").strip():
+                display = (dn.text or "").strip()
+            cl = prop.find("d:getcontentlength", ns)
+            if cl is not None and (cl.text or "").strip().isdigit():
+                size = int(cl.text or "0")
+        # Trailing slash in href often means directory
+        if (href_el.text or "").rstrip().endswith("/"):
+            is_dir = True
+        key = f"{'dir' if is_dir else 'file'}:{entry_path}"
+        if key in seen:
+            continue
+        seen.add(key)
+        entries.append(
+            ListedEntry(
+                name=display,
+                path=entry_path if entry_path.startswith("/") else f"/{entry_path}",
+                type="dir" if is_dir else "file",
+                bytes=None if is_dir else size,
+            )
+        )
+
+    entries.sort(key=lambda e: (0 if e.type == "dir" else 1, e.name.lower()))
+    return entries
+
+
+def list_local(path: str = "/") -> list[ListedEntry]:
+    """List allowlisted local directory (one level)."""
+    allow = default_local_allowlist()
+    raw = (path or "").strip() or str(allow[0])
+    try:
+        # For listing, allow directory roots from allowlist
+        if raw in ("/", ".", ""):
+            resolved = allow[0].resolve()
+        else:
+            resolved = resolve_under_allowlist(raw, allow)
+    except ValueError as exc:
+        raise SourceError(str(exc), f"local path not allowed: {path}") from exc
+    if resolved.is_file():
+        return [
+            ListedEntry(
+                name=resolved.name,
+                path=str(resolved),
+                type="file",
+                bytes=resolved.stat().st_size,
+            )
+        ]
+    if not resolved.is_dir():
+        raise SourceError("not_found", f"local dir not found: {resolved}")
+    entries: list[ListedEntry] = []
+    for child in sorted(resolved.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+        if child.name.startswith("."):
+            continue
+        entries.append(
+            ListedEntry(
+                name=child.name,
+                path=str(child.resolve()),
+                type="dir" if child.is_dir() else "file",
+                bytes=None if child.is_dir() else child.stat().st_size,
+            )
+        )
+    return entries
+
+
+def list_yadisk(path: str = "/") -> list[ListedEntry]:
+    if not YADISK_TOKEN:
+        raise SourceError("yadisk_not_configured", "Set YADISK_TOKEN in .env")
+    disk_path = path if path.startswith("disk:") or path.startswith("/") else f"/{path}"
+    if not disk_path.startswith("disk:"):
+        disk_path = f"disk:{disk_path}"
+    meta_url = (
+        f"{YADISK_API}/resources?"
+        + urllib.parse.urlencode({"path": disk_path, "limit": 200})
+    )
+    headers = {"Authorization": f"OAuth {YADISK_TOKEN}", "Accept": "application/json"}
+    req = urllib.request.Request(meta_url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            meta = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")[:300]
+        raise SourceError("yadisk_http_error", f"Yandex Disk {exc.code}: {body}") from exc
+
+    items = ((meta.get("_embedded") or {}).get("items")) or []
+    entries: list[ListedEntry] = []
+    for item in items:
+        itype = "dir" if item.get("type") == "dir" else "file"
+        ipath = item.get("path") or ""
+        # disk:/Folder/file → /Folder/file
+        if ipath.startswith("disk:"):
+            ipath = ipath[5:] or "/"
+        entries.append(
+            ListedEntry(
+                name=str(item.get("name") or Path(ipath).name),
+                path=ipath if ipath.startswith("/") else f"/{ipath}",
+                type=itype,  # type: ignore[arg-type]
+                bytes=None if itype == "dir" else item.get("size"),
+            )
+        )
+    entries.sort(key=lambda e: (0 if e.type == "dir" else 1, e.name.lower()))
+    return entries
+
+
+def list_entries(source: str, path: str = "/") -> list[ListedEntry]:
+    source = (source or "").strip().lower()
+    if source == "local":
+        return list_local(path)
+    if source in ("yadisk", "yandex", "yandex_disk"):
+        return list_yadisk(path)
+    if source in ("mailru", "mailru_disk", "cloud_mail"):
+        return list_mailru(path)
+    raise SourceError("unknown_source", f"list unsupported for source: {source}")
+
+
 def fetch(source: str, path: str, **kwargs) -> FetchedFile:
     source = (source or "").strip().lower()
     if source == "local":
@@ -230,5 +437,6 @@ def sources_status() -> dict:
         "mailru_configured": bool(MAILRU_WEBDAV_USER and MAILRU_WEBDAV_PASSWORD),
         "mailru_webdav_url": MAILRU_WEBDAV_URL,
         "mailru_user": MAILRU_WEBDAV_USER or None,
+        "list_sources": ["mailru", "yadisk", "local"],
         "max_bytes": MAX_BYTES,
     }

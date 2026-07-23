@@ -5,6 +5,13 @@
 ## API
 
 ```http
+POST /api/files/list
+```json
+{ "source": "mailru", "path": "/" }
+```
+
+Returns folders + files for one directory level (drill-down via `path`).
+
 POST /api/files/send
 X-Webhook-Token: <WEBHOOK_TOKEN>
 Content-Type: application/json

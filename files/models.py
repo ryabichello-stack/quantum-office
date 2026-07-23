@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
 
 
 @dataclass
@@ -13,6 +13,14 @@ class FetchedFile:
     content_type: str = "application/octet-stream"
     source: str = ""
     path: str = ""
+
+
+@dataclass
+class ListedEntry:
+    name: str
+    path: str
+    type: Literal["dir", "file"]
+    bytes: Optional[int] = None
 
 
 class SourceError(Exception):

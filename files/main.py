@@ -61,6 +61,14 @@ class FileFetchRequest(BaseModel):
     repo: Optional[str] = None
 
 
+class FileListRequest(BaseModel):
+    source: Literal["local", "yadisk", "yandex", "mailru"] = Field(
+        default="mailru",
+        description="Cloud/local source to browse",
+    )
+    path: str = Field(default="/", max_length=1000, description="Directory path, default root")
+
+
 @app.get("/health")
 def health():
     return {
@@ -68,6 +76,51 @@ def health():
         "service": SERVICE_NAME,
         "sources": sources.sources_status(),
         "delivery": delivery.delivery_status(),
+    }
+
+
+@app.post("/api/files/list")
+def files_list(
+    req: FileListRequest,
+    x_webhook_token: Optional[str] = Header(None),
+):
+    """List folders and files in one directory level (browse / drill-down)."""
+    _check_token(x_webhook_token)
+    path = (req.path or "/").strip() or "/"
+    try:
+        entries = sources.list_entries(req.source, path)
+    except SourceError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": exc.code, "message": exc.message},
+        ) from exc
+    dirs = [e for e in entries if e.type == "dir"]
+    files = [e for e in entries if e.type == "file"]
+    return {
+        "ok": True,
+        "source": req.source,
+        "path": path if path.startswith("/") or req.source == "local" else f"/{path}",
+        "account": (sources.sources_status().get("mailru_user") if req.source == "mailru" else None),
+        "dirs": [{"name": e.name, "path": e.path, "type": "dir"} for e in dirs],
+        "files": [
+            {
+                "name": e.name,
+                "path": e.path,
+                "type": "file",
+                "bytes": e.bytes,
+            }
+            for e in files
+        ],
+        "entries": [
+            {
+                "name": e.name,
+                "path": e.path,
+                "type": e.type,
+                "bytes": e.bytes,
+            }
+            for e in entries
+        ],
+        "counts": {"dirs": len(dirs), "files": len(files), "total": len(entries)},
     }
 
 

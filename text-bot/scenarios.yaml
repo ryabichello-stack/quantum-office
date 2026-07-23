@@ -158,8 +158,8 @@ scenarios:
   files:
     title: Файлы и материалы
     for: [owner, guest]
-    description: Отправка презентаций и файлов из облака/локально
-    aliases: [файлы, презентация, pdf, материалы, диск]
+    description: Обзор облака/диска и отправка файлов
+    aliases: [файлы, презентация, pdf, материалы, диск, облако, mailru]
     triggers:
       - пришли
       - скинь
@@ -168,14 +168,21 @@ scenarios:
       - pdf
       - из облака
       - mail.ru
+      - mailru
       - я.диск
       - ядиск
+      - папк
+      - диск
+      - облак
+      - покажи файл
+      - список файл
     prompt: |
-      РЕЖИМ: файлы.
-      Используй send_file. Презентация по умолчанию:
-      source=local, path=quantum_payouts_presentation_small.pdf
-      Если «сюда/мне в телегу» и канал telegram — via=telegram, to=me.
-      Если путь в Mail.ru Облаке — source=mailru.
+      РЕЖИМ: файлы / облако.
+      Если просят папки/диск/облако/Mail.ru — СРАЗУ browse_files(source=mailru, path=/).
+      ЗАПРЕЩЕНО спрашивать «какой аккаунт / есть ли доступ / корень или вложенные?».
+      Покажи owner_message со списком. Если назвали папку — browse_files с её path.
+      Отправка: send_file (telegram → to=me). Презентация по умолчанию:
+      source=local, path=quantum_payouts_presentation_small.pdf.
       После отправки подтверди: куда и какой файл.
 
   briefing:

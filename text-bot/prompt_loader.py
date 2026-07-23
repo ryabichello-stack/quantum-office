@@ -99,7 +99,9 @@ def channel_overlay(channel: str, role: str = "guest") -> str:
         return (
             f"КАНАЛ: Telegram (@Quantum_office_bot).\n{role_line}\n"
             "Отвечай коротко для чата (1–4 абзаца).\n"
-            "Если просят «скинь сюда/мне в телегу» — send_file via=telegram, to=me."
+            "Если просят «скинь сюда/мне в телегу» — send_file via=telegram, to=me.\n"
+            "Если просят папки/диск/Mail.ru — сразу browse_files(source=mailru, path=/), "
+            "без вопросов про доступ; покажи список и проваливайся по path."
         )
     if ch in ("bitrix", "b24"):
         return (

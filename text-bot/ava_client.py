@@ -482,10 +482,39 @@ _OFFICE_TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "browse_files",
+            "description": (
+                "Показать список папок и файлов в источнике (Mail.ru / Я.Диск / local). "
+                "Вызывай СРАЗУ при «покажи папки/диск/облако» — без допросов про доступ. "
+                "По умолчанию source=mailru, path=/. "
+                "Чтобы провалиться в папку — вызови снова с path из ответа. "
+                "Потом send_file для отправки файла."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source": {
+                        "type": "string",
+                        "enum": ["mailru", "yadisk", "local"],
+                        "description": "По умолчанию mailru",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Папка, по умолчанию / (корень)",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "send_file",
             "description": (
                 "Отправить файл по email или в Telegram. "
-                "source: local|repo|yadisk|mailru. via: email|telegram."
+                "source: local|repo|yadisk|mailru. via: email|telegram. "
+                "Путь бери из browse_files."
             ),
             "parameters": {
                 "type": "object",
@@ -900,6 +929,49 @@ def _format_draft_for_owner(draft: dict[str, Any]) -> str:
         f"Script:\n{script}\n\n"
         "Если ок — напишите «да, звони». Можно поправить текст."
     )
+
+
+def _human_bytes(n: Any) -> str:
+    try:
+        size = int(n)
+    except Exception:
+        return ""
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.1f} KB"
+    return f"{size / (1024 * 1024):.1f} MB"
+
+
+def _format_files_browse(data: dict[str, Any]) -> str:
+    source = str(data.get("source") or "mailru")
+    path = str(data.get("path") or "/")
+    account = data.get("account")
+    dirs = data.get("dirs") or []
+    files = data.get("files") or []
+    title = {
+        "mailru": "Mail.ru Облако",
+        "yadisk": "Яндекс.Диск",
+        "local": "Локальные файлы",
+    }.get(source, source)
+    lines = [f"{title}" + (f" ({account})" if account else ""), f"Путь: {path}", ""]
+    if dirs:
+        lines.append("Папки:")
+        for d in dirs[:80]:
+            lines.append(f"• 📁 {d.get('name')}  →  {d.get('path')}")
+        lines.append("")
+    if files:
+        lines.append("Файлы:")
+        for f in files[:100]:
+            size = _human_bytes(f.get("bytes"))
+            size_s = f" ({size})" if size else ""
+            lines.append(f"• 📄 {f.get('name')}{size_s}  →  {f.get('path')}")
+        lines.append("")
+    if not dirs and not files:
+        lines.append("(пусто)")
+        lines.append("")
+    lines.append("Напишите имя/путь папки — открою. Или «скинь <файл>» — отправлю.")
+    return "\n".join(lines).strip()
 
 
 def _post_json(
@@ -1523,6 +1595,31 @@ def run_tool(
                 },
                 timeout=30.0,
             )
+            return json.dumps(data, ensure_ascii=False)
+
+        if name == "browse_files":
+            source = str(arguments.get("source") or "mailru").strip().lower() or "mailru"
+            if source in ("yandex", "yandex_disk"):
+                source = "yadisk"
+            if source in ("mailru_disk", "cloud_mail"):
+                source = "mailru"
+            path = str(arguments.get("path") or "/").strip() or "/"
+            data = _post_json(
+                f"{FILES_BASE}/api/files/list",
+                {"source": source, "path": path},
+                timeout=60.0,
+            )
+            if isinstance(data, dict) and data.get("ok"):
+                data = {
+                    **data,
+                    "owner_message": _format_files_browse(data),
+                    "instruction_for_assistant": (
+                        "Покажи owner_message владельцу как есть. "
+                        "Не спрашивай про доступ/аккаунт/корень — список уже получен. "
+                        "Если просят открыть папку — browse_files с её path. "
+                        "Если просят файл — send_file с path из списка."
+                    ),
+                }
             return json.dumps(data, ensure_ascii=False)
 
         if name == "send_file":
