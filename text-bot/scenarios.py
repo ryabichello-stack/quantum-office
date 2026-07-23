@@ -164,8 +164,49 @@ def default_scenario(role: str) -> Scenario:
     return get_scenario(sid) or next(iter(b.scenarios.values()))
 
 
+_OUTBOUND_CALL_RE = re.compile(
+    r"(?is)(?:позвони|позвонить|набери|набрать|обзвон|dial)\b"
+    r".{0,120}?(?:\+?\d[\d\-\s()]{8,}|\b\d{10,11}\b)"
+)
+_OUTBOUND_CALL_SOFT_RE = re.compile(
+    r"(?is)\b(?:позвони|позвонить|набери|набрать|перезвони|перезвонить|обзвон)\b"
+)
+
+
+def looks_like_outbound_request(text: str) -> bool:
+    """True when the user is asking to place/manage an outbound call now."""
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    if _OUTBOUND_CALL_RE.search(raw):
+        return True
+    low = raw.lower()
+    # Soft: call verb + task words even without a clear phone yet
+    if _OUTBOUND_CALL_SOFT_RE.search(low) and any(
+        k in low
+        for k in (
+            "свидан",
+            "приглас",
+            "от имени",
+            "скрипт",
+            "greeting",
+            "сценари",
+            "обзвон",
+            "исходящ",
+        )
+    ):
+        return True
+    return False
+
+
 def detect_scenario(text: str, role: str) -> Scenario:
     """Pick best matching scenario by trigger keywords; else default."""
+    # Hard priority: explicit call requests must not fall into memory/secretary meta.
+    if role == "owner" and looks_like_outbound_request(text):
+        outbound = get_scenario("outbound")
+        if outbound and "owner" in (outbound.for_roles or ["owner"]):
+            return outbound
+
     low = (text or "").lower()
     best: Optional[Scenario] = None
     best_score = 0

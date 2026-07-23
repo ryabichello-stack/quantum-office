@@ -23,6 +23,7 @@ from scenarios import (
     format_scenarios_help,
     get_scenario,
     load_scenarios,
+    looks_like_outbound_request,
     parse_scenario_command,
     role_for,
     scenario_overlay,
@@ -180,10 +181,16 @@ class Secretary:
             reply = f"Не знаю режим «{payload}». Напишите /режимы"
             return {"ok": False, "error": "unknown_scenario", "reply": reply, "session": key}
 
-        # Resolve active scenario for this turn
+        # Resolve active scenario for this turn.
+        # Outbound call requests always win over sticky memory/secretary — otherwise
+        # the model may parrot Second Brain rules instead of drafting a call script.
         if scenario and get_scenario(scenario):
             active = get_scenario(scenario)
             sticky_now = False
+        elif role == "owner" and looks_like_outbound_request(text) and get_scenario("outbound"):
+            active = get_scenario("outbound")
+            sticky_now = False
+            set_session_scenario(SESSION_DB, key, "outbound", sticky=False)
         elif sticky and sticky_id and get_scenario(sticky_id):
             active = get_scenario(sticky_id)
             sticky_now = True
