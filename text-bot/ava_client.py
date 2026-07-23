@@ -170,7 +170,8 @@ _OUTBOUND_OWNER_TOOLS: list[dict[str, Any]] = [
                 "Запустить ИСХОДЯЩИЙ звонок бота (Quantum Console → SIP/AVA). "
                 "Только для владельца. Перед вызовом ОБЯЗАТЕЛЬНО подтверди у пользователя "
                 "номер и цель, затем передай confirm=true. "
-                "context по умолчанию outbound (не трогает входящий default)."
+                "Можно передать greeting/script/use_knowledge только для ЭТОГО звонка "
+                "(не меняет постоянный YAML и не трогает входящий default)."
             ),
             "parameters": {
                 "type": "object",
@@ -190,7 +191,19 @@ _OUTBOUND_OWNER_TOOLS: list[dict[str, Any]] = [
                     },
                     "goal": {
                         "type": "string",
-                        "description": "Краткая цель звонка для лога/ответа (не меняет скрипт сама)",
+                        "description": "Краткая цель звонка для лога/ответа",
+                    },
+                    "greeting": {
+                        "type": "string",
+                        "description": "Первая фраза ТОЛЬКО для этого звонка (override)",
+                    },
+                    "script": {
+                        "type": "string",
+                        "description": "Полный playbook/system prompt ТОЛЬКО для этого звонка",
+                    },
+                    "use_knowledge": {
+                        "type": "boolean",
+                        "description": "true — бот может брать факты из Second Brain; false — только script",
                     },
                 },
                 "required": ["phone", "confirm"],
@@ -202,8 +215,8 @@ _OUTBOUND_OWNER_TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "get_outbound_scenario",
             "description": (
-                "Прочитать скрипт исходящих: greeting + prompt профиля outbound "
-                "(изолирован от входящих)."
+                "Прочитать постоянный скрипт исходящих: greeting + script профиля outbound "
+                "(изолирован от входящих). GET /api/outbound/script."
             ),
             "parameters": {
                 "type": "object",
@@ -223,21 +236,29 @@ _OUTBOUND_OWNER_TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "update_outbound_scenario",
             "description": (
-                "Обновить скрипт ИСХОДЯЩИХ (greeting и/или prompt профиля outbound). "
-                "Входящий default НЕ меняется. "
-                "После существенной правки prompt обычно restart_engine=true."
+                "Обновить ПОСТОЯННЫЙ скрипт исходящих (greeting и/или script). "
+                "Входящий default НЕ меняется. PUT /api/outbound/script. "
+                "Для one-shot звонка лучше передать script в outbound_dial."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "greeting": {"type": "string", "description": "Приветствие в начале звонка"},
+                    "script": {
+                        "type": "string",
+                        "description": "Полный playbook / system prompt для исходящих",
+                    },
                     "prompt": {
                         "type": "string",
-                        "description": "Полный system/playbook prompt для исходящих",
+                        "description": "Синоним script (обратная совместимость)",
+                    },
+                    "use_knowledge": {
+                        "type": "boolean",
+                        "description": "Разрешить Second Brain в постоянном outbound-профиле",
                     },
                     "restart_engine": {
                         "type": "boolean",
-                        "description": "Перезапустить ai_engine после сохранения (рекомендуется true)",
+                        "description": "Перезапустить ai_engine после сохранения (обычно не нужно)",
                     },
                 },
                 "required": [],
@@ -421,7 +442,9 @@ def _headers(*, brain_principal: str | None = None) -> dict[str, str]:
 def _console_headers() -> dict[str, str]:
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
     if CONSOLE_TOKEN:
+        # Console accepts either header; send both for compatibility.
         headers["X-Console-Token"] = CONSOLE_TOKEN
+        headers["Authorization"] = f"Bearer {CONSOLE_TOKEN}"
     return headers
 
 
@@ -1159,10 +1182,21 @@ def run_tool(
                     },
                     ensure_ascii=False,
                 )
+            body: dict[str, Any] = {"phone": phone, "context": "outbound"}
+            greeting = arguments.get("greeting")
+            script = arguments.get("script")
+            if script is None and arguments.get("prompt") is not None:
+                script = arguments.get("prompt")
+            if greeting is not None and str(greeting).strip():
+                body["greeting"] = str(greeting).strip()
+            if script is not None and str(script).strip():
+                body["script"] = str(script).strip()
+            if "use_knowledge" in arguments and arguments.get("use_knowledge") is not None:
+                body["use_knowledge"] = bool(arguments.get("use_knowledge"))
             data = _console_request(
                 "POST",
                 "/api/outbound/dial",
-                body={"phone": phone, "context": "outbound"},
+                body=body,
                 timeout=45.0,
             )
             if isinstance(data, dict):
@@ -1170,9 +1204,15 @@ def run_tool(
                     **data,
                     "phone": phone,
                     "goal": str(arguments.get("goal") or ""),
+                    "per_call_override": {
+                        "greeting": bool(body.get("greeting")),
+                        "script": bool(body.get("script")),
+                        "use_knowledge": body.get("use_knowledge"),
+                    },
                     "hint": (
                         "После звонка смотри list_outbound_calls / get_outbound_call. "
-                        "Скрипт — get_outbound_scenario / update_outbound_scenario."
+                        "Постоянный скрипт — get_outbound_scenario / update_outbound_scenario; "
+                        "для одного звонка — greeting/script в dial."
                     ),
                 }
             return json.dumps(data, ensure_ascii=False)
@@ -1184,39 +1224,44 @@ def run_tool(
                     {"ok": False, "error": "context_forbidden", "message": "Только outbound"},
                     ensure_ascii=False,
                 )
-            data = _console_request(
-                "GET",
-                "/api/scenario",
-                query={"context": "outbound"},
-            )
-            if isinstance(data, dict) and data.get("prompt"):
-                # Keep model payload readable
-                prompt = str(data.get("prompt") or "")
+            data = _console_request("GET", "/api/outbound/script")
+            if isinstance(data, dict):
+                script_text = str(data.get("script") or data.get("prompt") or "")
                 data = {
                     **data,
-                    "prompt_chars": len(prompt),
-                    "prompt_preview": prompt[:1200] + ("…" if len(prompt) > 1200 else ""),
+                    "script_chars": len(script_text),
+                    "script_preview": script_text[:1200]
+                    + ("…" if len(script_text) > 1200 else ""),
+                    # alias for older prompts
+                    "prompt_chars": len(script_text),
+                    "prompt_preview": script_text[:1200]
+                    + ("…" if len(script_text) > 1200 else ""),
                 }
             return json.dumps(data, ensure_ascii=False)
 
         if name == "update_outbound_scenario":
             greeting = arguments.get("greeting")
-            prompt = arguments.get("prompt")
-            if greeting is None and prompt is None:
+            script = arguments.get("script")
+            if script is None and arguments.get("prompt") is not None:
+                script = arguments.get("prompt")
+            use_knowledge = arguments.get("use_knowledge")
+            if greeting is None and script is None and use_knowledge is None:
                 return json.dumps(
                     {
                         "ok": False,
                         "error": "nothing_to_update",
-                        "message": "Передай greeting и/или prompt",
+                        "message": "Передай greeting и/или script (или use_knowledge)",
                     },
                     ensure_ascii=False,
                 )
-            body: dict[str, Any] = {"context": "outbound"}
+            body = {}
             if greeting is not None:
                 body["greeting"] = str(greeting)
-            if prompt is not None:
-                body["prompt"] = str(prompt)
-            data = _console_request("PUT", "/api/scenario", body=body, timeout=45.0)
+            if script is not None:
+                body["script"] = str(script)
+            if use_knowledge is not None:
+                body["use_knowledge"] = bool(use_knowledge)
+            data = _console_request("PUT", "/api/outbound/script", body=body, timeout=45.0)
             restart_info: dict[str, Any] | None = None
             if bool(arguments.get("restart_engine")):
                 try:
@@ -1229,7 +1274,7 @@ def run_tool(
                 "ok": bool(data.get("ok", True)) if isinstance(data, dict) else True,
                 "saved": data,
                 "restart_engine": restart_info,
-                "note": "Изменён только профиль outbound; входящий default не тронут.",
+                "note": "Изменён постоянный outbound script; входящий default не тронут.",
             }
             return json.dumps(out, ensure_ascii=False)
 

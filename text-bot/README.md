@@ -30,7 +30,7 @@
 | `office` | guest | внешний офисный тон |
 
 Owner tools: `search_office_memory`, `find_office_contact`, `list_office_threads` → `:8017/api/brain/*`.  
-Outbound (owner): `outbound_dial`, `get/update_outbound_scenario`, `list/get_outbound_call` → Quantum Console `:8013` (`X-Console-Token`).
+Outbound (owner): `outbound_dial`, `get/update_outbound_scenario`, `list/get_outbound_call` → Quantum Console `:8013` (`Authorization: Bearer` + `X-Console-Token`). Per-call `greeting`/`script`/`use_knowledge` on dial; persistent script via `/api/outbound/script`.
 
 Автовыбор по ключевым словам. Закрепить вручную:
 

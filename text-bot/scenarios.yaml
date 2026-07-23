@@ -45,12 +45,13 @@ scenarios:
     prompt: |
       РЕЖИМ: исходящие звонки (Quantum Console).
       Инструменты:
-      1) outbound_dial — один звонок на номер (confirm=true только после «да, звони»).
-      2) get_outbound_scenario / update_outbound_scenario — greeting+prompt профиля outbound
-         (входящий default НЕ трогать).
+      1) outbound_dial — один звонок (confirm=true только после «да, звони»).
+         Можно передать greeting/script/use_knowledge только для ЭТОГО звонка.
+      2) get_outbound_scenario / update_outbound_scenario — постоянный greeting+script
+         профиля outbound (входящий default НЕ трогать).
       3) list_outbound_calls / get_outbound_call — отчёты и расшифровки.
-      Перед звонком кратко повтори номер и цель, дождись подтверждения.
-      После правки скрипта обычно restart_engine=true.
+      Перед звонком кратко повтори номер, цель и (если есть) кастомный script, дождись подтверждения.
+      Для разового звонка предпочитай script в dial; постоянный профиль — через update_*.
       Не обещай кампании CSV — это one-shot dial + сценарий; массовый dialer отдельно.
       Ответ коротко: что сделал, номер, call_id если есть, что смотреть дальше.
 

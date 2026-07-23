@@ -1,4 +1,4 @@
-"""Outbound console tools: owner gate, phone normalize, confirm."""
+"""Outbound console tools: owner gate, phone normalize, confirm, per-call script."""
 
 from __future__ import annotations
 
@@ -11,6 +11,13 @@ def test_normalize_dial_phone():
     assert ac._normalize_dial_phone("+7 (900) 123-45-67") == "79001234567"
     assert ac._normalize_dial_phone("89001234567") == "79001234567"
     assert ac._normalize_dial_phone("9001234567") == "79001234567"
+
+
+def test_console_headers_include_bearer(monkeypatch):
+    monkeypatch.setattr(ac, "CONSOLE_TOKEN", "tok")
+    headers = ac._console_headers()
+    assert headers["X-Console-Token"] == "tok"
+    assert headers["Authorization"] == "Bearer tok"
 
 
 def test_outbound_tools_owner_only(monkeypatch):
@@ -57,19 +64,50 @@ def test_outbound_dial_calls_console(monkeypatch):
     def fake_req(method, path, *, body=None, query=None, timeout=30.0):
         assert method == "POST"
         assert path == "/api/outbound/dial"
-        assert body == {"phone": "79001234567", "context": "outbound"}
+        assert body == {
+            "phone": "79001234567",
+            "context": "outbound",
+            "greeting": "Алло, это Анна",
+            "script": "Ты Анна из Acme",
+            "use_knowledge": True,
+        }
         return {"ok": True, "channel": "PJSIP/79001234567@mango-employee"}
 
     monkeypatch.setattr(ac, "_console_request", fake_req)
     out = json.loads(
         ac.run_tool(
             "outbound_dial",
-            {"phone": "8 (900) 123-45-67", "confirm": True, "goal": "тест"},
+            {
+                "phone": "8 (900) 123-45-67",
+                "confirm": True,
+                "goal": "тест",
+                "greeting": "Алло, это Анна",
+                "script": "Ты Анна из Acme",
+                "use_knowledge": True,
+            },
             role="owner",
         )
     )
     assert out["ok"] is True
     assert out["phone"] == "79001234567"
+    assert out["per_call_override"]["greeting"] is True
+    assert out["per_call_override"]["script"] is True
+
+
+def test_get_outbound_scenario_uses_script_endpoint(monkeypatch):
+    monkeypatch.setattr(ac, "CONSOLE_ENABLED", True)
+    monkeypatch.setattr(ac, "CONSOLE_TOKEN", "tok")
+
+    def fake_req(method, path, *, body=None, query=None, timeout=30.0):
+        assert method == "GET"
+        assert path == "/api/outbound/script"
+        return {"ok": True, "greeting": "Привет", "script": "Ты Гарик" * 200}
+
+    monkeypatch.setattr(ac, "_console_request", fake_req)
+    out = json.loads(ac.run_tool("get_outbound_scenario", {}, role="owner"))
+    assert out["ok"] is True
+    assert out["script_chars"] > 0
+    assert "script_preview" in out
 
 
 def test_update_outbound_scenario_isolates_context(monkeypatch):
@@ -81,7 +119,7 @@ def test_update_outbound_scenario_isolates_context(monkeypatch):
         calls.append({"method": method, "path": path, "body": body})
         if path == "/api/actions/restart-engine":
             return {"ok": True, "restarted": True}
-        return {"ok": True, "context": "outbound", "note": "saved"}
+        return {"ok": True, "greeting": "Привет", "script": "Ты Гарик"}
 
     monkeypatch.setattr(ac, "_console_request", fake_req)
     out = json.loads(
@@ -92,8 +130,9 @@ def test_update_outbound_scenario_isolates_context(monkeypatch):
         )
     )
     assert out["ok"] is True
-    assert calls[0]["path"] == "/api/scenario"
-    assert calls[0]["body"]["context"] == "outbound"
+    assert calls[0]["path"] == "/api/outbound/script"
     assert calls[0]["body"]["greeting"] == "Привет"
+    assert calls[0]["body"]["script"] == "Ты Гарик"
+    assert "context" not in calls[0]["body"]
     assert calls[1]["path"] == "/api/actions/restart-engine"
     assert out["restart_engine"]["ok"] is True
