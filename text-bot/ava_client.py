@@ -318,7 +318,7 @@ def _query_brain_search(
     try:
         data = _post_json(
             f"{knowledge}/api/brain/search",
-            {"query": query, "limit": limit, "max_chars": max_chars},
+            {"query": query, "limit": limit, "max_chars": max_chars, "mode": "hybrid"},
             brain_principal=principal,
             timeout=25.0,
         )

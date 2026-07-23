@@ -41,6 +41,7 @@ class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000)
     limit: int = Field(default=8, ge=1, le=20)
     max_chars: int = Field(default=6000, ge=500, le=20000)
+    mode: str = Field(default="hybrid", description="keyword | semantic | hybrid")
     tenant_id: Optional[str] = None  # ignored unless matches token; mismatch → 403
 
 
@@ -64,6 +65,7 @@ class IngestRequest(BaseModel):
     sources: list[str] = Field(default_factory=lambda: ["faq", "files", "mail"])
     mail_limit: int = Field(default=100, ge=1, le=1000)
     file_limit: int = Field(default=500, ge=1, le=5000)
+    embed_backfill: int = Field(default=0, ge=0, le=5000)
     tenant_id: Optional[str] = None
 
 
@@ -114,7 +116,11 @@ def brain_search(
         x_principal_id, x_tenant_id, x_groups, x_user_id, x_admin, req.tenant_id
     )
     return get_search().retrieve(
-        principal, req.query, limit=req.limit, max_chars=req.max_chars
+        principal,
+        req.query,
+        limit=req.limit,
+        max_chars=req.max_chars,
+        mode=req.mode,
     )
 
 
@@ -198,6 +204,10 @@ def brain_ingest_run(
     if "mail" in req.sources:
         results["mail"] = ingest_mailbox(
             repo, tenant_id=tenant, direction="both", limit=req.mail_limit
+        )
+    if req.embed_backfill > 0:
+        results["embed_backfill"] = repo.backfill_embeddings(
+            tenant_id=tenant, limit=req.embed_backfill, only_missing=True
         )
     return {"ok": True, "results": results, "stats": repo.stats(tenant)}
 

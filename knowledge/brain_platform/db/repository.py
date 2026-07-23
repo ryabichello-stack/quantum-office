@@ -13,6 +13,14 @@ from typing import Any, Iterable
 from brain_platform.security.acl import ACLFilter, Principal, resolve_principal_policy
 from brain_platform.security.safety import decide_index_action, scan_document_text
 
+try:
+    from brain_platform.embeddings import should_external_embed
+    from brain_platform.vector import embed_texts, get_vector_store
+except Exception:  # pragma: no cover - during partial imports in tests
+    should_external_embed = None  # type: ignore
+    embed_texts = None  # type: ignore
+    get_vector_store = None  # type: ignore
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -73,7 +81,10 @@ class BrainRepository:
         source: str | None = None,
         index_zone: str = "private",
         status: str = "active",
-        chunk_size: int = 1800,
+        chunk_size: int = 1400,
+        chunk_overlap: int = 200,
+        ai_processing: dict | None = None,
+        embed: bool = True,
     ) -> dict[str, Any]:
         report = scan_document_text(body)
         if decide_index_action(report) == "quarantine":
@@ -87,6 +98,7 @@ class BrainRepository:
         acl = acl or {}
         classification = classification or {"level": "internal"}
         channels = channels or []
+        ai_processing = ai_processing or {}
         now = _now()
         bh = body_hash(body)
 
@@ -103,7 +115,7 @@ class BrainRepository:
               publication_json, channels_json, ai_processing_json, status, version,
               acl_revision, source, project_id, body, body_hash, index_zone,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, '{}', ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               title=excluded.title,
               type=excluded.type,
@@ -111,6 +123,7 @@ class BrainRepository:
               acl_json=excluded.acl_json,
               classification_json=excluded.classification_json,
               channels_json=excluded.channels_json,
+              ai_processing_json=excluded.ai_processing_json,
               status=excluded.status,
               version=excluded.version,
               acl_revision=excluded.acl_revision,
@@ -130,6 +143,7 @@ class BrainRepository:
                 _j(acl),
                 _j(classification),
                 _j(channels),
+                _j(ai_processing),
                 status,
                 version,
                 acl_revision,
@@ -152,15 +166,18 @@ class BrainRepository:
         self.conn.execute("DELETE FROM chunks WHERE document_id = ?", (doc_id,))
 
         chunk_count = 0
+        embedded = 0
         if status != "quarantine":
-            parts = self._chunk_text(body, chunk_size)
+            parts = self._chunk_text(body, chunk_size, overlap=chunk_overlap)
             chunk_count = len(parts)
             allow_users = list(acl.get("allow_users") or [])
             allow_groups = [g.removeprefix("group:") for g in (acl.get("allow_groups") or [])]
             allow_services = list(acl.get("allow_services") or [])
             class_level = classification.get("level", "internal")
+            chunk_ids: list[str] = []
             for i, part in enumerate(parts):
                 cid = f"{doc_id}:chunk-{i:04d}"
+                chunk_ids.append(cid)
                 self.conn.execute(
                     """
                     INSERT INTO chunks (
@@ -193,6 +210,26 @@ class BrainRepository:
                     (cid, doc_id, tenant_id, part, title),
                 )
 
+            if embed and parts and embed_texts and get_vector_store and should_external_embed:
+                try:
+                    use_external = should_external_embed(
+                        visibility=visibility,
+                        classification=classification,
+                        ai_processing=ai_processing,
+                    )
+                    vectors, model = embed_texts(parts, force_local=not use_external)
+                    store = get_vector_store(self.conn)
+                    for cid, vec in zip(chunk_ids, vectors):
+                        store.upsert(cid, vec, model=model)
+                        embedded += 1
+                except Exception:
+                    # Keyword path remains usable even if embeddings fail
+                    import logging
+
+                    logging.getLogger("brain.repo").exception(
+                        "embedding failed for document %s", doc_id
+                    )
+
         self.conn.commit()
         return {
             "id": doc_id,
@@ -200,15 +237,18 @@ class BrainRepository:
             "version": version,
             "acl_revision": acl_revision,
             "chunks": chunk_count,
+            "embedded": embedded,
             "quarantine": status == "quarantine",
             "findings": [f.kind for f in report.findings],
         }
 
     @staticmethod
-    def _chunk_text(text: str, size: int) -> list[str]:
+    def _chunk_text(text: str, size: int, overlap: int = 200) -> list[str]:
         text = (text or "").strip()
         if not text:
             return []
+        size = max(400, int(size or 1400))
+        overlap = max(0, min(int(overlap or 0), size // 2))
         # Prefer markdown headings
         blocks = re.split(r"(?m)(?=^#{1,3}\s)", text)
         blocks = [b.strip() for b in blocks if b.strip()]
@@ -219,10 +259,134 @@ class BrainRepository:
             if len(block) <= size:
                 out.append(block)
                 continue
-            for i in range(0, len(block), size):
-                out.append(block[i : i + size])
+            step = max(1, size - overlap)
+            for i in range(0, len(block), step):
+                piece = block[i : i + size].strip()
+                if piece:
+                    out.append(piece)
+                if i + size >= len(block):
+                    break
         return out
 
+    def fetch_acl_chunk_candidates(
+        self,
+        principal: Principal,
+        *,
+        limit: int = 2000,
+        index_zones: Iterable[str] | None = None,
+        embedded_only: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Load ACL-eligible chunks (for vector ranking). Filter stays in SQL."""
+        filt = resolve_principal_policy(principal)
+        if filt.deny_all:
+            return []
+        zones = list(index_zones) if index_zones is not None else self._zones_for(filt)
+        if not zones:
+            return []
+        zone_placeholders = ",".join("?" * len(zones))
+        acl_sql, acl_params = self._acl_sql(filt, principal)
+        emb_clause = "AND c.embedding_json != '[]' AND length(c.embedding_json) > 2" if embedded_only else ""
+        sql = f"""
+        SELECT c.chunk_id, c.document_id, c.tenant_id, c.visibility, c.text,
+               c.index_zone, c.channels_json, c.allowed_users_json, c.allowed_groups_json,
+               c.allowed_services_json, c.embedding_json, d.title, d.type, d.project_id,
+               0.0 AS score
+        FROM chunks c
+        JOIN documents d ON d.id = c.document_id
+        WHERE c.tenant_id = ?
+          AND c.index_zone IN ({zone_placeholders})
+          AND d.status = 'active'
+          AND c.document_status = 'active'
+          {emb_clause}
+          AND ({acl_sql})
+        ORDER BY c.document_id, c.ordinal
+        LIMIT ?
+        """
+        params: list[Any] = [principal.tenant_id, *zones, *acl_params, limit]
+        rows = self.conn.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
+
+    def search_semantic(
+        self,
+        principal: Principal,
+        query: str,
+        *,
+        limit: int = 8,
+        candidate_limit: int = 2500,
+    ) -> list[dict[str, Any]]:
+        if not query.strip() or not embed_texts or not get_vector_store:
+            return []
+        candidates = self.fetch_acl_chunk_candidates(
+            principal, limit=candidate_limit, embedded_only=True
+        )
+        if not candidates:
+            return []
+        # Prefer external query embedding unless forced local
+        vectors, _model = embed_texts([query], force_local=False)
+        store = get_vector_store(self.conn)
+        return store.search(vectors[0], candidate_rows=candidates, limit=limit)
+
+    def backfill_embeddings(
+        self,
+        *,
+        tenant_id: str,
+        limit: int = 500,
+        only_missing: bool = True,
+    ) -> dict[str, Any]:
+        if not embed_texts or not get_vector_store or not should_external_embed:
+            return {"ok": False, "error": "embedder_unavailable", "updated": 0}
+        where = "c.tenant_id = ? AND c.document_status = 'active'"
+        if only_missing:
+            where += " AND (c.embedding_json = '[]' OR length(c.embedding_json) < 3)"
+        rows = self.conn.execute(
+            f"""
+            SELECT c.chunk_id, c.text, c.visibility, c.classification,
+                   d.ai_processing_json
+            FROM chunks c
+            JOIN documents d ON d.id = c.document_id
+            WHERE {where}
+            ORDER BY c.document_id, c.ordinal
+            LIMIT ?
+            """,
+            (tenant_id, limit),
+        ).fetchall()
+        if not rows:
+            return {"ok": True, "updated": 0, "scanned": 0}
+
+        # Batch by external vs local policy
+        external_batch: list[tuple[str, str]] = []
+        local_batch: list[tuple[str, str]] = []
+        for r in rows:
+            ai = _loads(r["ai_processing_json"], {})
+            vis = r["visibility"]
+            classification = {"level": r["classification"] or "internal"}
+            if should_external_embed(
+                visibility=vis, classification=classification, ai_processing=ai
+            ):
+                external_batch.append((r["chunk_id"], r["text"]))
+            else:
+                local_batch.append((r["chunk_id"], r["text"]))
+
+        store = get_vector_store(self.conn)
+        updated = 0
+        model = ""
+        for force_local, batch in ((False, external_batch), (True, local_batch)):
+            if not batch:
+                continue
+            texts = [t for _, t in batch]
+            vectors, model = embed_texts(texts, force_local=force_local)
+            for (cid, _t), vec in zip(batch, vectors):
+                store.upsert(cid, vec, model=model)
+                updated += 1
+        self.conn.commit()
+        return {
+            "ok": True,
+            "updated": updated,
+            "scanned": len(rows),
+            "external": len(external_batch),
+            "local": len(local_batch),
+            "model": model,
+        }
     def search_chunks(
         self,
         principal: Principal,

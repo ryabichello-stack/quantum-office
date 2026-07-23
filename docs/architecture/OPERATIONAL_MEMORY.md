@@ -17,6 +17,7 @@ Answer **any work or technical question** from one searchable corpus that grows 
 ## Source of truth
 
 **Second Brain** (`brain_platform`, `/api/brain/*`) is the SoT for agents and office memory.  
+Hybrid search: **FTS5 keyword + OpenAI embeddings + RRF fusion** (default `mode=hybrid`).  
 `quantum_labs.md` + legacy `/api/knowledge/*` are the FAQ feed / voice compat layer — not the agent SoT.
 
 Every new email, project discussion, and allowlisted server file → safety scan → ACL classify → index (FTS + vector + graph). Idempotent ingest; no silent drop.

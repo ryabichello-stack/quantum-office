@@ -39,11 +39,21 @@ def main(argv: list[str] | None = None) -> int:
     p_search.add_argument("--tenant", default=os.getenv("BRAIN_TENANT_ID", "quantum-labs"))
     p_search.add_argument("--admin", action="store_true")
     p_search.add_argument("--groups", default="")
+    p_search.add_argument(
+        "--mode",
+        default=os.getenv("BRAIN_SEARCH_MODE", "hybrid"),
+        choices=["keyword", "semantic", "hybrid"],
+    )
 
     p_contacts = sub.add_parser("contacts", help="Find contacts")
     p_contacts.add_argument("--q", default="")
     p_contacts.add_argument("--principal", default="service:text-secretary")
     p_contacts.add_argument("--tenant", default=os.getenv("BRAIN_TENANT_ID", "quantum-labs"))
+
+    p_embed = sub.add_parser("embed-backfill", help="Embed chunks missing vectors")
+    p_embed.add_argument("--tenant", default=os.getenv("BRAIN_TENANT_ID", "quantum-labs"))
+    p_embed.add_argument("--limit", type=int, default=500)
+    p_embed.add_argument("--all", action="store_true", help="Re-embed even if present")
 
     p_repair = sub.add_parser("repair-contacts", help="Rebuild contact names from mail bodies")
     p_repair.add_argument("--tenant", default=os.getenv("BRAIN_TENANT_ID", "quantum-labs"))
@@ -84,8 +94,18 @@ def main(argv: list[str] | None = None) -> int:
             is_admin=args.admin or args.principal == "service:cursor-admin",
             user_id="cli" if args.admin or args.principal == "service:cursor-admin" else None,
         )
-        result = BrainSearch(repo).retrieve(principal, args.query)
+        result = BrainSearch(repo).retrieve(principal, args.query, mode=args.mode)
         print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.cmd == "embed-backfill":
+        out = repo.backfill_embeddings(
+            tenant_id=args.tenant,
+            limit=args.limit,
+            only_missing=not args.all,
+        )
+        out["stats"] = repo.stats(args.tenant)
+        print(json.dumps(out, ensure_ascii=False, indent=2))
         return 0
 
     if args.cmd == "contacts":
