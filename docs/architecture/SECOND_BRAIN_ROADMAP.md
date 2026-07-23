@@ -84,7 +84,7 @@
 
 ### Работы
 1. Авто-сплит по H2/H3 + ручной review.  
-2. Feature flag `KNOWLEDGE_READ_MODE=legacy|vault|dual` (ещё не включать на voice без approval).  
+2. Feature flag `KNOWLEDGE_READ_MODE=legacy|dual_compare|brain` (prod cutover: `brain` with legacy fallback).  
 3. Safety scan на каждый импорт → quarantine при credentials.
 
 ### Тесты
