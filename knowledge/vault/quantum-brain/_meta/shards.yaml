@@ -56,3 +56,5 @@ shards:
     path: verticals/agro-buyback-payouts.md
   - id: mfo-mass-payouts
     path: verticals/mfo-mass-payouts.md
+  - id: gig-services-mass-payouts
+    path: verticals/gig-services-mass-payouts.md

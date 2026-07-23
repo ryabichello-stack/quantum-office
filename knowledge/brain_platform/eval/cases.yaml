@@ -169,3 +169,11 @@ cases:
     expect_any: ["МФО", "микрозайм", "займ", "выплат"]
     require_citation: true
 
+  - id: vertical-gig
+    query: "gig курьеры самозанятые выплаты НПД"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["gig", "курьер", "самозанят", "НПД", "платформ"]
+    require_citation: true
+
