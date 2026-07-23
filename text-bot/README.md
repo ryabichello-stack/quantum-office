@@ -26,9 +26,11 @@
 | `files` | owner/guest | презентации и файлы |
 | `briefing` | owner | «что сегодня / план» |
 | `client_prep` | owner | тезисы перед клиентом (+ почта) |
+| `outbound` | owner | исходящие звонки AVA + скрипт + отчёты |
 | `office` | guest | внешний офисный тон |
 
-Owner tools: `search_office_memory`, `find_office_contact`, `list_office_threads` → `:8017/api/brain/*`.
+Owner tools: `search_office_memory`, `find_office_contact`, `list_office_threads` → `:8017/api/brain/*`.  
+Outbound (owner): `outbound_dial`, `get/update_outbound_scenario`, `list/get_outbound_call` → Quantum Console `:8013` (`X-Console-Token`).
 
 Автовыбор по ключевым словам. Закрепить вручную:
 
@@ -66,3 +68,4 @@ Content-Type: application/json
 - calendar `:8014`
 - conference `:8016`
 - files `:8015`
+- quantum-console `:8013` (outbound dial + scenario, owner)

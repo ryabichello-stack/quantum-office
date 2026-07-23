@@ -26,14 +26,24 @@ Channel-agnostic секретарь Quantum Labs. Telegram + HTTP API.
 
 | Роль | Кто | Возможности |
 |------|-----|-------------|
-| Владелец | `SECRETARY_OWNER_IDS` | личный секретарь, память/почта/контакты brain |
+| Владелец | `SECRETARY_OWNER_IDS` | личный секретарь, память/почта/контакты brain, исходящие звонки |
 | Гость | остальные | офисный тон, FAQ, календарь, конференция, файлы |
 
 ## Сценарии (`scenarios.yaml`)
 
-`secretary`, `calendar`, `conference`, `knowledge`, `memory`, `files`, `briefing`, `client_prep`, `office`.
+`secretary`, `calendar`, `conference`, `knowledge`, `memory`, `files`, `briefing`, `client_prep`, `outbound`, `office`.
 
-Команды: `/start` `/help` `/reset` `/режимы` `/режим calendar` `/режим сброс`.
+Команды: `/start` `/help` `/reset` `/режимы` `/режим outbound` `/режим сброс`.
+
+## Исходящие звонки (owner)
+
+Через Quantum Console `:8013`:
+
+- `outbound_dial` — позвонить (нужно confirm)
+- `get_outbound_scenario` / `update_outbound_scenario` — скрипт профиля outbound
+- `list_outbound_calls` / `get_outbound_call` — отчёты/расшифровки
+
+Входящий профиль `default` этими tools не меняется. Env: `AVA_CONSOLE_BASE`, `CONSOLE_TOKEN`.
 
 ## Связанные модули
 
@@ -42,5 +52,6 @@ Channel-agnostic секретарь Quantum Labs. Telegram + HTTP API.
 - conference `:8016`
 - files `:8015`
 - mailer `:8000`
+- quantum-console `:8013`
 
 Owner tools: `search_office_memory`, `find_office_contact`, `list_office_threads`, `expand_office_graph` → brain API.

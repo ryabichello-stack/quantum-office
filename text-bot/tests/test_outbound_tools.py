@@ -1,0 +1,99 @@
+"""Outbound console tools: owner gate, phone normalize, confirm."""
+
+from __future__ import annotations
+
+import json
+
+import ava_client as ac
+
+
+def test_normalize_dial_phone():
+    assert ac._normalize_dial_phone("+7 (900) 123-45-67") == "79001234567"
+    assert ac._normalize_dial_phone("89001234567") == "79001234567"
+    assert ac._normalize_dial_phone("9001234567") == "79001234567"
+
+
+def test_outbound_tools_owner_only(monkeypatch):
+    monkeypatch.setattr(ac, "CONSOLE_ENABLED", True)
+    monkeypatch.setattr(ac, "CONSOLE_TOKEN", "tok")
+    monkeypatch.setattr(ac, "CONSOLE_BASE", "http://127.0.0.1:8013")
+    names = {t["function"]["name"] for t in ac.tools_for_role("owner")}
+    assert "outbound_dial" in names
+    guest = {t["function"]["name"] for t in ac.tools_for_role("guest")}
+    assert "outbound_dial" not in guest
+
+
+def test_outbound_dial_requires_confirm(monkeypatch):
+    monkeypatch.setattr(ac, "CONSOLE_ENABLED", True)
+    monkeypatch.setattr(ac, "CONSOLE_TOKEN", "tok")
+    out = json.loads(
+        ac.run_tool(
+            "outbound_dial",
+            {"phone": "79001234567", "confirm": False},
+            role="owner",
+        )
+    )
+    assert out["ok"] is False
+    assert out["error"] == "confirm_required"
+
+
+def test_outbound_dial_forbidden_for_guest():
+    out = json.loads(
+        ac.run_tool(
+            "outbound_dial",
+            {"phone": "79001234567", "confirm": True},
+            role="guest",
+        )
+    )
+    assert out["ok"] is False
+    assert out["error"] == "forbidden"
+
+
+def test_outbound_dial_calls_console(monkeypatch):
+    monkeypatch.setattr(ac, "CONSOLE_ENABLED", True)
+    monkeypatch.setattr(ac, "CONSOLE_TOKEN", "tok")
+    monkeypatch.setattr(ac, "CONSOLE_BASE", "http://127.0.0.1:8013")
+
+    def fake_req(method, path, *, body=None, query=None, timeout=30.0):
+        assert method == "POST"
+        assert path == "/api/outbound/dial"
+        assert body == {"phone": "79001234567", "context": "outbound"}
+        return {"ok": True, "channel": "PJSIP/79001234567@mango-employee"}
+
+    monkeypatch.setattr(ac, "_console_request", fake_req)
+    out = json.loads(
+        ac.run_tool(
+            "outbound_dial",
+            {"phone": "8 (900) 123-45-67", "confirm": True, "goal": "тест"},
+            role="owner",
+        )
+    )
+    assert out["ok"] is True
+    assert out["phone"] == "79001234567"
+
+
+def test_update_outbound_scenario_isolates_context(monkeypatch):
+    monkeypatch.setattr(ac, "CONSOLE_ENABLED", True)
+    monkeypatch.setattr(ac, "CONSOLE_TOKEN", "tok")
+    calls = []
+
+    def fake_req(method, path, *, body=None, query=None, timeout=30.0):
+        calls.append({"method": method, "path": path, "body": body})
+        if path == "/api/actions/restart-engine":
+            return {"ok": True, "restarted": True}
+        return {"ok": True, "context": "outbound", "note": "saved"}
+
+    monkeypatch.setattr(ac, "_console_request", fake_req)
+    out = json.loads(
+        ac.run_tool(
+            "update_outbound_scenario",
+            {"greeting": "Привет", "prompt": "Ты Гарик", "restart_engine": True},
+            role="owner",
+        )
+    )
+    assert out["ok"] is True
+    assert calls[0]["path"] == "/api/scenario"
+    assert calls[0]["body"]["context"] == "outbound"
+    assert calls[0]["body"]["greeting"] == "Привет"
+    assert calls[1]["path"] == "/api/actions/restart-engine"
+    assert out["restart_engine"]["ok"] is True

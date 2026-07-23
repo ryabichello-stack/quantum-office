@@ -1,4 +1,4 @@
-"""Proxy tools to Quantum Labs office modules: mailer, calendar, conference, files."""
+"""Proxy tools to Quantum Labs office modules: mailer, calendar, conference, files, console."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Optional
 
@@ -17,9 +18,12 @@ KNOWLEDGE_BASE = os.getenv("AVA_KNOWLEDGE_BASE", "http://127.0.0.1:8017").rstrip
 CALENDAR_BASE = os.getenv("AVA_CALENDAR_BASE", "http://127.0.0.1:8014").rstrip("/")
 CONFERENCE_BASE = os.getenv("AVA_CONFERENCE_BASE", "http://127.0.0.1:8016").rstrip("/")
 FILES_BASE = os.getenv("AVA_FILES_BASE", "http://127.0.0.1:8015").rstrip("/")
+CONSOLE_BASE = os.getenv("AVA_CONSOLE_BASE", "http://127.0.0.1:8013").rstrip("/")
+CONSOLE_TOKEN = os.getenv("CONSOLE_TOKEN", os.getenv("QUANTUM_CONSOLE_TOKEN", "")).strip()
 OFFICE_WEBHOOK_TOKEN = os.getenv("OFFICE_WEBHOOK_TOKEN", os.getenv("WEBHOOK_TOKEN", "")).strip()
 BRAIN_ENABLED = os.getenv("BRAIN_ENABLED", "true").lower() not in ("0", "false", "no", "off")
 BRAIN_TENANT_ID = os.getenv("BRAIN_TENANT_ID", "quantum-labs").strip() or "quantum-labs"
+CONSOLE_ENABLED = os.getenv("CONSOLE_ENABLED", "true").lower() not in ("0", "false", "no", "off")
 
 # Base tools available to everyone (guest + owner)
 _KNOWLEDGE_TOOLS: list[dict[str, Any]] = [
@@ -156,6 +160,127 @@ _BRAIN_OWNER_TOOLS: list[dict[str, Any]] = [
     },
 ]
 
+# Owner-only: outbound dial + scenario via Quantum Console (never touches inbound default)
+_OUTBOUND_OWNER_TOOLS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "outbound_dial",
+            "description": (
+                "Запустить ИСХОДЯЩИЙ звонок бота (Quantum Console → SIP/AVA). "
+                "Только для владельца. Перед вызовом ОБЯЗАТЕЛЬНО подтверди у пользователя "
+                "номер и цель, затем передай confirm=true. "
+                "context по умолчанию outbound (не трогает входящий default)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "phone": {
+                        "type": "string",
+                        "description": "Номер, напр. 79001234567 или +7 900 123-45-67",
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": "AVA context профиля. Разрешено только outbound.",
+                        "enum": ["outbound"],
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "true только после явного «да, звони» от владельца",
+                    },
+                    "goal": {
+                        "type": "string",
+                        "description": "Краткая цель звонка для лога/ответа (не меняет скрипт сама)",
+                    },
+                },
+                "required": ["phone", "confirm"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_outbound_scenario",
+            "description": (
+                "Прочитать скрипт исходящих: greeting + prompt профиля outbound "
+                "(изолирован от входящих)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "context": {
+                        "type": "string",
+                        "enum": ["outbound"],
+                        "description": "Только outbound",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_outbound_scenario",
+            "description": (
+                "Обновить скрипт ИСХОДЯЩИХ (greeting и/или prompt профиля outbound). "
+                "Входящий default НЕ меняется. "
+                "После существенной правки prompt обычно restart_engine=true."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "greeting": {"type": "string", "description": "Приветствие в начале звонка"},
+                    "prompt": {
+                        "type": "string",
+                        "description": "Полный system/playbook prompt для исходящих",
+                    },
+                    "restart_engine": {
+                        "type": "boolean",
+                        "description": "Перезапустить ai_engine после сохранения (рекомендуется true)",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_outbound_calls",
+            "description": (
+                "Список исходящих звонков из call_history (контекст outbound): "
+                "номер, время, исход, превью расшифровки."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Сколько записей, по умолчанию 15"},
+                    "context": {"type": "string", "enum": ["outbound", "default"]},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_outbound_call",
+            "description": (
+                "Полная расшифровка одного звонка по call_id "
+                "(реплики conversation + метаданные)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "call_id": {"type": "string", "description": "id из list_outbound_calls"},
+                },
+                "required": ["call_id"],
+            },
+        },
+    },
+]
+
 _OFFICE_TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
@@ -266,10 +391,16 @@ _OFFICE_TOOLS: list[dict[str, Any]] = [
 
 
 def tools_for_role(role: str) -> list[dict[str, Any]]:
-    """Guests get FAQ knowledge; owners also get mail/contacts/threads memory tools."""
+    """Guests get FAQ knowledge; owners also get mail/contacts + outbound console tools."""
     tools = list(_KNOWLEDGE_TOOLS) + list(_OFFICE_TOOLS)
-    if (role or "").strip().lower() == "owner" and BRAIN_ENABLED:
-        tools = list(_KNOWLEDGE_TOOLS) + list(_BRAIN_OWNER_TOOLS) + list(_OFFICE_TOOLS)
+    if (role or "").strip().lower() == "owner":
+        owner_extra: list[dict[str, Any]] = []
+        if BRAIN_ENABLED:
+            owner_extra.extend(_BRAIN_OWNER_TOOLS)
+        if CONSOLE_ENABLED and CONSOLE_BASE:
+            owner_extra.extend(_OUTBOUND_OWNER_TOOLS)
+        if owner_extra:
+            tools = list(_KNOWLEDGE_TOOLS) + owner_extra + list(_OFFICE_TOOLS)
     return tools
 
 
@@ -285,6 +416,47 @@ def _headers(*, brain_principal: str | None = None) -> dict[str, str]:
         headers["X-Principal-Id"] = brain_principal
         headers["X-Tenant-Id"] = BRAIN_TENANT_ID
     return headers
+
+
+def _console_headers() -> dict[str, str]:
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    if CONSOLE_TOKEN:
+        headers["X-Console-Token"] = CONSOLE_TOKEN
+    return headers
+
+
+def _console_request(
+    method: str,
+    path: str,
+    *,
+    body: dict[str, Any] | None = None,
+    query: dict[str, Any] | None = None,
+    timeout: float = 30.0,
+) -> dict[str, Any]:
+    if not CONSOLE_ENABLED:
+        return {"ok": False, "error": "console_disabled"}
+    if not CONSOLE_TOKEN:
+        return {"ok": False, "error": "console_token_missing", "message": "Задайте CONSOLE_TOKEN"}
+    qs = ""
+    if query:
+        qs = "?" + urllib.parse.urlencode({k: v for k, v in query.items() if v is not None})
+    url = f"{CONSOLE_BASE}{path}{qs}"
+    data = None
+    if body is not None:
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(url, data=data, method=method.upper(), headers=_console_headers())
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read().decode("utf-8", errors="replace")
+        return json.loads(raw) if raw else {"ok": True}
+
+
+def _normalize_dial_phone(raw: str) -> str:
+    digits = re.sub(r"\D+", "", str(raw or ""))
+    if digits.startswith("8") and len(digits) == 11:
+        digits = "7" + digits[1:]
+    if len(digits) == 10 and digits.startswith("9"):
+        digits = "7" + digits
+    return digits
 
 
 def _post_json(
@@ -937,6 +1109,195 @@ def run_tool(
                 },
                 timeout=120.0,
             )
+            return json.dumps(data, ensure_ascii=False)
+
+        # ---- Quantum Console outbound (owner only) ----
+        if name in (
+            "outbound_dial",
+            "get_outbound_scenario",
+            "update_outbound_scenario",
+            "list_outbound_calls",
+            "get_outbound_call",
+        ):
+            if not is_owner:
+                return json.dumps(
+                    {"ok": False, "error": "forbidden", "message": "Исходящие звонки только для владельца"},
+                    ensure_ascii=False,
+                )
+
+        if name == "outbound_dial":
+            if not bool(arguments.get("confirm")):
+                return json.dumps(
+                    {
+                        "ok": False,
+                        "error": "confirm_required",
+                        "message": (
+                            "Сначала подтверди у владельца номер и цель. "
+                            "После явного «да, звони» вызови снова с confirm=true."
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
+            phone = _normalize_dial_phone(str(arguments.get("phone") or ""))
+            if not (phone.startswith("7") and len(phone) == 11):
+                return json.dumps(
+                    {
+                        "ok": False,
+                        "error": "bad_phone",
+                        "message": "Нужен номер в формате 79XXXXXXXXX",
+                        "normalized": phone,
+                    },
+                    ensure_ascii=False,
+                )
+            ctx = str(arguments.get("context") or "outbound").strip().lower() or "outbound"
+            if ctx != "outbound":
+                return json.dumps(
+                    {
+                        "ok": False,
+                        "error": "context_forbidden",
+                        "message": "Из Telegram разрешён только context=outbound",
+                    },
+                    ensure_ascii=False,
+                )
+            data = _console_request(
+                "POST",
+                "/api/outbound/dial",
+                body={"phone": phone, "context": "outbound"},
+                timeout=45.0,
+            )
+            if isinstance(data, dict):
+                data = {
+                    **data,
+                    "phone": phone,
+                    "goal": str(arguments.get("goal") or ""),
+                    "hint": (
+                        "После звонка смотри list_outbound_calls / get_outbound_call. "
+                        "Скрипт — get_outbound_scenario / update_outbound_scenario."
+                    ),
+                }
+            return json.dumps(data, ensure_ascii=False)
+
+        if name == "get_outbound_scenario":
+            ctx = str(arguments.get("context") or "outbound").strip().lower() or "outbound"
+            if ctx != "outbound":
+                return json.dumps(
+                    {"ok": False, "error": "context_forbidden", "message": "Только outbound"},
+                    ensure_ascii=False,
+                )
+            data = _console_request(
+                "GET",
+                "/api/scenario",
+                query={"context": "outbound"},
+            )
+            if isinstance(data, dict) and data.get("prompt"):
+                # Keep model payload readable
+                prompt = str(data.get("prompt") or "")
+                data = {
+                    **data,
+                    "prompt_chars": len(prompt),
+                    "prompt_preview": prompt[:1200] + ("…" if len(prompt) > 1200 else ""),
+                }
+            return json.dumps(data, ensure_ascii=False)
+
+        if name == "update_outbound_scenario":
+            greeting = arguments.get("greeting")
+            prompt = arguments.get("prompt")
+            if greeting is None and prompt is None:
+                return json.dumps(
+                    {
+                        "ok": False,
+                        "error": "nothing_to_update",
+                        "message": "Передай greeting и/или prompt",
+                    },
+                    ensure_ascii=False,
+                )
+            body: dict[str, Any] = {"context": "outbound"}
+            if greeting is not None:
+                body["greeting"] = str(greeting)
+            if prompt is not None:
+                body["prompt"] = str(prompt)
+            data = _console_request("PUT", "/api/scenario", body=body, timeout=45.0)
+            restart_info: dict[str, Any] | None = None
+            if bool(arguments.get("restart_engine")):
+                try:
+                    restart_info = _console_request(
+                        "POST", "/api/actions/restart-engine", body={}, timeout=60.0
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    restart_info = {"ok": False, "error": str(exc)}
+            out = {
+                "ok": bool(data.get("ok", True)) if isinstance(data, dict) else True,
+                "saved": data,
+                "restart_engine": restart_info,
+                "note": "Изменён только профиль outbound; входящий default не тронут.",
+            }
+            return json.dumps(out, ensure_ascii=False)
+
+        if name == "list_outbound_calls":
+            ctx = str(arguments.get("context") or "outbound").strip().lower() or "outbound"
+            limit = int(arguments.get("limit") or 15)
+            data = _console_request(
+                "GET",
+                "/api/calls",
+                query={"limit": max(1, min(limit, 50)), "context": ctx},
+            )
+            if isinstance(data, dict) and data.get("calls"):
+                slim_calls = []
+                for c in data.get("calls") or []:
+                    slim_calls.append(
+                        {
+                            "call_id": c.get("call_id"),
+                            "caller_number": c.get("caller_number"),
+                            "start_time": c.get("start_time"),
+                            "duration_seconds": c.get("duration_seconds"),
+                            "outcome": c.get("outcome"),
+                            "context_name": c.get("context_name"),
+                            "transcript_preview": (c.get("transcript_preview") or "")[:240],
+                        }
+                    )
+                data = {
+                    "ok": True,
+                    "total": data.get("total"),
+                    "filter_context": data.get("filter_context") or ctx,
+                    "calls": slim_calls,
+                }
+            return json.dumps(data, ensure_ascii=False)
+
+        if name == "get_outbound_call":
+            call_id = str(arguments.get("call_id") or "").strip()
+            if not call_id:
+                return json.dumps(
+                    {"ok": False, "error": "call_id_required"},
+                    ensure_ascii=False,
+                )
+            data = _console_request(
+                "GET",
+                f"/api/calls/{urllib.parse.quote(call_id, safe='')}",
+            )
+            if isinstance(data, dict) and isinstance(data.get("call"), dict):
+                call = data["call"]
+                conv = call.get("conversation") or call.get("conversation_history") or []
+                slim_conv = []
+                for turn in conv[:80]:
+                    if not isinstance(turn, dict):
+                        continue
+                    slim_conv.append(
+                        {
+                            "role": turn.get("role"),
+                            "content": (turn.get("content") or turn.get("text") or "")[:800],
+                        }
+                    )
+                data = {
+                    "ok": True,
+                    "call_id": call.get("call_id") or call_id,
+                    "caller_number": call.get("caller_number"),
+                    "context_name": call.get("context_name"),
+                    "start_time": call.get("start_time"),
+                    "duration_seconds": call.get("duration_seconds"),
+                    "outcome": call.get("outcome"),
+                    "total_turns": call.get("total_turns") or len(slim_conv),
+                    "conversation": slim_conv,
+                }
             return json.dumps(data, ensure_ascii=False)
 
         return json.dumps({"ok": False, "error": f"unknown tool: {name}"})
