@@ -26,13 +26,35 @@ Deployed with `ava-knowledge` to `/opt/ava-knowledge/brain_platform/`.
 | Route | Purpose |
 |-------|---------|
 | `GET /api/brain/health` | stats + imap flag |
-| `POST /api/brain/search` | `{query, mode: hybrid\|semantic\|keyword, …}` |
+| `POST /api/brain/search` | `{query, mode: hybrid\|semantic\|keyword, …}` + citations/graph |
+| `POST /api/brain/get` | `{document_id\|chunk_id}` ACL fetch |
+| `POST /api/brain/graph/expand` | knowledge graph neighborhood |
 | `POST /api/brain/contacts/find` | contact directory |
 | `POST /api/brain/threads/list` | correspondence threads |
-| `POST /api/brain/ingest/run` | faq + files + mail (+ optional `embed_backfill`) |
+| `POST /api/brain/ingest/run` | faq + vault + files + mail (+ optional `embed_backfill`) |
 | `GET /api/brain/ingest/status` | last ingest markers |
 
 Headers: `X-Principal-Id`, `X-Tenant-Id`, `X-Groups`, `X-User-Id`, `X-Admin`.
+
+## Cursor MCP (A2)
+
+Example config: `knowledge/mcp.cursor.example.json`
+
+```bash
+/opt/ava-knowledge/scripts/run_cursor_mcp.sh
+# tools: kb.search, kb.get, kb.related, kb.ingest_status, kb.find_contact, kb.list_threads
+```
+
+Env: `AVA_KNOWLEDGE_BASE`, `BRAIN_MCP_PRINCIPAL`, `BRAIN_MCP_ADMIN`, `BRAIN_MCP_USER_ID`.
+
+## Vault publish (V3)
+
+```bash
+brain publish-bundle                 # → knowledge/dist/quantum-brain-*.tar.gz
+scripts/build_publish_bundle.sh
+scripts/apply_publish_bundle.sh /path/to/bundle.tar.gz   # on prod
+scripts/validate_vault_frontmatter.py --vault vault/quantum-brain
+```
 
 ```bash
 curl -s http://127.0.0.1:8017/api/brain/search \

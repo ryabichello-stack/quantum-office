@@ -54,6 +54,10 @@ def main(argv: list[str] | None = None) -> int:
         default=float(os.getenv("BRAIN_EVAL_MIN_PASS_RATE", "0.7")),
     )
 
+    p_pub = sub.add_parser("publish-bundle", help="Build vault release tar.gz (V3)")
+    p_pub.add_argument("--vault", default=None)
+    p_pub.add_argument("--out-dir", default=None)
+
     p_search = sub.add_parser("search", help="ACL search")
     p_search.add_argument("query")
     p_search.add_argument("--principal", default="service:cursor-admin")
@@ -182,6 +186,18 @@ def main(argv: list[str] | None = None) -> int:
         if not out.get("meets_bar"):
             return 2
         return 0 if out.get("ok") or out.get("meets_bar") else 1
+
+    if args.cmd == "publish-bundle":
+        from pathlib import Path
+
+        from brain_platform.publish.bundle import build_bundle
+
+        out = build_bundle(
+            vault=Path(args.vault) if args.vault else None,
+            out_dir=Path(args.out_dir) if args.out_dir else None,
+        )
+        print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
+        return 0 if out.get("ok") else 1
 
     if args.cmd == "search":
         groups = tuple(g.strip() for g in args.groups.split(",") if g.strip())

@@ -44,6 +44,13 @@ class SearchRequest(BaseModel):
     tenant_id: Optional[str] = None  # ignored unless matches token; mismatch → 403
 
 
+class GetRequest(BaseModel):
+    document_id: Optional[str] = None
+    chunk_id: Optional[str] = None
+    max_chars: int = Field(default=12000, ge=200, le=50000)
+    tenant_id: Optional[str] = None
+
+
 class ContactQuery(BaseModel):
     q: str = ""
     email: str = ""
@@ -135,6 +142,37 @@ def brain_search(
     )
 
 
+@router.post("/get")
+def brain_get(
+    req: GetRequest,
+    x_principal_id: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
+    x_groups: Optional[str] = Header(None),
+    x_user_id: Optional[str] = Header(None),
+    x_admin: Optional[str] = Header(None),
+):
+    require_brain_enabled()
+    if not req.document_id and not req.chunk_id:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail="document_id_or_chunk_id_required")
+    principal = _principal(
+        x_principal_id, x_tenant_id, x_groups, x_user_id, x_admin, req.tenant_id
+    )
+    # Prefer SQLite for get (authoritative write store); HybridBrainRepo exposes it
+    repo = get_repo()
+    sqlite_repo = getattr(repo, "sqlite", repo)
+    doc = sqlite_repo.get_document(
+        principal,
+        document_id=req.document_id,
+        chunk_id=req.chunk_id,
+        max_chars=req.max_chars,
+    )
+    if not doc:
+        return {"ok": False, "denied_or_missing": True}
+    return doc
+
+
 @router.post("/contacts/find")
 def brain_find_contacts(
     req: ContactQuery,
@@ -210,6 +248,11 @@ def brain_ingest_run(
     results = {}
     if "faq" in req.sources:
         results["faq"] = ingest_legacy_faq(repo, tenant_id=tenant)
+    if "vault" in req.sources:
+        from brain_platform.ingest.vault import ingest_vault
+
+        sqlite_repo = getattr(repo, "sqlite", repo)
+        results["vault"] = ingest_vault(sqlite_repo, tenant_id=tenant)
     if "files" in req.sources:
         results["files"] = ingest_files(repo, tenant_id=tenant, limit=req.file_limit)
     if "mail" in req.sources:

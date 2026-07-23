@@ -1249,6 +1249,113 @@ class BrainRepository:
         ).fetchone()
         return row["value"] if row else None
 
+    def get_document(
+        self,
+        principal: Principal,
+        *,
+        document_id: str | None = None,
+        chunk_id: str | None = None,
+        max_chars: int = 12000,
+    ) -> dict[str, Any] | None:
+        """Fetch one document/chunk with the same in-query ACL as search."""
+        filt = resolve_principal_policy(principal)
+        if filt.deny_all:
+            return None
+        zones = self._zones_for(filt)
+        if not zones:
+            return None
+        zone_placeholders = ",".join("?" * len(zones))
+        acl_sql, acl_params = self._acl_sql(filt, principal)
+
+        if chunk_id:
+            sql = f"""
+            SELECT c.chunk_id, c.document_id, c.tenant_id, c.visibility, c.text,
+                   c.index_zone, d.title, d.type, d.source, d.project_id, d.body,
+                   e.thread_id
+            FROM chunks c
+            JOIN documents d ON d.id = c.document_id
+            LEFT JOIN emails e ON d.type = 'email' AND d.id = ('doc-' || e.id)
+            WHERE c.chunk_id = ?
+              AND c.tenant_id = ?
+              AND c.index_zone IN ({zone_placeholders})
+              AND d.status = 'active'
+              AND c.document_status = 'active'
+              AND ({acl_sql})
+            LIMIT 1
+            """
+            params: list[Any] = [chunk_id, principal.tenant_id, *zones, *acl_params]
+            row = self.conn.execute(sql, params).fetchone()
+            if not row:
+                return None
+            text = row["text"] or ""
+            return {
+                "ok": True,
+                "document_id": row["document_id"],
+                "chunk_id": row["chunk_id"],
+                "title": row["title"],
+                "type": row["type"],
+                "visibility": row["visibility"],
+                "index_zone": row["index_zone"],
+                "source": row["source"],
+                "thread_id": row["thread_id"],
+                "project_id": row["project_id"],
+                "text": text[:max_chars],
+                "chars": min(len(text), max_chars),
+            }
+
+        if not document_id:
+            return None
+
+        sql = f"""
+        SELECT d.id, d.title, d.type, d.visibility, d.index_zone, d.source,
+               d.project_id, d.body, e.thread_id
+        FROM documents d
+        LEFT JOIN emails e ON d.type = 'email' AND d.id = ('doc-' || e.id)
+        WHERE d.id = ?
+          AND d.tenant_id = ?
+          AND d.index_zone IN ({zone_placeholders})
+          AND d.status = 'active'
+        LIMIT 1
+        """
+        row = self.conn.execute(
+            sql, [document_id, principal.tenant_id, *zones]
+        ).fetchone()
+        if not row:
+            return None
+
+        # Defense: also require at least one ACL-visible chunk (or public/company policy)
+        chunk = self.conn.execute(
+            f"""
+            SELECT c.chunk_id, c.text FROM chunks c
+            WHERE c.document_id = ?
+              AND c.tenant_id = ?
+              AND c.index_zone IN ({zone_placeholders})
+              AND c.document_status = 'active'
+              AND ({acl_sql})
+            ORDER BY c.ordinal
+            LIMIT 1
+            """,
+            [document_id, principal.tenant_id, *zones, *acl_params],
+        ).fetchone()
+        if not chunk and not filt.allow_all_in_tenant:
+            return None
+
+        body = row["body"] or (chunk["text"] if chunk else "")
+        return {
+            "ok": True,
+            "document_id": row["id"],
+            "chunk_id": chunk["chunk_id"] if chunk else None,
+            "title": row["title"],
+            "type": row["type"],
+            "visibility": row["visibility"],
+            "index_zone": row["index_zone"],
+            "source": row["source"],
+            "thread_id": row["thread_id"],
+            "project_id": row["project_id"],
+            "text": body[:max_chars],
+            "chars": min(len(body), max_chars),
+        }
+
     def stats(self, tenant_id: str) -> dict[str, int]:
         def cnt(table: str) -> int:
             row = self.conn.execute(

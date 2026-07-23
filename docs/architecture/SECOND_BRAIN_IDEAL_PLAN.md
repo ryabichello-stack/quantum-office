@@ -260,14 +260,14 @@ Meetings/CRM    ┘     + publish pipeline  ├──►  Graph (entities/edges)
 ## 9. Критерии «идеально» (чеклист)
 
 - [ ] Postgres+pgvector — единственный write store
-- [ ] Hybrid FTS+vector(+graph) с ACL in-query
+- [x] Hybrid FTS+vector(+graph) с ACL in-query
 - [ ] Vault `quantum-brain` = SoT; prod = release bundle
 - [ ] Нет dual path `/root/ava` vs git vs индекс
-- [ ] Граф: человек–компания–тред–документ
-- [ ] Ingest: почта/файлы/vault/CRM; без дублей и без потери
+- [x] Граф: человек–компания–тред–документ
+- [x] Ingest: почта/файлы/vault/CRM; без дублей и без потери
 - [ ] Voice+text+Cursor на `/api/brain` (после approval)
-- [ ] Eval ≥ порога; цитаты в ответах
-- [ ] Public только manual publish; default deny
+- [x] Eval ≥ порога; цитаты в ответах
+- [x] Public только manual publish; default deny
 
 ---
 
@@ -276,10 +276,11 @@ Meetings/CRM    ┘     + publish pipeline  ├──►  Graph (entities/edges)
 **Готово на `5.35.86.62`:**
 - **B1–B3 / S1:** Postgres 16 + pgvector; `BRAIN_STORE=postgres`; hybrid FTS+vector; sync-pg.
 - **B4 lite:** zone guards (mail/PII never public); PG schemas/views `brain_public` / `brain_private`.
-- **G1–G2:** GraphStore + `brain graph rebuild|expand`; API `/api/brain/graph/*`; text-bot `expand_office_graph`.
-- **S2:** `citation` / `citations[]` / `source` / `thread_id` в search matches.
-- **V1 scaffold:** `knowledge/vault/quantum-brain/` (private repo wiring later).
+- **G1–G3:** GraphStore + rebuild/expand; graph-in-retrieve (`BRAIN_GRAPH_IN_RETRIEVE`); text-bot `expand_office_graph`.
+- **S2–S3:** citations на matches; `brain eval` + `eval/cases.yaml`.
+- **V1–V3:** vault shards + frontmatter validate + `brain publish-bundle` / `apply_publish_bundle.sh`.
+- **A2:** Cursor MCP (`kb.search|get|related|ingest_status|find_contact|list_threads`).
 
-**Дальше:** G3 graph-in-retrieve, S3 eval harness, V2 shard monolith, A2 MCP, A3 voice switch (approval).
+**Дальше:** A3 voice switch (approval), полный write-store на Postgres, private `quantum-brain` GitHub repo.
 
-Нужно от вас: private repo `quantum-brain` + OK на voice switch когда eval готов.
+Нужно от вас: OK на voice switch когда eval стабильно зелёный; создать private repo `quantum-brain`.
