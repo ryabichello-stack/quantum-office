@@ -36,7 +36,7 @@ def test_outbound_dial_requires_confirm(monkeypatch):
     out = json.loads(
         ac.run_tool(
             "outbound_dial",
-            {"phone": "79001234567", "confirm": False},
+            {"phone": "79001234567", "confirm": False, "goal": "тест"},
             role="owner",
         )
     )
@@ -44,11 +44,25 @@ def test_outbound_dial_requires_confirm(monkeypatch):
     assert out["error"] == "confirm_required"
 
 
-def test_outbound_dial_forbidden_for_guest():
+def test_outbound_dial_requires_goal_or_script(monkeypatch):
+    monkeypatch.setattr(ac, "CONSOLE_ENABLED", True)
+    monkeypatch.setattr(ac, "CONSOLE_TOKEN", "tok")
     out = json.loads(
         ac.run_tool(
             "outbound_dial",
             {"phone": "79001234567", "confirm": True},
+            role="owner",
+        )
+    )
+    assert out["ok"] is False
+    assert out["error"] == "goal_or_script_required"
+
+
+def test_outbound_dial_forbidden_for_guest():
+    out = json.loads(
+        ac.run_tool(
+            "outbound_dial",
+            {"phone": "79001234567", "confirm": True, "goal": "тест"},
             role="guest",
         )
     )
@@ -92,6 +106,59 @@ def test_outbound_dial_calls_console(monkeypatch):
     assert out["phone"] == "79001234567"
     assert out["per_call_override"]["greeting"] is True
     assert out["per_call_override"]["script"] is True
+
+
+def test_outbound_dial_synthesizes_script_from_goal(monkeypatch):
+    monkeypatch.setattr(ac, "CONSOLE_ENABLED", True)
+    monkeypatch.setattr(ac, "CONSOLE_TOKEN", "tok")
+    captured = {}
+
+    def fake_req(method, path, *, body=None, query=None, timeout=30.0):
+        captured["body"] = body
+        return {"ok": True}
+
+    monkeypatch.setattr(ac, "_console_request", fake_req)
+    out = json.loads(
+        ac.run_tool(
+            "outbound_dial",
+            {
+                "phone": "79311031371",
+                "confirm": True,
+                "goal": "От имени Дениса пригласи Свету на свидание",
+            },
+            role="owner",
+        )
+    )
+    assert out["ok"] is True
+    body = captured["body"]
+    assert body["phone"] == "79311031371"
+    assert "пригласи Свету" in body["script"]
+    assert "массовые выплаты" in body["script"]  # ban text present
+    assert "Quantum Labs" in body["script"]
+    assert body["use_knowledge"] is False
+    assert out["per_call_override"]["synthesized_from_goal"] is True
+
+
+def test_outbound_dial_use_default_script_allows_empty(monkeypatch):
+    monkeypatch.setattr(ac, "CONSOLE_ENABLED", True)
+    monkeypatch.setattr(ac, "CONSOLE_TOKEN", "tok")
+    captured = {}
+
+    def fake_req(method, path, *, body=None, query=None, timeout=30.0):
+        captured["body"] = body
+        return {"ok": True}
+
+    monkeypatch.setattr(ac, "_console_request", fake_req)
+    out = json.loads(
+        ac.run_tool(
+            "outbound_dial",
+            {"phone": "79001234567", "confirm": True, "use_default_script": True},
+            role="owner",
+        )
+    )
+    assert out["ok"] is True
+    assert captured["body"] == {"phone": "79001234567", "context": "outbound"}
+    assert out["per_call_override"]["use_default_script"] is True
 
 
 def test_get_outbound_scenario_uses_script_endpoint(monkeypatch):

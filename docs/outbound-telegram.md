@@ -21,7 +21,7 @@ CONSOLE_ENABLED=true
 
 | Tool | Действие |
 |------|----------|
-| `outbound_dial` | `POST /api/outbound/dial` — `confirm=true`; опционально `greeting` / `script` / `use_knowledge` **только для этого звонка** |
+| `outbound_dial` | `POST /api/outbound/dial` — `confirm=true` + **обязательно** `goal` и/или `script` (иначе отказ: не уйдёт старый playbook выплат). Опционально `greeting` / `use_knowledge` (по умолчанию false для кастомного). `use_default_script=true` — явный YAML outbound |
 | `get_outbound_scenario` | `GET /api/outbound/script` |
 | `update_outbound_scenario` | `PUT /api/outbound/script` — постоянный greeting+script (+ optional restart) |
 | `list_outbound_calls` | `GET /api/calls?context=outbound` |
