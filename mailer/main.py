@@ -1038,7 +1038,12 @@ def _suggest_slots(
 
 # --------------------
 # COMPANY KNOWLEDGE (AVA voice agent)
+# Prefer standalone ava-knowledge (:8017); fallback to local markdown search.
 # --------------------
+KNOWLEDGE_SERVICE_URL = os.getenv(
+    "KNOWLEDGE_SERVICE_URL",
+    "http://127.0.0.1:8017",
+).rstrip("/")
 KNOWLEDGE_QUANTUM_LABS_PATH = os.getenv(
     "KNOWLEDGE_QUANTUM_LABS_PATH",
     "/root/ava/config/knowledge/quantum_labs.md",
@@ -1047,6 +1052,10 @@ KNOWLEDGE_QUANTUM_LABS_PATH = os.getenv(
 
 class KnowledgeQueryRequest(BaseModel):
     topic: str = ""
+    topic_id: str = ""
+    q: str = ""
+    limit: int = 4
+    max_chars: int = 4500
 
 
 def _load_company_knowledge() -> str:
@@ -1111,15 +1120,49 @@ def _search_company_knowledge(topic: str, full_text: str, max_chars: int = 3500)
     return out[:max_chars]
 
 
+def _proxy_knowledge_query(req: KnowledgeQueryRequest) -> Optional[dict]:
+    """Forward to ava-knowledge when available."""
+    if not KNOWLEDGE_SERVICE_URL:
+        return None
+    payload = {
+        "topic": (req.topic or req.q or "").strip(),
+        "topic_id": (req.topic_id or "").strip(),
+        "limit": req.limit,
+        "max_chars": req.max_chars,
+    }
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    request = urllib.request.Request(
+        f"{KNOWLEDGE_SERVICE_URL}/api/knowledge/query",
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=6) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            data = json.loads(raw) if raw else {}
+            if isinstance(data, dict) and data.get("ok"):
+                data.setdefault("via", "ava-knowledge")
+                return data
+    except Exception as exc:
+        logger.warning("knowledge service proxy failed: %s", exc)
+    return None
+
+
 @app.post("/api/knowledge/query")
 def knowledge_query(req: KnowledgeQueryRequest):
+    proxied = _proxy_knowledge_query(req)
+    if proxied:
+        return proxied
     text = _load_company_knowledge()
-    snippet = _search_company_knowledge(req.topic, text)
+    snippet = _search_company_knowledge(req.topic or req.q, text, max_chars=req.max_chars or 3500)
     return {
         "ok": True,
-        "topic": (req.topic or "").strip(),
+        "topic": (req.topic or req.q or "").strip(),
+        "topic_id": (req.topic_id or "").strip() or None,
         "text": snippet,
         "chars": len(snippet),
+        "via": "mailer-local",
     }
 
 

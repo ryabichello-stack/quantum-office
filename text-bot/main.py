@@ -206,6 +206,8 @@ def on_shutdown() -> None:
 
 @app.get("/health")
 def health() -> dict[str, Any]:
+    from ava_client import KNOWLEDGE_BASE, OPENAI_TOOLS
+
     return {
         "status": "ok" if secretary.ready() else "degraded",
         "service": "ava-text-bot",
@@ -214,14 +216,8 @@ def health() -> dict[str, Any]:
         "openai_configured": bool(OPENAI_API_KEY),
         "model": OPENAI_MODEL,
         "mailer_base": AVA_MAILER_BASE,
+        "knowledge_base": KNOWLEDGE_BASE,
         "channels": ["telegram", "api", "web", "bitrix"],
         "endpoints": ["/api/chat", "/api/chat/reset", "/health"],
-        "tools": [
-            "get_company_knowledge",
-            "check_calendar",
-            "suggest_calendar_slots",
-            "create_calendar_event",
-            "create_conference",
-            "send_file",
-        ],
+        "tools": [t["function"]["name"] for t in OPENAI_TOOLS if t.get("type") == "function"],
     }

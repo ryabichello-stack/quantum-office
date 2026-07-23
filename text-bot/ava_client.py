@@ -12,6 +12,7 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 MAILER_BASE = os.getenv("AVA_MAILER_BASE", "http://127.0.0.1:8000").rstrip("/")
+KNOWLEDGE_BASE = os.getenv("AVA_KNOWLEDGE_BASE", "http://127.0.0.1:8017").rstrip("/")
 CALENDAR_BASE = os.getenv("AVA_CALENDAR_BASE", "http://127.0.0.1:8014").rstrip("/")
 CONFERENCE_BASE = os.getenv("AVA_CONFERENCE_BASE", "http://127.0.0.1:8016").rstrip("/")
 FILES_BASE = os.getenv("AVA_FILES_BASE", "http://127.0.0.1:8015").rstrip("/")
@@ -23,16 +24,33 @@ OPENAI_TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "get_company_knowledge",
             "description": (
-                "База знаний Quantum Labs: услуги, СБП, тарифы, интеграция, контакты, сайт. "
-                "topic — коротко на русском."
+                "База знаний Quantum Labs / Quantum Payouts (общая с голосовой AVA). "
+                "Обязательно вызывай по вопросам о продукте, СБП, тарифах, НПД, API/1С, "
+                "банках, юр.контуре, контактах, FAQ. "
+                "topic — коротко на русском; topic_id — из list_knowledge_topics если известен."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "topic": {"type": "string", "description": "Тема вопроса коротко на русском"},
+                    "topic": {"type": "string", "description": "Тема/вопрос коротко на русском"},
+                    "topic_id": {
+                        "type": "string",
+                        "description": "id темы из list_knowledge_topics (tariffs, sbp, npd, ...)",
+                    },
                 },
                 "required": [],
             },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_knowledge_topics",
+            "description": (
+                "Список тем базы знаний (id + названия + aliases). "
+                "Вызови, если неясно, какой topic_id брать, или нужно сориентироваться по KB."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
     {
@@ -158,6 +176,13 @@ def _post_json(url: str, body: dict[str, Any], *, timeout: float = 20.0) -> dict
         return json.loads(raw) if raw else {}
 
 
+def _get_json(url: str, *, timeout: float = 15.0) -> dict[str, Any]:
+    req = urllib.request.Request(url, method="GET", headers=_headers())
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read().decode("utf-8", errors="replace")
+        return json.loads(raw) if raw else {}
+
+
 def run_tool(
     name: str,
     arguments: dict[str, Any],
@@ -167,12 +192,26 @@ def run_tool(
     channel: Optional[str] = None,
 ) -> str:
     mailer = (mailer_base or MAILER_BASE).rstrip("/")
+    knowledge = KNOWLEDGE_BASE.rstrip("/")
     try:
+        if name == "list_knowledge_topics":
+            try:
+                data = _get_json(f"{knowledge}/api/knowledge/topics")
+            except Exception:
+                # mailer may not expose topics; empty catalog is ok
+                data = {"ok": False, "topics": [], "error": "topics_unavailable"}
+            return json.dumps(data, ensure_ascii=False)
+
         if name == "get_company_knowledge":
-            data = _post_json(
-                f"{mailer}/api/knowledge/query",
-                {"topic": str(arguments.get("topic") or "")},
-            )
+            body = {
+                "topic": str(arguments.get("topic") or ""),
+                "topic_id": str(arguments.get("topic_id") or ""),
+            }
+            try:
+                data = _post_json(f"{knowledge}/api/knowledge/query", body)
+            except Exception as exc:
+                logger.warning("knowledge service failed (%s), fallback mailer", exc)
+                data = _post_json(f"{mailer}/api/knowledge/query", body)
             return json.dumps(data, ensure_ascii=False)
 
         if name == "check_calendar":
