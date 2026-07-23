@@ -1,0 +1,114 @@
+# Second Brain eval cases (S3). Offline-friendly; run: brain eval
+cases:
+  - id: product-what
+    query: "что такое Quantum Payouts"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 80
+    expect_any: ["выплат", "Quantum", "payout"]
+    require_citation: true
+
+  - id: tariffs
+    query: "какая комиссия"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["комисси", "%", "ставк", "тариф"]
+    require_citation: true
+
+  - id: sbp
+    query: "можно ли платить через СБП"
+    principal: service:text-secretary
+    mode: keyword
+    min_chars: 40
+    expect_any: ["СБП", "карт", "выплат"]
+    require_citation: true
+
+  - id: npd
+    query: "самозанятые НПД чеки"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["НПД", "самозанят", "ФНС", "чек"]
+    require_citation: true
+
+  - id: banks
+    query: "с какими банками работаете"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["банк", "номинальн", "партнер", "партнёр"]
+    require_citation: true
+
+  - id: lombards-law
+    query: "ломбард 196-ФЗ"
+    principal: service:cursor-admin
+    mode: hybrid
+    min_chars: 60
+    expect_any: ["ломбард", "196", "залог"]
+    require_citation: true
+
+  - id: lombards-payout
+    query: "безналичная выдача займа ломбард"
+    principal: service:cursor-admin
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["ломбард", "займ", "выплат", "залог"]
+    require_citation: true
+
+  - id: objections
+    query: "нам нужна самая низкая комиссия"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["комисси", "ставк", "ценност", "дешев"]
+    require_citation: true
+
+  - id: escalate
+    query: "когда переводить на менеджера"
+    principal: service:text-secretary
+    mode: keyword
+    min_chars: 40
+    expect_any: ["менеджер", "эскал", "перевод"]
+    require_citation: true
+
+  - id: acl-voice-public-faq-private
+    query: "какая комиссия Quantum"
+    principal: service:voice-public
+    mode: keyword
+    expect_empty: true
+
+  - id: acl-voice-no-mail
+    query: "договор номинального счёта письмо"
+    principal: service:voice-public
+    mode: keyword
+    expect_empty: true
+
+  - id: acl-unknown-deny
+    query: "тарифы"
+    principal: service:unknown-bot
+    expect_denied: true
+
+  - id: contactish-alpha
+    query: "Альфа-Банк комплаенс"
+    principal: service:cursor-admin
+    mode: hybrid
+    min_chars: 20
+    expect_any: ["Альфа", "банк", "комплаенс", "compliance", "номинальн"]
+    require_citation: true
+
+  - id: graph-person
+    query: "Парцуф"
+    principal: service:cursor-admin
+    mode: hybrid
+    min_chars: 10
+    expect_any: ["Парцуф", "альфа", "Alfa", "ypartsuf"]
+    require_citation: true
+
+  - id: sales-script
+    query: "скрипт холодного звонка ломбард"
+    principal: service:cursor-admin
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["звонок", "ломбард", "скрипт", "привет"]
+    require_citation: true

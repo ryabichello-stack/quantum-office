@@ -129,6 +129,32 @@ class BrainSearch:
             if not hits:
                 hits = (keyword_hits or semantic_hits)[:limit]
 
+        # G3: graph expand → related keyword hits fused with lower RRF weight
+        graph_meta: dict[str, Any] = {}
+        graph_hits: list[dict[str, Any]] = []
+        try:
+            from brain_platform.search.graph_retrieve import (
+                fetch_graph_hits,
+                graph_related_context,
+            )
+
+            seed_titles = [h.get("title") or "" for h in hits[:5]]
+            graph_meta = graph_related_context(
+                self.repo, principal, query, seed_titles=seed_titles, depth=1
+            )
+            hints = list(graph_meta.get("search_hints") or [])
+            if hints and not graph_meta.get("denied"):
+                graph_hits = fetch_graph_hits(
+                    self.repo, principal, hints, limit_per_hint=2, max_hits=max(6, limit)
+                )
+                if graph_hits:
+                    primary = hits
+                    fused = rrf_fuse([primary, graph_hits], k=60, limit=limit)
+                    hits = fused or primary
+        except Exception:
+            logger.exception("graph retrieve enrichment failed")
+            graph_meta = {"ok": False, "error": "graph_enrich_failed"}
+
         parts: list[str] = []
         matches: list[dict[str, Any]] = []
         total = 0
@@ -159,10 +185,18 @@ class BrainSearch:
                     "score": h.get("score"),
                     "rrf_score": h.get("rrf_score"),
                     "vector_score": h.get("vector_score"),
+                    "graph_boost": bool(h.get("graph_boost")),
                     "snippet": body[:1200],
                     "citation": format_citation(h),
                 }
             )
+
+        # Compact related-entities footer (does not replace citations)
+        graph_summary = (graph_meta or {}).get("summary") or ""
+        if graph_summary and total + len(graph_summary) + 40 < max_chars:
+            footer = f"## Связанные сущности [graph]\n{graph_summary}"
+            parts.append(footer)
+            total += len(footer) + 2
 
         text = "\n\n".join(parts)
         request_id = str(uuid.uuid4())
@@ -184,6 +218,13 @@ class BrainSearch:
             "chars": len(text),
             "matches": matches,
             "citations": citations,
+            "graph": {
+                "summary": graph_summary,
+                "entities": (graph_meta or {}).get("entities") or [],
+                "edges": (graph_meta or {}).get("edges") or [],
+                "skipped": bool((graph_meta or {}).get("skipped")),
+                "denied": bool((graph_meta or {}).get("denied")),
+            },
             "request_id": request_id,
             "principal_id": principal.principal_id,
             "tenant_id": principal.tenant_id,
@@ -191,5 +232,6 @@ class BrainSearch:
             "search_mode": search_mode,
             "keyword_hits": len(keyword_hits),
             "semantic_hits": len(semantic_hits),
+            "graph_hits": len(graph_hits),
             "source_of_truth": "second_brain",
         }

@@ -1,0 +1,14 @@
+source: /workspace/knowledge/content/quantum_labs.md
+shards:
+  - id: part-a-quantum-payouts
+    path: products/part-a-quantum-payouts.md
+    chars: 17171
+  - id: appendix-a-short-faq
+    path: products/appendix-a-short-faq.md
+    chars: 1046
+  - id: appendix-b-ava-ops
+    path: ops/appendix-b-ava-ops.md
+    chars: 12169
+  - id: lombards-playbook
+    path: lombards/part-b-playbook.md
+    chars: 59566

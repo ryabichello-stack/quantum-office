@@ -17,6 +17,7 @@ from brain_platform.db.repository import BrainRepository
 from brain_platform.ingest.files import ingest_files
 from brain_platform.ingest.legacy_faq import ingest_legacy_faq
 from brain_platform.ingest.mail import ingest_mailbox
+from brain_platform.ingest.vault import ingest_vault
 from brain_platform.search.engine import BrainSearch
 from brain_platform.security.acl import Principal
 
@@ -33,11 +34,25 @@ def main(argv: list[str] | None = None) -> int:
     p_migrate.add_argument("--sqlite", default=None)
     p_migrate.add_argument("--no-truncate", action="store_true")
 
-    p_ingest = sub.add_parser("ingest", help="Run ingest (faq/files/mail)")
-    p_ingest.add_argument("--sources", default="faq,files,mail")
+    p_ingest = sub.add_parser("ingest", help="Run ingest (faq/files/mail/vault)")
+    p_ingest.add_argument("--sources", default="faq,files,mail,vault")
     p_ingest.add_argument("--tenant", default=os.getenv("BRAIN_TENANT_ID", "quantum-labs"))
     p_ingest.add_argument("--mail-limit", type=int, default=100)
     p_ingest.add_argument("--file-limit", type=int, default=500)
+
+    p_shard = sub.add_parser("shard-vault", help="Copy monolith FAQ into vault shards (V2)")
+    p_shard.add_argument("--source", default=None)
+    p_shard.add_argument("--vault", default=None)
+
+    p_eval = sub.add_parser("eval", help="Run Second Brain eval harness (S3)")
+    p_eval.add_argument("--cases", default=None, help="Path to cases.yaml")
+    p_eval.add_argument("--tenant", default=os.getenv("BRAIN_TENANT_ID", "quantum-labs"))
+    p_eval.add_argument("--json", action="store_true")
+    p_eval.add_argument(
+        "--min-pass-rate",
+        type=float,
+        default=float(os.getenv("BRAIN_EVAL_MIN_PASS_RATE", "0.7")),
+    )
 
     p_search = sub.add_parser("search", help="ACL search")
     p_search.add_argument("query")
@@ -116,6 +131,8 @@ def main(argv: list[str] | None = None) -> int:
         out = {}
         if "faq" in sources:
             out["faq"] = ingest_legacy_faq(repo, tenant_id=args.tenant)
+        if "vault" in sources:
+            out["vault"] = ingest_vault(repo, tenant_id=args.tenant)
         if "files" in sources:
             out["files"] = ingest_files(repo, tenant_id=args.tenant, limit=args.file_limit)
         if "mail" in sources:
@@ -135,6 +152,36 @@ def main(argv: list[str] | None = None) -> int:
         out["stats"] = repo.stats(args.tenant)
         print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
         return 0
+
+    if args.cmd == "shard-vault":
+        from pathlib import Path
+
+        from brain_platform.ingest.shard_vault import shard_monolith
+
+        out = shard_monolith(
+            source=Path(args.source) if args.source else None,
+            vault_root=Path(args.vault) if args.vault else None,
+        )
+        print(json.dumps(out, ensure_ascii=False, indent=2))
+        return 0 if out.get("ok") else 1
+
+    if args.cmd == "eval":
+        from pathlib import Path
+
+        from brain_platform.eval.runner import run_eval
+
+        # Prefer hybrid repo (Postgres search) when configured
+        search_repo = get_brain_repo()
+        out = run_eval(
+            search_repo,
+            cases_path=Path(args.cases) if args.cases else None,
+        )
+        out["min_pass_rate"] = args.min_pass_rate
+        out["meets_bar"] = out.get("pass_rate", 0) >= args.min_pass_rate
+        print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
+        if not out.get("meets_bar"):
+            return 2
+        return 0 if out.get("ok") or out.get("meets_bar") else 1
 
     if args.cmd == "search":
         groups = tuple(g.strip() for g in args.groups.split(",") if g.strip())
