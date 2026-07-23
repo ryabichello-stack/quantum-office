@@ -77,24 +77,49 @@ class KnowledgeStore:
             # Use bundled only if AVA path missing; if both exist prefer AVA, skip duplicate.
             if not md_paths:
                 md_paths.append(bundled)
-        # Extra topic files under content/topics/*.md
-        topics_dir = self.content_dir / "topics"
-        if topics_dir.is_dir():
-            md_paths.extend(sorted(topics_dir.glob("*.md")))
 
         seen_files: set[str] = set()
-        for path in md_paths:
+        existing_titles: set[str] = set()
+
+        def _ingest(path: Path, *, allow_partial_overlap: bool = False) -> None:
             key = str(path.resolve())
             if key in seen_files:
-                continue
-            seen_files.add(key)
+                return
             try:
                 text = path.read_text(encoding="utf-8")
             except OSError as exc:
                 logger.warning("cannot read %s: %s", path, exc)
-                continue
+                return
+            parsed = self._parse_sections(text, source=path.name)
+            titles = [_norm(s.title) for s in parsed if s.title and s.title != "intro"]
+            if titles and existing_titles and not allow_partial_overlap:
+                shared = [t for t in titles if t in existing_titles]
+                overlap = len(shared) / len(titles)
+                # Substantial shared headings (avoid skipping tiny generic overlaps)
+                shared_substantial = [t for t in shared if len(t) >= 12]
+                if overlap >= 0.4 or len(shared_substantial) >= 2:
+                    logger.warning(
+                        "skip duplicate knowledge file %s "
+                        "(overlap=%.0f%% shared_substantial=%s)",
+                        path.name,
+                        overlap * 100,
+                        len(shared_substantial),
+                    )
+                    seen_files.add(key)
+                    return
+            seen_files.add(key)
             chunks.append(text)
-            self.sections.extend(self._parse_sections(text, source=path.name))
+            self.sections.extend(parsed)
+            existing_titles.update(titles)
+
+        for path in md_paths:
+            _ingest(path, allow_partial_overlap=True)
+
+        # Extra topic files under content/topics/*.md (must not duplicate main corpus)
+        topics_dir = self.content_dir / "topics"
+        if topics_dir.is_dir():
+            for path in sorted(topics_dir.glob("*.md")):
+                _ingest(path, allow_partial_overlap=False)
 
         self._full_text = "\n\n".join(chunks).strip()
         logger.info(

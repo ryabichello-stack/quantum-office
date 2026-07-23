@@ -12,8 +12,10 @@
 
 Теперь:
 - каталог тем `content/index.yaml` (id + aliases + match по заголовкам);
-- корпус `content/quantum_labs.md` (на проде читается живой `/root/ava/config/knowledge/quantum_labs.md`);
-- можно добавлять файлы в `content/topics/*.md` без ломки всего корпуса.
+- **единый корпус** `content/quantum_labs.md` = Часть A (продукт) + Часть B (ломбарды);
+  на проде SoT — `/root/ava/config/knowledge/quantum_labs.md` (install синхронизирует в content/);
+- `content/topics/*.md` — только **доп.** темы, которых ещё нет в `quantum_labs.md`
+  (не дублировать ломбарды/FAQ из основного корпуса).
 
 ## API
 
