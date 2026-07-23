@@ -6,9 +6,11 @@ import json
 import logging
 import os
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -290,12 +292,17 @@ _OUTBOUND_OWNER_TOOLS: list[dict[str, Any]] = [
             "name": "list_outbound_calls",
             "description": (
                 "Список исходящих звонков из call_history (контекст outbound): "
-                "номер, время, исход, превью расшифровки."
+                "номер, время, исход, превью расшифровки. "
+                "НЕ используй сразу после dial для отчёта — бери await_outbound_result."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "limit": {"type": "integer", "description": "Сколько записей, по умолчанию 15"},
+                    "phone": {
+                        "type": "string",
+                        "description": "Фильтр по номеру (нормализуется)",
+                    },
                     "context": {"type": "string", "enum": ["outbound", "default"]},
                 },
                 "required": [],
@@ -305,15 +312,46 @@ _OUTBOUND_OWNER_TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "get_outbound_call",
+            "name": "await_outbound_result",
             "description": (
-                "Полная расшифровка одного звонка по call_id "
-                "(реплики conversation + метаданные)."
+                "Дождаться ЗАВЕРШЕНИЯ исходящего звонка на номер и вернуть его расшифровку. "
+                "Вызывай после outbound_dial вместо мгновенного list/get. "
+                "Передай phone и dialed_after из ответа dial. "
+                "Сводку владельцу строй ТОЛЬКО из conversation этого ответа — "
+                "не выдумывай выплаты и не бери старые звонки."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "call_id": {"type": "string", "description": "id из list_outbound_calls"},
+                    "phone": {
+                        "type": "string",
+                        "description": "Номер, на который только что звонили",
+                    },
+                    "dialed_after": {
+                        "type": "string",
+                        "description": "ISO-время из ответа outbound_dial (dialed_at)",
+                    },
+                    "timeout_sec": {
+                        "type": "integer",
+                        "description": "Сколько ждать завершения, по умолчанию 180",
+                    },
+                },
+                "required": ["phone"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_outbound_call",
+            "description": (
+                "Полная расшифровка одного звонка по call_id. "
+                "Для отчёта сразу после dial предпочитай await_outbound_result."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "call_id": {"type": "string", "description": "id из list/await_outbound_*"},
                 },
                 "required": ["call_id"],
             },
@@ -517,6 +555,149 @@ _DEFAULT_BRAND_RE = re.compile(
 
 def _goal_allows_default_brand(text: str) -> bool:
     return bool(_DEFAULT_BRAND_RE.search(text or ""))
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _parse_iso_ts(raw: str) -> float | None:
+    text = (raw or "").strip()
+    if not text:
+        return None
+    try:
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        return datetime.fromisoformat(text).timestamp()
+    except Exception:
+        return None
+
+
+def _slim_call_conversation(call: dict[str, Any], call_id: str = "") -> dict[str, Any]:
+    conv = call.get("conversation") or call.get("conversation_history") or []
+    if isinstance(conv, str):
+        try:
+            conv = json.loads(conv)
+        except Exception:
+            conv = []
+    slim_conv = []
+    for turn in (conv or [])[:80]:
+        if not isinstance(turn, dict):
+            continue
+        slim_conv.append(
+            {
+                "role": turn.get("role"),
+                "content": (turn.get("content") or turn.get("text") or "")[:800],
+            }
+        )
+    return {
+        "ok": True,
+        "call_id": call.get("call_id") or call_id,
+        "caller_number": call.get("caller_number"),
+        "context_name": call.get("context_name"),
+        "start_time": call.get("start_time"),
+        "duration_seconds": call.get("duration_seconds"),
+        "outcome": call.get("outcome"),
+        "total_turns": call.get("total_turns") or len(slim_conv),
+        "conversation": slim_conv,
+        "summary_rules": (
+            "Сводку пиши ТОЛЬКО по полю conversation этого объекта. "
+            "Не добавляй Quantum Labs / выплаты / старые звонки. "
+            "Если собеседник согласился на день/время/место — скажи это явно."
+        ),
+    }
+
+
+def _await_outbound_result(
+    phone: str,
+    *,
+    dialed_after: str | None = None,
+    timeout_sec: int = 180,
+    poll_sec: float = 4.0,
+) -> dict[str, Any]:
+    phone_n = _normalize_dial_phone(phone)
+    if not (phone_n.startswith("7") and len(phone_n) == 11):
+        return {
+            "ok": False,
+            "error": "bad_phone",
+            "message": "Нужен номер в формате 79XXXXXXXXX",
+            "normalized": phone_n,
+        }
+    after_ts = _parse_iso_ts(dialed_after or "")
+    # Small skew: accept calls starting a few seconds before dialed_at
+    if after_ts is not None:
+        after_ts -= 15
+    timeout_sec = max(15, min(int(timeout_sec or 180), 300))
+    deadline = time.time() + timeout_sec
+    last_seen: dict[str, Any] | None = None
+
+    while time.time() < deadline:
+        listing = _console_request(
+            "GET",
+            "/api/calls",
+            query={"limit": 30, "context": "outbound"},
+        )
+        for c in listing.get("calls") or []:
+            if not isinstance(c, dict):
+                continue
+            num = _normalize_dial_phone(str(c.get("caller_number") or ""))
+            if num != phone_n:
+                continue
+            start_ts = _parse_iso_ts(str(c.get("start_time") or ""))
+            if after_ts is not None and start_ts is not None and start_ts < after_ts:
+                continue
+            last_seen = c
+            dur = float(c.get("duration_seconds") or 0)
+            outcome = str(c.get("outcome") or "").lower()
+            preview = str(c.get("transcript_preview") or "")
+            finished = outcome in {
+                "completed",
+                "abandoned",
+                "failed",
+                "no_answer",
+                "busy",
+                "agent_hangup",
+                "caller_hangup",
+            } or dur >= 8
+            has_speech = bool(preview and preview not in ("[]", "null"))
+            if not (finished and (has_speech or dur >= 3)):
+                continue
+            call_id = str(c.get("call_id") or "").strip()
+            if not call_id:
+                continue
+            detail = _console_request(
+                "GET",
+                f"/api/calls/{urllib.parse.quote(call_id, safe='')}",
+            )
+            call = detail.get("call") if isinstance(detail, dict) else None
+            if not isinstance(call, dict):
+                continue
+            slim = _slim_call_conversation(call, call_id=call_id)
+            # Prefer calls that already have user/assistant turns
+            if slim.get("conversation") or dur >= 8:
+                slim["waited_sec"] = round(timeout_sec - max(0.0, deadline - time.time()), 1)
+                slim["matched_phone"] = phone_n
+                return slim
+        time.sleep(poll_sec)
+
+    return {
+        "ok": False,
+        "error": "timeout",
+        "message": (
+            "Звонок ещё не завершён или не появился в call_history. "
+            "Подожди и вызови await_outbound_result снова — не суммируй старые звонки."
+        ),
+        "phone": phone_n,
+        "dialed_after": dialed_after,
+        "last_seen": {
+            "call_id": (last_seen or {}).get("call_id"),
+            "start_time": (last_seen or {}).get("start_time"),
+            "duration_seconds": (last_seen or {}).get("duration_seconds"),
+            "outcome": (last_seen or {}).get("outcome"),
+        }
+        if last_seen
+        else None,
+    }
 
 
 def _scrub_default_brand_text(text: str) -> str:
@@ -1267,6 +1448,7 @@ def run_tool(
             "get_outbound_scenario",
             "update_outbound_scenario",
             "list_outbound_calls",
+            "await_outbound_result",
             "get_outbound_call",
         ):
             if not is_owner:
@@ -1341,6 +1523,7 @@ def run_tool(
                     ensure_ascii=False,
                 )
             body.update(override)
+            dialed_at = _utc_now_iso()
             data = _console_request(
                 "POST",
                 "/api/outbound/dial",
@@ -1352,6 +1535,7 @@ def run_tool(
                     **data,
                     "phone": phone,
                     "goal": goal,
+                    "dialed_at": dialed_at,
                     "per_call_override": {
                         "greeting": bool(body.get("greeting")),
                         "script": bool(body.get("script")),
@@ -1360,10 +1544,14 @@ def run_tool(
                         "use_default_script": use_default and not bool(override),
                     },
                     "hint": (
-                        "После звонка смотри list_outbound_calls / get_outbound_call. "
-                        "Кастомный контекст уходит в dial как greeting/script; "
-                        "постоянный профиль — get/update_outbound_scenario."
+                        "Звонок ЗАПУЩЕН. НЕ вызывай list/get сразу — там будет СТАРЫЙ звонок. "
+                        "Для отчёта вызови await_outbound_result(phone, dialed_after=dialed_at). "
+                        "Сводку пиши только по conversation из await."
                     ),
+                    "next_tool": {
+                        "name": "await_outbound_result",
+                        "arguments": {"phone": phone, "dialed_after": dialed_at},
+                    },
                 }
             return json.dumps(data, ensure_ascii=False)
 
@@ -1431,6 +1619,7 @@ def run_tool(
         if name == "list_outbound_calls":
             ctx = str(arguments.get("context") or "outbound").strip().lower() or "outbound"
             limit = int(arguments.get("limit") or 15)
+            phone_filter = _normalize_dial_phone(str(arguments.get("phone") or ""))
             data = _console_request(
                 "GET",
                 "/api/calls",
@@ -1439,6 +1628,9 @@ def run_tool(
             if isinstance(data, dict) and data.get("calls"):
                 slim_calls = []
                 for c in data.get("calls") or []:
+                    num = _normalize_dial_phone(str(c.get("caller_number") or ""))
+                    if phone_filter and num != phone_filter:
+                        continue
                     slim_calls.append(
                         {
                             "call_id": c.get("call_id"),
@@ -1452,11 +1644,26 @@ def run_tool(
                     )
                 data = {
                     "ok": True,
-                    "total": data.get("total"),
+                    "total": len(slim_calls),
                     "filter_context": data.get("filter_context") or ctx,
+                    "filter_phone": phone_filter or None,
                     "calls": slim_calls,
+                    "warning": (
+                        "Если только что был dial — для отчёта используй await_outbound_result, "
+                        "иначе легко взять СТАРЫЙ звонок."
+                    ),
                 }
             return json.dumps(data, ensure_ascii=False)
+
+        if name == "await_outbound_result":
+            return json.dumps(
+                _await_outbound_result(
+                    str(arguments.get("phone") or ""),
+                    dialed_after=str(arguments.get("dialed_after") or "") or None,
+                    timeout_sec=int(arguments.get("timeout_sec") or 180),
+                ),
+                ensure_ascii=False,
+            )
 
         if name == "get_outbound_call":
             call_id = str(arguments.get("call_id") or "").strip()
@@ -1470,29 +1677,7 @@ def run_tool(
                 f"/api/calls/{urllib.parse.quote(call_id, safe='')}",
             )
             if isinstance(data, dict) and isinstance(data.get("call"), dict):
-                call = data["call"]
-                conv = call.get("conversation") or call.get("conversation_history") or []
-                slim_conv = []
-                for turn in conv[:80]:
-                    if not isinstance(turn, dict):
-                        continue
-                    slim_conv.append(
-                        {
-                            "role": turn.get("role"),
-                            "content": (turn.get("content") or turn.get("text") or "")[:800],
-                        }
-                    )
-                data = {
-                    "ok": True,
-                    "call_id": call.get("call_id") or call_id,
-                    "caller_number": call.get("caller_number"),
-                    "context_name": call.get("context_name"),
-                    "start_time": call.get("start_time"),
-                    "duration_seconds": call.get("duration_seconds"),
-                    "outcome": call.get("outcome"),
-                    "total_turns": call.get("total_turns") or len(slim_conv),
-                    "conversation": slim_conv,
-                }
+                data = _slim_call_conversation(data["call"], call_id=call_id)
             return json.dumps(data, ensure_ascii=False)
 
         return json.dumps({"ok": False, "error": f"unknown tool: {name}"})

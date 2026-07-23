@@ -27,8 +27,9 @@ scenarios:
          но идентичность ТОЛЬКО из задачи. ЗАПРЕЩЕНО тащить «Quantum Labs» / «Гарик» /
          «ИИ-секретарь Quantum Labs» / выплаты, если владелец этого не просил.
       2) Покажи черновик: номер + greeting + script, спроси «звоним?».
-      3) После «да» — outbound_dial(confirm=true) с goal + теми же greeting/script.
-         use_knowledge обычно false.
+      3) После «да» — outbound_dial(confirm=true) с goal + greeting/script.
+      4) Отчёт: ТОЛЬКО await_outbound_result(phone, dialed_after). Не list/get сразу
+         после dial — подтянется СТАРЫЙ звонок. Сводку пиши строго по conversation.
       Итог или уточнение — коротко и по делу.
 
   outbound:
@@ -56,12 +57,13 @@ scenarios:
       - «от имени Дениса» → представься как звонок от Дениса, без Quantum Labs.
       - Сначала ПОКАЖИ черновик (номер, greeting, script), потом «да, звони».
       - outbound_dial с confirm=true и теми же greeting+script (+ goal).
+      - После dial: await_outbound_result(phone, dialed_after=dialed_at). ЗАПРЕЩЕНО
+        сразу list/get — будет чужой/старый звонок (из‑за этого врали про выплаты).
+      - Сводку пиши только по conversation из await: согласие/день/время/место дословно.
       Инструменты:
-      1) outbound_dial — один звонок; передавай greeting+script этого черновика;
-         use_knowledge обычно false.
-      2) get_outbound_scenario / update_outbound_scenario — постоянный YAML-профиль
-         (входящий default НЕ трогать). Для разовых задач не нужен.
-      3) list_outbound_calls / get_outbound_call — отчёты и расшифровки.
+      1) outbound_dial — один звонок; greeting+script черновика; use_knowledge обычно false.
+      2) await_outbound_result — дождаться ЭТОГО звонка и взять расшифровку.
+      3) list/get_outbound_call — только для истории, не для мгновенного отчёта.
       Не обещай кампании CSV — one-shot dial. Ответ коротко.
 
   calendar:

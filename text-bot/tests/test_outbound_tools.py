@@ -26,8 +26,71 @@ def test_outbound_tools_owner_only(monkeypatch):
     monkeypatch.setattr(ac, "CONSOLE_BASE", "http://127.0.0.1:8013")
     names = {t["function"]["name"] for t in ac.tools_for_role("owner")}
     assert "outbound_dial" in names
+    assert "await_outbound_result" in names
     guest = {t["function"]["name"] for t in ac.tools_for_role("guest")}
     assert "outbound_dial" not in guest
+
+
+def test_await_outbound_result_matches_phone(monkeypatch):
+    monkeypatch.setattr(ac, "CONSOLE_ENABLED", True)
+    monkeypatch.setattr(ac, "CONSOLE_TOKEN", "tok")
+
+    def fake_req(method, path, *, body=None, query=None, timeout=30.0):
+        if path == "/api/calls":
+            return {
+                "ok": True,
+                "calls": [
+                    {
+                        "call_id": "old.1",
+                        "caller_number": "79311031371",
+                        "start_time": "2026-07-23T21:38:11Z",
+                        "duration_seconds": 22,
+                        "outcome": "completed",
+                        "transcript_preview": "выплаты",
+                    },
+                    {
+                        "call_id": "new.2",
+                        "caller_number": "79311031371",
+                        "start_time": "2026-07-23T22:03:24Z",
+                        "duration_seconds": 133,
+                        "outcome": "completed",
+                        "transcript_preview": "субботу",
+                    },
+                ],
+            }
+        assert path == "/api/calls/new.2"
+        return {
+            "ok": True,
+            "call": {
+                "call_id": "new.2",
+                "caller_number": "79311031371",
+                "start_time": "2026-07-23T22:03:24Z",
+                "duration_seconds": 133,
+                "outcome": "completed",
+                "conversation": [
+                    {"role": "assistant", "content": "суббота в 14:00"},
+                    {"role": "user", "content": "устрицы"},
+                ],
+            },
+        }
+
+    monkeypatch.setattr(ac, "_console_request", fake_req)
+    monkeypatch.setattr(ac.time, "sleep", lambda *_a, **_k: None)
+    out = json.loads(
+        ac.run_tool(
+            "await_outbound_result",
+            {
+                "phone": "79311031371",
+                "dialed_after": "2026-07-23T22:03:00Z",
+                "timeout_sec": 15,
+            },
+            role="owner",
+        )
+    )
+    assert out["ok"] is True
+    assert out["call_id"] == "new.2"
+    assert "устрицы" in out["conversation"][1]["content"]
+    assert "выплаты" not in json.dumps(out, ensure_ascii=False)
 
 
 def test_outbound_dial_requires_confirm(monkeypatch):
