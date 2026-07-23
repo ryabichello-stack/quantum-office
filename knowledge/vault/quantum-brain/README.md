@@ -16,7 +16,11 @@ vault/quantum-brain/
   ops/             runbooks
   lombards/        vertical playbooks
   platform/        Second Brain self-knowledge (what/how/status/ops)
+  tools/           Office stack tool cards + imported service docs
 ```
+
+`tools/imported/` is filled on the server by `scripts/import_office_tool_docs.sh`
+(allowlisted READMEs + AVA Quantum passport). Polyhub/VPN docs are excluded.
 
 ## Frontmatter (required on every note)
 

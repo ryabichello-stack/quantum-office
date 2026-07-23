@@ -26,3 +26,25 @@ shards:
     path: platform/second-brain-ops-runbook.md
   - id: second-brain-plan-stages
     path: platform/second-brain-plan-stages.md
+  - id: office-stack-catalog
+    path: tools/office-stack-catalog.md
+  - id: tools-faq
+    path: tools/tools-faq.md
+  - id: tool-ava-mailer
+    path: tools/tool-ava-mailer.md
+  - id: tool-ava-text-bot
+    path: tools/tool-ava-text-bot.md
+  - id: tool-ava-outreach
+    path: tools/tool-ava-outreach.md
+  - id: tool-ava-calendar
+    path: tools/tool-ava-calendar.md
+  - id: tool-ava-conference
+    path: tools/tool-ava-conference.md
+  - id: tool-ava-files
+    path: tools/tool-ava-files.md
+  - id: tool-ava-knowledge
+    path: tools/tool-ava-knowledge.md
+  - id: tool-quantum-console
+    path: tools/tool-quantum-console.md
+  - id: tool-ava-voice-tools
+    path: tools/tool-ava-voice-tools.md
