@@ -10,11 +10,12 @@ This tree is the future SoT for FAQ/playbooks. Until the private
 
 ```
 vault/quantum-brain/
-  _meta/           taxonomy, ACL roles, service principals
+  _meta/           taxonomy, ACL roles, service principals (not ingested)
   products/        product FAQ shards
   meetings/        meeting notes (future)
   ops/             runbooks
   lombards/        vertical playbooks
+  platform/        Second Brain self-knowledge (what/how/status/ops)
 ```
 
 ## Frontmatter (required on every note)

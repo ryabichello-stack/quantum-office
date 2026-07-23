@@ -112,3 +112,27 @@ cases:
     min_chars: 40
     expect_any: ["звонок", "ломбард", "скрипт", "привет"]
     require_citation: true
+
+  - id: brain-self-what
+    query: "что такое Second Brain база знаний"
+    principal: service:voice-office
+    mode: hybrid
+    min_chars: 60
+    expect_any: ["Second Brain", "ava-knowledge", "баз", "знан", "поиск"]
+    require_citation: true
+
+  - id: brain-self-mode
+    query: "KNOWLEDGE_READ_MODE brain rollback legacy"
+    principal: service:voice-office
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["KNOWLEDGE_READ_MODE", "legacy", "brain", "rollback", "откат"]
+    require_citation: true
+
+  - id: brain-self-acl
+    query: "service:voice-office видит ли почту"
+    principal: service:voice-office
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["voice", "почт", "mail", "assistant", "ACL"]
+    require_citation: true

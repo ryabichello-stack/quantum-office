@@ -12,3 +12,17 @@ shards:
   - id: lombards-playbook
     path: lombards/part-b-playbook.md
     chars: 59566
+  - id: second-brain-overview
+    path: platform/second-brain-overview.md
+  - id: second-brain-architecture
+    path: platform/second-brain-architecture.md
+  - id: second-brain-access-modes
+    path: platform/second-brain-access-modes.md
+  - id: second-brain-status
+    path: platform/second-brain-status.md
+  - id: second-brain-faq
+    path: platform/second-brain-faq.md
+  - id: second-brain-ops-runbook
+    path: platform/second-brain-ops-runbook.md
+  - id: second-brain-plan-stages
+    path: platform/second-brain-plan-stages.md
