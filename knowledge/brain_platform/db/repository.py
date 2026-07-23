@@ -103,8 +103,54 @@ class BrainRepository:
         bh = body_hash(body)
 
         existing = self.conn.execute(
-            "SELECT version, acl_revision FROM documents WHERE id = ?", (doc_id,)
+            "SELECT version, acl_revision, body_hash, status FROM documents WHERE id = ?",
+            (doc_id,),
         ).fetchone()
+        # Unchanged body → keep chunks/embeddings, refresh metadata lightly
+        if (
+            existing
+            and existing["body_hash"] == bh
+            and existing["status"] == "active"
+            and status == "active"
+        ):
+            self.conn.execute(
+                """
+                UPDATE documents SET
+                  title=?, visibility=?, acl_json=?, classification_json=?,
+                  channels_json=?, ai_processing_json=?, source=?, project_id=?,
+                  index_zone=?, updated_at=?
+                WHERE id=?
+                """,
+                (
+                    title,
+                    visibility,
+                    _j(acl or {}),
+                    _j(classification or {"level": "internal"}),
+                    _j(channels or []),
+                    _j(ai_processing or {}),
+                    source,
+                    project_id,
+                    index_zone,
+                    _now(),
+                    doc_id,
+                ),
+            )
+            self.conn.commit()
+            chunks_n = self.conn.execute(
+                "SELECT COUNT(*) AS n FROM chunks WHERE document_id=?", (doc_id,)
+            ).fetchone()["n"]
+            return {
+                "id": doc_id,
+                "status": "active",
+                "version": existing["version"],
+                "acl_revision": existing["acl_revision"],
+                "chunks": chunks_n,
+                "embedded": 0,
+                "unchanged": True,
+                "quarantine": False,
+                "findings": [],
+            }
+
         version = (existing["version"] + 1) if existing else 1
         acl_revision = (existing["acl_revision"] + 1) if existing else 1
 
@@ -946,6 +992,78 @@ class BrainRepository:
 
     # ----- files -----
 
+    def get_file_by_path(self, tenant_id: str, path: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT * FROM files WHERE tenant_id=? AND path=?",
+            (tenant_id, path),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def find_document_by_body_hash(
+        self,
+        tenant_id: str,
+        bh: str,
+        *,
+        exclude_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        if not bh:
+            return None
+        if exclude_id:
+            row = self.conn.execute(
+                """
+                SELECT id, title, type, source, body_hash FROM documents
+                WHERE tenant_id=? AND body_hash=? AND status='active' AND id!=?
+                LIMIT 1
+                """,
+                (tenant_id, bh, exclude_id),
+            ).fetchone()
+        else:
+            row = self.conn.execute(
+                """
+                SELECT id, title, type, source, body_hash FROM documents
+                WHERE tenant_id=? AND body_hash=? AND status='active'
+                LIMIT 1
+                """,
+                (tenant_id, bh),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def deprecate_documents_not_in(
+        self,
+        *,
+        tenant_id: str,
+        source: str,
+        keep_ids: set[str],
+        doc_type: str | None = None,
+    ) -> int:
+        """Soft-delete stale docs from a source that are no longer produced by ingest."""
+        rows = self.conn.execute(
+            """
+            SELECT id FROM documents
+            WHERE tenant_id=? AND source=? AND status='active'
+            """,
+            (tenant_id, source),
+        ).fetchall()
+        n = 0
+        now = _now()
+        for r in rows:
+            if r["id"] in keep_ids:
+                continue
+            if doc_type:
+                typ = self.conn.execute(
+                    "SELECT type FROM documents WHERE id=?", (r["id"],)
+                ).fetchone()
+                if typ and typ["type"] != doc_type:
+                    continue
+            self.conn.execute(
+                "UPDATE documents SET status='deprecated', updated_at=? WHERE id=?",
+                (now, r["id"]),
+            )
+            n += 1
+        if n:
+            self.conn.commit()
+        return n
+
     def upsert_file_asset(
         self,
         *,
@@ -968,6 +1086,69 @@ class BrainRepository:
         }
         fid = slug_id("file", path)
         now = _now()
+        prev = self.get_file_by_path(tenant_id, path)
+        if prev and prev.get("content_hash") == content_hash:
+            # unchanged on disk — do not re-chunk / re-embed
+            return {
+                "id": fid,
+                "unchanged": True,
+                "index": {
+                    "id": f"doc-{fid}",
+                    "unchanged": True,
+                    "chunks": self.conn.execute(
+                        "SELECT COUNT(*) AS n FROM chunks WHERE document_id=?",
+                        (f"doc-{fid}",),
+                    ).fetchone()["n"],
+                },
+            }
+
+        # Same bytes already indexed under another path → keep one searchable copy
+        other = self.conn.execute(
+            """
+            SELECT id, path FROM files
+            WHERE tenant_id=? AND content_hash=? AND path!=? AND status='active'
+            LIMIT 1
+            """,
+            (tenant_id, content_hash, path),
+        ).fetchone()
+        if other:
+            # still record this path in files table for inventory, without second doc
+            self.conn.execute(
+                """
+                INSERT INTO files (
+                  id, tenant_id, path, filename, content_hash, source, project_id,
+                  visibility, acl_json, classification_json, text_excerpt, acl_revision,
+                  status, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, 1, 'active', ?)
+                ON CONFLICT(tenant_id, path) DO UPDATE SET
+                  content_hash=excluded.content_hash,
+                  text_excerpt=excluded.text_excerpt,
+                  updated_at=excluded.updated_at,
+                  filename=excluded.filename
+                """,
+                (
+                    fid,
+                    tenant_id,
+                    path,
+                    filename,
+                    content_hash,
+                    source,
+                    project_id,
+                    visibility,
+                    _j(acl),
+                    text_excerpt[:20000],
+                    now,
+                ),
+            )
+            self.conn.commit()
+            return {
+                "id": fid,
+                "duplicate_of": other["id"],
+                "duplicate_path": other["path"],
+                "skipped_duplicate_content": True,
+                "index": {"id": f"doc-{other['id']}", "chunks": 0, "unchanged": True},
+            }
+
         self.conn.execute(
             """
             INSERT INTO files (
