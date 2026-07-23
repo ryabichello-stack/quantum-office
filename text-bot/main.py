@@ -67,6 +67,13 @@ def send_telegram(chat_id: str | int, text: str) -> None:
     )
 
 
+def _safe_send(chat_id: str | int, text: str) -> None:
+    try:
+        send_telegram(chat_id, text)
+    except Exception:
+        logger.exception("send_telegram failed chat_id=%s", chat_id)
+
+
 def _serialize_assistant_message(message: Any) -> dict[str, Any]:
     out: dict[str, Any] = {"role": "assistant"}
     content = getattr(message, "content", None)
@@ -96,6 +103,7 @@ def generate_reply(chat_id: str, user_text: str) -> str:
     messages.extend(history)
 
     for _ in range(MAX_TOOL_ROUNDS):
+        # gpt-5-mini rejects custom temperature — omit it
         response = _client.chat.completions.create(
             model=OPENAI_MODEL,
             messages=messages,
@@ -117,6 +125,7 @@ def generate_reply(chat_id: str, user_text: str) -> str:
                 args = json.loads(fn.arguments or "{}")
             except json.JSONDecodeError:
                 args = {}
+            logger.info("tool call chat_id=%s name=%s", chat_id, fn.name)
             result = run_tool(
                 fn.name,
                 args,
@@ -146,32 +155,46 @@ def handle_update(update: dict[str, Any]) -> None:
     if not text:
         return
 
+    logger.info("incoming chat_id=%s text=%r", chat_id, text[:120])
+
     if text in ("/start", "/help"):
         clear_chat(SESSION_DB, str(chat_id))
-        send_telegram(chat_id, _greeting)
+        _safe_send(chat_id, _greeting)
         append_message(SESSION_DB, str(chat_id), {"role": "assistant", "content": _greeting})
         return
 
     if text == "/reset":
         clear_chat(SESSION_DB, str(chat_id))
-        send_telegram(chat_id, "Диалог сброшен. " + _greeting)
-        append_message(SESSION_DB, str(chat_id), {"role": "assistant", "content": _greeting})
+        msg = "Диалог сброшен. " + _greeting
+        _safe_send(chat_id, msg)
+        append_message(SESSION_DB, str(chat_id), {"role": "assistant", "content": msg})
+        return
+
+    if _client is None:
+        _safe_send(chat_id, "Бот временно без AI (нет OPENAI_API_KEY). Попробуйте позже.")
         return
 
     try:
         reply = generate_reply(str(chat_id), text)
-        send_telegram(chat_id, reply)
+        _safe_send(chat_id, reply)
+        logger.info("replied chat_id=%s chars=%s", chat_id, len(reply or ""))
     except Exception:
         logger.exception("handle message chat_id=%s", chat_id)
-        send_telegram(
+        _safe_send(
             chat_id,
-            "Извините, произошла ошибка. Попробуйте ещё раз через минуту или позвоните на линию Quantum Labs.",
+            "Извините, произошла ошибка. Напишите /reset и попробуйте ещё раз.",
         )
 
 
 def poll_loop() -> None:
     offset: int | None = None
     logger.info("Telegram poll loop started")
+    try:
+        _tg_post("deleteWebhook", {"drop_pending_updates": False}, timeout=15.0)
+        logger.info("webhook cleared for polling")
+    except Exception:
+        logger.exception("deleteWebhook failed")
+
     while not _stop_event.is_set():
         if not TELEGRAM_BOT_TOKEN:
             time.sleep(5)
