@@ -108,6 +108,52 @@ def test_outbound_dial_calls_console(monkeypatch):
     assert out["per_call_override"]["script"] is True
 
 
+def test_scrub_quantum_labs_from_greeting_when_goal_is_personal():
+    greet, script, scrubbed = ac._scrub_outbound_brand_leak(
+        goal="От имени Дениса пригласи Свету на свидание",
+        greeting=(
+            "Здравствуйте, Света! Это ИИ‑секретарь Quantum Labs, "
+            "я звоню от имени Дениса. Удобно говорить минуту?"
+        ),
+        script="Ты ИИ-секретарь Quantum Labs. Пригласи на свидание.",
+    )
+    assert scrubbed is True
+    assert "Quantum" not in (greet or "")
+    assert "Дениса" in (greet or "")
+    assert "ЗАПРЕТ ИДЕНТИЧНОСТИ" in (script or "")
+
+
+def test_outbound_dial_scrubs_brand_on_dial(monkeypatch):
+    monkeypatch.setattr(ac, "CONSOLE_ENABLED", True)
+    monkeypatch.setattr(ac, "CONSOLE_TOKEN", "tok")
+    captured = {}
+
+    def fake_req(method, path, *, body=None, query=None, timeout=30.0):
+        captured["body"] = body
+        return {"ok": True}
+
+    monkeypatch.setattr(ac, "_console_request", fake_req)
+    out = json.loads(
+        ac.run_tool(
+            "outbound_dial",
+            {
+                "phone": "79311031371",
+                "confirm": True,
+                "goal": "От имени Дениса пригласи Свету на свидание",
+                "greeting": (
+                    "Здравствуйте, Света! Это ИИ-секретарь Quantum Labs, "
+                    "я звоню от имени Дениса. Удобно минуту?"
+                ),
+                "script": "Пригласи Свету на свидание от Дениса.",
+            },
+            role="owner",
+        )
+    )
+    assert out["ok"] is True
+    assert "Quantum" not in captured["body"]["greeting"]
+    assert "Дениса" in captured["body"]["greeting"]
+
+
 def test_outbound_dial_synthesizes_script_from_goal(monkeypatch):
     monkeypatch.setattr(ac, "CONSOLE_ENABLED", True)
     monkeypatch.setattr(ac, "CONSOLE_TOKEN", "tok")

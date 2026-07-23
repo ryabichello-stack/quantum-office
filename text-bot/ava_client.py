@@ -509,6 +509,60 @@ _OUTBOUND_HANGUP_GUARD = (
     "автоответчик («оставьте сообщение после сигнала»), не раньше.\n"
 )
 
+_DEFAULT_BRAND_RE = re.compile(
+    r"(?i)\bquantum\s*labs\b|\bгари[кк]\b|\bмассовые\s+выплат\w*\b|\bсбп\b|"
+    r"ии[‑\-]?секретар\w*\s+quantum|\bquantum\s*payouts\b"
+)
+
+
+def _goal_allows_default_brand(text: str) -> bool:
+    return bool(_DEFAULT_BRAND_RE.search(text or ""))
+
+
+def _scrub_default_brand_text(text: str) -> str:
+    """Remove leaked office brand from a draft line when the task didn't ask for it."""
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return cleaned
+    cleaned = re.sub(
+        r"(?i)\s*,?\s*это\s+ии[‑\-]?секретар\w*\s+quantum\s*labs\s*,?",
+        ", ",
+        cleaned,
+    )
+    cleaned = re.sub(r"(?i)\bии[‑\-]?секретар\w*\s+quantum\s*labs\b", "", cleaned)
+    cleaned = re.sub(r"(?i)\bquantum\s*labs\b", "", cleaned)
+    cleaned = re.sub(r"(?i)\bгари[кк]\b", "", cleaned)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    cleaned = re.sub(r"\s+,", ",", cleaned)
+    cleaned = cleaned.strip(" ,;—-")
+    return cleaned
+
+
+def _scrub_outbound_brand_leak(
+    *,
+    goal: str,
+    greeting: str | None,
+    script: str | None,
+) -> tuple[str | None, str | None, bool]:
+    """If task isn't about Quantum/payouts, strip brand leaks from draft fields."""
+    if _goal_allows_default_brand(goal):
+        return greeting, script, False
+
+    scrubbed = False
+    greet = greeting
+    body = script
+    if greet and _DEFAULT_BRAND_RE.search(greet):
+        greet = _scrub_default_brand_text(greet) or "Здравствуйте! Удобно пару секунд?"
+        scrubbed = True
+    if body and _DEFAULT_BRAND_RE.search(body):
+        body = (
+            "ЗАПРЕТ ИДЕНТИЧНОСТИ: не упоминай Quantum Labs, Гарика, массовые выплаты, СБП.\n"
+            "Говори только по задаче владельца.\n\n"
+            + body
+        )
+        scrubbed = True
+    return greet, body, scrubbed
+
 
 def _synthesize_outbound_override(
     *,
@@ -521,6 +575,9 @@ def _synthesize_outbound_override(
     goal = (goal or "").strip()
     greeting = (str(greeting).strip() if greeting is not None else "") or None
     script = (str(script).strip() if script is not None else "") or None
+    greeting, script, _scrubbed = _scrub_outbound_brand_leak(
+        goal=goal, greeting=greeting, script=script
+    )
     out: dict[str, Any] = {}
 
     if script:
