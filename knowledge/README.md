@@ -48,3 +48,13 @@
 1. Править docx / пересобрать md скриптом в `/root/ava/scripts/build_quantum_knowledge_base.py`
 2. Или править `quantum_labs.md` / `content/topics/*.md` + `index.yaml`
 3. `curl -X POST http://127.0.0.1:8017/api/knowledge/reload`
+
+## Дальше: Second Brain
+
+Текущий сервис — совместимый FAQ/keyword слой для агентов.  
+Целевая корпоративная память (Vault + ACL + graph + hybrid + MCP) описана в:
+
+- [`docs/architecture/ADR-0001-second-brain.md`](../docs/architecture/ADR-0001-second-brain.md)
+- [`docs/architecture/SECOND_BRAIN_ROADMAP.md`](../docs/architecture/SECOND_BRAIN_ROADMAP.md)
+
+**Реализацию платформы не начинать**, пока ADR не Accepted.

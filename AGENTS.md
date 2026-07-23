@@ -15,6 +15,11 @@
 
 См. `knowledge/README.md`, `docs/CALENDAR_SERVICE.md`, `docs/CONFERENCE_SERVICE.md`, `docs/FILES_SERVICE.md`.
 
+**Second Brain (архитектура, без реализации до Accept):**
+- `docs/architecture/ADR-0001-second-brain.md`
+- `docs/architecture/SECOND_BRAIN_ROADMAP.md`
+- `docs/architecture/KNOWLEDGE_BASELINE.md`
+
 ## Прод (справочно)
 
 - SSH: `ssh root@5.35.86.62`
