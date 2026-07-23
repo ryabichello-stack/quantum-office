@@ -1,4 +1,4 @@
-from knowledge.platform.security.acl import (
+from brain_platform.security.acl import (
     SERVICE_PRINCIPALS,
     ACLFilter,
     Principal,
@@ -13,7 +13,7 @@ from knowledge.platform.security.acl import (
     resolve_principal_policy,
     tenant_from_token_claims,
 )
-from knowledge.platform.security.safety import (
+from brain_platform.security.safety import (
     SafetyReport,
     decide_index_action,
     scan_document_text,

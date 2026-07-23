@@ -1,4 +1,4 @@
-from knowledge.platform.schemas.models import (
+from brain_platform.schemas.models import (
     ACL,
     AIProcessingPolicy,
     AuditRecord,

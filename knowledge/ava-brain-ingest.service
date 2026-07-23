@@ -1,0 +1,15 @@
+[Unit]
+Description=Quantum Labs Second Brain ingest (faq/files/mail)
+After=network.target ava-knowledge.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ava-knowledge
+EnvironmentFile=-/opt/ava-knowledge/.env
+Environment=PYTHONPATH=/opt/ava-knowledge
+ExecStart=/opt/ava-knowledge/venv/bin/python -m brain_platform ingest --sources faq,files,mail --mail-limit 200 --file-limit 1000
+User=root
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

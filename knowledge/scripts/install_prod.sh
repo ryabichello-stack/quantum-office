@@ -36,9 +36,20 @@ if [ ! -f "${DEST}/.env" ]; then
 fi
 
 install -m 644 "${SRC_DIR}/ava-knowledge.service" "/etc/systemd/system/${SERVICE}"
+if [ -f "${SRC_DIR}/ava-brain-ingest.service" ]; then
+  install -m 644 "${SRC_DIR}/ava-brain-ingest.service" /etc/systemd/system/ava-brain-ingest.service
+  install -m 644 "${SRC_DIR}/ava-brain-ingest.timer" /etc/systemd/system/ava-brain-ingest.timer
+fi
+mkdir -p "${DEST}/data"
+chmod 700 "${DEST}/data"
 systemctl daemon-reload
 systemctl enable "${SERVICE}"
 systemctl restart "${SERVICE}"
+# Optional continuous ingest (faq/files/mail) — enable when MAIL_* configured
+systemctl enable --now ava-brain-ingest.timer 2>/dev/null || true
+# Seed FAQ into brain index (does not affect legacy /api/knowledge)
+PYTHONPATH="${DEST}" "${DEST}/venv/bin/python" -m brain_platform ingest --sources faq,files --file-limit 200 || true
 sleep 2
 curl -sf "http://127.0.0.1:8017/health" | python3 -m json.tool || true
+curl -sf "http://127.0.0.1:8017/api/brain/health" | python3 -m json.tool || true
 systemctl --no-pager status "${SERVICE}" | head -12

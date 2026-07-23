@@ -2,12 +2,14 @@
 
 Связан с: [`ADR-0001-second-brain.md`](./ADR-0001-second-brain.md)  
 **Статус ADR:** Accepted with required security amendments (2026-07-23)  
-**Правило:** каждый этап обратим, имеет тесты и критерий «можно откатиться на legacy `:8017` keyword».  
+**Правило:** каждый этап обратим; legacy `:8017` `/api/knowledge/*` остаётся до отдельного approval на switch.  
 **Security principle:** ACL обеспечивается инфраструктурой до LLM, не промптом.
 
-Утверждённые выборы v1: **pgvector**, **Postgres graph**, **Vault в `quantum-brain`**, **physical public/private**, **default deny**, **manual publish only**.
+Утверждённые выборы v1: **pgvector (абстракция)**; **runtime сейчас SQLite+FTS** с той же ACL-моделью (миграция на Postgres без смены агентов); **Vault в `quantum-brain`**; **physical public/private zones**; **default deny**; **manual publish only**.
 
-**Product mission:** операционная память офиса — контакты (email/телефон/должность/компания), переписки in/out, проекты/обсуждения, файлы на сервере + FAQ; база растёт из новой работы; ответ на любой рабочий/технический вопрос в пределах ACL.
+**Product mission:** операционная память офиса — контакты, переписки in/out, проекты/обсуждения, файлы на сервере + FAQ.
+
+**Реализация в office-репо (v1 ship):** пакет `knowledge/brain_platform/` + `/api/brain/*` на `ava-knowledge` (additive). Ingest: FAQ, files, IMAP mail. Voice/text tools **ещё на legacy**.
 
 ---
 

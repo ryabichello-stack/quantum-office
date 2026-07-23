@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from knowledge.platform.schemas.models import (
+from brain_platform.schemas.models import (
     ACL,
     AIProcessingPolicy,
     CacheKeyParts,
@@ -21,7 +21,7 @@ from knowledge.platform.schemas.models import (
     Publication,
     PublicationStatus,
 )
-from knowledge.platform.security.acl import (
+from brain_platform.security.acl import (
     Principal,
     build_backend_query,
     build_cache_key,
@@ -33,7 +33,7 @@ from knowledge.platform.security.acl import (
     reject_client_supplied_tenant,
     resolve_principal_policy,
 )
-from knowledge.platform.security.safety import decide_index_action, scan_document_text
+from brain_platform.security.safety import decide_index_action, scan_document_text
 
 
 TENANT = "quantum-labs"

@@ -49,20 +49,18 @@
 2. Или править `quantum_labs.md` / `content/topics/*.md` + `index.yaml`
 3. `curl -X POST http://127.0.0.1:8017/api/knowledge/reload`
 
-## Дальше: Second Brain
+## Дальше: Second Brain (реализовано additive)
 
-**Миссия:** операционная память офиса — контакты, переписки in/out, проекты, файлы на сервере + FAQ; ответ на любой рабочий вопрос; корпус растёт из новой работы.
+**Миссия:** операционная память — контакты, почта in/out, файлы, проекты + FAQ.
 
-Текущий сервис — совместимый FAQ/keyword слой.  
-ADR-0001 **Accepted** (security + operational memory). Код: `platform/` (Phase 0).  
-Vault → private **`quantum-brain`**. Production `:8017` не меняется в Phase 0; switch voice/text — отдельный approval.
-
-- [`docs/architecture/ADR-0001-second-brain.md`](../docs/architecture/ADR-0001-second-brain.md)
-- [`docs/architecture/OPERATIONAL_MEMORY.md`](../docs/architecture/OPERATIONAL_MEMORY.md)
-- [`docs/architecture/SECOND_BRAIN_ROADMAP.md`](../docs/architecture/SECOND_BRAIN_ROADMAP.md)
-- [`platform/README.md`](./platform/README.md)
+Runtime: пакет `brain_platform/` + API **`/api/brain/*`** на том же `:8017`.  
+Legacy **`/api/knowledge/*`** для voice/text **не менялся** (switch — отдельный approval).
 
 ```bash
-PYTHONPATH=. pytest knowledge/platform/tests -q
+PYTHONPATH=knowledge pytest knowledge/brain_platform/tests -q
+# на проде после deploy:
+PYTHONPATH=/opt/ava-knowledge /opt/ava-knowledge/venv/bin/python -m brain_platform ingest --sources faq,files,mail
 ```
+
+Документы: ADR-0001, OPERATIONAL_MEMORY, `brain_platform/README.md`.
 

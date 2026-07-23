@@ -7,6 +7,9 @@ API:
   POST /api/knowledge/query   {topic?, topic_id?, limit?, max_chars?}
   POST /api/knowledge/get     {id}  — one section by id/title slug
   POST /api/knowledge/reload  — reread markdown + index (webhook optional)
+
+Second Brain (additive, does not replace legacy query):
+  /api/brain/*  — search, contacts, threads, ingest (ACL principals)
 """
 
 from __future__ import annotations
@@ -28,8 +31,18 @@ logger = logging.getLogger("ava-knowledge")
 
 WEBHOOK_TOKEN = os.getenv("WEBHOOK_TOKEN", "").strip()
 SERVICE_NAME = "ava-knowledge"
+BRAIN_ENABLED = os.getenv("BRAIN_ENABLED", "true").lower() not in ("0", "false", "no", "off")
 
-app = FastAPI(title="Quantum Labs Knowledge", version="0.1.0")
+app = FastAPI(title="Quantum Labs Knowledge", version="0.2.0")
+
+if BRAIN_ENABLED:
+    try:
+        from brain_platform.api.router import router as brain_router
+
+        app.include_router(brain_router)
+        logger.info("Second Brain API mounted at /api/brain/*")
+    except Exception:  # noqa: BLE001
+        logger.exception("Second Brain router failed to load; legacy knowledge still available")
 
 
 def _check_token(x_webhook_token: Optional[str] = None) -> None:
@@ -54,7 +67,8 @@ class KnowledgeGetRequest(BaseModel):
 @app.get("/health")
 def health():
     st = store.status()
-    return {"ok": True, "service": SERVICE_NAME, **st}
+    out = {"ok": True, "service": SERVICE_NAME, "brain_enabled": BRAIN_ENABLED, **st}
+    return out
 
 
 @app.get("/api/knowledge/topics")

@@ -7,21 +7,18 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from knowledge.platform.schemas.models import (
+from brain_platform.schemas.models import (
     ACL,
     Classification,
     ClassificationLevel,
     ContactRecord,
+    DocumentFrontmatter,
     DocumentStatus,
     EmailMessageRecord,
     FileAssetRecord,
     ThreadRecord,
 )
-from knowledge.platform.security.acl import Principal, document_readable
-from knowledge.platform.schemas.models import (
-    DocumentFrontmatter,
-    DocumentStatus,
-)
+from brain_platform.security.acl import Principal, document_readable
 
 
 TENANT = "quantum-labs"

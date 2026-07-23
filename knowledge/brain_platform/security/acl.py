@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from knowledge.platform.schemas.models import (
+from brain_platform.schemas.models import (
     ACL,
     AuditRecord,
     CacheKeyParts,
@@ -323,7 +323,7 @@ def chunk_inherits_document(
     *,
     embedding: list[float] | None = None,
 ) -> ChunkIndexRecord:
-    from knowledge.platform.schemas.models import ClassificationLevel
+    from brain_platform.schemas.models import ClassificationLevel
 
     return ChunkIndexRecord(
         chunk_id=chunk_id,
