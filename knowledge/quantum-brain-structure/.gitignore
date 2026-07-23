@@ -1,0 +1,11 @@
+# Structure pack — never commit secrets or dumps
+.env
+*.env.local
+data/**
+!data/README.md
+!data/.gitignore
+**/__pycache__/
+*.pyc
+*.dump
+*.sql.gz
+.vault-content/   # optional local overlay with real knowledge (gitignored)
