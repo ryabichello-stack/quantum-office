@@ -167,13 +167,11 @@ _OUTBOUND_OWNER_TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "outbound_dial",
             "description": (
-                "Запустить ИСХОДЯЩИЙ звонок бота (Quantum Console → SIP/AVA). "
-                "Только для владельца. Перед вызовом ОБЯЗАТЕЛЬНО подтверди номер и цель, "
-                "затем confirm=true. "
-                "КРИТИЧНО: всегда передавай goal и/или script с задачей из чата "
-                "(кто звонит, о чём, что сказать). Без этого уйдёт старый сценарий "
-                "про массовые выплаты Quantum Labs. "
-                "greeting/script/use_knowledge — только для ЭТОГО звонка."
+                "Запустить ИСХОДЯЩИЙ звонок (Quantum Console → SIP/AVA). Только owner. "
+                "Перед вызовом: 1) сам собери greeting+script по задаче (додумай пробелы), "
+                "2) покажи черновик владельцу, 3) после «да, звони» вызови с confirm=true "
+                "и теми же greeting+script (+ goal). "
+                "Без goal/script звонок запрещён. use_knowledge обычно false."
             ),
             "parameters": {
                 "type": "object",
@@ -189,36 +187,41 @@ _OUTBOUND_OWNER_TOOLS: list[dict[str, Any]] = [
                     },
                     "confirm": {
                         "type": "boolean",
-                        "description": "true только после явного «да, звони» от владельца",
+                        "description": (
+                            "true только после того как владелец увидел черновик "
+                            "greeting/script и сказал «да, звони»"
+                        ),
                     },
                     "goal": {
                         "type": "string",
                         "description": (
-                            "Полная цель/бриф звонка из сообщения владельца "
-                            "(обязательно, если нет script). Пример: "
-                            "«От имени Дениса пригласи Свету на свидание»"
+                            "Бриф задачи из чата (обязателен, если нет script). "
+                            "Пример: «От имени Дениса пригласи Свету на свидание»"
                         ),
                     },
                     "greeting": {
                         "type": "string",
-                        "description": "Первая фраза ТОЛЬКО для этого звонка (override)",
+                        "description": (
+                            "Первая фраза звонка из черновика, который показал владельцу"
+                        ),
                     },
                     "script": {
                         "type": "string",
-                        "description": "Полный playbook/system prompt ТОЛЬКО для этого звонка",
+                        "description": (
+                            "Полный playbook звонка из черновика (роль, цель, шаги, запреты)"
+                        ),
                     },
                     "use_knowledge": {
                         "type": "boolean",
                         "description": (
-                            "true — Second Brain; по умолчанию false для кастомного script/goal "
-                            "(чтобы не подмешивались выплаты)"
+                            "true — Second Brain; по умолчанию false для кастомного script/goal"
                         ),
                     },
                     "use_default_script": {
                         "type": "boolean",
                         "description": (
-                            "true только если ЯВНО нужен постоянный YAML outbound "
-                            "(сейчас — про выплаты). Иначе передай goal/script."
+                            "true только если ЯВНО нужен постоянный YAML outbound shell. "
+                            "Для разовых задач из чата не используй."
                         ),
                     },
                 },
