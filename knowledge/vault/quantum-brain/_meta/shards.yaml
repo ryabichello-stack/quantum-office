@@ -58,3 +58,5 @@ shards:
     path: verticals/mfo-mass-payouts.md
   - id: gig-services-mass-payouts
     path: verticals/gig-services-mass-payouts.md
+  - id: affiliate-cpa-influence-mass-payouts
+    path: verticals/affiliate-cpa-influence-mass-payouts.md

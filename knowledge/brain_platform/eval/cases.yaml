@@ -177,3 +177,11 @@ cases:
     expect_any: ["gig", "курьер", "самозанят", "НПД", "платформ"]
     require_citation: true
 
+  - id: vertical-affiliate
+    query: "CPA affiliate блогеры выплаты веб-мастерам"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["CPA", "affiliate", "блогер", "веб-мастер", "партнер", "партнёр"]
+    require_citation: true
+

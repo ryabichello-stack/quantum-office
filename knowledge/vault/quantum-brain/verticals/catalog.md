@@ -25,6 +25,7 @@ shard: verticals-catalog
 | Сельхоззакупки | `verticals/agro-buyback-payouts.md` | выкуп продукции у ЛПХ/физлиц |
 | МФО | `verticals/mfo-mass-payouts.md` | выдача микрозаймов физлицам/бизнесу |
 | Gig / платформенная занятость | `verticals/gig-services-mass-payouts.md` | курьеры, такси, самозанятые, НПД |
+| Affiliate / CPA / influence | `verticals/affiliate-cpa-influence-mass-payouts.md` | веб-мастера, блогеры, UGC, рефералы |
 | Канон компании | `products/canonical-knowledge-2026.md` | модель Quantum Labs, принципы, банки, продажи |
 
 Общее правило позиционирования: Quantum — оркестратор выплат через банк-партнёр, не банк и не хранение денег клиентов.
