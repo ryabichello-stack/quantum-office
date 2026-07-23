@@ -19,7 +19,7 @@ shard: verticals-catalog
 
 | Вертикаль | Документ | Зачем |
 |-----------|----------|-------|
-| Ломбарды | `lombards/mass-payouts-kb-2026.md` + playbook | ICP #1, выдача займа, возврат разницы |
+| Ломбарды | `lombards/mass-payouts-kb-2026.md` | ICP #1, выдача займа, возврат разницы |
 | Страхование | `verticals/insurance-mass-payouts.md` | ОСАГО/каско/розничные выплаты физлицам |
 | Trade-in / выкуп | `verticals/trade-in-mass-payouts.md` | автодилеры, электроника, обратный выкуп |
 | Сельхоззакупки | `verticals/agro-buyback-payouts.md` | выкуп продукции у ЛПХ/физлиц |

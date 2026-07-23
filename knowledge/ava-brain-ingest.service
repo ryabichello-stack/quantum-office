@@ -1,5 +1,5 @@
 [Unit]
-Description=Quantum Labs Second Brain ingest (faq/files/mail)
+Description=Quantum Labs Second Brain ingest (vault/files/mail)
 After=network.target ava-knowledge.service
 
 [Service]
@@ -7,7 +7,8 @@ Type=oneshot
 WorkingDirectory=/opt/ava-knowledge
 EnvironmentFile=-/opt/ava-knowledge/.env
 Environment=PYTHONPATH=/opt/ava-knowledge
-ExecStart=/bin/bash -lc '/opt/ava-knowledge/venv/bin/python -m brain_platform ingest --sources faq,vault,files,mail --mail-limit 200 --file-limit 3000 && /opt/ava-knowledge/venv/bin/python -m brain_platform embed-backfill --limit 800 && /opt/ava-knowledge/venv/bin/python -m brain_platform graph rebuild && /opt/ava-knowledge/venv/bin/python -m brain_platform sync-pg'
+# Product FAQ SoT = vault shards. Do not re-ingest quantum_labs.md as faq (duplicates vault).
+ExecStart=/bin/bash -lc '/opt/ava-knowledge/venv/bin/python -m brain_platform ingest --sources vault,files,mail --mail-limit 200 --file-limit 3000 && /opt/ava-knowledge/venv/bin/python -m brain_platform embed-backfill --limit 800 && /opt/ava-knowledge/venv/bin/python -m brain_platform graph rebuild && /opt/ava-knowledge/venv/bin/python -m brain_platform sync-pg'
 User=root
 Nice=10
 

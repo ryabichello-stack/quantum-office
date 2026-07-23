@@ -47,8 +47,8 @@ systemctl enable "${SERVICE}"
 systemctl restart "${SERVICE}"
 # Optional continuous ingest (faq/files/mail) — enable when MAIL_* configured
 systemctl enable --now ava-brain-ingest.timer 2>/dev/null || true
-# Seed FAQ into brain index (does not affect legacy /api/knowledge)
-PYTHONPATH="${DEST}" "${DEST}/venv/bin/python" -m brain_platform ingest --sources faq,files --file-limit 200 || true
+# Seed vault into brain index (product SoT). FAQ monolith stays on disk for legacy voice fallback only.
+PYTHONPATH="${DEST}" "${DEST}/venv/bin/python" -m brain_platform ingest --sources vault,files --file-limit 200 || true
 sleep 2
 curl -sf "http://127.0.0.1:8017/health" | python3 -m json.tool || true
 curl -sf "http://127.0.0.1:8017/api/brain/health" | python3 -m json.tool || true
