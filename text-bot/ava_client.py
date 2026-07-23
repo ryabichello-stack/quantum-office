@@ -66,10 +66,12 @@ _BRAIN_OWNER_TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "search_office_memory",
             "description": (
-                "Second Brain: поиск по корпоративной памяти офиса — переписки (in/out), "
-                "контакты, файлы на сервере, FAQ, темы проектов. "
-                "Используй для рабочих вопросов: «кто писал про договор», «email клиента», "
-                "«что обсуждали по ЕКОМ», любой офисный/технический контекст из почты и файлов."
+                "Second Brain: поиск по почте/файлам/FAQ/тредам. "
+                "Вызывай СРАЗУ с вопросом пользователя как есть. "
+                "Инструмент САМ расширяет запрос (синонимы, Альфа/alfabank/mv_mmb, "
+                "комплаенс/compliance, отдельные слова) и ищет по всем вариантам. "
+                "НЕ спрашивай пользователя «искать по email / ИНН / дате?» — просто вызови tool "
+                "один раз и ответь фактами. Если пусто — скажи что не нашёл, без меню вариантов."
             ),
             "parameters": {
                 "type": "object",
@@ -330,6 +332,136 @@ def _query_brain_search(
             # Rebuild text from kept titles only when possible — keep full text if mixed
             data = {**data, "matches": kept, "faq_filter": True}
     return data
+
+
+def _autonomous_memory_search(
+    knowledge: str,
+    query: str,
+    *,
+    limit: int = 8,
+    max_chars: int = 7000,
+) -> dict[str, Any]:
+    """Expand a user question into many queries and merge hits — never ask how to search."""
+    try:
+        from brain_platform.search.memory import memory_query_variants  # type: ignore
+    except ImportError:
+        import sys
+
+        sys.path.insert(0, "/opt/ava-knowledge")
+        from brain_platform.search.memory import memory_query_variants  # type: ignore
+
+    variants = memory_query_variants(query)
+    if not variants:
+        variants = [query]
+
+    matches: list[dict[str, Any]] = []
+    seen_chunks: set[str] = set()
+    threads: list[dict[str, Any]] = []
+    seen_threads: set[str] = set()
+    tried: list[str] = []
+    q_tokens = [t.lower() for t in re.findall(r"[A-Za-zА-Яа-яЁё0-9@.-]+", query) if len(t) >= 3]
+
+    for v in variants[:12]:
+        tried.append(v)
+        mem = _query_brain_search(
+            knowledge,
+            v,
+            principal="service:text-secretary",
+            limit=6,
+            max_chars=2500,
+        )
+        for m in mem.get("matches") or []:
+            cid = str(m.get("chunk_id") or m.get("document_id") or "")
+            if cid and cid in seen_chunks:
+                continue
+            if cid:
+                seen_chunks.add(cid)
+            matches.append(m)
+        try:
+            th = _post_json(
+                f"{knowledge}/api/brain/threads/list",
+                {"q": v, "limit": 8},
+                brain_principal="service:text-secretary",
+                timeout=15.0,
+            )
+            for t in th.get("threads") or []:
+                tid = str(t.get("id") or "")
+                if tid and tid not in seen_threads:
+                    seen_threads.add(tid)
+                    threads.append(t)
+        except Exception:
+            pass
+
+    def _rank(m: dict[str, Any]) -> int:
+        title = str(m.get("title") or "").lower()
+        snippet = str(m.get("snippet") or "").lower()
+        blob = title + " " + snippet
+        score = 0
+        typ = m.get("type") or ""
+        if typ == "email":
+            score += 15
+        elif typ == "contact":
+            score += 8
+        elif typ == "faq":
+            score -= 5
+        if "ооо" in blob or "инн" in blob:
+            score += 25
+        if "комплаен" in blob or "compliance" in blob:
+            score += 10
+        if "alfabank" in blob or "альфа" in blob or "mv_mmb" in blob:
+            score += 12
+        for t in q_tokens:
+            if t in blob:
+                score += 6
+        return score
+
+    ordered = sorted(matches, key=_rank, reverse=True)[: max(12, limit * 2)]
+
+    parts: list[str] = []
+    total = 0
+    for m in ordered:
+        title = m.get("title") or ""
+        snip = m.get("snippet") or ""
+        block = f"## {title}\n{snip}".strip()
+        if not snip and not title:
+            continue
+        if total + len(block) > max_chars:
+            break
+        parts.append(block)
+        total += len(block) + 2
+    text = "\n\n".join(parts)
+
+    if text.strip():
+        summary = f"Найдены материалы по запросу ({len(ordered)} фрагм., тредов: {len(threads)})."
+    else:
+        summary = "По расширенному поиску устойчивых записей не нашлось."
+
+    return {
+        "ok": True,
+        "query": query,
+        "tried_queries": tried,
+        "text": text,
+        "chars": len(text),
+        "matches": [
+            {
+                "document_id": m.get("document_id"),
+                "chunk_id": m.get("chunk_id"),
+                "title": m.get("title"),
+                "type": m.get("type"),
+                "has_snippet": bool(m.get("snippet")),
+            }
+            for m in ordered[:12]
+        ],
+        "threads": threads[:10],
+        "summary": summary,
+        "instruction_for_assistant": (
+            "Ответь сразу по text/matches/threads. "
+            "ЗАПРЕЩЕНО спрашивать пользователя, как или где искать "
+            "(по email, ИНН, дате и т.п.) — поиск уже выполнен по всем разумным вариантам. "
+            "Если данных мало — скажи что нашёл / чего нет, без меню уточнений. "
+            "Можно задать ОДИН уточняющий вопрос только если без него ответ невозможен."
+        ),
+    }
 
 
 def _merge_knowledge(legacy: dict[str, Any], brain: dict[str, Any]) -> dict[str, Any]:
@@ -595,13 +727,12 @@ def run_tool(
                     ensure_ascii=False,
                 )
             query = str(arguments.get("query") or "").strip()
-            limit = int(arguments.get("limit") or 6)
-            data = _query_brain_search(
+            limit = int(arguments.get("limit") or 8)
+            data = _autonomous_memory_search(
                 knowledge,
                 query,
-                principal="service:text-secretary",
                 limit=limit,
-                max_chars=6000,
+                max_chars=7000,
             )
             return json.dumps(data, ensure_ascii=False)
 

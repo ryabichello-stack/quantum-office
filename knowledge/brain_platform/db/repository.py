@@ -248,8 +248,15 @@ class BrainRepository:
         if not fts_q:
             fts_q = q.replace('"', "")
 
+        # Prefer OR matching so multi-word questions don't miss partial hits
+        tokens = re.findall(r"\w+", q, flags=re.U)[:12]
+        if len(tokens) >= 2:
+            fts_or = " OR ".join(tokens)
+        else:
+            fts_or = fts_q
+
         zone_placeholders = ",".join("?" * len(zones))
-        params: list[Any] = [fts_q, principal.tenant_id, *zones]
+        params: list[Any] = [fts_or, principal.tenant_id, *zones]
 
         acl_sql, acl_params = self._acl_sql(filt, principal)
         params.extend(acl_params)

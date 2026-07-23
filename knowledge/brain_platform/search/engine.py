@@ -77,6 +77,7 @@ class BrainSearch:
                     "type": h.get("type"),
                     "visibility": h.get("visibility"),
                     "score": h.get("score"),
+                    "snippet": body[:1200],
                 }
             )
 
