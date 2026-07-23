@@ -121,49 +121,86 @@ def migrate(sqlite_path: str, pg_dsn: str, *, truncate: bool = True) -> dict[str
             else:
                 stats["embeddings_skipped"] += 1
                 emb_lit = None
-            cur.execute(
-                """
-                INSERT INTO chunks (
-                  chunk_id, document_id, tenant_id, visibility,
-                  allowed_users_json, allowed_groups_json, allowed_services_json,
-                  classification, acl_revision, document_status, document_version,
-                  index_zone, channels_json, ordinal, text, embedding_json, embedding
-                ) VALUES (
-                  %(chunk_id)s, %(document_id)s, %(tenant_id)s, %(visibility)s,
-                  %(allowed_users_json)s::jsonb, %(allowed_groups_json)s::jsonb,
-                  %(allowed_services_json)s::jsonb, %(classification)s, %(acl_revision)s,
-                  %(document_status)s, %(document_version)s, %(index_zone)s,
-                  %(channels_json)s::jsonb, %(ordinal)s, %(text)s, %(embedding_json)s,
-                  CASE WHEN %(emb_lit)s IS NULL THEN NULL ELSE %(emb_lit)s::vector END
+            base = {
+                **{k: r.get(k) for k in r.keys()},
+                "allowed_users_json": r.get("allowed_users_json") or "[]",
+                "allowed_groups_json": r.get("allowed_groups_json") or "[]",
+                "allowed_services_json": r.get("allowed_services_json") or "[]",
+                "channels_json": r.get("channels_json") or "[]",
+                "embedding_json": r.get("embedding_json") or "[]",
+            }
+            if emb_lit is None:
+                cur.execute(
+                    """
+                    INSERT INTO chunks (
+                      chunk_id, document_id, tenant_id, visibility,
+                      allowed_users_json, allowed_groups_json, allowed_services_json,
+                      classification, acl_revision, document_status, document_version,
+                      index_zone, channels_json, ordinal, text, embedding_json, embedding
+                    ) VALUES (
+                      %(chunk_id)s, %(document_id)s, %(tenant_id)s, %(visibility)s,
+                      %(allowed_users_json)s::jsonb, %(allowed_groups_json)s::jsonb,
+                      %(allowed_services_json)s::jsonb, %(classification)s, %(acl_revision)s,
+                      %(document_status)s, %(document_version)s, %(index_zone)s,
+                      %(channels_json)s::jsonb, %(ordinal)s, %(text)s, %(embedding_json)s,
+                      NULL
+                    )
+                    ON CONFLICT (chunk_id) DO UPDATE SET
+                      document_id = EXCLUDED.document_id,
+                      tenant_id = EXCLUDED.tenant_id,
+                      visibility = EXCLUDED.visibility,
+                      allowed_users_json = EXCLUDED.allowed_users_json,
+                      allowed_groups_json = EXCLUDED.allowed_groups_json,
+                      allowed_services_json = EXCLUDED.allowed_services_json,
+                      classification = EXCLUDED.classification,
+                      acl_revision = EXCLUDED.acl_revision,
+                      document_status = EXCLUDED.document_status,
+                      document_version = EXCLUDED.document_version,
+                      index_zone = EXCLUDED.index_zone,
+                      channels_json = EXCLUDED.channels_json,
+                      ordinal = EXCLUDED.ordinal,
+                      text = EXCLUDED.text,
+                      embedding_json = EXCLUDED.embedding_json,
+                      embedding = NULL
+                    """,
+                    base,
                 )
-                ON CONFLICT (chunk_id) DO UPDATE SET
-                  document_id = EXCLUDED.document_id,
-                  tenant_id = EXCLUDED.tenant_id,
-                  visibility = EXCLUDED.visibility,
-                  allowed_users_json = EXCLUDED.allowed_users_json,
-                  allowed_groups_json = EXCLUDED.allowed_groups_json,
-                  allowed_services_json = EXCLUDED.allowed_services_json,
-                  classification = EXCLUDED.classification,
-                  acl_revision = EXCLUDED.acl_revision,
-                  document_status = EXCLUDED.document_status,
-                  document_version = EXCLUDED.document_version,
-                  index_zone = EXCLUDED.index_zone,
-                  channels_json = EXCLUDED.channels_json,
-                  ordinal = EXCLUDED.ordinal,
-                  text = EXCLUDED.text,
-                  embedding_json = EXCLUDED.embedding_json,
-                  embedding = EXCLUDED.embedding
-                """,
-                {
-                    **{k: r.get(k) for k in r.keys()},
-                    "allowed_users_json": r.get("allowed_users_json") or "[]",
-                    "allowed_groups_json": r.get("allowed_groups_json") or "[]",
-                    "allowed_services_json": r.get("allowed_services_json") or "[]",
-                    "channels_json": r.get("channels_json") or "[]",
-                    "embedding_json": r.get("embedding_json") or "[]",
-                    "emb_lit": emb_lit,
-                },
-            )
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO chunks (
+                      chunk_id, document_id, tenant_id, visibility,
+                      allowed_users_json, allowed_groups_json, allowed_services_json,
+                      classification, acl_revision, document_status, document_version,
+                      index_zone, channels_json, ordinal, text, embedding_json, embedding
+                    ) VALUES (
+                      %(chunk_id)s, %(document_id)s, %(tenant_id)s, %(visibility)s,
+                      %(allowed_users_json)s::jsonb, %(allowed_groups_json)s::jsonb,
+                      %(allowed_services_json)s::jsonb, %(classification)s, %(acl_revision)s,
+                      %(document_status)s, %(document_version)s, %(index_zone)s,
+                      %(channels_json)s::jsonb, %(ordinal)s, %(text)s, %(embedding_json)s,
+                      %(emb_lit)s::vector
+                    )
+                    ON CONFLICT (chunk_id) DO UPDATE SET
+                      document_id = EXCLUDED.document_id,
+                      tenant_id = EXCLUDED.tenant_id,
+                      visibility = EXCLUDED.visibility,
+                      allowed_users_json = EXCLUDED.allowed_users_json,
+                      allowed_groups_json = EXCLUDED.allowed_groups_json,
+                      allowed_services_json = EXCLUDED.allowed_services_json,
+                      classification = EXCLUDED.classification,
+                      acl_revision = EXCLUDED.acl_revision,
+                      document_status = EXCLUDED.document_status,
+                      document_version = EXCLUDED.document_version,
+                      index_zone = EXCLUDED.index_zone,
+                      channels_json = EXCLUDED.channels_json,
+                      ordinal = EXCLUDED.ordinal,
+                      text = EXCLUDED.text,
+                      embedding_json = EXCLUDED.embedding_json,
+                      embedding = EXCLUDED.embedding
+                    """,
+                    {**base, "emb_lit": emb_lit},
+                )
         stats["tables"]["chunks"] = len(chunks)
 
         # contacts
