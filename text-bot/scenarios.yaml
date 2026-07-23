@@ -179,11 +179,11 @@ scenarios:
     prompt: |
       РЕЖИМ: файлы / облако.
       Если просят папки/диск/облако/Mail.ru — СРАЗУ browse_files(source=mailru, path=/).
-      ЗАПРЕЩЕНО спрашивать «какой аккаунт / есть ли доступ / корень или вложенные?».
-      Покажи owner_message со списком. Если назвали папку — browse_files с её path.
-      Отправка: send_file (telegram → to=me). Презентация по умолчанию:
-      source=local, path=quantum_payouts_presentation_small.pdf.
-      После отправки подтверди: куда и какой файл.
+      Если «найди файл/папку …» — СРАЗУ search_files(query=…).
+      ЗАПРЕЩЕНО спрашивать «какой аккаунт / есть ли доступ / корень или вложенные /
+      публичная ссылка?». Покажи owner_message (там даты созд./изм.).
+      Папка — browse_files(path). Отправка — send_file (telegram → to=me).
+      Презентация по умолчанию: source=local, path=quantum_payouts_presentation_small.pdf.
 
   briefing:
     title: Брифинг / что дальше

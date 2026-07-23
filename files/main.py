@@ -69,6 +69,13 @@ class FileListRequest(BaseModel):
     path: str = Field(default="/", max_length=1000, description="Directory path, default root")
 
 
+class FileSearchRequest(BaseModel):
+    source: Literal["local", "yadisk", "yandex", "mailru"] = Field(default="mailru")
+    query: str = Field(..., min_length=2, max_length=200, description="Substring in name/path")
+    path: str = Field(default="/", max_length=1000, description="Start folder for search")
+    limit: int = Field(default=40, ge=1, le=100)
+
+
 @app.get("/health")
 def health():
     return {
@@ -76,6 +83,21 @@ def health():
         "service": SERVICE_NAME,
         "sources": sources.sources_status(),
         "delivery": delivery.delivery_status(),
+    }
+
+
+def _list_payload(source: str, path: str, entries: list) -> dict:
+    dirs = [e for e in entries if e.type == "dir"]
+    files = [e for e in entries if e.type == "file"]
+    return {
+        "ok": True,
+        "source": source,
+        "path": path if path.startswith("/") or source == "local" else f"/{path}",
+        "account": (sources.sources_status().get("mailru_user") if source == "mailru" else None),
+        "dirs": [sources.entry_to_dict(e) for e in dirs],
+        "files": [sources.entry_to_dict(e) for e in files],
+        "entries": [sources.entry_to_dict(e) for e in entries],
+        "counts": {"dirs": len(dirs), "files": len(files), "total": len(entries)},
     }
 
 
@@ -94,34 +116,33 @@ def files_list(
             status_code=400,
             detail={"error": exc.code, "message": exc.message},
         ) from exc
-    dirs = [e for e in entries if e.type == "dir"]
-    files = [e for e in entries if e.type == "file"]
-    return {
-        "ok": True,
-        "source": req.source,
-        "path": path if path.startswith("/") or req.source == "local" else f"/{path}",
-        "account": (sources.sources_status().get("mailru_user") if req.source == "mailru" else None),
-        "dirs": [{"name": e.name, "path": e.path, "type": "dir"} for e in dirs],
-        "files": [
-            {
-                "name": e.name,
-                "path": e.path,
-                "type": "file",
-                "bytes": e.bytes,
-            }
-            for e in files
-        ],
-        "entries": [
-            {
-                "name": e.name,
-                "path": e.path,
-                "type": e.type,
-                "bytes": e.bytes,
-            }
-            for e in entries
-        ],
-        "counts": {"dirs": len(dirs), "files": len(files), "total": len(entries)},
-    }
+    return _list_payload(req.source, path, entries)
+
+
+@app.post("/api/files/search")
+def files_search(
+    req: FileSearchRequest,
+    x_webhook_token: Optional[str] = Header(None),
+):
+    """Search folders/files by name under path (Mail.ru = recursive BFS)."""
+    _check_token(x_webhook_token)
+    path = (req.path or "/").strip() or "/"
+    try:
+        entries = sources.search_entries(
+            req.source,
+            req.query,
+            path=path,
+            limit=req.limit,
+        )
+    except SourceError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": exc.code, "message": exc.message},
+        ) from exc
+    payload = _list_payload(req.source, path, entries)
+    payload["query"] = req.query
+    payload["mode"] = "search"
+    return payload
 
 
 @app.post("/api/files/fetch")

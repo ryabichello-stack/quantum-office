@@ -484,11 +484,11 @@ _OFFICE_TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "browse_files",
             "description": (
-                "Показать список папок и файлов в источнике (Mail.ru / Я.Диск / local). "
-                "Вызывай СРАЗУ при «покажи папки/диск/облако» — без допросов про доступ. "
+                "Показать список папок и файлов (с датами) в Mail.ru / Я.Диск / local. "
+                "Вызывай СРАЗУ при «покажи папки/диск/облако» — без допросов. "
                 "По умолчанию source=mailru, path=/. "
-                "Чтобы провалиться в папку — вызови снова с path из ответа. "
-                "Потом send_file для отправки файла."
+                "Проваливайся в папку повторным вызовом с path. "
+                "Для поиска по имени — search_files."
             ),
             "parameters": {
                 "type": "object",
@@ -510,11 +510,40 @@ _OFFICE_TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "search_files",
+            "description": (
+                "Найти папки/файлы по имени (подстрока) в Mail.ru / Я.Диск / local. "
+                "Вызывай СРАЗУ при «найди файл/папку …». Без допросов."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Что искать, напр. презентация, договор, банк",
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": ["mailru", "yadisk", "local"],
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Откуда искать, по умолчанию /",
+                    },
+                    "limit": {"type": "integer", "description": "Макс. результатов, по умолчанию 40"},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "send_file",
             "description": (
                 "Отправить файл по email или в Telegram. "
                 "source: local|repo|yadisk|mailru. via: email|telegram. "
-                "Путь бери из browse_files."
+                "Путь бери из browse_files / search_files."
             ),
             "parameters": {
                 "type": "object",
@@ -943,34 +972,64 @@ def _human_bytes(n: Any) -> str:
     return f"{size / (1024 * 1024):.1f} MB"
 
 
+def _format_entry_meta(entry: dict[str, Any]) -> str:
+    bits: list[str] = []
+    size = _human_bytes(entry.get("bytes"))
+    if size:
+        bits.append(size)
+    created = entry.get("created_at")
+    modified = entry.get("modified_at")
+    if created:
+        bits.append(f"созд. {created}")
+    if modified and modified != created:
+        bits.append(f"изм. {modified}")
+    elif modified and not created:
+        bits.append(f"изм. {modified}")
+    return f" ({'; '.join(bits)})" if bits else ""
+
+
 def _format_files_browse(data: dict[str, Any]) -> str:
     source = str(data.get("source") or "mailru")
     path = str(data.get("path") or "/")
     account = data.get("account")
     dirs = data.get("dirs") or []
     files = data.get("files") or []
+    mode = str(data.get("mode") or "list")
+    query = data.get("query")
     title = {
         "mailru": "Mail.ru Облако",
         "yadisk": "Яндекс.Диск",
         "local": "Локальные файлы",
     }.get(source, source)
-    lines = [f"{title}" + (f" ({account})" if account else ""), f"Путь: {path}", ""]
+    lines = [f"{title}" + (f" ({account})" if account else "")]
+    if mode == "search":
+        lines.append(f"Поиск: «{query}» от {path}")
+    else:
+        lines.append(f"Путь: {path}")
+    lines.append("")
     if dirs:
         lines.append("Папки:")
         for d in dirs[:80]:
-            lines.append(f"• 📁 {d.get('name')}  →  {d.get('path')}")
+            lines.append(
+                f"• 📁 {d.get('name')}{_format_entry_meta(d)}  →  {d.get('path')}"
+            )
         lines.append("")
     if files:
         lines.append("Файлы:")
         for f in files[:100]:
-            size = _human_bytes(f.get("bytes"))
-            size_s = f" ({size})" if size else ""
-            lines.append(f"• 📄 {f.get('name')}{size_s}  →  {f.get('path')}")
+            lines.append(
+                f"• 📄 {f.get('name')}{_format_entry_meta(f)}  →  {f.get('path')}"
+            )
         lines.append("")
     if not dirs and not files:
-        lines.append("(пусто)")
+        lines.append("(ничего не найдено)" if mode == "search" else "(пусто)")
         lines.append("")
-    lines.append("Напишите имя/путь папки — открою. Или «скинь <файл>» — отправлю.")
+    if mode == "search":
+        lines.append("Открыть папку — browse_files(path=…). Скинуть файл — send_file.")
+    else:
+        lines.append(
+            "Папка — напишите путь/имя. Поиск — «найди …». Файл — «скинь …»."
+        )
     return "\n".join(lines).strip()
 
 
@@ -1617,7 +1676,46 @@ def run_tool(
                         "Покажи owner_message владельцу как есть. "
                         "Не спрашивай про доступ/аккаунт/корень — список уже получен. "
                         "Если просят открыть папку — browse_files с её path. "
-                        "Если просят файл — send_file с path из списка."
+                        "Поиск по имени — search_files. Файл — send_file."
+                    ),
+                }
+            return json.dumps(data, ensure_ascii=False)
+
+        if name == "search_files":
+            source = str(arguments.get("source") or "mailru").strip().lower() or "mailru"
+            if source in ("yandex", "yandex_disk"):
+                source = "yadisk"
+            if source in ("mailru_disk", "cloud_mail"):
+                source = "mailru"
+            query = str(arguments.get("query") or "").strip()
+            path = str(arguments.get("path") or "/").strip() or "/"
+            limit = int(arguments.get("limit") or 40)
+            if len(query) < 2:
+                return json.dumps(
+                    {
+                        "ok": False,
+                        "error": "query_too_short",
+                        "message": "Нужен query от 2 символов",
+                    },
+                    ensure_ascii=False,
+                )
+            data = _post_json(
+                f"{FILES_BASE}/api/files/search",
+                {
+                    "source": source,
+                    "query": query,
+                    "path": path,
+                    "limit": max(1, min(limit, 100)),
+                },
+                timeout=120.0,
+            )
+            if isinstance(data, dict) and data.get("ok"):
+                data = {
+                    **data,
+                    "owner_message": _format_files_browse(data),
+                    "instruction_for_assistant": (
+                        "Покажи owner_message как есть. Без вопросов про доступ. "
+                        "Папка → browse_files(path). Файл → send_file."
                     ),
                 }
             return json.dumps(data, ensure_ascii=False)

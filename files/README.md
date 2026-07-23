@@ -10,7 +10,14 @@ POST /api/files/list
 { "source": "mailru", "path": "/" }
 ```
 
-Returns folders + files for one directory level (drill-down via `path`).
+Returns folders + files for one directory level (with `created_at` / `modified_at`).
+
+POST /api/files/search
+```json
+{ "source": "mailru", "query": "банк", "path": "/", "limit": 40 }
+```
+
+Name search (Mail.ru = recursive BFS under `path`).
 
 POST /api/files/send
 X-Webhook-Token: <WEBHOOK_TOKEN>

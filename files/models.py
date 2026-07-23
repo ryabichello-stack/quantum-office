@@ -21,6 +21,8 @@ class ListedEntry:
     path: str
     type: Literal["dir", "file"]
     bytes: Optional[int] = None
+    modified_at: Optional[str] = None  # ISO-ish / RFC1123 from cloud
+    created_at: Optional[str] = None
 
 
 class SourceError(Exception):

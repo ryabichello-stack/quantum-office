@@ -11,6 +11,8 @@ import xml.etree.ElementTree as ET
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Optional
 
@@ -236,6 +238,32 @@ def _webdav_href_to_path(href: str) -> str:
     return path or "/"
 
 
+def _normalize_dav_datetime(raw: Optional[str]) -> Optional[str]:
+    text = (raw or "").strip()
+    if not text:
+        return None
+    try:
+        dt = parsedate_to_datetime(text)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    except Exception:
+        pass
+    # ISO-like: 2024-01-02T15:04:05Z / +03:00
+    if "T" in text:
+        return text.replace("Z", "").split("+")[0][:19].replace("T", " ") + " UTC"
+    return text
+
+
+def _prop_text(prop: Optional[ET.Element], tag: str, ns: dict[str, str]) -> Optional[str]:
+    if prop is None:
+        return None
+    el = prop.find(tag, ns)
+    if el is None or not (el.text or "").strip():
+        return None
+    return (el.text or "").strip()
+
+
 def list_mailru(path: str = "/") -> list[ListedEntry]:
     """List one directory level on Mail.ru Cloud via WebDAV PROPFIND Depth:1."""
     if not (MAILRU_WEBDAV_USER and MAILRU_WEBDAV_PASSWORD):
@@ -250,7 +278,10 @@ def list_mailru(path: str = "/") -> list[ListedEntry]:
     body = (
         '<?xml version="1.0" encoding="utf-8"?>'
         '<d:propfind xmlns:d="DAV:">'
-        "<d:prop><d:resourcetype/><d:displayname/><d:getcontentlength/></d:prop>"
+        "<d:prop>"
+        "<d:resourcetype/><d:displayname/><d:getcontentlength/>"
+        "<d:getlastmodified/><d:creationdate/>"
+        "</d:prop>"
         "</d:propfind>"
     ).encode("utf-8")
     req = urllib.request.Request(
@@ -296,6 +327,8 @@ def list_mailru(path: str = "/") -> list[ListedEntry]:
         is_dir = False
         size: Optional[int] = None
         display = Path(entry_path).name or entry_path
+        modified_at = None
+        created_at = None
         if prop is not None:
             rt = prop.find("d:resourcetype", ns)
             if rt is not None and rt.find("d:collection", ns) is not None:
@@ -306,6 +339,8 @@ def list_mailru(path: str = "/") -> list[ListedEntry]:
             cl = prop.find("d:getcontentlength", ns)
             if cl is not None and (cl.text or "").strip().isdigit():
                 size = int(cl.text or "0")
+            modified_at = _normalize_dav_datetime(_prop_text(prop, "d:getlastmodified", ns))
+            created_at = _normalize_dav_datetime(_prop_text(prop, "d:creationdate", ns))
         # Trailing slash in href often means directory
         if (href_el.text or "").rstrip().endswith("/"):
             is_dir = True
@@ -319,6 +354,8 @@ def list_mailru(path: str = "/") -> list[ListedEntry]:
                 path=entry_path if entry_path.startswith("/") else f"/{entry_path}",
                 type="dir" if is_dir else "file",
                 bytes=None if is_dir else size,
+                modified_at=modified_at,
+                created_at=created_at,
             )
         )
 
@@ -339,12 +376,15 @@ def list_local(path: str = "/") -> list[ListedEntry]:
     except ValueError as exc:
         raise SourceError(str(exc), f"local path not allowed: {path}") from exc
     if resolved.is_file():
+        st = resolved.stat()
         return [
             ListedEntry(
                 name=resolved.name,
                 path=str(resolved),
                 type="file",
-                bytes=resolved.stat().st_size,
+                bytes=st.st_size,
+                modified_at=_fs_mtime(st.st_mtime),
+                created_at=_fs_mtime(getattr(st, "st_ctime", st.st_mtime)),
             )
         ]
     if not resolved.is_dir():
@@ -353,15 +393,24 @@ def list_local(path: str = "/") -> list[ListedEntry]:
     for child in sorted(resolved.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
         if child.name.startswith("."):
             continue
+        st = child.stat()
         entries.append(
             ListedEntry(
                 name=child.name,
                 path=str(child.resolve()),
                 type="dir" if child.is_dir() else "file",
-                bytes=None if child.is_dir() else child.stat().st_size,
+                bytes=None if child.is_dir() else st.st_size,
+                modified_at=_fs_mtime(st.st_mtime),
+                created_at=_fs_mtime(getattr(st, "st_ctime", st.st_mtime)),
             )
         )
     return entries
+
+
+def _fs_mtime(ts: float) -> str:
+    from datetime import datetime
+
+    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 
 def list_yadisk(path: str = "/") -> list[ListedEntry]:
@@ -397,6 +446,8 @@ def list_yadisk(path: str = "/") -> list[ListedEntry]:
                 path=ipath if ipath.startswith("/") else f"/{ipath}",
                 type=itype,  # type: ignore[arg-type]
                 bytes=None if itype == "dir" else item.get("size"),
+                modified_at=_normalize_dav_datetime(item.get("modified")),
+                created_at=_normalize_dav_datetime(item.get("created")),
             )
         )
     entries.sort(key=lambda e: (0 if e.type == "dir" else 1, e.name.lower()))
@@ -412,6 +463,158 @@ def list_entries(source: str, path: str = "/") -> list[ListedEntry]:
     if source in ("mailru", "mailru_disk", "cloud_mail"):
         return list_mailru(path)
     raise SourceError("unknown_source", f"list unsupported for source: {source}")
+
+
+def search_mailru(
+    query: str,
+    *,
+    path: str = "/",
+    limit: int = 40,
+    max_dirs: int = 80,
+) -> list[ListedEntry]:
+    """BFS name search under path (Mail.ru has no dedicated search API over WebDAV)."""
+    q = (query or "").strip().lower()
+    if len(q) < 2:
+        raise SourceError("query_too_short", "query must be at least 2 characters")
+    limit = max(1, min(int(limit or 40), 100))
+    max_dirs = max(1, min(int(max_dirs or 80), 200))
+    start = _normalize_dir_path(path)
+    queue: list[str] = [start]
+    visited: set[str] = set()
+    hits: list[ListedEntry] = []
+    while queue and len(hits) < limit and len(visited) < max_dirs:
+        cur = queue.pop(0)
+        if cur in visited:
+            continue
+        visited.add(cur)
+        try:
+            children = list_mailru(cur)
+        except SourceError:
+            continue
+        for e in children:
+            hay = f"{e.name} {e.path}".lower()
+            if q in hay:
+                hits.append(e)
+                if len(hits) >= limit:
+                    break
+            if e.type == "dir":
+                queue.append(e.path)
+    return hits
+
+
+def search_local(query: str, *, path: str = "/", limit: int = 40) -> list[ListedEntry]:
+    q = (query or "").strip().lower()
+    if len(q) < 2:
+        raise SourceError("query_too_short", "query must be at least 2 characters")
+    allow = default_local_allowlist()
+    raw = (path or "").strip() or str(allow[0])
+    try:
+        root = allow[0].resolve() if raw in ("/", ".", "") else resolve_under_allowlist(raw, allow)
+    except ValueError as exc:
+        raise SourceError(str(exc), f"local path not allowed: {path}") from exc
+    if not root.is_dir():
+        raise SourceError("not_found", f"local dir not found: {root}")
+    hits: list[ListedEntry] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        base = Path(dirpath)
+        for name, is_dir in [(d, True) for d in dirnames] + [(f, False) for f in filenames]:
+            if q not in name.lower():
+                continue
+            full = (base / name).resolve()
+            st = full.stat()
+            hits.append(
+                ListedEntry(
+                    name=name,
+                    path=str(full),
+                    type="dir" if is_dir else "file",
+                    bytes=None if is_dir else st.st_size,
+                    modified_at=_fs_mtime(st.st_mtime),
+                    created_at=_fs_mtime(getattr(st, "st_ctime", st.st_mtime)),
+                )
+            )
+            if len(hits) >= limit:
+                return hits
+    return hits
+
+
+def search_yadisk(query: str, *, limit: int = 40) -> list[ListedEntry]:
+    if not YADISK_TOKEN:
+        raise SourceError("yadisk_not_configured", "Set YADISK_TOKEN in .env")
+    q = (query or "").strip()
+    if len(q) < 2:
+        raise SourceError("query_too_short", "query must be at least 2 characters")
+    url = (
+        f"{YADISK_API}/resources/files?"
+        + urllib.parse.urlencode({"limit": max(1, min(limit, 100))})
+    )
+    # Prefer dedicated search when available
+    search_url = (
+        f"{YADISK_API}/search?"
+        + urllib.parse.urlencode({"query": q, "limit": max(1, min(limit, 100))})
+    )
+    headers = {"Authorization": f"OAuth {YADISK_TOKEN}", "Accept": "application/json"}
+    items = []
+    try:
+        req = urllib.request.Request(search_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            meta = json.loads(resp.read().decode("utf-8"))
+        items = meta.get("items") or ((meta.get("_embedded") or {}).get("items")) or []
+    except urllib.error.HTTPError:
+        # Fallback: list recent files and filter by name
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            meta = json.loads(resp.read().decode("utf-8"))
+        items = [
+            it
+            for it in (meta.get("items") or [])
+            if q.lower() in str(it.get("name") or "").lower()
+        ]
+    entries: list[ListedEntry] = []
+    for item in items[:limit]:
+        itype = "dir" if item.get("type") == "dir" else "file"
+        ipath = item.get("path") or ""
+        if ipath.startswith("disk:"):
+            ipath = ipath[5:] or "/"
+        entries.append(
+            ListedEntry(
+                name=str(item.get("name") or Path(ipath).name),
+                path=ipath if ipath.startswith("/") else f"/{ipath}",
+                type=itype,  # type: ignore[arg-type]
+                bytes=None if itype == "dir" else item.get("size"),
+                modified_at=_normalize_dav_datetime(item.get("modified")),
+                created_at=_normalize_dav_datetime(item.get("created")),
+            )
+        )
+    return entries
+
+
+def search_entries(
+    source: str,
+    query: str,
+    *,
+    path: str = "/",
+    limit: int = 40,
+) -> list[ListedEntry]:
+    source = (source or "").strip().lower()
+    if source == "local":
+        return search_local(query, path=path, limit=limit)
+    if source in ("yadisk", "yandex", "yandex_disk"):
+        return search_yadisk(query, limit=limit)
+    if source in ("mailru", "mailru_disk", "cloud_mail"):
+        return search_mailru(query, path=path, limit=limit)
+    raise SourceError("unknown_source", f"search unsupported for source: {source}")
+
+
+def entry_to_dict(e: ListedEntry) -> dict:
+    return {
+        "name": e.name,
+        "path": e.path,
+        "type": e.type,
+        "bytes": e.bytes,
+        "modified_at": e.modified_at,
+        "created_at": e.created_at,
+    }
 
 
 def fetch(source: str, path: str, **kwargs) -> FetchedFile:
