@@ -48,3 +48,15 @@ shards:
     path: tools/tool-quantum-console.md
   - id: tool-ava-voice-tools
     path: tools/tool-ava-voice-tools.md
+  - id: verticals-catalog
+    path: verticals/catalog.md
+  - id: insurance-mass-payouts
+    path: verticals/insurance-mass-payouts.md
+  - id: trade-in-mass-payouts
+    path: verticals/trade-in-mass-payouts.md
+  - id: agro-buyback-payouts
+    path: verticals/agro-buyback-payouts.md
+  - id: lombards-mass-payouts-kb-2026
+    path: lombards/mass-payouts-kb-2026.md
+  - id: canonical-knowledge-2026
+    path: products/canonical-knowledge-2026.md

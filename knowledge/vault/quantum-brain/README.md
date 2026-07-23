@@ -14,7 +14,8 @@ vault/quantum-brain/
   products/        product FAQ shards
   meetings/        meeting notes (future)
   ops/             runbooks
-  lombards/        vertical playbooks
+  lombards/        vertical playbooks (pawnshops)
+  verticals/       insurance, trade-in, agro industry KBs
   platform/        Second Brain self-knowledge (what/how/status/ops)
   tools/           Office stack tool cards + imported service docs
 ```

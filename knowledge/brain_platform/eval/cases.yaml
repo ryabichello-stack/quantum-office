@@ -136,3 +136,27 @@ cases:
     min_chars: 40
     expect_any: ["voice", "почт", "mail", "assistant", "ACL"]
     require_citation: true
+
+  - id: vertical-insurance
+    query: "выплаты страховщикам ОСАГО каско Quantum"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 60
+    expect_any: ["страх", "ОСАГО", "каско", "выплат"]
+    require_citation: true
+
+  - id: vertical-tradein
+    query: "trade-in выкуп автомобиля выплата физлицу"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["trade", "выкуп", "дилер", "авто", "физлиц"]
+    require_citation: true
+
+  - id: vertical-agro
+    query: "выкуп сельхозпродукции у ЛПХ выплаты"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["сельхоз", "ЛПХ", "закуп", "продукц", "ферм"]
+    require_citation: true
