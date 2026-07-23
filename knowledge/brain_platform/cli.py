@@ -58,6 +58,13 @@ def main(argv: list[str] | None = None) -> int:
     p_pub.add_argument("--vault", default=None)
     p_pub.add_argument("--out-dir", default=None)
 
+    p_export = sub.add_parser(
+        "export-monolith",
+        help="Export vault shards → content/quantum_labs.md (V4 generated artifact)",
+    )
+    p_export.add_argument("--vault", default=None)
+    p_export.add_argument("--out", default=None)
+
     p_search = sub.add_parser("search", help="ACL search")
     p_search.add_argument("query")
     p_search.add_argument("--principal", default="service:cursor-admin")
@@ -101,11 +108,20 @@ def main(argv: list[str] | None = None) -> int:
     p_greb.add_argument("--tenant", default=os.getenv("BRAIN_TENANT_ID", "quantum-labs"))
 
     args = parser.parse_args(argv)
-    conn = init_db()
-    repo = BrainRepository(conn)
+
+    if args.cmd in ("ingest", "embed-backfill", "repair-contacts", "graph", "search", "eval", "contacts"):
+        # Prefer hybrid repo (PG search + dual-write) when configured
+        from brain_platform.db.factory import get_brain_repo, reset_repo_singleton
+
+        reset_repo_singleton()
+        repo = get_brain_repo()
+        conn = repo.conn
+    else:
+        conn = init_db()
+        repo = BrainRepository(conn)
 
     if args.cmd == "init-db":
-        print(json.dumps({"ok": True, "stats": repo.stats(os.getenv("BRAIN_TENANT_ID", "quantum-labs"))}))
+        print(json.dumps({"ok": True, "stats": BrainRepository(init_db()).stats(os.getenv("BRAIN_TENANT_ID", "quantum-labs"))}))
         return 0
 
     if args.cmd == "init-pg":
@@ -195,6 +211,18 @@ def main(argv: list[str] | None = None) -> int:
         out = build_bundle(
             vault=Path(args.vault) if args.vault else None,
             out_dir=Path(args.out_dir) if args.out_dir else None,
+        )
+        print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
+        return 0 if out.get("ok") else 1
+
+    if args.cmd == "export-monolith":
+        from pathlib import Path
+
+        from brain_platform.publish.export_monolith import export_monolith
+
+        out = export_monolith(
+            vault=Path(args.vault) if args.vault else None,
+            out_path=Path(args.out) if args.out else None,
         )
         print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
         return 0 if out.get("ok") else 1

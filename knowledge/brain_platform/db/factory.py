@@ -1,26 +1,80 @@
-"""Repository factory: sqlite (default) or postgres search/read backend."""
+"""Repository factory: sqlite (default) or postgres search/read backend + dual-write."""
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
 from brain_platform.db.connection import init_db
 from brain_platform.db.pg import connect_postgres, database_url, store_backend
+from brain_platform.db.pg_write import (
+    dual_write_enabled,
+    sync_contact,
+    sync_documents,
+    sync_email,
+)
 from brain_platform.db.repository import BrainRepository
+
+logger = logging.getLogger("brain.factory")
 
 
 class HybridBrainRepo:
     """
-    Write path: SQLite BrainRepository (ingest stays stable).
+    Write path: SQLite BrainRepository (authoritative).
+    Optional dual-write: touched rows copied to Postgres after successful SQLite commit.
     Read/search path: Postgres+pgvector when BRAIN_STORE=postgres.
-    After ingest, run `brain sync-pg` to refresh Postgres.
     """
 
     def __init__(self, sqlite_repo: BrainRepository, pg_search=None):
         self.sqlite = sqlite_repo
         self.pg = pg_search
         self.conn = sqlite_repo.conn  # ingest expects .conn
+        self.last_dual_write: dict[str, Any] | None = None
+
+    def upsert_document(self, *args, **kwargs):
+        result = self.sqlite.upsert_document(*args, **kwargs)
+        doc_id = result.get("id") or kwargs.get("doc_id")
+        if doc_id and dual_write_enabled():
+            self.last_dual_write = sync_documents(self.conn, [doc_id])
+            if result.get("unchanged") is False or not result.get("unchanged"):
+                pass
+            if not self.last_dual_write.get("ok"):
+                logger.warning("dual-write document failed: %s", self.last_dual_write)
+            result = {**result, "dual_write": self.last_dual_write}
+        return result
+
+    def upsert_email_message(self, *args, **kwargs):
+        result = self.sqlite.upsert_email_message(*args, **kwargs)
+        email_id = result.get("id")
+        if email_id and dual_write_enabled() and result.get("created"):
+            self.last_dual_write = sync_email(self.conn, email_id)
+            if not self.last_dual_write.get("ok"):
+                logger.warning("dual-write email failed: %s", self.last_dual_write)
+            result = {**result, "dual_write": self.last_dual_write}
+        return result
+
+    def upsert_contact(self, *args, **kwargs):
+        contact_id = self.sqlite.upsert_contact(*args, **kwargs)
+        if contact_id and dual_write_enabled():
+            self.last_dual_write = sync_contact(self.conn, contact_id)
+            if not self.last_dual_write.get("ok"):
+                logger.warning("dual-write contact failed: %s", self.last_dual_write)
+        return contact_id
+
+    def upsert_file_asset(self, *args, **kwargs):
+        result = self.sqlite.upsert_file_asset(*args, **kwargs)
+        doc_id = None
+        if isinstance(result, dict):
+            idx = result.get("index") if isinstance(result.get("index"), dict) else {}
+            doc_id = idx.get("id") or (
+                f"doc-{result['id']}" if result.get("id") else None
+            )
+        if doc_id and dual_write_enabled() and not result.get("unchanged"):
+            self.last_dual_write = sync_documents(self.conn, [doc_id])
+            if isinstance(result, dict):
+                result = {**result, "dual_write": self.last_dual_write}
+        return result
 
     def __getattr__(self, name: str) -> Any:
         # Prefer PG for search/directory/stats when available
@@ -52,6 +106,8 @@ def get_brain_repo():
         pg_conn = connect_postgres()
         pg_search = PgSearchRepository(pg_conn)
         _repo_singleton = HybridBrainRepo(sqlite_repo, pg_search)
+        if dual_write_enabled():
+            logger.info("Second Brain dual-write SQLite→Postgres enabled")
     else:
         _repo_singleton = sqlite_repo
     return _repo_singleton

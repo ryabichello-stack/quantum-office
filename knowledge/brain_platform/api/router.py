@@ -263,6 +263,16 @@ def brain_ingest_run(
         results["embed_backfill"] = repo.backfill_embeddings(
             tenant_id=tenant, limit=req.embed_backfill, only_missing=True
         )
+    # Keep Postgres search index fresh when dual-write may have gaps / batch jobs
+    if (os.getenv("BRAIN_DATABASE_URL") or "").strip():
+        try:
+            from brain_platform.db.connection import default_db_path
+            from brain_platform.db.migrate_sqlite_to_pg import migrate
+            from brain_platform.db.pg import database_url
+
+            results["sync_pg"] = migrate(str(default_db_path()), database_url(), truncate=True)
+        except Exception as exc:  # noqa: BLE001
+            results["sync_pg"] = {"ok": False, "error": str(exc)}
     return {"ok": True, "results": results, "stats": repo.stats(tenant)}
 
 

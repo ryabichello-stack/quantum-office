@@ -53,6 +53,14 @@ set +a
 export BRAIN_VAULT_PATH="$DEST/vault/quantum-brain"
 
 "$PY" -m brain_platform ingest --sources vault
+"$PY" -m brain_platform export-monolith \
+  --out "$DEST/content/quantum_labs.md" || true
+# Keep AVA live path in sync when present (generated artifact)
+if [ -d /root/ava/config/knowledge ]; then
+  "$PY" -m brain_platform export-monolith \
+    --out /root/ava/config/knowledge/quantum_labs.md || true
+fi
+curl -sf -X POST "http://127.0.0.1:8017/api/knowledge/reload" >/dev/null || true
 "$PY" -m brain_platform embed-backfill --limit 800 || true
 "$PY" -m brain_platform graph rebuild || true
 "$PY" -m brain_platform sync-pg || true

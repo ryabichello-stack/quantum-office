@@ -276,11 +276,13 @@ Meetings/CRM    ┘     + publish pipeline  ├──►  Graph (entities/edges)
 **Готово на `5.35.86.62`:**
 - **B1–B3 / S1:** Postgres 16 + pgvector; `BRAIN_STORE=postgres`; hybrid FTS+vector; sync-pg.
 - **B4 lite:** zone guards (mail/PII never public); PG schemas/views `brain_public` / `brain_private`.
-- **G1–G3:** GraphStore + rebuild/expand; graph-in-retrieve (`BRAIN_GRAPH_IN_RETRIEVE`); text-bot `expand_office_graph`.
-- **S2–S3:** citations на matches; `brain eval` + `eval/cases.yaml`.
-- **V1–V3:** vault shards + frontmatter validate + `brain publish-bundle` / `apply_publish_bundle.sh`.
-- **A2:** Cursor MCP (`kb.search|get|related|ingest_status|find_contact|list_threads`).
+- **G1–G3:** GraphStore + rebuild/expand; graph-in-retrieve; text-bot `expand_office_graph`.
+- **S2–S3:** citations; `brain eval`.
+- **V1–V4 lite:** vault shards + publish bundle + `export-monolith` → generated `quantum_labs.md`.
+- **A2:** Cursor MCP tools.
+- **Dual-write:** `BRAIN_DUAL_WRITE` copies touched SQLite rows → Postgres on ingest.
+- **A3 prep:** `KNOWLEDGE_READ_MODE=legacy|dual_compare` + `/api/knowledge/compare` (voice text stays legacy).
 
-**Дальше:** A3 voice switch (approval), полный write-store на Postgres, private `quantum-brain` GitHub repo.
+**Дальше:** A3 voice cutover (нужен явный OK), private GitHub `quantum-brain`, Postgres-only writes.
 
-Нужно от вас: OK на voice switch когда eval стабильно зелёный; создать private repo `quantum-brain`.
+Нужно от вас: OK на voice switch; создать private repo `quantum-brain`.
