@@ -1,4 +1,4 @@
-"""Load Quantum Labs secretary prompt from AVA config."""
+"""Load Quantum Labs secretary prompt (channel-agnostic + per-channel overlay)."""
 
 from __future__ import annotations
 
@@ -6,57 +6,83 @@ from pathlib import Path
 
 import yaml
 
-TEXT_CHANNEL_OVERLAY = """
+SECRETARY_CORE = """
 ----------------------------------------
-КАНАЛ: TELEGRAM (ТЕКСТ) — Quantum Labs Office Bot
+РОЛЬ: ИИ-СЕКРЕТАРЬ QUANTUM LABS (OFFICE)
 ----------------------------------------
 
-Ты ИИ-секретарь офиса Quantum Labs в Telegram.
+Ты персональный/офисный секретарь Quantum Labs. Ведёшь диалог в ЛЮБОМ канале:
+Telegram, HTTP API, веб-чат, Bitrix и т.д. Стиль — деловой, короткий, по делу.
 
 Умеешь через инструменты:
 1) База знаний компании (get_company_knowledge)
 2) Календарь: проверить слот / предложить время / создать встречу (+ Телемост)
 3) Срочно создать конференцию Телемост и разослать приглашения на email
-4) Отправить файл (локальный/репозиторий/Я.Диск/Mail.ru) на email или в этот Telegram-чат
+4) Отправить файл (local/repo/Я.Диск/Mail.ru) на email или в Telegram
 
-Правила канала:
-- Пользователь пишет в Telegram, не звонит. Не говори «вы позвонили».
-- Отвечай коротко (1–4 абзаца), удобно для чата.
+Правила:
+- Это текстовый диалог, не телефонный звонок. Не говори «вы позвонили».
+- Держи контекст текущей сессии.
 - Email проси текстом и подтверждай.
 - Не вызывай hangup_call.
-- После записи на созвон присылай ссылку Телемост текстом, если она есть в ответе инструмента.
-- Для «скинь мне файл сюда» используй send_file via=telegram, to=me (подставится текущий chat_id).
-- Презентацию по умолчанию бери source=local, path=quantum_payouts_presentation_small.pdf
-- Помни контекст переписки в этом чате.
+- После записи на созвон присылай ссылку Телемост, если она есть в ответе инструмента.
+- Презентацию по умолчанию: source=local, path=quantum_payouts_presentation_small.pdf
 """
 
 
+def channel_overlay(channel: str) -> str:
+    ch = (channel or "api").strip().lower()
+    if ch == "telegram":
+        return (
+            "КАНАЛ: Telegram (@Quantum_office_bot).\n"
+            "Отвечай коротко для чата (1–4 абзаца).\n"
+            "Если просят «скинь сюда/мне в телегу» — send_file via=telegram, to=me."
+        )
+    if ch in ("bitrix", "b24"):
+        return (
+            "КАНАЛ: Bitrix24 чат/открытая линия.\n"
+            "Отвечай кратко, без markdown-таблиц если мешают."
+        )
+    if ch in ("web", "widget"):
+        return "КАНАЛ: веб-чат на сайте. Отвечай ясно и дружелюбно."
+    return (
+        f"КАНАЛ: {ch} (универсальный API).\n"
+        "Отвечай как секретарь офиса; при необходимости уточняй канал доставки файлов (email/telegram)."
+    )
+
+
 def load_system_prompt(config_path: Path) -> str:
-    raw = config_path.read_text(encoding="utf-8")
-    data = yaml.safe_load(raw) or {}
-    ctx = (data.get("contexts") or {}).get("default") or {}
-    voice_prompt = str(ctx.get("prompt") or "").strip()
-    if not voice_prompt:
-        raise ValueError(f"empty prompt in {config_path}")
-    return f"{voice_prompt.strip()}\n{TEXT_CHANNEL_OVERLAY.strip()}\n"
+    voice_prompt = ""
+    try:
+        raw = config_path.read_text(encoding="utf-8")
+        data = yaml.safe_load(raw) or {}
+        ctx = (data.get("contexts") or {}).get("default") or {}
+        voice_prompt = str(ctx.get("prompt") or "").strip()
+    except Exception:
+        voice_prompt = ""
+    parts = [SECRETARY_CORE.strip()]
+    if voice_prompt:
+        parts.append("----------------------------------------\nКОНТЕКСТ ИЗ AVA VOICE PROMPT\n----------------------------------------\n" + voice_prompt)
+    return "\n\n".join(parts) + "\n"
 
 
 def greeting_text(config_path: Path) -> str:
-    raw = config_path.read_text(encoding="utf-8")
-    data = yaml.safe_load(raw) or {}
-    ctx = (data.get("contexts") or {}).get("default") or {}
-    g = str(ctx.get("greeting") or "").strip()
+    g = ""
+    try:
+        raw = config_path.read_text(encoding="utf-8")
+        data = yaml.safe_load(raw) or {}
+        ctx = (data.get("contexts") or {}).get("default") or {}
+        g = str(ctx.get("greeting") or "").strip()
+    except Exception:
+        g = ""
     if not g:
         return (
             "Здравствуйте! Я ИИ-секретарь Quantum Labs.\n"
-            "Могу записать на встречу, создать Телемост, ответить по продукту "
-            "и отправить файлы на почту или сюда в Telegram.\n"
+            "Могу вести диалог здесь и в других каналах: записать на встречу, "
+            "создать Телемост, ответить по продукту и отправить файлы.\n"
             "Чем помочь?"
         )
-    g = g.replace("Вы позвонили", "Вы написали").replace("позвонили", "написали")
-    if "Телемост" not in g and "файл" not in g.lower():
-        g += (
-            "\n\nТакже могу срочно создать Телемост с приглашениями "
-            "и отправить нужные файлы на почту или в этот чат."
-        )
+    g = g.replace("Вы позвонили", "Здравствуйте").replace("позвонили", "написали")
+    if "секретар" not in g.lower():
+        g = "Я ИИ-секретарь Quantum Labs.\n" + g
     return g

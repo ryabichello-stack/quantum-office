@@ -1,4 +1,4 @@
-"""SQLite conversation history per Telegram chat."""
+"""SQLite conversation history per session (channel:user_id)."""
 
 from __future__ import annotations
 

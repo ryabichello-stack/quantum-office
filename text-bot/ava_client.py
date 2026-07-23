@@ -163,6 +163,7 @@ def run_tool(
     *,
     mailer_base: Optional[str] = None,
     telegram_chat_id: Optional[str] = None,
+    channel: Optional[str] = None,
 ) -> str:
     mailer = (mailer_base or MAILER_BASE).rstrip("/")
     try:
@@ -239,6 +240,16 @@ def run_tool(
             to = str(arguments.get("to") or "").strip()
             if via in ("telegram", "tg") and (not to or to in ("me", "self", "этот чат")):
                 to = str(telegram_chat_id or "")
+            if via in ("telegram", "tg") and not to:
+                return json.dumps(
+                    {
+                        "ok": False,
+                        "error": "telegram_chat_missing",
+                        "message": "Нет telegram chat_id. Укажите to=chat_id или пишите из Telegram.",
+                        "channel": channel,
+                    },
+                    ensure_ascii=False,
+                )
             data = _post_json(
                 f"{FILES_BASE}/api/files/send",
                 {
