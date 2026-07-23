@@ -239,3 +239,19 @@ DROP TRIGGER IF EXISTS trg_chunks_tsv ON chunks;
 CREATE TRIGGER trg_chunks_tsv
   BEFORE INSERT OR UPDATE OF text ON chunks
   FOR EACH ROW EXECUTE FUNCTION chunks_tsv_trigger();
+
+-- B4 lite: logical schemas + zone views (physical split later; same tables for now)
+CREATE SCHEMA IF NOT EXISTS brain_public;
+CREATE SCHEMA IF NOT EXISTS brain_private;
+
+CREATE OR REPLACE VIEW brain_public.chunks AS
+  SELECT * FROM public.chunks WHERE index_zone = 'public';
+
+CREATE OR REPLACE VIEW brain_public.documents AS
+  SELECT * FROM public.documents WHERE index_zone = 'public';
+
+CREATE OR REPLACE VIEW brain_private.chunks AS
+  SELECT * FROM public.chunks WHERE index_zone IN ('private', 'secret');
+
+CREATE OR REPLACE VIEW brain_private.documents AS
+  SELECT * FROM public.documents WHERE index_zone IN ('private', 'secret');

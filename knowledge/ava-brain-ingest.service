@@ -7,7 +7,7 @@ Type=oneshot
 WorkingDirectory=/opt/ava-knowledge
 EnvironmentFile=-/opt/ava-knowledge/.env
 Environment=PYTHONPATH=/opt/ava-knowledge
-ExecStart=/bin/bash -lc '/opt/ava-knowledge/venv/bin/python -m brain_platform ingest --sources faq,files,mail --mail-limit 200 --file-limit 3000 && /opt/ava-knowledge/venv/bin/python -m brain_platform embed-backfill --limit 800 && /opt/ava-knowledge/venv/bin/python -m brain_platform sync-pg'
+ExecStart=/bin/bash -lc '/opt/ava-knowledge/venv/bin/python -m brain_platform ingest --sources faq,files,mail --mail-limit 200 --file-limit 3000 && /opt/ava-knowledge/venv/bin/python -m brain_platform embed-backfill --limit 800 && /opt/ava-knowledge/venv/bin/python -m brain_platform graph rebuild && /opt/ava-knowledge/venv/bin/python -m brain_platform sync-pg'
 User=root
 Nice=10
 

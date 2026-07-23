@@ -85,10 +85,11 @@ class PgSearchRepository:
                c.allowed_users_json::text AS allowed_users_json,
                c.allowed_groups_json::text AS allowed_groups_json,
                c.allowed_services_json::text AS allowed_services_json,
-               d.title, d.type, d.project_id,
+               d.title, d.type, d.project_id, d.source, e.thread_id,
                ts_rank(c.tsv, to_tsquery('simple', %s)) AS score
         FROM chunks c
         JOIN documents d ON d.id = c.document_id
+        LEFT JOIN emails e ON d.type = 'email' AND d.id = ('doc-' || e.id)
         WHERE c.tenant_id = %s
           AND c.index_zone = ANY(%s)
           AND d.status = 'active'
@@ -112,10 +113,11 @@ class PgSearchRepository:
                    c.allowed_users_json::text AS allowed_users_json,
                    c.allowed_groups_json::text AS allowed_groups_json,
                    c.allowed_services_json::text AS allowed_services_json,
-                   d.title, d.type, d.project_id,
+                   d.title, d.type, d.project_id, d.source, e.thread_id,
                    0.0 AS score
             FROM chunks c
             JOIN documents d ON d.id = c.document_id
+            LEFT JOIN emails e ON d.type = 'email' AND d.id = ('doc-' || e.id)
             WHERE c.tenant_id = %s
               AND c.index_zone = ANY(%s)
               AND d.status = 'active'
@@ -158,11 +160,12 @@ class PgSearchRepository:
         sql = f"""
         SELECT c.chunk_id, c.document_id, c.tenant_id, c.visibility, c.text,
                c.index_zone, c.channels_json::text AS channels_json,
-               d.title, d.type, d.project_id,
+               d.title, d.type, d.project_id, d.source, e.thread_id,
                1 - (c.embedding <=> %s::vector) AS score,
                1 - (c.embedding <=> %s::vector) AS vector_score
         FROM chunks c
         JOIN documents d ON d.id = c.document_id
+        LEFT JOIN emails e ON d.type = 'email' AND d.id = ('doc-' || e.id)
         WHERE c.tenant_id = %s
           AND c.index_zone = ANY(%s)
           AND d.status = 'active'

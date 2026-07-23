@@ -132,6 +132,28 @@ _BRAIN_OWNER_TOOLS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "expand_office_graph",
+            "description": (
+                "Граф Second Brain: кто с кем связан (человек↔компания↔треды). "
+                "Вызывай после find_office_contact или когда нужно понять окружение "
+                "контакта/компании (works_at, participant_of). "
+                "Передай имя человека или компании как сказал пользователь."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "q": {"type": "string", "description": "Имя человека или компании"},
+                    "entity_id": {"type": "string", "description": "ID сущности из прошлого ответа"},
+                    "depth": {"type": "integer", "description": "Глубина 1–2, по умолчанию 1"},
+                    "limit": {"type": "integer"},
+                },
+                "required": [],
+            },
+        },
+    },
 ]
 
 _OFFICE_TOOLS: list[dict[str, Any]] = [
@@ -778,6 +800,53 @@ def run_tool(
                 },
                 brain_principal="service:text-secretary",
             )
+            return json.dumps(data, ensure_ascii=False)
+
+        if name == "expand_office_graph":
+            if not is_owner:
+                return json.dumps(
+                    {"ok": False, "error": "forbidden", "message": "Только для владельца"},
+                    ensure_ascii=False,
+                )
+            data = _post_json(
+                f"{knowledge}/api/brain/graph/expand",
+                {
+                    "q": str(arguments.get("q") or ""),
+                    "entity_id": arguments.get("entity_id") or None,
+                    "depth": int(arguments.get("depth") or 1),
+                    "limit": int(arguments.get("limit") or 40),
+                },
+                brain_principal="service:text-secretary",
+            )
+            # Keep payload compact for the model
+            if isinstance(data, dict) and data.get("ok"):
+                slim = {
+                    "ok": True,
+                    "summary": data.get("summary"),
+                    "roots": data.get("roots") or [],
+                    "entities": [
+                        {
+                            "id": e.get("id"),
+                            "kind": e.get("kind"),
+                            "name": e.get("canonical_name"),
+                            "visibility": e.get("visibility"),
+                        }
+                        for e in (data.get("entities") or [])[:30]
+                    ],
+                    "edges": [
+                        {
+                            "from": e.get("source_entity_id"),
+                            "to": e.get("target_entity_id"),
+                            "rel": e.get("relation_type"),
+                        }
+                        for e in (data.get("edges") or [])[:40]
+                    ],
+                    "next_step_hint": (
+                        "Если видишь company/person — можешь найти контакт "
+                        "find_office_contact или письма search_office_memory."
+                    ),
+                }
+                return json.dumps(slim, ensure_ascii=False)
             return json.dumps(data, ensure_ascii=False)
 
         if name == "check_calendar":

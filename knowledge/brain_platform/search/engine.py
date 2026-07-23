@@ -23,6 +23,22 @@ logger = logging.getLogger("brain.search")
 DEFAULT_MODE = (os.getenv("BRAIN_SEARCH_MODE") or "hybrid").strip().lower()
 
 
+def format_citation(hit: dict[str, Any]) -> str:
+    """Human/machine citation string for a search match (S2)."""
+    dtype = hit.get("type") or "doc"
+    title = hit.get("title") or hit.get("document_id") or "untitled"
+    parts = [f"[{dtype}] {title}"]
+    if hit.get("source"):
+        parts.append(f"src={hit['source']}")
+    if hit.get("thread_id"):
+        parts.append(f"thread={hit['thread_id']}")
+    if hit.get("index_zone"):
+        parts.append(f"zone={hit['index_zone']}")
+    parts.append(f"doc={hit.get('document_id')}")
+    parts.append(f"chunk={hit.get('chunk_id')}")
+    return " | ".join(str(p) for p in parts if p)
+
+
 class BrainSearch:
     def __init__(self, repo: BrainRepository):
         self.repo = repo
@@ -137,15 +153,20 @@ class BrainSearch:
                     "title": title,
                     "type": h.get("type"),
                     "visibility": h.get("visibility"),
+                    "index_zone": h.get("index_zone"),
+                    "source": h.get("source"),
+                    "thread_id": h.get("thread_id"),
                     "score": h.get("score"),
                     "rrf_score": h.get("rrf_score"),
                     "vector_score": h.get("vector_score"),
                     "snippet": body[:1200],
+                    "citation": format_citation(h),
                 }
             )
 
         text = "\n\n".join(parts)
         request_id = str(uuid.uuid4())
+        citations = [m["citation"] for m in matches if m.get("citation")]
         audit = make_audit_record(
             principal=principal,
             query=query,
@@ -162,6 +183,7 @@ class BrainSearch:
             "text": text,
             "chars": len(text),
             "matches": matches,
+            "citations": citations,
             "request_id": request_id,
             "principal_id": principal.principal_id,
             "tenant_id": principal.tenant_id,

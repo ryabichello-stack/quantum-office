@@ -12,6 +12,7 @@ from typing import Any, Iterable
 
 from brain_platform.security.acl import ACLFilter, Principal, resolve_principal_policy
 from brain_platform.security.safety import decide_index_action, scan_document_text
+from brain_platform.security.zones import coerce_index_zone
 
 try:
     from brain_platform.embeddings import should_external_embed
@@ -85,6 +86,7 @@ class BrainRepository:
         chunk_overlap: int = 200,
         ai_processing: dict | None = None,
         embed: bool = True,
+        publication: dict | None = None,
     ) -> dict[str, Any]:
         report = scan_document_text(body)
         if decide_index_action(report) == "quarantine":
@@ -99,6 +101,14 @@ class BrainRepository:
         classification = classification or {"level": "internal"}
         channels = channels or []
         ai_processing = ai_processing or {}
+        publication = publication or {}
+        index_zone = coerce_index_zone(
+            doc_type=doc_type,
+            visibility=visibility,
+            index_zone=index_zone,
+            classification=classification,
+            publication=publication,
+        )
         now = _now()
         bh = body_hash(body)
 
@@ -161,13 +171,14 @@ class BrainRepository:
               publication_json, channels_json, ai_processing_json, status, version,
               acl_revision, source, project_id, body, body_hash, index_zone,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               title=excluded.title,
               type=excluded.type,
               visibility=excluded.visibility,
               acl_json=excluded.acl_json,
               classification_json=excluded.classification_json,
+              publication_json=excluded.publication_json,
               channels_json=excluded.channels_json,
               ai_processing_json=excluded.ai_processing_json,
               status=excluded.status,
@@ -188,6 +199,7 @@ class BrainRepository:
                 visibility,
                 _j(acl),
                 _j(classification),
+                _j(publication),
                 _j(channels),
                 _j(ai_processing),
                 status,
@@ -336,9 +348,11 @@ class BrainRepository:
         SELECT c.chunk_id, c.document_id, c.tenant_id, c.visibility, c.text,
                c.index_zone, c.channels_json, c.allowed_users_json, c.allowed_groups_json,
                c.allowed_services_json, c.embedding_json, d.title, d.type, d.project_id,
+               d.source, e.thread_id,
                0.0 AS score
         FROM chunks c
         JOIN documents d ON d.id = c.document_id
+        LEFT JOIN emails e ON d.type = 'email' AND d.id = ('doc-' || e.id)
         WHERE c.tenant_id = ?
           AND c.index_zone IN ({zone_placeholders})
           AND d.status = 'active'
@@ -475,10 +489,12 @@ class BrainRepository:
         SELECT c.chunk_id, c.document_id, c.tenant_id, c.visibility, c.text,
                c.index_zone, c.channels_json, c.allowed_users_json, c.allowed_groups_json,
                c.allowed_services_json, d.title, d.type, d.project_id,
+               d.source, e.thread_id,
                bm25(chunks_fts) AS score
         FROM chunks_fts
         JOIN chunks c ON c.chunk_id = chunks_fts.chunk_id
         JOIN documents d ON d.id = c.document_id
+        LEFT JOIN emails e ON d.type = 'email' AND d.id = ('doc-' || e.id)
         WHERE chunks_fts MATCH ?
           AND c.tenant_id = ?
           AND c.index_zone IN ({zone_placeholders})
@@ -498,9 +514,11 @@ class BrainRepository:
             SELECT c.chunk_id, c.document_id, c.tenant_id, c.visibility, c.text,
                    c.index_zone, c.channels_json, c.allowed_users_json, c.allowed_groups_json,
                    c.allowed_services_json, d.title, d.type, d.project_id,
+                   d.source, e.thread_id,
                    0.0 AS score
             FROM chunks c
             JOIN documents d ON d.id = c.document_id
+            LEFT JOIN emails e ON d.type = 'email' AND d.id = ('doc-' || e.id)
             WHERE c.tenant_id = ?
               AND c.index_zone IN ({zone_placeholders})
               AND d.status = 'active'

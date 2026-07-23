@@ -273,12 +273,13 @@ Meetings/CRM    ┘     + publish pipeline  ├──►  Graph (entities/edges)
 
 ## 10. Статус cutover (2026-07-23)
 
-**B1–B3 / S1 в работе на `5.35.86.62`:**
-- Postgres 16 + pgvector + `quantum_brain` / `brain_app` — подняты.
-- Схема `schema_postgres.sql` + CLI `init-pg` / `sync-pg`.
-- Write path остаётся SQLite ingest; search/read → Postgres при `BRAIN_STORE=postgres`.
-- Timer: ingest → embed-backfill → `sync-pg`.
+**Готово на `5.35.86.62`:**
+- **B1–B3 / S1:** Postgres 16 + pgvector; `BRAIN_STORE=postgres`; hybrid FTS+vector; sync-pg.
+- **B4 lite:** zone guards (mail/PII never public); PG schemas/views `brain_public` / `brain_private`.
+- **G1–G2:** GraphStore + `brain graph rebuild|expand`; API `/api/brain/graph/*`; text-bot `expand_office_graph`.
+- **S2:** `citation` / `citations[]` / `source` / `thread_id` в search matches.
+- **V1 scaffold:** `knowledge/vault/quantum-brain/` (private repo wiring later).
 
-**Дальше:** B4 physical zones, vault `quantum-brain`, GraphStore API, voice switch (approval).
+**Дальше:** G3 graph-in-retrieve, S3 eval harness, V2 shard monolith, A2 MCP, A3 voice switch (approval).
 
-Нужно от вас только: OK на switch voice/text когда eval готов; private vault repo.
+Нужно от вас: private repo `quantum-brain` + OK на voice switch когда eval готов.

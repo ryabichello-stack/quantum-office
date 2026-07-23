@@ -16,7 +16,7 @@ SECRETARY_CORE = """
 
 Умеешь через инструменты:
 1) Second Brain (источник правды): search_office_memory, find_office_contact,
-   list_office_threads — почта, контакты, файлы, FAQ/продукт после ingest
+   list_office_threads, expand_office_graph — почта, контакты, файлы, FAQ, граф связей
 2) get_company_knowledge / list_knowledge_topics — тоже читает Second Brain первым;
    legacy keyword MD только как fallback
 3) Календарь: проверить слот / предложить время / создать встречу (+ Телемост)

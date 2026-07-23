@@ -20,6 +20,7 @@ TABLES_ORDER = [
     "emails",
     "files",
     "entities",
+    "entity_aliases",
     "edges",
     "audit_log",
     "ingest_state",
@@ -344,6 +345,18 @@ def migrate(sqlite_path: str, pg_dsn: str, *, truncate: bool = True) -> dict[str
                 ON CONFLICT DO NOTHING
                 """,
                 {**r, "metadata_json": r.get("metadata_json") or "{}"},
+            )
+        for r in _sqlite_rows(sq, "entity_aliases"):
+            cur.execute(
+                """
+                INSERT INTO entity_aliases (id, tenant_id, entity_id, alias, alias_type)
+                VALUES (%(id)s, %(tenant_id)s, %(entity_id)s, %(alias)s, %(alias_type)s)
+                ON CONFLICT DO NOTHING
+                """,
+                {
+                    **r,
+                    "alias_type": r.get("alias_type") or "name",
+                },
             )
         for r in _sqlite_rows(sq, "edges"):
             cur.execute(

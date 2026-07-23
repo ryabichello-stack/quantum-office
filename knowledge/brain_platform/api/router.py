@@ -68,6 +68,18 @@ class IngestRequest(BaseModel):
     tenant_id: Optional[str] = None
 
 
+class GraphExpandRequest(BaseModel):
+    q: str = ""
+    entity_id: Optional[str] = None
+    depth: int = Field(default=1, ge=1, le=2)
+    limit: int = Field(default=40, ge=1, le=100)
+    tenant_id: Optional[str] = None
+
+
+class GraphRebuildRequest(BaseModel):
+    tenant_id: Optional[str] = None
+
+
 def _principal(
     x_principal_id: Optional[str],
     x_tenant_id: Optional[str],
@@ -226,3 +238,74 @@ def brain_ingest_status(
         "stats": repo.stats(DEFAULT_TENANT),
         "imap_configured": imap_configured(),
     }
+
+
+@router.post("/graph/expand")
+def brain_graph_expand(
+    req: GraphExpandRequest,
+    x_principal_id: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
+    x_groups: Optional[str] = Header(None),
+    x_user_id: Optional[str] = Header(None),
+    x_admin: Optional[str] = Header(None),
+):
+    require_brain_enabled()
+    principal = _principal(
+        x_principal_id, x_tenant_id, x_groups, x_user_id, x_admin, req.tenant_id
+    )
+    from brain_platform.graph.store import GraphStore
+
+    # Graph writes/reads live on SQLite (sync-pg copies to Postgres)
+    sqlite_repo = get_repo()
+    conn = getattr(sqlite_repo, "sqlite", sqlite_repo).conn if hasattr(sqlite_repo, "sqlite") else sqlite_repo.conn
+    return GraphStore(conn).expand(
+        principal,
+        entity_id=req.entity_id,
+        q=req.q,
+        depth=req.depth,
+        limit=req.limit,
+    )
+
+
+@router.post("/graph/rebuild")
+def brain_graph_rebuild(
+    req: GraphRebuildRequest,
+    x_principal_id: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
+    x_groups: Optional[str] = Header(None),
+    x_user_id: Optional[str] = Header(None),
+    x_admin: Optional[str] = Header(None),
+):
+    require_brain_enabled()
+    principal = _principal(
+        x_principal_id, x_tenant_id, x_groups, x_user_id, x_admin, req.tenant_id
+    )
+    allow_unauth_local = os.getenv("BRAIN_ALLOW_LOCAL_INGEST", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if not (
+        (principal.principal_id == "service:cursor-admin" and principal.is_admin)
+        or allow_unauth_local
+    ):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=403, detail="graph_rebuild_forbidden")
+
+    from brain_platform.graph.rebuild import rebuild_graph_from_corpus
+
+    repo = get_repo()
+    sqlite_repo = getattr(repo, "sqlite", repo)
+    out = rebuild_graph_from_corpus(sqlite_repo, tenant_id=principal.tenant_id)
+    # refresh Postgres graph copy when configured
+    if (os.getenv("BRAIN_DATABASE_URL") or "").strip():
+        try:
+            from brain_platform.db.connection import default_db_path
+            from brain_platform.db.migrate_sqlite_to_pg import migrate
+            from brain_platform.db.pg import database_url
+
+            out["sync_pg"] = migrate(str(default_db_path()), database_url(), truncate=True)
+        except Exception as exc:  # noqa: BLE001
+            out["sync_pg"] = {"ok": False, "error": str(exc)}
+    return {"ok": True, "graph": out}

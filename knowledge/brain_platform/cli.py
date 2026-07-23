@@ -68,6 +68,19 @@ def main(argv: list[str] | None = None) -> int:
     p_stats = sub.add_parser("stats")
     p_stats.add_argument("--tenant", default=os.getenv("BRAIN_TENANT_ID", "quantum-labs"))
 
+    p_graph = sub.add_parser("graph", help="Knowledge graph commands")
+    gsub = p_graph.add_subparsers(dest="graph_cmd", required=True)
+    p_gexp = gsub.add_parser("expand", help="Expand entity neighborhood")
+    p_gexp.add_argument("query", nargs="?", default="", help="Entity name query")
+    p_gexp.add_argument("--entity-id", default=None)
+    p_gexp.add_argument("--depth", type=int, default=1)
+    p_gexp.add_argument("--limit", type=int, default=40)
+    p_gexp.add_argument("--principal", default="service:cursor-admin")
+    p_gexp.add_argument("--tenant", default=os.getenv("BRAIN_TENANT_ID", "quantum-labs"))
+    p_gexp.add_argument("--admin", action="store_true")
+    p_greb = gsub.add_parser("rebuild", help="Rebuild graph from contacts/threads")
+    p_greb.add_argument("--tenant", default=os.getenv("BRAIN_TENANT_ID", "quantum-labs"))
+
     args = parser.parse_args(argv)
     conn = init_db()
     repo = BrainRepository(conn)
@@ -168,6 +181,42 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "stats":
         print(json.dumps(repo.stats(args.tenant), indent=2))
         return 0
+
+    if args.cmd == "graph":
+        from brain_platform.graph.rebuild import rebuild_graph_from_corpus
+        from brain_platform.graph.store import GraphStore
+
+        if args.graph_cmd == "rebuild":
+            out = rebuild_graph_from_corpus(repo, tenant_id=args.tenant)
+            if (os.getenv("BRAIN_DATABASE_URL") or "").strip():
+                try:
+                    from brain_platform.db.connection import default_db_path
+                    from brain_platform.db.migrate_sqlite_to_pg import migrate
+                    from brain_platform.db.pg import database_url
+
+                    out["sync_pg"] = migrate(str(default_db_path()), database_url(), truncate=True)
+                except Exception as exc:  # noqa: BLE001
+                    out["sync_pg"] = {"ok": False, "error": str(exc)}
+            print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
+            return 0 if out.get("ok") else 1
+
+        if args.graph_cmd == "expand":
+            principal = Principal(
+                principal_id=args.principal,
+                tenant_id=args.tenant,
+                groups=(),
+                is_admin=args.admin or args.principal == "service:cursor-admin",
+                user_id="cli" if args.admin or args.principal == "service:cursor-admin" else None,
+            )
+            out = GraphStore(conn).expand(
+                principal,
+                entity_id=args.entity_id,
+                q=args.query,
+                depth=args.depth,
+                limit=args.limit,
+            )
+            print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
+            return 0
 
     return 1
 

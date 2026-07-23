@@ -167,6 +167,18 @@ CREATE TABLE IF NOT EXISTS entities (
   updated_at TEXT NOT NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_entities_tenant_kind ON entities(tenant_id, kind);
+CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(tenant_id, canonical_name);
+
+CREATE TABLE IF NOT EXISTS entity_aliases (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  alias TEXT NOT NULL,
+  alias_type TEXT NOT NULL DEFAULT 'name',
+  UNIQUE (tenant_id, alias, alias_type)
+);
+
 CREATE TABLE IF NOT EXISTS edges (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
