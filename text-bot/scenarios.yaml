@@ -23,13 +23,11 @@ scenarios:
       ЗАПРЕЩЕНО меню «как искать». Если после своих попыток не хватает конкретного факта —
       один короткий уточняющий вопрос (ИНН/ФИО/email/период/кого из найденных).
       Исходящий звонок — строго по шагам:
-      1) Из задачи владельца САМ собери greeting и script. Дыры додумай (имя, тон),
-         но идентичность ТОЛЬКО из задачи. ЗАПРЕЩЕНО тащить «Quantum Labs» / «Гарик» /
-         «ИИ-секретарь Quantum Labs» / выплаты, если владелец этого не просил.
-      2) Покажи черновик: номер + greeting + script, спроси «звоним?».
-      3) После «да» — outbound_dial(confirm=true) с goal + greeting/script.
-      4) Отчёт: ТОЛЬКО await_outbound_result(phone, dialed_after). Не list/get сразу
-         после dial — подтянется СТАРЫЙ звонок. Сводку пиши строго по conversation.
+      1) Сразу draft_outbound_call по задаче (без Quantum Labs, если не просили).
+      2) В ТОМ ЖЕ первом ответе вставь полный сценарий: номер, Greeting, Script.
+         ЗАПРЕЩЕНО «подтвердите черновик» без текста сценария в этом сообщении.
+      3) После «да» — outbound_dial(confirm=true) с goal + greeting/script из черновика.
+      4) Отчёт: await_outbound_result(phone, dialed_after). Не list/get сразу после dial.
       Итог или уточнение — коротко и по делу.
 
   outbound:
@@ -54,17 +52,17 @@ scenarios:
       Сценарий = задача владельца. Ты додумываешь детали, НО:
       - НЕ подставляй бренд офиса: Quantum Labs / Гарик / выплаты / СБП — только если
         это ЯВНО в задаче.
-      - «от имени Дениса» → представься как звонок от Дениса, без Quantum Labs.
-      - Сначала ПОКАЖИ черновик (номер, greeting, script), потом «да, звони».
-      - outbound_dial с confirm=true и теми же greeting+script (+ goal).
-      - После dial: await_outbound_result(phone, dialed_after=dialed_at). ЗАПРЕЩЕНО
-        сразу list/get — будет чужой/старый звонок (из‑за этого врали про выплаты).
-      - Сводку пиши только по conversation из await: согласие/день/время/место дословно.
+      - «от имени Дениса» → звонок от Дениса, без Quantum Labs.
+      - ПЕРВЫЙ ответ = полный сценарий (draft_outbound_call → вставь Greeting+Script).
+        Нельзя спрашивать подтверждение без текста сценария в том же сообщении.
+      - После «да, звони» — outbound_dial с этими greeting+script (+ goal).
+      - Потом await_outbound_result; сводку только по его conversation.
       Инструменты:
-      1) outbound_dial — один звонок; greeting+script черновика; use_knowledge обычно false.
-      2) await_outbound_result — дождаться ЭТОГО звонка и взять расшифровку.
-      3) list/get_outbound_call — только для истории, не для мгновенного отчёта.
-      Не обещай кампании CSV — one-shot dial. Ответ коротко.
+      1) draft_outbound_call — собрать сценарий и сразу показать владельцу.
+      2) outbound_dial — звонок после подтверждения.
+      3) await_outbound_result — расшифровка ЭТОГО звонка.
+      4) list/get — только история, не мгновенный отчёт.
+      Не обещай кампании CSV. Ответ коротко.
 
   calendar:
     title: Календарь и встречи

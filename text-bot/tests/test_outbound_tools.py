@@ -27,8 +27,32 @@ def test_outbound_tools_owner_only(monkeypatch):
     names = {t["function"]["name"] for t in ac.tools_for_role("owner")}
     assert "outbound_dial" in names
     assert "await_outbound_result" in names
+    assert "draft_outbound_call" in names
     guest = {t["function"]["name"] for t in ac.tools_for_role("guest")}
     assert "outbound_dial" not in guest
+
+
+def test_draft_outbound_call_shows_full_scenario():
+    out = json.loads(
+        ac.run_tool(
+            "draft_outbound_call",
+            {
+                "phone": "+7 (931) 103-13-71",
+                "goal": "зовут Света пригласи на свидание от имени Дениса",
+                "callee_name": "Света",
+                "on_behalf_of": "Дениса",
+            },
+            role="owner",
+        )
+    )
+    assert out["ok"] is True
+    assert out["phone"] == "79311031371"
+    assert "Quantum" not in (out["greeting"] or "")
+    assert "Денис" in (out["greeting"] or "")
+    assert "Света" in (out["greeting"] or "")
+    assert "Greeting:" in out["owner_message"]
+    assert "Script:" in out["owner_message"]
+    assert "да, звони" in out["owner_message"]
 
 
 def test_await_outbound_result_matches_phone(monkeypatch):

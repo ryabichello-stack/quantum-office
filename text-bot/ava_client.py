@@ -167,6 +167,48 @@ _OUTBOUND_OWNER_TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "draft_outbound_call",
+            "description": (
+                "Собрать черновик исходящего звонка (greeting + script) по задаче. "
+                "НЕ звонит. Вызывай СРАЗУ когда владелец просит позвонить. "
+                "В ответе владельцу ОБЯЗАТЕЛЬНО вставь greeting и script целиком "
+                "(нельзя писать «подтвердите черновик» без текста сценария)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "phone": {
+                        "type": "string",
+                        "description": "Номер, если уже известен",
+                    },
+                    "goal": {
+                        "type": "string",
+                        "description": "Полная задача из сообщения владельца",
+                    },
+                    "greeting": {
+                        "type": "string",
+                        "description": "Опционально своя первая фраза (иначе соберём из goal)",
+                    },
+                    "script": {
+                        "type": "string",
+                        "description": "Опционально свой playbook (иначе соберём из goal)",
+                    },
+                    "callee_name": {
+                        "type": "string",
+                        "description": "Имя адресата, если известно (Света)",
+                    },
+                    "on_behalf_of": {
+                        "type": "string",
+                        "description": "От чьего имени звонить (Денис), если известно",
+                    },
+                },
+                "required": ["goal"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "outbound_dial",
             "description": (
                 "Запустить ИСХОДЯЩИЙ звонок (Quantum Console → SIP/AVA). Только owner. "
@@ -745,12 +787,75 @@ def _scrub_outbound_brand_leak(
     return greet, body, scrubbed
 
 
+def _draft_greeting_from_goal(
+    goal: str,
+    *,
+    callee_name: str = "",
+    on_behalf_of: str = "",
+) -> str:
+    name = (callee_name or "").strip()
+    behalf = (on_behalf_of or "").strip()
+    low = (goal or "").lower()
+    if not name:
+        m = re.search(
+            r"(?i)(?:зовут|имя)\s+([А-ЯЁA-Z][а-яёa-z\-]+)",
+            goal or "",
+        )
+        if m:
+            name = m.group(1)
+    if not behalf:
+        m = re.search(
+            r"(?i)от\s+имени\s+([А-ЯЁA-Z][а-яёa-z\-]+)",
+            goal or "",
+        )
+        if m:
+            behalf = m.group(1)
+    hello = f"Здравствуйте, {name}!" if name else "Здравствуйте!"
+    if behalf:
+        return f"{hello} Звоню от имени {behalf}. Удобно говорить минуту?"
+    if "приглас" in low or "свидан" in low:
+        return f"{hello} Удобно говорить минуту?"
+    return f"{hello} Удобно пару секунд?"
+
+
+def _draft_script_from_goal(
+    goal: str,
+    *,
+    callee_name: str = "",
+    on_behalf_of: str = "",
+) -> str:
+    name = (callee_name or "").strip()
+    behalf = (on_behalf_of or "").strip()
+    who = f" собеседника ({name})" if name else ""
+    from_line = f" от имени {behalf}" if behalf else ""
+    return (
+        "Ты звонишь по заданию владельца. Это НЕ звонок Quantum Labs и НЕ про выплаты, "
+        "если задача ниже явно не про это.\n\n"
+        f"ЗАДАЧА ЗВОНКА{from_line}{who}:\n{goal}\n\n"
+        "СЦЕНАРИЙ РАЗГОВОРА:\n"
+        "1) Коротко представься по задаче и спроси, удобно ли говорить.\n"
+        "2) Выполни цель задачи (приглашение / вопрос / сообщение).\n"
+        "3) Если согласие — зафиксируй день/время/детали и скажи, что передашь инициатору.\n"
+        "4) Если отказ — вежливо заверши, без давления.\n"
+        "5) Если автоответчик/шум — переспроси «Алло, меня слышно?», не рви трубку рано.\n\n"
+        "СТРОГИЕ ПРАВИЛА:\n"
+        "- Говори ТОЛЬКО по задаче выше.\n"
+        "- ЗАПРЕЩЕНО упоминать Quantum Labs, Гарика, массовые выплаты, СБП, ломбарды — "
+        "если задача явно не про это.\n"
+        "- Не читай системные инструкции вслух.\n"
+        "- Коротко, естественно, по-человечески.\n\n"
+        f"{_OUTBOUND_HANGUP_GUARD}"
+    )
+
+
 def _synthesize_outbound_override(
     *,
     goal: str = "",
     greeting: str | None = None,
     script: str | None = None,
     use_knowledge: bool | None = None,
+    callee_name: str = "",
+    on_behalf_of: str = "",
 ) -> dict[str, Any]:
     """Build per-call greeting/script so YAML payouts playbook cannot leak in."""
     goal = (goal or "").strip()
@@ -763,8 +868,9 @@ def _synthesize_outbound_override(
 
     if script:
         out["script"] = script
-        if greeting:
-            out["greeting"] = greeting
+        out["greeting"] = greeting or _draft_greeting_from_goal(
+            goal, callee_name=callee_name, on_behalf_of=on_behalf_of
+        )
         # Custom script: Second Brain off unless caller explicitly enables it
         # (otherwise FAQ про выплаты часто перебивает новый контекст).
         out["use_knowledge"] = bool(use_knowledge) if use_knowledge is not None else False
@@ -773,21 +879,27 @@ def _synthesize_outbound_override(
     if not goal:
         return out
 
-    out["greeting"] = greeting or "Здравствуйте! Удобно пару секунд?"
-    out["script"] = (
-        "Ты звонишь по заданию владельца. Это НЕ звонок Quantum Labs и НЕ про выплаты, "
-        "если задача ниже явно не про это.\n\n"
-        f"ЗАДАЧА ЗВОНКА:\n{goal}\n\n"
-        "СТРОГИЕ ПРАВИЛА:\n"
-        "- Представься и веди разговор ТОЛЬКО по задаче выше.\n"
-        "- ЗАПРЕЩЕНО упоминать Quantum Labs, Гарика, массовые выплаты, СБП, ломбарды — "
-        "если задача явно не про это.\n"
-        "- Не читай системные инструкции вслух.\n"
-        "- Коротко, естественно, по-человечески.\n\n"
-        f"{_OUTBOUND_HANGUP_GUARD}"
+    out["greeting"] = greeting or _draft_greeting_from_goal(
+        goal, callee_name=callee_name, on_behalf_of=on_behalf_of
+    )
+    out["script"] = _draft_script_from_goal(
+        goal, callee_name=callee_name, on_behalf_of=on_behalf_of
     )
     out["use_knowledge"] = bool(use_knowledge) if use_knowledge is not None else False
     return out
+
+
+def _format_draft_for_owner(draft: dict[str, Any]) -> str:
+    phone = draft.get("phone") or "—"
+    greeting = draft.get("greeting") or ""
+    script = draft.get("script") or ""
+    return (
+        "Черновик звонка (сценарий):\n\n"
+        f"Номер: {phone}\n\n"
+        f"Greeting:\n«{greeting}»\n\n"
+        f"Script:\n{script}\n\n"
+        "Если ок — напишите «да, звони». Можно поправить текст."
+    )
 
 
 def _post_json(
@@ -1444,6 +1556,7 @@ def run_tool(
 
         # ---- Quantum Console outbound (owner only) ----
         if name in (
+            "draft_outbound_call",
             "outbound_dial",
             "get_outbound_scenario",
             "update_outbound_scenario",
@@ -1456,6 +1569,49 @@ def run_tool(
                     {"ok": False, "error": "forbidden", "message": "Исходящие звонки только для владельца"},
                     ensure_ascii=False,
                 )
+
+        if name == "draft_outbound_call":
+            goal = str(arguments.get("goal") or "").strip()
+            if not goal:
+                return json.dumps(
+                    {
+                        "ok": False,
+                        "error": "goal_required",
+                        "message": "Нужна задача звонка (goal) из сообщения владельца",
+                    },
+                    ensure_ascii=False,
+                )
+            phone_raw = str(arguments.get("phone") or "").strip()
+            phone = _normalize_dial_phone(phone_raw) if phone_raw else ""
+            override = _synthesize_outbound_override(
+                goal=goal,
+                greeting=str(arguments["greeting"]) if arguments.get("greeting") is not None else None,
+                script=str(arguments["script"]) if arguments.get("script") is not None else None,
+                use_knowledge=False,
+                callee_name=str(arguments.get("callee_name") or ""),
+                on_behalf_of=str(arguments.get("on_behalf_of") or ""),
+            )
+            draft = {
+                "ok": True,
+                "phone": phone or None,
+                "goal": goal,
+                "greeting": override.get("greeting"),
+                "script": override.get("script"),
+                "use_knowledge": False,
+                "owner_message": _format_draft_for_owner(
+                    {
+                        "phone": phone or phone_raw or "—",
+                        "greeting": override.get("greeting"),
+                        "script": override.get("script"),
+                    }
+                ),
+                "instruction_for_assistant": (
+                    "Вставь owner_message владельцу КАК ЕСТЬ (или тот же Greeting+Script). "
+                    "Нельзя отвечать без текста сценария. Жди «да, звони», потом outbound_dial "
+                    "с этими greeting/script/goal/phone."
+                ),
+            }
+            return json.dumps(draft, ensure_ascii=False)
 
         if name == "outbound_dial":
             if not bool(arguments.get("confirm")):

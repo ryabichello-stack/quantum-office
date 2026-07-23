@@ -5,10 +5,10 @@
 ## Цепочка
 
 1. Владелец в Telegram: «позвони 7900…, задача: …»
-2. Бот **сам** собирает `greeting` + `script` по задаче (додумывает пробелы) и **показывает черновик**
+2. Бот сразу `draft_outbound_call` и в **первом** ответе показывает полный сценарий (Greeting+Script)
 3. После «да, звони» → `outbound_dial` с этими полями
-4. Quantum Console пишет per-call JSON → AVA `provider_overrides` (без рестарта)
-5. Расшифровка: `list/get_outbound_call`
+4. `await_outbound_result` → сводка только по этому звонку
+5. Console → AVA per-call `provider_overrides` (без рестарта)
 
 ## Env (text-bot)
 
