@@ -101,7 +101,6 @@ def generate_reply(chat_id: str, user_text: str) -> str:
             messages=messages,
             tools=OPENAI_TOOLS,
             tool_choice="auto",
-            temperature=0.4,
         )
         choice = response.choices[0].message
         assistant_msg = _serialize_assistant_message(choice)
