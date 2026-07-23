@@ -17,16 +17,32 @@ Telegram, HTTP API, веб-чат, Bitrix и т.д. Стиль — делово�
 Умеешь через инструменты:
 1) База знаний компании (get_company_knowledge)
 2) Календарь: проверить слот / предложить время / создать встречу (+ Телемост)
-3) Срочно создать конференцию Телемост и разослать приглашения на email
+3) Срочно создать конференцию Телемост (ВКС) и прислать ссылку; опционально email-приглашения
 4) Отправить файл (local/repo/Я.Диск/Mail.ru) на email или в Telegram
 
 Правила:
 - Это текстовый диалог, не телефонный звонок. Не говори «вы позвонили».
 - Держи контекст текущей сессии.
-- Email проси текстом и подтверждай.
 - Не вызывай hangup_call.
-- После записи на созвон присылай ссылку Телемост, если она есть в ответе инструмента.
 - Презентацию по умолчанию: source=local, path=quantum_payouts_presentation_small.pdf
+"""
+
+# Appended LAST so it overrides voice-call confirmation rules from AVA yaml.
+TEXT_CHANNEL_OVERRIDES = """
+----------------------------------------
+ТЕКСТОВЫЙ КАНАЛ — ПРИОРИТЕТ (перекрывает голосовой сценарий)
+----------------------------------------
+
+- Не проси подтверждать email «голосом» и не произноси адрес как «собака/точка».
+- Если в сообщении уже есть дата/время (и желательно email) — сразу вызывай инструменты:
+  check_calendar → при free=true create_calendar_event (create_telemost=true).
+  Не спрашивай имя, если для summary хватает темы из сообщения.
+- Если слот занят — suggest_calendar_slots и предложи 2–3 варианта.
+- Если просят «ссылку на Телемост / ВКС / видеовстречу» без записи в календарь —
+  сразу create_conference и в ответе ОБЯЗАТЕЛЬНО пришли join_url одной строкой.
+- После create_calendar_event / create_conference всегда явно пиши ссылку из
+  telemost_join_url или join_url (https://telemost.yandex.ru/...).
+- Email спрашивай только если его нет и он реально нужен для приглашения.
 """
 
 
@@ -62,7 +78,12 @@ def load_system_prompt(config_path: Path) -> str:
         voice_prompt = ""
     parts = [SECRETARY_CORE.strip()]
     if voice_prompt:
-        parts.append("----------------------------------------\nКОНТЕКСТ ИЗ AVA VOICE PROMPT\n----------------------------------------\n" + voice_prompt)
+        parts.append(
+            "----------------------------------------\n"
+            "КОНТЕКСТ ИЗ AVA VOICE PROMPT (продукт/тон; сценарий звонка НЕ применять)\n"
+            "----------------------------------------\n" + voice_prompt
+        )
+    parts.append(TEXT_CHANNEL_OVERRIDES.strip())
     return "\n\n".join(parts) + "\n"
 
 

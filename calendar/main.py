@@ -219,6 +219,7 @@ async def calendar_create(
         )
         telemost_id = ""
         telemost_join_url = ""
+        telemost_error = ""
         if want_telemost:
             invitees = list(req.invitees)
             if attendee_email and attendee_email not in invitees:
@@ -237,6 +238,9 @@ async def calendar_create(
                 if link_line not in description:
                     description = f"{description}\n\n{link_line}".strip() if description else link_line
                 location = telemost_join_url
+            else:
+                telemost_error = str(conf.get("error") or conf.get("message") or "telemost_create_failed")
+                logger.warning("[CREATE] telemost soft-fail: %s", telemost_error)
 
         event = cal.create_event(
             start_dt=start_dt,
@@ -248,14 +252,21 @@ async def calendar_create(
             event_url=telemost_join_url or "",
         )
 
+        message = "Встреча успешно создана"
+        if telemost_join_url:
+            message += f". ВКС: {telemost_join_url}"
+        elif want_telemost and telemost_error:
+            message += f". Телемост не создан ({telemost_error})"
+
         return {
             "ok": True,
             "created": True,
-            "message": "Встреча успешно создана",
+            "message": message,
             "event_url": str(getattr(event, "url", "") or ""),
             "telemost_created": bool(telemost_join_url),
             "telemost_id": telemost_id,
             "telemost_join_url": telemost_join_url,
+            "telemost_error": telemost_error,
             "start": start_dt.isoformat(),
             "end": end_dt.isoformat(),
             "duration_min": int((end_dt - start_dt).total_seconds() // 60),

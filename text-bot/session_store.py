@@ -44,7 +44,54 @@ def init_db(db_path: Path) -> None:
             conn.close()
 
 
-def load_messages(db_path: Path, chat_id: str, *, limit: int = 24) -> list[dict[str, Any]]:
+def _sanitize_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop orphan tool rows / incomplete tool rounds (OpenAI rejects them)."""
+    out: list[dict[str, Any]] = []
+    pending_ids: set[str] = set()
+
+    def _drop_incomplete_round() -> None:
+        nonlocal pending_ids
+        while out:
+            last = out[-1]
+            role = last.get("role")
+            if role == "tool" or (role == "assistant" and last.get("tool_calls")):
+                out.pop()
+                if role == "assistant" and last.get("tool_calls"):
+                    break
+                continue
+            break
+        pending_ids.clear()
+
+    for msg in messages:
+        role = msg.get("role")
+        if role == "tool":
+            tcid = str(msg.get("tool_call_id") or "")
+            if tcid and tcid in pending_ids:
+                out.append(msg)
+                pending_ids.discard(tcid)
+            continue
+
+        if role == "assistant" and msg.get("tool_calls"):
+            if pending_ids:
+                _drop_incomplete_round()
+            pending_ids = {
+                str(tc.get("id") or "")
+                for tc in (msg.get("tool_calls") or [])
+                if isinstance(tc, dict) and tc.get("id")
+            }
+            out.append(msg)
+            continue
+
+        if pending_ids:
+            _drop_incomplete_round()
+        out.append(msg)
+
+    if pending_ids:
+        _drop_incomplete_round()
+    return out
+
+
+def load_messages(db_path: Path, chat_id: str, *, limit: int = 40) -> list[dict[str, Any]]:
     with _lock:
         conn = _connect(db_path)
         try:
@@ -73,7 +120,7 @@ def load_messages(db_path: Path, chat_id: str, *, limit: int = 24) -> list[dict[
         if row["name"]:
             msg["name"] = row["name"]
         out.append(msg)
-    return out
+    return _sanitize_messages(out)
 
 
 def append_message(db_path: Path, chat_id: str, message: dict[str, Any]) -> None:

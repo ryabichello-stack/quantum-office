@@ -69,20 +69,20 @@ OPENAI_TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "create_calendar_event",
             "description": (
-                "Создать встречу в календаре (после check_calendar free=true). "
-                "Можно сразу создать Телемост (create_telemost=true)."
+                "Создать событие в календаре Mail.ru (после check_calendar free=true). "
+                "По умолчанию сразу создаёт Телемост/ВКС (create_telemost=true) и возвращает telemost_join_url."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "start": {"type": "string"},
-                    "summary": {"type": "string"},
+                    "start": {"type": "string", "description": "YYYY-MM-DD HH:MM МСК"},
+                    "summary": {"type": "string", "description": "Тема встречи"},
                     "description": {"type": "string"},
-                    "attendee_email": {"type": "string"},
+                    "attendee_email": {"type": "string", "description": "Email участника, если есть"},
                     "create_telemost": {"type": "boolean"},
                     "send_telemost_invite": {"type": "boolean"},
                 },
-                "required": ["start", "summary", "description", "attendee_email"],
+                "required": ["start", "summary"],
             },
         },
     },
@@ -91,8 +91,9 @@ OPENAI_TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "create_conference",
             "description": (
-                "Срочно создать Яндекс Телемост и опционально разослать email-приглашения. "
-                "Не требует слота в календаре."
+                "Создать Яндекс Телемост (ссылка на ВКС) по запросу. "
+                "Используй, когда просят ссылку на видеовстречу/Телемост/ВКС без записи в календарь. "
+                "В ответе будет join_url — его нужно прислать пользователю."
             ),
             "parameters": {
                 "type": "object",
@@ -101,7 +102,7 @@ OPENAI_TOOLS: list[dict[str, Any]] = [
                     "invitees": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Список email для приглашений",
+                        "description": "Список email для приглашений (можно пустой)",
                     },
                     "when_text": {"type": "string", "description": "Когда, текстом, напр. сегодня 17:00 МСК"},
                     "message": {"type": "string", "description": "Комментарий в письме"},
