@@ -374,7 +374,10 @@ class Secretary:
                                 "next_step_hint",
                                 (
                                     "Если задача ещё не решена — сам вызови следующий tool "
-                                    "с уточнённым запросом (не спрашивай пользователя)."
+                                    "с уточнённым запросом. Меню «как искать» запрещено. "
+                                    "Если после своих попыток не хватает конкретного факта "
+                                    "(ИНН/ФИО/email/период/кого из найденных) — задай "
+                                    "ОДИН короткий уточняющий вопрос пользователю."
                                 ),
                             )
                             result = json.dumps(payload, ensure_ascii=False)
@@ -393,7 +396,7 @@ class Secretary:
             reply = str(choice.content or "Извините, не смог сформулировать ответ.").strip()
             reply = self._ensure_links_in_reply(reply, tool_payloads)
 
-            # Agentic continue: don't return clarification menus — force more tool steps
+            # Agentic continue: block search-method menus; allow one concrete clarify ask
             if (
                 role == "owner"
                 and looks_like_stall(reply)
@@ -407,20 +410,24 @@ class Secretary:
                     round_i,
                     tools_used,
                 )
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": (
-                            "[internal — не показывай пользователю] "
-                            "Запрещено спрашивать, как искать или предлагать меню вариантов. "
-                            "Сам придумай следующий шаг и вызови tool "
-                            "(search_office_memory / find_office_contact / list_office_threads "
-                            "или другой нужный) с новым уточнённым запросом на основе уже "
-                            "полученных данных. Продолжай цикл, пока не дашь итоговый ответ "
-                            "по сути задачи. Пользователю пиши только финальный результат."
-                        ),
-                    }
-                )
+                if tools_used >= 2:
+                    nudge = (
+                        "[internal — не показывай пользователю] "
+                        "Запрещено меню «как/где искать». Либо вызови ещё один tool "
+                        "с уточнённым запросом по уже найденным данным, либо задай "
+                        "пользователю ОДИН конкретный вопрос о недостающем факте "
+                        "(ИНН, полное ФИО, email, период, кого/какую из найденных). "
+                        "Не предлагай варианты способов поиска."
+                    )
+                else:
+                    nudge = (
+                        "[internal — не показывай пользователю] "
+                        "Запрещено спрашивать, как искать или предлагать меню вариантов. "
+                        "Сам вызови tool (search_office_memory / find_office_contact / "
+                        "list_office_threads) с уточнённым запросом. Если после попыток "
+                        "не хватит факта — тогда один точный вопрос пользователю."
+                    )
+                messages.append({"role": "user", "content": nudge})
                 continue
 
             if messages and messages[-1].get("role") == "assistant":

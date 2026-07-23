@@ -1,4 +1,4 @@
-from agent_loop import looks_like_stall
+from agent_loop import looks_like_legitimate_clarify, looks_like_stall
 
 
 def test_stall_detects_search_menu():
@@ -11,6 +11,7 @@ def test_stall_detects_search_menu():
         "Укажите вариант — запущу поиск."
     )
     assert looks_like_stall(text) is True
+    assert looks_like_legitimate_clarify(text) is False
 
 
 def test_stall_allows_normal_answer():
@@ -18,4 +19,22 @@ def test_stall_allows_normal_answer():
         "По переписке с Альфой первая компания на комплаенс — "
         "ООО «НордСервис-СПб», ИНН 7816718222 (ypartsuf / mv_mmb)."
     )
+    assert looks_like_stall(text) is False
+
+
+def test_allows_concrete_clarify_question():
+    text = (
+        "В почте несколько компаний с похожим названием. "
+        "Уточни ИНН или полное юрлицо — добью поиск."
+    )
+    assert looks_like_legitimate_clarify(text) is True
+    assert looks_like_stall(text) is False
+
+
+def test_allows_disambiguation_of_found_people():
+    text = (
+        "Нашёл двух Юлий: Парцуф Юлия Львовна и Юлия Смирнова. "
+        "Кого из них имеешь в виду?"
+    )
+    assert looks_like_legitimate_clarify(text) is True
     assert looks_like_stall(text) is False
