@@ -25,9 +25,20 @@ GITHUB_TOKEN = os.getenv("FILES_GITHUB_TOKEN", "").strip()
 YADISK_TOKEN = os.getenv("YADISK_TOKEN", "").strip()
 YADISK_API = "https://cloud-api.yandex.net/v1/disk"
 
-MAILRU_WEBDAV_URL = os.getenv("MAILRU_WEBDAV_URL", "https://webdav.cloud.mail.ru").rstrip("/")
-MAILRU_WEBDAV_USER = os.getenv("MAILRU_WEBDAV_USER", "").strip()
-MAILRU_WEBDAV_PASSWORD = os.getenv("MAILRU_WEBDAV_PASSWORD", "").strip()
+# Mail.ru Cloud WebDAV — same mailbox as SMTP/CalDAV when dedicated vars are empty.
+MAILRU_WEBDAV_URL = (
+    os.getenv("MAILRU_WEBDAV_URL", "").strip() or "https://webdav.cloud.mail.ru"
+).rstrip("/")
+MAILRU_WEBDAV_USER = (
+    os.getenv("MAILRU_WEBDAV_USER", "").strip()
+    or os.getenv("MAIL_USERNAME", "").strip()
+    or os.getenv("MAILRU_CALDAV_USERNAME", "").strip()
+)
+MAILRU_WEBDAV_PASSWORD = (
+    os.getenv("MAILRU_WEBDAV_PASSWORD", "").strip()
+    or os.getenv("MAIL_PASSWORD", "").strip()
+    or os.getenv("MAILRU_CALDAV_PASSWORD", "").strip()
+)
 
 MAX_BYTES = int(os.getenv("FILES_MAX_BYTES", str(45 * 1024 * 1024)) or str(45 * 1024 * 1024))
 
@@ -147,22 +158,43 @@ def fetch_yadisk(path: str) -> FetchedFile:
     )
 
 
+def _mailru_auth_header() -> str:
+    token = base64.b64encode(
+        f"{MAILRU_WEBDAV_USER}:{MAILRU_WEBDAV_PASSWORD}".encode()
+    ).decode()
+    return f"Basic {token}"
+
+
+def _mailru_url(path: str) -> str:
+    """Build WebDAV URL; encode each segment, keep slashes."""
+    clean = path if path.startswith("/") else f"/{path}"
+    parts = [urllib.parse.quote(p, safe="") for p in clean.split("/") if p != ""]
+    return MAILRU_WEBDAV_URL + "/" + "/".join(parts) if parts else MAILRU_WEBDAV_URL + "/"
+
+
 def fetch_mailru(path: str) -> FetchedFile:
     if not (MAILRU_WEBDAV_USER and MAILRU_WEBDAV_PASSWORD):
         raise SourceError(
             "mailru_not_configured",
-            "Set MAILRU_WEBDAV_USER and MAILRU_WEBDAV_PASSWORD in .env",
+            "Set MAILRU_WEBDAV_USER/PASSWORD (or MAIL_USERNAME/MAIL_PASSWORD) in .env",
         )
     clean = path if path.startswith("/") else f"/{path}"
-    url = f"{MAILRU_WEBDAV_URL}{urllib.parse.quote(clean)}"
-    auth = base64.b64encode(f"{MAILRU_WEBDAV_USER}:{MAILRU_WEBDAV_PASSWORD}".encode()).decode()
-    req = urllib.request.Request(url, headers={"Authorization": f"Basic {auth}"})
+    url = _mailru_url(clean)
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": _mailru_auth_header(),
+            "User-Agent": "ava-files/mailru-webdav",
+        },
+    )
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
             raw = resp.read()
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")[:300]
         raise SourceError("mailru_http_error", f"Mail.ru Cloud {exc.code}: {body}") from exc
+    except Exception as exc:
+        raise SourceError("mailru_error", str(exc)) from exc
 
     filename = Path(clean).name or "file.bin"
     data = _read_limited(raw, clean)
@@ -196,5 +228,7 @@ def sources_status() -> dict:
         "github_token_set": bool(GITHUB_TOKEN),
         "yadisk_configured": bool(YADISK_TOKEN),
         "mailru_configured": bool(MAILRU_WEBDAV_USER and MAILRU_WEBDAV_PASSWORD),
+        "mailru_webdav_url": MAILRU_WEBDAV_URL,
+        "mailru_user": MAILRU_WEBDAV_USER or None,
         "max_bytes": MAX_BYTES,
     }

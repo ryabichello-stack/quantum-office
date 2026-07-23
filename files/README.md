@@ -47,7 +47,7 @@ Health: `GET /health`
 | `local` | файлы под `FILES_LOCAL_ALLOWLIST` |
 | `repo` / `github` | файл из GitHub (`FILES_GITHUB_REPO`) |
 | `yadisk` | Яндекс.Диск (`YADISK_TOKEN`) |
-| `mailru` | Mail.ru Облако WebDAV |
+| `mailru` | Mail.ru Облако WebDAV (`MAILRU_WEBDAV_*`, fallback на `MAIL_*`) |
 
 ## Каналы
 
