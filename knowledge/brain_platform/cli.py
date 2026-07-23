@@ -7,6 +7,10 @@ import json
 import os
 import sys
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from brain_platform.db.connection import init_db
 from brain_platform.db.repository import BrainRepository
 from brain_platform.ingest.files import ingest_files
