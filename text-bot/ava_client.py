@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import urllib.error
 import urllib.request
 from typing import Any, Optional
@@ -88,13 +89,16 @@ _BRAIN_OWNER_TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "find_office_contact",
             "description": (
-                "Найти контакт в Second Brain: email, телефон, должность, компания. "
-                "По имени, email, телефону или компании."
+                "Найти человека в офисной памяти. Вызывай СРАЗУ с именем как сказал пользователь "
+                "(например «Юля Парцуф») — инструмент САМ переберёт варианты написания "
+                "(Юлия/Yuliya/Partsuf), email-local, переписки и треды. "
+                "НЕ спрашивай пользователя, как искать — просто вызови этот tool один раз "
+                "и по результату ответь фактами (email, телефон, компания, откуда нашли)."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "q": {"type": "string", "description": "Имя или свободный поиск"},
+                    "q": {"type": "string", "description": "Имя или свободный поиск как сказал пользователь"},
                     "email": {"type": "string"},
                     "phone": {"type": "string"},
                     "company": {"type": "string"},
@@ -349,6 +353,205 @@ def _merge_knowledge(legacy: dict[str, Any], brain: dict[str, Any]) -> dict[str,
     }
 
 
+def _autonomous_person_lookup(
+    knowledge: str,
+    *,
+    q: str = "",
+    email: str = "",
+    phone: str = "",
+    company: str = "",
+) -> dict[str, Any]:
+    """Multi-strategy person search without asking the user how to search."""
+    try:
+        from brain_platform.search.person import (  # type: ignore
+            extract_emails,
+            extract_phones,
+            person_query_variants,
+            score_contact_match,
+        )
+    except ImportError:
+        import sys
+
+        sys.path.insert(0, "/opt/ava-knowledge")
+        from brain_platform.search.person import (  # type: ignore
+            extract_emails,
+            extract_phones,
+            person_query_variants,
+            score_contact_match,
+        )
+
+    tried: list[str] = []
+    contacts_by_id: dict[str, dict[str, Any]] = {}
+    variants = person_query_variants(q) if q else []
+    if email:
+        variants = [email, *variants]
+    if company:
+        variants = [company, *variants]
+    if phone:
+        variants = [phone, *variants]
+    if not variants and q:
+        variants = [q]
+
+    for variant in variants[:15]:
+        tried.append(variant)
+        try:
+            data = _post_json(
+                f"{knowledge}/api/brain/contacts/find",
+                {
+                    "q": variant if "@" not in variant else "",
+                    "email": email or (variant if "@" in variant else ""),
+                    "phone": phone if variant == phone else "",
+                    "company": company if variant == company else "",
+                    "limit": 20,
+                },
+                brain_principal="service:text-secretary",
+                timeout=15.0,
+            )
+        except Exception as exc:
+            logger.warning("contact find failed for %r: %s", variant, exc)
+            continue
+        for c in data.get("contacts") or []:
+            cid = str(c.get("id") or "")
+            if not cid:
+                continue
+            prev = contacts_by_id.get(cid)
+            score = score_contact_match(q or variant, c)
+            if not prev or score > prev.get("_score", 0):
+                contacts_by_id[cid] = {**c, "_score": score}
+
+    ranked = sorted(contacts_by_id.values(), key=lambda c: c.get("_score", 0), reverse=True)
+    # Drop contacts without a real email address
+    cleaned_ranked = []
+    for c in ranked:
+        c.pop("_score", None)
+        emails = []
+        for e in c.get("emails") or []:
+            m = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", str(e))
+            if m:
+                emails.append(m.group(0).lower())
+        if not emails:
+            continue
+        name = str(c.get("display_name") or "")
+        if "@" in name or "<" in name or '"' in name:
+            # Prefer local-part only as last resort; memory may supply better FIO
+            name = emails[0].split("@")[0]
+        c = {**c, "display_name": name, "emails": sorted(set(emails))}
+        cleaned_ranked.append(c)
+    ranked = cleaned_ranked
+
+    memory_bits: list[str] = []
+    memory_matches: list[dict[str, Any]] = []
+    threads: list[dict[str, Any]] = []
+    mem_queries = variants[:6] if variants else ([q] if q else [])
+    for mq in mem_queries:
+        if not mq:
+            continue
+        mem = _query_brain_search(
+            knowledge,
+            mq,
+            principal="service:text-secretary",
+            limit=4,
+            max_chars=3500,
+        )
+        if mem.get("text"):
+            memory_bits.append(str(mem["text"]))
+        for m in mem.get("matches") or []:
+            memory_matches.append(m)
+        try:
+            th = _post_json(
+                f"{knowledge}/api/brain/threads/list",
+                {"q": mq, "limit": 8},
+                brain_principal="service:text-secretary",
+                timeout=15.0,
+            )
+            for t in th.get("threads") or []:
+                threads.append(t)
+        except Exception:
+            pass
+
+    memory_text = "\n\n".join(memory_bits)[:8000]
+    emails_found = extract_emails(memory_text)
+    phones_found = extract_phones(memory_text)
+
+    thread_by_id = {str(t.get("id")): t for t in threads if t.get("id")}
+    threads = list(thread_by_id.values())[:10]
+
+    hints: list[dict[str, Any]] = []
+    if not ranked and (emails_found or phones_found or memory_text):
+        hints.append(
+            {
+                "display_name": q or "из переписки",
+                "emails": emails_found[:5],
+                "phones": phones_found[:5],
+                "company_name": None,
+                "source": "memory-extract",
+                "note": "Собрано из переписки",
+            }
+        )
+
+    # Enrich top contact from memory phones/emails if sparse
+    if ranked:
+        top = ranked[0]
+        if not top.get("phones") and phones_found:
+            top = {**top, "phones": phones_found[:3]}
+            ranked[0] = top
+        # If display is still email-local but memory has Cyrillic FIO near query tokens
+        if not re.search(r"[А-Яа-яЁё]", str(top.get("display_name") or "")):
+            for line in memory_text.splitlines():
+                if re.search(r"[А-Яа-яЁё]", line) and any(
+                    t.lower() in line.lower() for t in (q or "").split() if len(t) > 2
+                ):
+                    m = re.search(r"([А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ][а-яё]+){1,3})", line)
+                    if m:
+                        top = {**top, "display_name": m.group(1)}
+                        ranked[0] = top
+                        break
+
+    summary_parts = []
+    if ranked:
+        top = ranked[0]
+        summary_parts.append(
+            f"Найден контакт: {top.get('display_name')} | "
+            f"email: {', '.join(top.get('emails') or []) or '—'} | "
+            f"тел: {', '.join(top.get('phones') or []) or '—'} | "
+            f"компания: {top.get('company_name') or '—'}"
+        )
+    elif hints:
+        h = hints[0]
+        summary_parts.append(
+            f"В адресной книге точного ФИО нет, но в переписке: "
+            f"email {', '.join(h.get('emails') or []) or '—'}, "
+            f"тел {', '.join(h.get('phones') or []) or '—'}"
+        )
+    else:
+        summary_parts.append("Пока не нашёл устойчивых контактов по запросу.")
+
+    if threads:
+        summary_parts.append(
+            "Треды: "
+            + "; ".join(f"{t.get('subject')} ({t.get('last_message_at')})" for t in threads[:3])
+        )
+
+    return {
+        "ok": True,
+        "query": q,
+        "tried_queries": tried,
+        "count": len(ranked),
+        "contacts": ranked[:10],
+        "memory_hints": hints,
+        "emails_from_memory": emails_found[:10],
+        "phones_from_memory": phones_found[:10],
+        "threads": threads,
+        "memory_preview": memory_text[:2500],
+        "memory_match_count": len(memory_matches),
+        "summary": " | ".join(summary_parts),
+        "instruction_for_assistant": (
+            "Ответь пользователю сразу фактами из summary/contacts/memory. "
+            "Не спрашивай, искать ли по-другому — поиск уже выполнен автоматически."
+        ),
+    }
+
+
 def run_tool(
     name: str,
     arguments: dict[str, Any],
@@ -408,16 +611,12 @@ def run_tool(
                     {"ok": False, "error": "forbidden", "message": "Только для владельца"},
                     ensure_ascii=False,
                 )
-            data = _post_json(
-                f"{knowledge}/api/brain/contacts/find",
-                {
-                    "q": str(arguments.get("q") or ""),
-                    "email": str(arguments.get("email") or ""),
-                    "phone": str(arguments.get("phone") or ""),
-                    "company": str(arguments.get("company") or ""),
-                    "limit": 20,
-                },
-                brain_principal="service:text-secretary",
+            data = _autonomous_person_lookup(
+                knowledge,
+                q=str(arguments.get("q") or ""),
+                email=str(arguments.get("email") or ""),
+                phone=str(arguments.get("phone") or ""),
+                company=str(arguments.get("company") or ""),
             )
             return json.dumps(data, ensure_ascii=False)
 

@@ -45,6 +45,10 @@ def main(argv: list[str] | None = None) -> int:
     p_contacts.add_argument("--principal", default="service:text-secretary")
     p_contacts.add_argument("--tenant", default=os.getenv("BRAIN_TENANT_ID", "quantum-labs"))
 
+    p_repair = sub.add_parser("repair-contacts", help="Rebuild contact names from mail bodies")
+    p_repair.add_argument("--tenant", default=os.getenv("BRAIN_TENANT_ID", "quantum-labs"))
+    p_repair.add_argument("--limit", type=int, default=3000)
+
     p_stats = sub.add_parser("stats")
     p_stats.add_argument("--tenant", default=os.getenv("BRAIN_TENANT_ID", "quantum-labs"))
 
@@ -92,6 +96,14 @@ def main(argv: list[str] | None = None) -> int:
         )
         contacts = repo.find_contacts(principal, q=args.q)
         print(json.dumps({"count": len(contacts), "contacts": contacts}, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.cmd == "repair-contacts":
+        from brain_platform.ingest.repair_contacts import repair_contacts_from_mail
+
+        out = repair_contacts_from_mail(repo, tenant_id=args.tenant, limit=args.limit)
+        out["stats"] = repo.stats(args.tenant)
+        print(json.dumps(out, ensure_ascii=False, indent=2))
         return 0
 
     if args.cmd == "stats":

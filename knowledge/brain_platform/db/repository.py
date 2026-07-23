@@ -369,9 +369,18 @@ class BrainRepository:
         contact_id: str | None = None,
     ) -> str:
         emails = [e.strip().lower() for e in (emails or []) if e and e.strip()]
+        # Normalize messy address strings to bare emails
+        cleaned: list[str] = []
+        for e in emails:
+            m = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", e)
+            if m:
+                cleaned.append(m.group(0).lower())
+        emails = sorted(set(cleaned))
         phones = [p.strip() for p in (phones or []) if p and p.strip()]
         if not emails and not phones:
             raise ValueError("contact needs email or phone")
+        # Prefer human display name over email-local if provided
+        display_name = (display_name or "").strip() or (emails[0].split("@")[0] if emails else phones[0])
 
         # Merge by email if exists
         found_id = None
@@ -405,8 +414,31 @@ class BrainRepository:
             old_emails = _loads(existing["emails_json"], [])
             old_phones = _loads(existing["phones_json"], [])
             emails = sorted(set(old_emails) | set(emails))
+            # re-normalize after merge
+            cleaned2: list[str] = []
+            for e in emails:
+                m = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", str(e))
+                if m:
+                    cleaned2.append(m.group(0).lower())
+            emails = sorted(set(cleaned2))
             phones = sorted(set(old_phones) | set(phones))
-            display_name = display_name or existing["display_name"]
+            old_name = existing["display_name"] or ""
+            # Prefer human FIO over email-local nicknames
+            def _name_score(n: str) -> int:
+                n = (n or "").strip()
+                if not n:
+                    return 0
+                score = len(n)
+                if " " in n:
+                    score += 20
+                if re.search(r"[А-Яа-яЁё]", n):
+                    score += 30
+                if "@" in n or "<" in n:
+                    score -= 50
+                return score
+
+            if _name_score(old_name) >= _name_score(display_name):
+                display_name = old_name
             title = title or existing["title"]
             company_name = company_name or existing["company_name"]
 
@@ -502,11 +534,26 @@ class BrainRepository:
             clauses.append("company_name LIKE ?")
             params.append(f"%{company}%")
         if q:
-            clauses.append(
-                "(display_name LIKE ? OR emails_json LIKE ? OR phones_json LIKE ? OR company_name LIKE ? OR IFNULL(title,'') LIKE ?)"
+            # Match ANY strong token (name parts), not only the full phrase.
+            tokens = [t for t in re.split(r"[\s,;]+", q.strip()) if len(t) >= 2]
+            if not tokens:
+                tokens = [q.strip()]
+            token_groups: list[str] = []
+            for t in tokens[:6]:
+                token_groups.append(
+                    "(display_name LIKE ? OR emails_json LIKE ? OR phones_json LIKE ? "
+                    "OR company_name LIKE ? OR IFNULL(title,'') LIKE ?)"
+                )
+                like = f"%{t}%"
+                params.extend([like, like, like, like, like])
+            # Also try full phrase
+            token_groups.append(
+                "(display_name LIKE ? OR emails_json LIKE ? OR phones_json LIKE ? "
+                "OR company_name LIKE ? OR IFNULL(title,'') LIKE ?)"
             )
-            like = f"%{q}%"
-            params.extend([like, like, like, like, like])
+            like_full = f"%{q.strip()}%"
+            params.extend([like_full, like_full, like_full, like_full, like_full])
+            clauses.append("(" + " OR ".join(token_groups) + ")")
 
         sql = f"SELECT * FROM contacts WHERE {' AND '.join(clauses)} AND status = 'active' ORDER BY display_name LIMIT ?"
         params.append(limit)
@@ -542,6 +589,8 @@ class BrainRepository:
         body_text: str,
         sent_at: str | None = None,
         acl: dict | None = None,
+        from_name: str | None = None,
+        participant_names: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         mid = message_id.strip().lower().strip("<>")
         existing = self.conn.execute(
@@ -549,6 +598,23 @@ class BrainRepository:
             (tenant_id, mid),
         ).fetchone()
         if existing:
+            # Still refresh contact display names if we learned better ones
+            names = dict(participant_names or {})
+            if from_email and from_name:
+                names[from_email.lower()] = from_name
+            for addr, name in names.items():
+                if addr and name and "@" in addr:
+                    try:
+                        self.upsert_contact(
+                            tenant_id=tenant_id,
+                            display_name=name,
+                            emails=[addr],
+                            source="mail-ingest",
+                            acl=acl or DEFAULT_MAIL_ACL,
+                            visibility="restricted",
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
             return {"id": existing["id"], "created": False}
 
         acl = acl or DEFAULT_MAIL_ACL
@@ -558,15 +624,19 @@ class BrainRepository:
         now = _now()
         cc_emails = cc_emails or []
         bh = body_hash(body_text)
+        names = dict(participant_names or {})
+        if from_email and from_name:
+            names[from_email.lower()] = from_name
 
         # ensure thread
         t = self.conn.execute("SELECT * FROM threads WHERE id = ?", (thread_id,)).fetchone()
         participants: list[str] = []
         # upsert contacts from participants
         for addr in {from_email, *to_emails, *cc_emails}:
-            if not addr:
+            if not addr or "@" not in addr:
                 continue
-            name = addr.split("@")[0]
+            addr = addr.lower()
+            name = (names.get(addr) or "").strip() or addr.split("@")[0]
             cid = self.upsert_contact(
                 tenant_id=tenant_id,
                 display_name=name,

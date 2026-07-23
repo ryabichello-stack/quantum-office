@@ -43,15 +43,27 @@ def _decode_header(value: str | None) -> str:
     return "".join(out)
 
 
-def _addrs(raw: str | None) -> list[str]:
+def _named_addrs(raw: str | None) -> list[tuple[str, str]]:
+    """Return (display_name, email) pairs with cleaned addresses."""
     if not raw:
         return []
-    out = []
+    out: list[tuple[str, str]] = []
     for name, addr in email.utils.getaddresses([raw]):
         a = (addr or "").strip().lower()
-        if a:
-            out.append(a)
+        if not a or "@" not in a:
+            continue
+        # drop garbage if address still contains < or quotes
+        m = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", a)
+        if not m:
+            continue
+        a = m.group(0).lower()
+        display = _decode_header(name).strip().strip('"').strip("'")
+        out.append((display, a))
     return out
+
+
+def _addrs(raw: str | None) -> list[str]:
+    return [addr for _, addr in _named_addrs(raw)]
 
 
 def _message_id(msg: email.message.Message) -> str | None:
@@ -209,9 +221,16 @@ def ingest_mailbox(
                     skipped += 1
                     continue
                 subject = _decode_header(msg.get("Subject"))
-                from_email = (_addrs(msg.get("From")) or [""])[0]
-                to_emails = _addrs(msg.get("To"))
-                cc_emails = _addrs(msg.get("Cc"))
+                from_named = _named_addrs(msg.get("From"))
+                to_named = _named_addrs(msg.get("To"))
+                cc_named = _named_addrs(msg.get("Cc"))
+                from_email = from_named[0][1] if from_named else ""
+                from_name = from_named[0][0] if from_named else ""
+                to_emails = [a for _, a in to_named]
+                cc_emails = [a for _, a in cc_named]
+                participant_names = {
+                    a: n for n, a in [*from_named, *to_named, *cc_named] if n and a
+                }
                 body = _plain_body(msg)
                 date_tuple = email.utils.parsedate_to_datetime(msg.get("Date")) if msg.get("Date") else None
                 sent_at = date_tuple.isoformat() if date_tuple else None
@@ -229,8 +248,10 @@ def ingest_mailbox(
                         direction=dir_final,
                         subject=subject,
                         from_email=from_email or "unknown@unknown",
+                        from_name=from_name or None,
                         to_emails=to_emails or [local_user],
                         cc_emails=cc_emails,
+                        participant_names=participant_names,
                         body_text=body,
                         sent_at=sent_at,
                     )
