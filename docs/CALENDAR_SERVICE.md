@@ -5,7 +5,7 @@ flowchart LR
   Client[API / AVA / agent]
   Cal[ava-calendar :8014]
   Mailru[Mail.ru CalDAV]
-  Conf[ava-conference :8013]
+  Conf[ava-conference :8016]
   TM[Yandex Telemost]
 
   Client -->|check / suggest / create| Cal

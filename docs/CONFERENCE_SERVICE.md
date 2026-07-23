@@ -4,7 +4,7 @@
 flowchart LR
   Voice[AVA voice / office request]
   Manual[HTTP / UI / agent]
-  Conf[ava-conference :8013]
+  Conf[ava-conference :8016]
   TM[Yandex Telemost API]
   SMTP[Mail.ru SMTP]
   Mailer[ava-mailer :8000]

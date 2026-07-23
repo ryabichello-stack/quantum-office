@@ -10,9 +10,9 @@
 |---------|------|------|-------|
 | `ava-outreach` | `/opt/ava-outreach` | `127.0.0.1:8012` | Bitrix outreach + UI under `/_ava_outreach/` |
 | `ava-mailer` | `/opt/ava-mailer` | `0.0.0.0:8000` | post-call / legacy calendar+Telemost still here |
-| `ava-calendar` | `/opt/ava-calendar` | `127.0.0.1:8014` | **planned** Mail.ru CalDAV check/suggest/create |
-| `ava-conference` | `/opt/ava-conference` | `127.0.0.1:8013` | **planned** standalone Telemost + invites |
-| `ava-files` | `/opt/ava-files` | `127.0.0.1:8015` | **planned** disks/repo → email/Telegram |
+| `ava-calendar` | `/opt/ava-calendar` | `127.0.0.1:8014` | Mail.ru CalDAV check/suggest/create |
+| `ava-conference` | `/opt/ava-conference` | `127.0.0.1:8016` | standalone Telemost + invites |
+| `ava-files` | `/opt/ava-files` | `127.0.0.1:8015` | disks/repo → email/Telegram |
 | `ava-text-bot` | `/opt/ava-text-bot` | `127.0.0.1:8011` | Telegram text bot |
 
 ## Public routes
@@ -38,7 +38,7 @@
 |-----|------|
 | `outreach/` | `/opt/ava-outreach` |
 | `mailer/` | `/opt/ava-mailer` |
-| `calendar/` | `/opt/ava-calendar` (deploy later) |
-| `conference/` | `/opt/ava-conference` (deploy later) |
-| `files/` | `/opt/ava-files` (deploy later) |
+| `calendar/` | `/opt/ava-calendar` |
+| `conference/` | `/opt/ava-conference` |
+| `files/` | `/opt/ava-files` |
 | `text-bot/` | `/opt/ava-text-bot` |

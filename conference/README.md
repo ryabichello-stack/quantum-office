@@ -34,7 +34,7 @@ Health: `GET /health`
 
 ## Голосовой сценарий (следующий шаг)
 
-AVA tool `create_conference` → `POST http://127.0.0.1:8013/api/conferences`  
+AVA tool `create_conference` → `POST http://127.0.0.1:8016/api/conferences`  
 Фраза: «срочно создай конференцию, пригласи Ивана на ivan@…»
 
 ## Прод (когда задеплоим)
@@ -42,7 +42,7 @@ AVA tool `create_conference` → `POST http://127.0.0.1:8013/api/conferences`
 | | |
 |--|--|
 | path | `/opt/ava-conference` |
-| port | `8013` |
+| port | `8016` |
 | unit | `ava-conference.service` |
 | secrets | `/opt/ava-conference/.env`, `yandex_oauth_tokens.json` |
 

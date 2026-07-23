@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-CONFERENCE_BASE_URL = os.getenv("CONFERENCE_BASE_URL", "http://127.0.0.1:8013").rstrip("/")
+CONFERENCE_BASE_URL = os.getenv("CONFERENCE_BASE_URL", "http://127.0.0.1:8016").rstrip("/")
 CONFERENCE_WEBHOOK_TOKEN = os.getenv("CONFERENCE_WEBHOOK_TOKEN", os.getenv("WEBHOOK_TOKEN", "")).strip()
 CONFERENCE_TIMEOUT_SECONDS = float(os.getenv("CONFERENCE_TIMEOUT_SECONDS", "8") or "8")
 CREATE_TELEMOST_BY_DEFAULT = os.getenv("CREATE_TELEMOST_BY_DEFAULT", "true").lower() in (

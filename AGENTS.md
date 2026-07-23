@@ -7,7 +7,7 @@
 - `outreach/` — Bitrix outreach (FastAPI, `:8012`)
 - `mailer/` — post-call письма (`:8000`); legacy calendar/Telemost ещё внутри, не ломаем
 - `calendar/` — **отдельный** CalDAV check/suggest/create (`:8014`)
-- `conference/` — **отдельный** Телемост + email-приглашения (`:8013`)
+- `conference/` — **отдельный** Телемост + email-приглашения (`:8016`)
 - `files/` — **отдельный** брокер файлов: local/repo/Я.Диск/Mail.ru → email/Telegram (`:8015`)
 - `text-bot/` — Telegram-бот (`:8011`)
 - `docs/` — карта прода и состояние

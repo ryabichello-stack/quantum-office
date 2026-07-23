@@ -6,9 +6,9 @@ Quantum Labs office stack (не Polyhub trading):
 |--------|-------|-----------|------|
 | Bitrix outreach / SMTP | `outreach/` | `/opt/ava-outreach` | 8012 |
 | Почта / post-call | `mailer/` | `/opt/ava-mailer` | 8000 |
-| **Календарь (CalDAV check/create)** | `calendar/` | `/opt/ava-calendar` (план) | 8014 |
-| **Телемост + приглашения** | `conference/` | `/opt/ava-conference` (план) | 8013 |
-| **Файлы (диск/repo → email/TG)** | `files/` | `/opt/ava-files` (план) | 8015 |
+| **Календарь (CalDAV check/create)** | `calendar/` | `/opt/ava-calendar` | 8014 |
+| **Телемост + приглашения** | `conference/` | `/opt/ava-conference` | 8016 |
+| **Файлы (диск/repo → email/TG)** | `files/` | `/opt/ava-files` | 8015 |
 | Telegram-бот | `text-bot/` | `/opt/ava-text-bot` | 8011 |
 
 - UI outreach: https://a.47z.ru/_ava_outreach/ui/
