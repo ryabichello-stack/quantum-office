@@ -58,11 +58,15 @@ class ChatRequest(BaseModel):
     user_id: str = Field(..., min_length=1, max_length=200, description="Stable user id in this channel")
     channel: str = Field(
         default="api",
-        description="telegram|api|web|bitrix|...",
+        description="telegram|api|web|bitrix|owner|...",
     )
     reply_to: Optional[str] = Field(
         default=None,
         description="For telegram file delivery: chat_id",
+    )
+    scenario: Optional[str] = Field(
+        default=None,
+        description="Optional scenario override for this turn: secretary|calendar|conference|knowledge|files|briefing|client_prep|office",
     )
 
 
@@ -80,6 +84,7 @@ def api_chat(req: ChatRequest, x_webhook_token: Optional[str] = Header(None)):
         user_id=req.user_id,
         text=req.text,
         reply_to=req.reply_to,
+        scenario=req.scenario,
     )
     return result
 
@@ -207,7 +212,9 @@ def on_shutdown() -> None:
 @app.get("/health")
 def health() -> dict[str, Any]:
     from ava_client import KNOWLEDGE_BASE, OPENAI_TOOLS
+    from scenarios import get_bundle, list_scenarios
 
+    b = get_bundle()
     return {
         "status": "ok" if secretary.ready() else "degraded",
         "service": "ava-text-bot",
@@ -217,6 +224,8 @@ def health() -> dict[str, Any]:
         "model": OPENAI_MODEL,
         "mailer_base": AVA_MAILER_BASE,
         "knowledge_base": KNOWLEDGE_BASE,
+        "owners_configured": len(b.owners),
+        "scenarios": [s.id for s in list_scenarios("owner")],
         "channels": ["telegram", "api", "web", "bitrix"],
         "endpoints": ["/api/chat", "/api/chat/reset", "/health"],
         "tools": [t["function"]["name"] for t in OPENAI_TOOLS if t.get("type") == "function"],

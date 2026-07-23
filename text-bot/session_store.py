@@ -6,7 +6,7 @@ import json
 import sqlite3
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 _lock = threading.Lock()
 
@@ -39,6 +39,74 @@ def init_db(db_path: Path) -> None:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_chat_messages_chat_id ON chat_messages(chat_id)"
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS session_meta (
+                    chat_id TEXT PRIMARY KEY,
+                    scenario TEXT,
+                    sticky INTEGER DEFAULT 0,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def get_session_meta(db_path: Path, chat_id: str) -> dict[str, Any]:
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            row = conn.execute(
+                "SELECT scenario, sticky FROM session_meta WHERE chat_id = ?",
+                (str(chat_id),),
+            ).fetchone()
+        finally:
+            conn.close()
+    if not row:
+        return {"scenario": None, "sticky": False}
+    return {
+        "scenario": row["scenario"],
+        "sticky": bool(row["sticky"]),
+    }
+
+
+def set_session_scenario(
+    db_path: Path,
+    chat_id: str,
+    scenario: Optional[str],
+    *,
+    sticky: bool = False,
+) -> None:
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            if scenario is None and not sticky:
+                conn.execute("DELETE FROM session_meta WHERE chat_id = ?", (str(chat_id),))
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO session_meta (chat_id, scenario, sticky, updated_at)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(chat_id) DO UPDATE SET
+                      scenario=excluded.scenario,
+                      sticky=excluded.sticky,
+                      updated_at=CURRENT_TIMESTAMP
+                    """,
+                    (str(chat_id), scenario, 1 if sticky else 0),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def clear_chat(db_path: Path, chat_id: str) -> None:
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            conn.execute("DELETE FROM chat_messages WHERE chat_id = ?", (str(chat_id),))
+            # keep sticky scenario preference across /reset
             conn.commit()
         finally:
             conn.close()
@@ -142,16 +210,6 @@ def append_message(db_path: Path, chat_id: str, message: dict[str, Any]) -> None
                     message.get("name"),
                 ),
             )
-            conn.commit()
-        finally:
-            conn.close()
-
-
-def clear_chat(db_path: Path, chat_id: str) -> None:
-    with _lock:
-        conn = _connect(db_path)
-        try:
-            conn.execute("DELETE FROM chat_messages WHERE chat_id = ?", (str(chat_id),))
             conn.commit()
         finally:
             conn.close()

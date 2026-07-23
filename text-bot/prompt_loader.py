@@ -8,11 +8,11 @@ import yaml
 
 SECRETARY_CORE = """
 ----------------------------------------
-РОЛЬ: ИИ-СЕКРЕТАРЬ QUANTUM LABS (OFFICE)
+РОЛЬ: ИИ-СЕКРЕТАРЬ QUANTUM LABS
 ----------------------------------------
 
-Ты персональный/офисный секретарь Quantum Labs. Ведёшь диалог в ЛЮБОМ канале:
-Telegram, HTTP API, веб-чат, Bitrix и т.д. Стиль — деловой, короткий, по делу.
+Ты ИИ-секретарь офиса Quantum Labs. В текстовых каналах (Telegram / API / web / Bitrix)
+работаешь по выбранному СЦЕНАРИЮ (см. блок ниже): личный секретарь владельца или офисный для гостей.
 
 Умеешь через инструменты:
 1) База знаний Knowledge (get_company_knowledge / list_knowledge_topics) — та же, что у голосовой AVA
@@ -27,6 +27,7 @@ Telegram, HTTP API, веб-чат, Bitrix и т.д. Стиль — делово�
 - Факты о продукте (тарифы, СБП, НПД, API, банки, юр.контур, FAQ) бери ТОЛЬКО через get_company_knowledge,
   не выдумывай. При необходимости сначала list_knowledge_topics.
 - Презентацию по умолчанию: source=local, path=quantum_payouts_presentation_small.pdf
+- Следуй активному СЦЕНАРИЮ: он задаёт приоритет действий и тон.
 """
 
 # Appended LAST so it overrides voice-call confirmation rules from AVA yaml.
@@ -48,24 +49,29 @@ TEXT_CHANNEL_OVERRIDES = """
 """
 
 
-def channel_overlay(channel: str) -> str:
+def channel_overlay(channel: str, role: str = "guest") -> str:
     ch = (channel or "api").strip().lower()
+    role_line = (
+        "Собеседник: ВЛАДЕЛЕЦ (личный секретарь)."
+        if role == "owner"
+        else "Собеседник: ГОСТЬ/КЛИЕНТ (офисный тон)."
+    )
     if ch == "telegram":
         return (
-            "КАНАЛ: Telegram (@Quantum_office_bot).\n"
+            f"КАНАЛ: Telegram (@Quantum_office_bot).\n{role_line}\n"
             "Отвечай коротко для чата (1–4 абзаца).\n"
             "Если просят «скинь сюда/мне в телегу» — send_file via=telegram, to=me."
         )
     if ch in ("bitrix", "b24"):
         return (
-            "КАНАЛ: Bitrix24 чат/открытая линия.\n"
+            f"КАНАЛ: Bitrix24 чат/открытая линия.\n{role_line}\n"
             "Отвечай кратко, без markdown-таблиц если мешают."
         )
     if ch in ("web", "widget"):
-        return "КАНАЛ: веб-чат на сайте. Отвечай ясно и дружелюбно."
+        return f"КАНАЛ: веб-чат на сайте.\n{role_line}\nОтвечай ясно и дружелюбно."
     return (
-        f"КАНАЛ: {ch} (универсальный API).\n"
-        "Отвечай как секретарь офиса; при необходимости уточняй канал доставки файлов (email/telegram)."
+        f"КАНАЛ: {ch} (универсальный API).\n{role_line}\n"
+        "При необходимости уточняй канал доставки файлов (email/telegram)."
     )
 
 
@@ -89,7 +95,14 @@ def load_system_prompt(config_path: Path) -> str:
     return "\n\n".join(parts) + "\n"
 
 
-def greeting_text(config_path: Path) -> str:
+def greeting_text(config_path: Path, role: str = "guest") -> str:
+    if role == "owner":
+        return (
+            "На связи. Я ваш ИИ-секретарь Quantum Labs.\n"
+            "Могу: календарь и встречи, Телемост/ВКС, ответы из Knowledge, файлы из облака.\n"
+            "Режимы: /режимы  ·  сброс диалога: /reset\n"
+            "Чем заняться?"
+        )
     g = ""
     try:
         raw = config_path.read_text(encoding="utf-8")
@@ -101,8 +114,7 @@ def greeting_text(config_path: Path) -> str:
     if not g:
         return (
             "Здравствуйте! Я ИИ-секретарь Quantum Labs.\n"
-            "Могу вести диалог здесь и в других каналах: записать на встречу, "
-            "создать Телемост, ответить по продукту и отправить файлы.\n"
+            "Могу записать на встречу, создать Телемост, ответить по продукту и отправить материалы.\n"
             "Чем помочь?"
         )
     g = g.replace("Вы позвонили", "Здравствуйте").replace("позвонили", "написали")

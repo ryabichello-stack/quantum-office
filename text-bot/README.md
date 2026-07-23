@@ -1,13 +1,46 @@
 # Quantum Labs ИИ-секретарь (channel-agnostic)
 
-Ядро: `secretary.py` — диалог + память + tools.  
+Ядро: `secretary.py` — диалог + память + tools + **сценарии поведения**.  
 Каналы: Telegram + HTTP API (и дальше Bitrix/web).
 
-## Telegram
-Бот: [@Quantum_office_bot](https://t.me/Quantum_office_bot)  
-Команды: `/start` `/help` `/reset`
+## Кто вы для бота
 
-## HTTP API (любая среда)
+| | |
+|--|--|
+| Владелец | `SECRETARY_OWNER_IDS` (Telegram chat_id) → личный секретарь |
+| Гость | все остальные → офисный секретарь |
+
+Пока owners не заданы, Telegram по умолчанию считается owner (`SECRETARY_TELEGRAM_DEFAULT_OWNER=true`).
+
+## Сценарии
+
+Файл: `scenarios.yaml`
+
+| id | для кого | когда |
+|----|----------|--------|
+| `secretary` | owner | общий личный секретарь (default) |
+| `calendar` | owner/guest | запись / слоты |
+| `conference` | owner/guest | срочный Телемост |
+| `knowledge` | owner/guest | продукт / FAQ из Knowledge |
+| `files` | owner/guest | презентации и файлы |
+| `briefing` | owner | «что сегодня / план» |
+| `client_prep` | owner | тезисы перед клиентом |
+| `office` | guest | внешний офисный тон |
+
+Автовыбор по ключевым словам. Закрепить вручную:
+
+```
+/режимы
+/режим calendar
+/режим сброс
+```
+
+## Telegram
+
+Бот: [@Quantum_office_bot](https://t.me/Quantum_office_bot)  
+Команды: `/start` `/help` `/reset` `/режимы`
+
+## HTTP API
 
 ```http
 POST /api/chat
@@ -15,19 +48,18 @@ X-Webhook-Token: <token>
 Content-Type: application/json
 
 {
-  "channel": "web",
-  "user_id": "user-42",
-  "text": "Создай конференцию и пригласи ivan@example.com"
+  "channel": "telegram",
+  "user_id": "963782",
+  "text": "Создай Телемост",
+  "scenario": "conference"
 }
 ```
 
-```http
-POST /api/chat/reset
-{"channel":"web","user_id":"user-42"}
-```
+`user_id` владельца + опционально `"channel":"owner"` тоже включает owner-роль.
 
 ## Modules
-- mailer knowledge
+
+- knowledge `:8017`
 - calendar `:8014`
 - conference `:8016`
 - files `:8015`
