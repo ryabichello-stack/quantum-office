@@ -15,7 +15,7 @@ from typing import Any, Optional
 
 from openai import OpenAI
 
-from ava_client import OPENAI_TOOLS, run_tool
+from ava_client import tools_for_role, run_tool
 from prompt_loader import channel_overlay, greeting_text, load_system_prompt
 from scenarios import (
     detect_scenario,
@@ -330,7 +330,7 @@ class Secretary:
             response = self.client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=messages,
-                tools=OPENAI_TOOLS,
+                tools=tools_for_role(role),
                 tool_choice="auto",
             )
             choice = response.choices[0].message
@@ -364,6 +364,7 @@ class Secretary:
                     mailer_base=AVA_MAILER_BASE,
                     telegram_chat_id=reply_to if channel == "telegram" else None,
                     channel=channel,
+                    role=role,
                 )
                 tool_payloads.append(result)
                 tool_msg = {

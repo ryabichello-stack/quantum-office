@@ -21,11 +21,14 @@
 | `secretary` | owner | общий личный секретарь (default) |
 | `calendar` | owner/guest | запись / слоты |
 | `conference` | owner/guest | срочный Телемост |
-| `knowledge` | owner/guest | продукт / FAQ из Knowledge |
+| `knowledge` | owner/guest | продукт / FAQ из Knowledge + Brain |
+| `memory` | owner | почта / контакты / треды Second Brain |
 | `files` | owner/guest | презентации и файлы |
 | `briefing` | owner | «что сегодня / план» |
-| `client_prep` | owner | тезисы перед клиентом |
+| `client_prep` | owner | тезисы перед клиентом (+ почта) |
 | `office` | guest | внешний офисный тон |
+
+Owner tools: `search_office_memory`, `find_office_contact`, `list_office_threads` → `:8017/api/brain/*`.
 
 Автовыбор по ключевым словам. Закрепить вручную:
 

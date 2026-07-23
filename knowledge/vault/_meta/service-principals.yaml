@@ -20,7 +20,13 @@ principals:
     indexes: [knowledge_public, knowledge_private]
     visibilities: [public]
     channels: [office-assistant]
-    notes: "Same as voice-office for knowledge scope."
+    notes: "public + assistant-safe; mail via explicit ACL allow_services."
+
+  service:text-guest:
+    indexes: [knowledge_public, knowledge_private]
+    visibilities: [public]
+    channels: [office-assistant]
+    notes: "Guest text-bot — FAQ/assistant-safe only; no mail/PII tools."
 
   service:outreach:
     indexes: [knowledge_public, knowledge_private]

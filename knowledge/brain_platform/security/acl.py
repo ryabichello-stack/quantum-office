@@ -24,6 +24,7 @@ SERVICE_PRINCIPALS = (
     "service:voice-public",
     "service:voice-office",
     "service:text-secretary",
+    "service:text-guest",
     "service:outreach",
     "service:cursor-admin",
 )
@@ -96,7 +97,7 @@ def resolve_principal_policy(principal: Principal) -> ACLFilter:
             allowed_channels=set(),
         )
 
-    if pid in ("service:voice-office", "service:text-secretary"):
+    if pid in ("service:voice-office", "service:text-secretary", "service:text-guest"):
         return ACLFilter(
             tenant_id=principal.tenant_id,
             principal_id=pid,
