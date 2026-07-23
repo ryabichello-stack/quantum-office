@@ -15,6 +15,7 @@ from typing import Any, Optional
 
 from openai import OpenAI
 
+from agent_loop import looks_like_stall
 from ava_client import tools_for_role, run_tool
 from prompt_loader import channel_overlay, greeting_text, load_system_prompt
 from scenarios import (
@@ -42,7 +43,7 @@ AVA_MAILER_BASE = os.getenv("AVA_MAILER_BASE", "http://127.0.0.1:8000").strip()
 AVA_CONFIG_PATH = Path(os.getenv("AVA_CONFIG_PATH", "/root/ava/config/ai-agent.local.yaml"))
 DATA_DIR = Path(os.getenv("DATA_DIR", "/opt/ava-text-bot/data"))
 SESSION_DB = DATA_DIR / "sessions.db"
-MAX_TOOL_ROUNDS = int(os.getenv("MAX_TOOL_ROUNDS", "6"))
+MAX_TOOL_ROUNDS = int(os.getenv("MAX_TOOL_ROUNDS", "14"))
 
 _JOIN_URL_RE = re.compile(r"https://telemost\.yandex\.ru/j/\S+", re.I)
 
@@ -324,8 +325,10 @@ class Secretary:
         messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
         messages.extend(history)
         tool_payloads: list[str] = []
+        tools_used = 0
+        continue_nudges = 0
 
-        for _ in range(MAX_TOOL_ROUNDS):
+        for round_i in range(MAX_TOOL_ROUNDS):
             # gpt-5-mini rejects custom temperature
             response = self.client.chat.completions.create(
                 model=OPENAI_MODEL,
@@ -339,42 +342,90 @@ class Secretary:
             append_message(SESSION_DB, session, assistant_msg)
 
             tool_calls = getattr(choice, "tool_calls", None) or []
-            if not tool_calls:
-                reply = str(choice.content or "Извините, не смог сформулировать ответ.").strip()
-                reply = self._ensure_links_in_reply(reply, tool_payloads)
-                if messages and messages[-1].get("role") == "assistant":
-                    messages[-1]["content"] = reply
-                return reply
+            if tool_calls:
+                for tc in tool_calls:
+                    fn = tc.function
+                    try:
+                        args = json.loads(fn.arguments or "{}")
+                    except json.JSONDecodeError:
+                        args = {}
+                    logger.info(
+                        "tool session=%s scenario=%s round=%s name=%s",
+                        session,
+                        scenario_id,
+                        round_i,
+                        fn.name,
+                    )
+                    result = run_tool(
+                        fn.name,
+                        args,
+                        mailer_base=AVA_MAILER_BASE,
+                        telegram_chat_id=reply_to if channel == "telegram" else None,
+                        channel=channel,
+                        role=role,
+                    )
+                    tools_used += 1
+                    tool_payloads.append(result)
+                    # Nudge inside tool payload so the model keeps chaining if needed
+                    try:
+                        payload = json.loads(result)
+                        if isinstance(payload, dict):
+                            payload.setdefault(
+                                "next_step_hint",
+                                (
+                                    "Если задача ещё не решена — сам вызови следующий tool "
+                                    "с уточнённым запросом (не спрашивай пользователя)."
+                                ),
+                            )
+                            result = json.dumps(payload, ensure_ascii=False)
+                    except json.JSONDecodeError:
+                        pass
+                    tool_msg = {
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "name": fn.name,
+                        "content": result,
+                    }
+                    messages.append(tool_msg)
+                    append_message(SESSION_DB, session, tool_msg)
+                continue
 
-            for tc in tool_calls:
-                fn = tc.function
-                try:
-                    args = json.loads(fn.arguments or "{}")
-                except json.JSONDecodeError:
-                    args = {}
+            reply = str(choice.content or "Извините, не смог сформулировать ответ.").strip()
+            reply = self._ensure_links_in_reply(reply, tool_payloads)
+
+            # Agentic continue: don't return clarification menus — force more tool steps
+            if (
+                role == "owner"
+                and looks_like_stall(reply)
+                and continue_nudges < 3
+                and round_i < MAX_TOOL_ROUNDS - 1
+            ):
+                continue_nudges += 1
                 logger.info(
-                    "tool session=%s scenario=%s name=%s",
+                    "stall-nudge session=%s round=%s tools_used=%s",
                     session,
-                    scenario_id,
-                    fn.name,
+                    round_i,
+                    tools_used,
                 )
-                result = run_tool(
-                    fn.name,
-                    args,
-                    mailer_base=AVA_MAILER_BASE,
-                    telegram_chat_id=reply_to if channel == "telegram" else None,
-                    channel=channel,
-                    role=role,
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "[internal — не показывай пользователю] "
+                            "Запрещено спрашивать, как искать или предлагать меню вариантов. "
+                            "Сам придумай следующий шаг и вызови tool "
+                            "(search_office_memory / find_office_contact / list_office_threads "
+                            "или другой нужный) с новым уточнённым запросом на основе уже "
+                            "полученных данных. Продолжай цикл, пока не дашь итоговый ответ "
+                            "по сути задачи. Пользователю пиши только финальный результат."
+                        ),
+                    }
                 )
-                tool_payloads.append(result)
-                tool_msg = {
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "name": fn.name,
-                    "content": result,
-                }
-                messages.append(tool_msg)
-                append_message(SESSION_DB, session, tool_msg)
+                continue
+
+            if messages and messages[-1].get("role") == "assistant":
+                messages[-1]["content"] = reply
+            return reply
 
         return "Сейчас не получается завершить запрос. Попробуйте переформулировать или напишите позже."
 
