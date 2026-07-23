@@ -12,8 +12,10 @@
 
 Теперь:
 - каталог тем `content/index.yaml` (id + aliases + match по заголовкам);
-- **единый корпус** `content/quantum_labs.md` = Часть A (продукт) + Часть B (ломбарды);
-  на проде SoT — `/root/ava/config/knowledge/quantum_labs.md` (install синхронизирует в content/);
+- **единый FAQ-корпус** `content/quantum_labs.md` = Часть A (продукт) + Часть B (ломбарды);
+  на проде файл живёт в `/root/ava/config/knowledge/quantum_labs.md` и **ingest'ится в Second Brain**;
+- **Источник правды для агентов — Second Brain** (`/api/brain/*`, SQLite/FTS + ACL);
+  legacy `/api/knowledge/*` остаётся compat/fallback (voice), не SoT;
 - `content/topics/*.md` — только **доп.** темы, которых ещё нет в `quantum_labs.md`
   (не дублировать ломбарды/FAQ из основного корпуса).
 

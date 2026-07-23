@@ -28,7 +28,8 @@ _KNOWLEDGE_TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "get_company_knowledge",
             "description": (
-                "База знаний Quantum Labs / Quantum Payouts + Second Brain (FAQ). "
+                "Факты о продукте/FAQ. Источник правды — Second Brain; "
+                "legacy keyword MD только fallback. "
                 "Обязательно вызывай по вопросам о продукте, СБП, тарифах, НПД, API/1С, "
                 "банках, юр.контуре, FAQ. "
                 "topic — коротко на русском; topic_id — из list_knowledge_topics если известен."
@@ -465,23 +466,34 @@ def _autonomous_memory_search(
 
 
 def _merge_knowledge(legacy: dict[str, Any], brain: dict[str, Any]) -> dict[str, Any]:
+    """Second Brain is SoT; legacy keyword FAQ is fallback only."""
     legacy_text = str(legacy.get("text") or "").strip()
     brain_text = str(brain.get("text") or "").strip()
-    parts = []
-    if legacy_text:
-        parts.append(legacy_text)
-    if brain_text and brain_text not in legacy_text:
-        parts.append("— Second Brain —\n" + brain_text)
+    parts: list[str] = []
+    if brain_text:
+        parts.append(brain_text)
+    if legacy_text and legacy_text not in brain_text:
+        # Keep legacy only when it adds something brain did not already return
+        label = "— Legacy FAQ (fallback) —\n" if brain_text else ""
+        parts.append(label + legacy_text)
     text = "\n\n".join(parts)
+    if brain_text and legacy_text:
+        source = "brain+legacy"
+    elif brain_text:
+        source = "brain"
+    else:
+        source = legacy.get("source") or "legacy"
     return {
         "ok": bool(legacy.get("ok") or brain.get("ok") or text),
         "topic": legacy.get("topic") or "",
         "topic_id": legacy.get("topic_id") or "",
         "text": text,
         "chars": len(text),
-        "matches": legacy.get("matches") or [],
+        "matches": brain.get("matches") or legacy.get("matches") or [],
         "brain_matches": brain.get("matches") or [],
-        "source": "legacy+brain" if brain_text else (legacy.get("source") or "legacy"),
+        "legacy_matches": legacy.get("matches") or [],
+        "source": source,
+        "source_of_truth": "second_brain",
     }
 
 

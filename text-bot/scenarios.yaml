@@ -82,8 +82,8 @@ scenarios:
       - quantum
     prompt: |
       РЕЖИМ: база знаний.
-      Факты через get_company_knowledge (при необходимости list_knowledge_topics).
-      Владельцу при рабочих вопросах по переписке/контактам — дополнительно search_office_memory.
+      Факты через get_company_knowledge / search_office_memory (Second Brain = SoT).
+      Legacy MD — только fallback. Не выдумывай.
       Не выдумывай ставки/юридику. Если в KB нет — скажи честно и предложи встречу.
       Ответ: коротко, 3–8 пунктов максимум, затем «нужна встреча?» если уместно.
 

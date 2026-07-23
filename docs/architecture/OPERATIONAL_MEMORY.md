@@ -12,9 +12,12 @@ Answer **any work or technical question** from one searchable corpus that grows 
 2. **Correspondence** — inbound + outbound mail threads and topics  
 3. **Projects / discussions** — decisions, open questions, participants  
 4. **Server files** — office documents and attachments on allowed roots  
-5. **FAQ / product ops** — existing `quantum_labs.md` layer  
+5. **FAQ / product ops** — `quantum_labs.md` ingested into Second Brain (FAQ docs/chunks)  
 
-## Growth
+## Source of truth
+
+**Second Brain** (`brain_platform`, `/api/brain/*`) is the SoT for agents and office memory.  
+`quantum_labs.md` + legacy `/api/knowledge/*` are the FAQ feed / voice compat layer — not the agent SoT.
 
 Every new email, project discussion, and allowlisted server file → safety scan → ACL classify → index (FTS + vector + graph). Idempotent ingest; no silent drop.
 
