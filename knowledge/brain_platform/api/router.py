@@ -9,8 +9,7 @@ from fastapi import APIRouter, Header
 from pydantic import BaseModel, Field
 
 from brain_platform.auth import DEFAULT_TENANT, principal_from_headers, require_brain_enabled
-from brain_platform.db.connection import init_db
-from brain_platform.db.repository import BrainRepository
+from brain_platform.db.factory import get_brain_repo, reset_repo_singleton
 from brain_platform.ingest.files import ingest_files
 from brain_platform.ingest.legacy_faq import ingest_legacy_faq
 from brain_platform.ingest.mail import imap_configured, ingest_mailbox
@@ -18,15 +17,15 @@ from brain_platform.search.engine import BrainSearch
 
 router = APIRouter(prefix="/api/brain", tags=["second-brain"])
 
-_repo: BrainRepository | None = None
+_repo = None
 _search: BrainSearch | None = None
 
 
-def get_repo() -> BrainRepository:
+def get_repo():
     global _repo, _search
     if _repo is None:
-        conn = init_db()
-        _repo = BrainRepository(conn)
+        reset_repo_singleton()
+        _repo = get_brain_repo()
         _search = BrainSearch(_repo)
     return _repo
 

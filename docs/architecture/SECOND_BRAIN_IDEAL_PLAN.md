@@ -271,9 +271,14 @@ Meetings/CRM    ┘     + publish pipeline  ├──►  Graph (entities/edges)
 
 ---
 
-## 10. Первый следующий шаг
+## 10. Статус cutover (2026-07-23)
 
-**B1: поднять Postgres+pgvector на проде** (или дать connection string managed).  
-После этого можно сразу B2→B3→S1 без остановки text-bot (dual-write / flag).
+**B1–B3 / S1 в работе на `5.35.86.62`:**
+- Postgres 16 + pgvector + `quantum_brain` / `brain_app` — подняты.
+- Схема `schema_postgres.sql` + CLI `init-pg` / `sync-pg`.
+- Write path остаётся SQLite ingest; search/read → Postgres при `BRAIN_STORE=postgres`.
+- Timer: ingest → embed-backfill → `sync-pg`.
 
-Нужно от вас только: **где крутить Postgres** (тот же `5.35.86.62` / отдельный host / managed) и OK на установку пакетов.
+**Дальше:** B4 physical zones, vault `quantum-brain`, GraphStore API, voice switch (approval).
+
+Нужно от вас только: OK на switch voice/text когда eval готов; private vault repo.

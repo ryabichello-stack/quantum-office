@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from brain_platform.db.connection import init_db
+from brain_platform.db.factory import get_brain_repo
 from brain_platform.db.repository import BrainRepository
 from brain_platform.ingest.files import ingest_files
 from brain_platform.ingest.legacy_faq import ingest_legacy_faq
@@ -26,6 +27,11 @@ def main(argv: list[str] | None = None) -> int:
 
     p_init = sub.add_parser("init-db", help="Create/migrate brain SQLite schema")
     p_init.add_argument("--db", default=None)
+
+    p_init_pg = sub.add_parser("init-pg", help="Apply Postgres+pgvector schema")
+    p_migrate = sub.add_parser("sync-pg", help="Copy SQLite corpus → Postgres (full refresh)")
+    p_migrate.add_argument("--sqlite", default=None)
+    p_migrate.add_argument("--no-truncate", action="store_true")
 
     p_ingest = sub.add_parser("ingest", help="Run ingest (faq/files/mail)")
     p_ingest.add_argument("--sources", default="faq,files,mail")
@@ -70,6 +76,28 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"ok": True, "stats": repo.stats(os.getenv("BRAIN_TENANT_ID", "quantum-labs"))}))
         return 0
 
+    if args.cmd == "init-pg":
+        from brain_platform.db.pg import init_postgres
+
+        pg = init_postgres()
+        pg.close()
+        print(json.dumps({"ok": True, "backend": "postgres", "schema": "applied"}))
+        return 0
+
+    if args.cmd == "sync-pg":
+        from brain_platform.db.connection import default_db_path
+        from brain_platform.db.migrate_sqlite_to_pg import migrate
+        from brain_platform.db.pg import database_url
+
+        sqlite_path = args.sqlite or str(default_db_path())
+        dsn = database_url()
+        if not dsn:
+            print(json.dumps({"ok": False, "error": "BRAIN_DATABASE_URL missing"}))
+            return 2
+        out = migrate(sqlite_path, dsn, truncate=not args.no_truncate)
+        print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
+        return 0 if out.get("ok") else 1
+
     if args.cmd == "ingest":
         sources = [s.strip() for s in args.sources.split(",") if s.strip()]
         out = {}
@@ -81,8 +109,18 @@ def main(argv: list[str] | None = None) -> int:
             out["mail"] = ingest_mailbox(
                 repo, tenant_id=args.tenant, direction="both", limit=args.mail_limit
             )
+        # Keep Postgres search index fresh when configured
+        if (os.getenv("BRAIN_DATABASE_URL") or "").strip():
+            try:
+                from brain_platform.db.connection import default_db_path
+                from brain_platform.db.migrate_sqlite_to_pg import migrate
+                from brain_platform.db.pg import database_url
+
+                out["sync_pg"] = migrate(str(default_db_path()), database_url(), truncate=True)
+            except Exception as exc:  # noqa: BLE001
+                out["sync_pg"] = {"ok": False, "error": str(exc)}
         out["stats"] = repo.stats(args.tenant)
-        print(json.dumps(out, ensure_ascii=False, indent=2))
+        print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
         return 0
 
     if args.cmd == "search":
@@ -94,8 +132,9 @@ def main(argv: list[str] | None = None) -> int:
             is_admin=args.admin or args.principal == "service:cursor-admin",
             user_id="cli" if args.admin or args.principal == "service:cursor-admin" else None,
         )
-        result = BrainSearch(repo).retrieve(principal, args.query, mode=args.mode)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        search_repo = get_brain_repo()
+        result = BrainSearch(search_repo).retrieve(principal, args.query, mode=args.mode)
+        print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
         return 0
 
     if args.cmd == "embed-backfill":

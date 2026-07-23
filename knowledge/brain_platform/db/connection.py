@@ -1,4 +1,4 @@
-"""SQLite connection for Second Brain (Postgres URL reserved for later migration)."""
+"""SQLite connection for Second Brain (writes + local default; Postgres via BRAIN_DATABASE_URL)."""
 
 from __future__ import annotations
 

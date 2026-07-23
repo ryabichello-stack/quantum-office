@@ -1,15 +1,17 @@
 # Second Brain — поэтапный roadmap (без потери данных)
 
 Связан с: [`ADR-0001-second-brain.md`](./ADR-0001-second-brain.md)  
+**План до идеала (БД · граф · vault · агенты):** [`SECOND_BRAIN_IDEAL_PLAN.md`](./SECOND_BRAIN_IDEAL_PLAN.md)
+
 **Статус ADR:** Accepted with required security amendments (2026-07-23)  
 **Правило:** каждый этап обратим; legacy `:8017` `/api/knowledge/*` остаётся до отдельного approval на switch.  
 **Security principle:** ACL обеспечивается инфраструктурой до LLM, не промптом.
 
-Утверждённые выборы v1: **pgvector (абстракция)**; **runtime сейчас SQLite+FTS** с той же ACL-моделью (миграция на Postgres без смены агентов); **Vault в `quantum-brain`**; **physical public/private zones**; **default deny**; **manual publish only**.
+Утверждённые выборы v1: **pgvector**; **runtime: SQLite write + Postgres/pgvector search** (`BRAIN_STORE=postgres`); **Vault в `quantum-brain`**; **physical public/private zones**; **default deny**; **manual publish only**.
 
 **Product mission:** операционная память офиса — контакты, переписки in/out, проекты/обсуждения, файлы на сервере + FAQ.
 
-**Реализация в office-репо (v1 ship):** пакет `knowledge/brain_platform/` + `/api/brain/*` на `ava-knowledge` (additive). Ingest: FAQ, files, IMAP mail. Voice/text tools **ещё на legacy**.
+**Реализация в office-репо (shipped v1):** пакет `knowledge/brain_platform/` + `/api/brain/*` на `ava-knowledge` (additive). Ingest: FAQ, files, IMAP mail (idempotent/dedupe). Hybrid search + embed-backfill. Text-bot SoT=brain. Voice tools **ещё на legacy**.
 
 ---
 
@@ -247,18 +249,18 @@ MD change → Safety scan → Classify → Normalize → Chunk(inherit ACL) →
 
 | Требование Second Brain | Готовность | Комментарий |
 |-------------------------|------------|-------------|
-| Ответ на любой рабочий вопрос | 🔴 | Пока только FAQ keyword |
-| Контакты (email/телефон/должность/компания) | 🔴 | Модель в ADR; runtime нет |
-| Переписки in/out | 🔴 | Ingest в Phase 6b |
-| Файлы на сервере | 🟡 | Есть `ava-files`; нет KB ingest |
-| Проекты / обсуждения | 🔴 | |
-| MD FAQ как SoT слой | 🟡 | Freeze есть; канон → `quantum-brain` |
-| Tenant + ACL + classification | 🟡 | Схемы/тесты Phase 0 |
+| Ответ на любой рабочий вопрос | 🟡 | FAQ+mail+files hybrid; graph/citations ещё нет |
+| Контакты (email/телефон/должность/компания) | 🟢 | Ingest + API/tools |
+| Переписки in/out | 🟢 | IMAP ingest + threads |
+| Файлы на сервере | 🟢 | file ingest roots |
+| Проекты / обсуждения | 🟡 | threads/topics; graph expand нет |
+| MD FAQ как SoT слой | 🟡 | unified `quantum_labs.md`; vault repo ещё нет |
+| Tenant + ACL + classification | 🟢 | in-query ACL |
 | Physical public/private | 🔴 | Закреплено в ADR |
-| Entity graph + contacts | 🔴 | Postgres v1 в плане |
-| Semantic/Hybrid (pgvector) | 🔴 | |
+| Entity graph + contacts | 🔴 | tables in PG schema; API later |
+| Semantic/Hybrid (pgvector) | 🟡 | cutover `BRAIN_STORE=postgres` |
 | Safety / quarantine | 🟡 | Контракты Phase 0 |
 | LLM-agnostic MCP | 🔴 | |
 | Compat для агентов | 🟢 | Voice/text на общем API; switch заблокирован |
 
-**Вывод:** `ava-knowledge` — compat/FAQ слой. Second Brain наращивается как **операционная память** (контакты + почта + файлы + проекты) с security-first Phase 0.
+**Вывод:** Second Brain на проде — операционная память + hybrid search; cutover search на Postgres/pgvector. Дальше: physical zones, vault, graph API, voice switch.

@@ -77,13 +77,12 @@ class SqliteJsonVectorStore(VectorStore):
 
 def get_vector_store(conn) -> VectorStore:
     backend = (os.getenv("BRAIN_VECTOR_BACKEND") or "sqlite_json").strip().lower()
+    if backend in ("pgvector", "postgres"):
+        # Semantic search is handled by PgSearchRepository (SQL <=>).
+        # Keep sqlite_json store for write-side embedding_json during ingest.
+        return SqliteJsonVectorStore(conn)
     if backend in ("sqlite", "sqlite_json", "json"):
         return SqliteJsonVectorStore(conn)
-    if backend in ("pgvector", "postgres"):
-        # Reserved: requires Postgres+pgvector provisioned
-        raise RuntimeError(
-            "BRAIN_VECTOR_BACKEND=pgvector not provisioned yet; use sqlite_json"
-        )
     return SqliteJsonVectorStore(conn)
 
 
