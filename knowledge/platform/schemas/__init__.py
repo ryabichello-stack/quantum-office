@@ -6,10 +6,14 @@ from knowledge.platform.schemas.models import (
     ChunkIndexRecord,
     Classification,
     ClassificationLevel,
+    ContactRecord,
     DocumentFrontmatter,
     DocumentStatus,
+    EmailMessageRecord,
+    FileAssetRecord,
     Publication,
     PublicationStatus,
+    ThreadRecord,
 )
 
 __all__ = [
@@ -20,8 +24,12 @@ __all__ = [
     "ChunkIndexRecord",
     "Classification",
     "ClassificationLevel",
+    "ContactRecord",
     "DocumentFrontmatter",
     "DocumentStatus",
+    "EmailMessageRecord",
+    "FileAssetRecord",
     "Publication",
     "PublicationStatus",
+    "ThreadRecord",
 ]

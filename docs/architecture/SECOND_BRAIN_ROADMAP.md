@@ -7,6 +7,8 @@
 
 Утверждённые выборы v1: **pgvector**, **Postgres graph**, **Vault в `quantum-brain`**, **physical public/private**, **default deny**, **manual publish only**.
 
+**Product mission:** операционная память офиса — контакты (email/телефон/должность/компания), переписки in/out, проекты/обсуждения, файлы на сервере + FAQ; база растёт из новой работы; ответ на любой рабочий/технический вопрос в пределах ACL.
+
 ---
 
 ## Phase 0 — Security foundation + freeze (без смены production runtime)
@@ -150,39 +152,64 @@ MD change → Safety scan → Classify → Normalize → Chunk(inherit ACL) →
 
 ---
 
-## Phase 6 — Entity Graph (Postgres)
+## Phase 6 — Entity Graph + Contact Directory (Postgres)
 
-**Цель:** entities/edges в Postgres с tenant + visibility.
+**Цель:** граф сущностей с **контактами в центре** (email, телефон, должность, компания) и связями с проектами/письмами.
 
 ### Работы
-1. Таблицы ADR §4.15.  
-2. Extractor: frontmatter + LLM propose **только** если policy позволяет.  
-3. API: `related`, timeline; ACL в SQL.  
+1. Таблицы ADR §4.15 (`entities`, `edges`, `contacts`, `threads`, …).  
+2. Extractor: frontmatter + mail headers + LLM propose **только** если policy позволяет.  
+3. API/MCP: `kb.find_contact`, `related`, timeline; ACL в SQL.  
+4. ПДн: `contains_personal_data`; default не public.  
 
 ### Exit criteria
-- [ ] Демо-граф Quantum Payouts → банк → номинальный счёт → meeting  
-- [ ] Guest / voice-public не видит edges на secret/private nodes  
+- [ ] Найти человека по email/телефону/компании  
+- [ ] Демо-граф: контакт → компания → проект → thread → файл  
+- [ ] Guest / voice-public не видит ПДн и private edges  
+
+---
+
+## Phase 6b — Continuous operational ingest (mail + server files)
+
+**Цель:** база **растёт** из реальной работы офиса — главная продуктовая задача.
+
+### Работы
+1. **Mail Ingestor:** входящие + исходящие (Message-ID идемпотентность) → `email_thread` docs + upsert contacts.  
+2. **File Ingestor:** разрешённые roots на сервере + вложения → `FileAsset` + index.  
+3. Project/discussion notes → связь с `Project` entity.  
+4. Watcher/cron; safety scan на каждое сообщение/файл.  
+5. Cursor (`cursor-admin` + personal auth) и office principals ищут по почте/файлам в пределах ACL.  
+
+### Не делаем
+- Отдача всей почты в `voice-public`  
+- External embedding для писем с ПДн/секретами без policy  
+
+### Exit criteria
+- [ ] Новый входящий/исходящий letter появляется в поиске после ingest  
+- [ ] Контакты из писем обновляют directory  
+- [ ] Файл на сервере (в allowlisted root) находится по содержанию/имени при ACL  
+- [ ] Ответ на типовой рабочий вопрос = retrieve по FAQ + thread + contact + file  
 
 ---
 
 ## Phase 7 — RAG + MCP Gateway
 
-**Цель:** единая память для агентов; **switch voice/text — отдельный approval**.
+**Цель:** единая память для агентов («ответить на любой рабочий вопрос»); **switch voice/text — отдельный approval**.
 
 ### Работы
-1. `RAG.retrieve(query, principal, token_budget)`.  
-2. MCP: `kb.search`, `kb.get`, `kb.related`, `kb.upsert`, `kb.reindex`.  
+1. `RAG.retrieve(query, principal, token_budget)` across FAQ + mail + files + contacts.  
+2. MCP: `kb.search`, `kb.get`, `kb.related`, `kb.find_contact`, `kb.list_threads`, `kb.upsert`, `kb.reindex`, `kb.ingest_status`.  
 3. Подключение агентов только после explicit approval.  
 
 ### Exit criteria
-- [ ] Cursor ищет через MCP с ACL  
+- [ ] Cursor успешно отвечает на рабочий вопрос из почты/контактов/файлов с ACL  
 - [ ] Voice/text не переключены без approval gate  
 
 ---
 
 ## Phase 8 — Admin UI + publish workflow
 
-**Цель:** browse, ACL, reindex, **publish approval**, quarantine review.
+**Цель:** browse, ACL, reindex, **publish approval**, quarantine review, contact merge, ingest monitors.
 
 ---
 
@@ -193,9 +220,11 @@ MD change → Safety scan → Classify → Normalize → Chunk(inherit ACL) →
 3. [x] Vector v1 → pgvector  
 4. [x] Graph v1 → Postgres  
 5. [x] Service principals + default deny + assistant-safe  
-6. [ ] Phase 0 tests зелёные  
-7. [ ] Создать private repo `quantum-brain`  
-8. [ ] Отдельный approval на switch voice/text  
+6. [x] Product mission: contacts + mail + files + projects (operational memory)  
+7. [ ] Phase 0 tests зелёные  
+8. [ ] Создать private repo `quantum-brain`  
+9. [ ] Утвердить mailbox accounts + server file roots для ingest  
+10. [ ] Отдельный approval на switch voice/text  
 
 ---
 
@@ -203,8 +232,8 @@ MD change → Safety scan → Classify → Normalize → Chunk(inherit ACL) →
 
 - Не удаляем `quantum_labs.md` и не выключаем keyword `:8017`  
 - Не переключаем voice/text на Second Brain без approval  
-- Не даём voice/text blanket `company`  
-- Не авто-publish в `public`  
+- Не даём voice/text blanket `company` / всю почту  
+- Не авто-publish в `public` (особенно ПДн и переписку)  
 - Не шлём restricted/secret во внешний embedding API  
 - Не внедряем Qdrant / Neo4j в v1  
 - Не кешируем только по тексту запроса  
@@ -216,14 +245,18 @@ MD change → Safety scan → Classify → Normalize → Chunk(inherit ACL) →
 
 | Требование Second Brain | Готовность | Комментарий |
 |-------------------------|------------|-------------|
-| MD как SoT | 🟡 | Freeze есть; канон → `quantum-brain` |
-| Типы документов | 🔴 | Один смешанный корпус |
-| Tenant + ACL + classification | 🟡 | Схемы/тесты Phase 0; runtime ещё нет |
+| Ответ на любой рабочий вопрос | 🔴 | Пока только FAQ keyword |
+| Контакты (email/телефон/должность/компания) | 🔴 | Модель в ADR; runtime нет |
+| Переписки in/out | 🔴 | Ingest в Phase 6b |
+| Файлы на сервере | 🟡 | Есть `ava-files`; нет KB ingest |
+| Проекты / обсуждения | 🔴 | |
+| MD FAQ как SoT слой | 🟡 | Freeze есть; канон → `quantum-brain` |
+| Tenant + ACL + classification | 🟡 | Схемы/тесты Phase 0 |
 | Physical public/private | 🔴 | Закреплено в ADR |
-| Entity graph | 🔴 | Postgres v1 в плане |
+| Entity graph + contacts | 🔴 | Postgres v1 в плане |
 | Semantic/Hybrid (pgvector) | 🔴 | |
 | Safety / quarantine | 🟡 | Контракты Phase 0 |
 | LLM-agnostic MCP | 🔴 | |
 | Compat для агентов | 🟢 | Voice/text на общем API; switch заблокирован |
 
-**Вывод:** `ava-knowledge` остаётся anti-corruption / compat слоем. Second Brain наращивается над ним с security-first Phase 0.
+**Вывод:** `ava-knowledge` — compat/FAQ слой. Second Brain наращивается как **операционная память** (контакты + почта + файлы + проекты) с security-first Phase 0.

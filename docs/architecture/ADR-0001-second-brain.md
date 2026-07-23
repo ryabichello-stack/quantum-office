@@ -66,15 +66,36 @@ flowchart LR
 
 ## 2. Problem
 
-Текущая Knowledge — **хороший FAQ-поиск для секретаря**, но не корпоративная память:
+### 2.1. Главная задача (product mission)
+
+Second Brain должен стать **операционной памятью офиса**, по которой в любой момент можно ответить на **любой рабочий или технический вопрос**:
+
+| Что обязательно знать | Примеры вопросов |
+|----------------------|------------------|
+| **Контакты** | email, телефоны, должности, компании, роли в проектах |
+| **Переписки** | темы входящих/исходящих писем, цепочки, договорённости, статусы |
+| **Проекты и обсуждения** | решения, открытые вопросы, участники, следующие шаги |
+| **Файлы на сервере** | договоры, спецификации, выгрузки, вложения, рабочие документы |
+| **Продуктовый/операционный FAQ** | тарифы, процессы, AVA — как сейчас в `quantum_labs.md` |
+
+База **растёт непрерывно**: каждое новое письмо, проект, обсуждение и файл на сервере должны попадать в корпус (через ingest + safety + ACL), а не оставаться только в почтовом ящике или на диске.
+
+Cursor / office-агенты с достаточным principal должны уметь **проверять входящие и исходящие письма** и опираться на тот же индекс, что и люди.
+
+FAQ-монолит — лишь стартовый слой. Без контактов, переписок и файлов миссия не выполнена.
+
+### 2.2. Технические пробелы сейчас
+
+Текущая Knowledge — **хороший FAQ-поиск для секретаря**, но не операционная память:
 
 1. **Нет SoT-дисциплины** — dual path (`/root/ava` vs git vs `/opt`).
 2. **Смешение аудиторий** — внутренние запреты рядом с клиентским FAQ; ACL отсутствует.
-3. **Нет типизации**, графа, hybrid search, indexer pipeline.
-4. **Не LLM-agnostic** — нет единого MCP/API контракта с правами.
-5. **Нет tenant isolation**, физической изоляции public/private, AI processing policy, secret scanning.
+3. **Нет типизации**, графа контактов/проектов, hybrid search, indexer pipeline.
+4. **Нет непрерывного ingest** почты, файлов сервера, протоколов обсуждений.
+5. **Не LLM-agnostic** — нет единого MCP/API контракта с правами.
+6. **Нет tenant isolation**, физической изоляции public/private, AI processing policy, secret scanning.
 
-**Цель:** Second Brain — единый Source of Truth для AI-агентов Quantum Labs, с tenant + ACL + classification, физическим разделением индексов, hybrid search и обратимой миграцией без потери данных.
+**Цель:** Second Brain — единый Source of Truth для AI-агентов и сотрудников Quantum Labs: контакты + переписки + проекты + файлы + FAQ, с tenant + ACL + classification, непрерывным ростом корпуса, физическим разделением индексов, hybrid search и обратимой миграцией без потери данных.
 
 ---
 
@@ -82,16 +103,18 @@ flowchart LR
 
 | # | Драйвер |
 |---|---------|
-| D1 | Markdown = канон; vector/graph — производные индексы |
-| D2 | Ноль потери информации; старые документы остаются доступны |
+| D0 | **Ответ на любой рабочий/технический вопрос** из единого searchable корпуса (контакты, почта, проекты, файлы, FAQ) |
+| D1 | Markdown / структурированные записи Vault = канон; vector/graph — производные индексы |
+| D2 | Ноль потери информации; старые документы и переписки остаются доступны |
 | D3 | **Security filtering внутри каждого backend-запроса**; post-filter — только доп. проверка |
 | D4 | Не ломать voice (`:8000/api/knowledge/query`) и text-bot tools без отдельного approval |
-| D5 | LLM-agnostic: любой агент через REST и/или MCP |
+| D5 | LLM-agnostic: любой агент (в т.ч. Cursor) через REST и/или MCP |
 | D6 | Малые обратимые шаги + тесты + rollback |
 | D7 | Не трогать Asterisk / Polyhub / Mango / VPN |
 | D8 | Default deny; public только через manual publish |
 | D9 | Не отправлять company/restricted/secret во внешние embedding/LLM API без явной policy |
 | D10 | Vault и код платформы — разные репозитории и жизненные циклы |
+| D11 | Корпус **растёт** из почты/файлов/обсуждений; ingest идемпотентен и аудируем |
 
 ---
 
@@ -101,21 +124,26 @@ flowchart LR
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  KNOWLEDGE VAULT (private repo quantum-brain) — SoT     │
-│  Markdown + YAML frontmatter + attachments              │
+│  SOURCES (continuous growth)                              │
+│  FAQ MD · Mail in/out · Server files · Meetings/projects │
 └───────────────────────────┬─────────────────────────────┘
-                            │ index pipeline + safety scan
+                            │ ingest + safety
+┌───────────────────────────▼─────────────────────────────┐
+│  KNOWLEDGE VAULT (private repo quantum-brain) — SoT     │
+│  Markdown + contacts + threads + file manifests         │
+└───────────────────────────┬─────────────────────────────┘
+                            │ index pipeline
         ┌───────────────────┼───────────────────┐
         ▼                   ▼                   ▼
    Keyword/FTS          Vector Index         Knowledge Graph
-   (Postgres)        (pgvector v1)         (Postgres tables)
+   (Postgres)        (pgvector v1)     (contacts·projects·threads)
         └───────────────────┬───────────────────┘
                             ▼
    physical zones: knowledge_public | knowledge_private [| knowledge_secret]
                             ▼
               Search / RAG / Permission / MCP Gateway
                             ▼
-   voice-public · voice-office · text-secretary · outreach · cursor-admin
+   voice-* · text-secretary · outreach · cursor-admin · people
 ```
 
 **Правило:** если vector и MD расходятся — прав MD, индексы пересобираются. Vector **никогда** не SoT.
@@ -205,7 +233,7 @@ source: legacy/quantum_labs.v1.md#8.5
 - Default access для неизвестного principal: **deny all**.
 
 **Типы (`type`)** минимум:  
-`doc`, `api`, `sop`, `adr`, `research`, `meeting`, `protocol`, `email`, `idea`, `task`, `requirement`, `policy`, `company`, `bank`, `product`, `legal`, `article_public`, `article_internal`, `reference`, `faq`, `incident`, `timeline`.
+`doc`, `api`, `sop`, `adr`, `research`, `meeting`, `protocol`, `email`, `email_thread`, `contact`, `file`, `discussion`, `idea`, `task`, `requirement`, `policy`, `company`, `bank`, `product`, `legal`, `article_public`, `article_internal`, `reference`, `faq`, `incident`, `timeline`.
 
 ### 4.5. Visibility + ACL + classification
 
@@ -399,7 +427,7 @@ cache_key = hash(
 
 Полный запрос — только при необходимости и с ограниченным сроком хранения. Обычный audit log **не** хранит чувствительный полный текст.
 
-### 4.15. Entity Graph (Postgres v1)
+### 4.15. Entity Graph (Postgres v1) — контакты и проекты в центре
 
 Таблицы:
 
@@ -416,17 +444,66 @@ edges (
 )
 document_entities (...)
 entity_versions (...)
+contacts (  -- специализированная проекция Person/Company
+  id, tenant_id, display_name, emails[], phones[],
+  title, company_entity_id, visibility, acl_revision, ...
+)
+threads (
+  id, tenant_id, subject, channel, project_entity_id,
+  participants[], last_message_at, visibility, ...
+)
 ```
+
+**Обязательные kinds:** `Person`, `Company`, `Product`, `Project`, `Decision`, `Research`, `Meeting`, `Article`, `API`, `Incident`, `Idea`, `TimelineEvent`, `EmailThread`, `Mailbox`, `FileAsset`, `Discussion`.
+
+**Обязательные связи (пример):**  
+`WORKS_AT`, `HAS_TITLE`, `EMAIL_OF`, `PHONE_OF`, `PARTICIPANT_OF`, `DISCUSSED_IN`, `DECIDED_IN`, `ATTACHED_TO`, `PART_OF_PROJECT`, `FOLLOWS_UP`, `SUPERSEDES`, `OWNED_BY`, `MENTIONS`.
 
 Все graph queries — с `tenant_id` + ACL filter в SQL.
 
-### 4.16. Сервисы (логические границы)
+Контакты с ПДн: `classification.contains_personal_data: true`, default visibility не выше `company` / чаще `restricted`; **никогда** не в `knowledge_public` без manual publish (обычно publish запрещён для ПДн).
+
+### 4.16. Операционный корпус: почта, файлы, обсуждения
+
+```
+Mailboxes (in/out)          Server files / attachments
+        │                              │
+        ▼                              ▼
+   Mail Ingestor                  File Ingestor
+        │                              │
+        └──────────┬───────────────────┘
+                   ▼
+         Safety scan + classify
+                   ▼
+     Thread / Contact / Project extract
+                   ▼
+         Vault records (quantum-brain)
+                   ▼
+     Index → FTS + pgvector + Graph (ACL)
+```
+
+**Правила ingest:**
+
+1. **Входящие и исходящие** письма индексируются (идемпотентно по `Message-ID` / hash).
+2. Из письма извлекаются: тема, участники → **upsert контактов** (email, ФИО, компания, должность если есть), project/topic tags, вложения → File Ingestor.
+3. Файлы на сервере (разрешённые roots, напр. office shares / mail attachments store) сканируются по mtime/hash; путь и метаданные в `FileAsset`.
+4. Обсуждения проектов (протоколы, meeting notes, chat exports при политике) → `Discussion` / `Meeting` документы, связанные с `Project`.
+5. Default visibility для почты/файлов: **`restricted` или `company`**, не `public`. ПДн/секреты → safety → quarantine или `restricted` + allow-list.
+6. Рост корпуса — норма: indexer работает непрерывно (cron/watcher), без ручного копирования FAQ.
+7. Cursor / `service:cursor-admin` (с персональной admin-авторизацией) и office principals с ACL могут **искать по письмам и файлам** через MCP/`kb.search` — в пределах прав, не «весь ящик в промпт».
+
+**Ответ на рабочий вопрос** = hybrid retrieve по FAQ + threads + contacts + files + graph expand (участники ↔ компания ↔ проект ↔ письма).
+
+### 4.17. Сервисы (логические границы)
 
 | Service | Responsibility | Interface |
 |---------|----------------|-----------|
 | **Storage** | Vault FS/Git (`quantum-brain`), versions | `DocsRepository` |
 | **Permission** | principal → ACL filter; `can_read` | mandatory pre-query filter builder |
 | **Safety** | secret/PII/credential scan → quarantine | `scan(doc)` |
+| **Mail Ingestor** | IMAP/API in+out → threads + contacts | `ingest_mailbox(since)` |
+| **File Ingestor** | server roots / attachments → FileAsset | `ingest_paths(roots)` |
+| **Contact Directory** | canonical people/companies phones/emails/titles | `upsert_contact`, `find_contact` |
 | **Indexer** | normalize → chunk → embed (по policy) → upsert | pipeline events |
 | **Embedding** | pluggable; respects `ai_processing` | `embed(texts[], policy)` |
 | **Entity Extractor** | candidates + review queue | `extract(doc)` |
@@ -436,15 +513,20 @@ entity_versions (...)
 | **RAG** | assemble only allowed context | `retrieve(q, principal, budget)` |
 | **API Gateway** | REST + MCP; tenant from token | OpenAPI + MCP |
 | **Compat Adapter** | legacy `/api/knowledge/query|topics|get` | без switch без approval |
-| **Admin UI** | browse, ACL, reindex, publish approval | later |
+| **Admin UI** | browse, ACL, reindex, publish approval, quarantine | later |
 
 Modular monolith first: `knowledge/platform/`.
 
-### 4.17. Chunking / search modes / MCP
+### 4.18. Chunking / search modes / MCP
 
-Без изменений по смыслу предыдущей редакции: смысловой chunking; modes `keyword | semantic | hybrid`; MCP tools `kb.search|get|related|upsert|reindex` — всегда с principal из gateway auth.
+Смысловой chunking (в т.ч. email = thread segment / message; file = section by type); modes `keyword | semantic | hybrid`; MCP tools:
 
-Compat API сохраняется; **переключение** voice/text на новую платформу — только после отдельного approval.
+- `kb.search` / `kb.get` / `kb.related` / `kb.upsert` / `kb.reindex`
+- `kb.find_contact` `{name|email|phone|company}`
+- `kb.list_threads` `{project|participant|since}`
+- `kb.ingest_status`
+
+Всегда с principal из gateway auth. Compat API сохраняется; **переключение** voice/text на новую платформу — только после отдельного approval. Голосовой `voice-public` **не** получает почту/ПДн.
 
 ---
 
@@ -506,11 +588,14 @@ Compat API сохраняется; **переключение** voice/text на 
 ## 8. Out of scope (для ADR)
 
 - Полный Admin UI в первой волне  
-- Автоимпорт всей почты/Bitrix без политики  
-- Замена Bitrix CRM  
+- Замена Bitrix CRM как системы продаж (Second Brain **дополняет** CRM памятью/поиском, не обязан заменить UI Bitrix в v1)  
 - Обучение собственных embedding-моделей  
 - Qdrant / Neo4j в v1  
 - Переключение voice/text на Second Brain без отдельного approval  
+- Публикация ПДн/переписки в `knowledge_public`  
+- Ingest почты/файлов **без** ACL, safety scan и tenant isolation  
+
+**В scope (явно):** непрерывный ingest входящей/исходящей почты, контактов, серверных файлов и проектных обсуждений — под security policy ADR.  
 
 ---
 
@@ -534,6 +619,7 @@ Compat API сохраняется; **переключение** voice/text на 
 - Current service: `knowledge/README.md`  
 - Topic catalog: `knowledge/content/index.yaml`  
 - Roadmap: `docs/architecture/SECOND_BRAIN_ROADMAP.md`  
+- Operational memory mission: `docs/architecture/OPERATIONAL_MEMORY.md`  
 - Platform schemas: `knowledge/platform/schemas/`  
 - Security contracts/tests: `knowledge/platform/tests/`  
 - Prod constraints: `AGENTS.md`

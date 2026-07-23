@@ -51,11 +51,14 @@
 
 ## Дальше: Second Brain
 
-Текущий сервис — совместимый FAQ/keyword слой для агентов.  
-ADR-0001 **Accepted** (security amendments). Код платформы: `platform/` (Phase 0 schemas + negative-security tests).  
-Канонический Vault → отдельный private repo **`quantum-brain`**. Production `:8017` в Phase 0 **не меняется**; switch voice/text — только с отдельным approval.
+**Миссия:** операционная память офиса — контакты, переписки in/out, проекты, файлы на сервере + FAQ; ответ на любой рабочий вопрос; корпус растёт из новой работы.
+
+Текущий сервис — совместимый FAQ/keyword слой.  
+ADR-0001 **Accepted** (security + operational memory). Код: `platform/` (Phase 0).  
+Vault → private **`quantum-brain`**. Production `:8017` не меняется в Phase 0; switch voice/text — отдельный approval.
 
 - [`docs/architecture/ADR-0001-second-brain.md`](../docs/architecture/ADR-0001-second-brain.md)
+- [`docs/architecture/OPERATIONAL_MEMORY.md`](../docs/architecture/OPERATIONAL_MEMORY.md)
 - [`docs/architecture/SECOND_BRAIN_ROADMAP.md`](../docs/architecture/SECOND_BRAIN_ROADMAP.md)
 - [`platform/README.md`](./platform/README.md)
 

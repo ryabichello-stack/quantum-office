@@ -220,4 +220,137 @@ class CacheKeyParts(BaseModel):
     index_revision: int
 
 
+class ContactRecord(BaseModel):
+    """Canonical office contact — email, phone, title, company."""
+
+    id: str
+    tenant_id: str
+    display_name: str
+    emails: list[str] = Field(default_factory=list)
+    phones: list[str] = Field(default_factory=list)
+    title: str | None = None
+    company_name: str | None = None
+    company_entity_id: str | None = None
+    visibility: str = "company"
+    acl: ACL = Field(default_factory=ACL)
+    classification: Classification = Field(
+        default_factory=lambda: Classification(
+            level=ClassificationLevel.CONFIDENTIAL,
+            contains_personal_data=True,
+        )
+    )
+    project_ids: list[str] = Field(default_factory=list)
+    acl_revision: int = 1
+    status: DocumentStatus = DocumentStatus.ACTIVE
+
+    @model_validator(mode="after")
+    def contact_security(self) -> ContactRecord:
+        if not self.tenant_id:
+            raise ValueError("tenant_id required")
+        if not self.emails and not self.phones:
+            raise ValueError("contact requires at least one email or phone")
+        if self.visibility == "public":
+            raise ValueError("contacts with PII must not be visibility=public")
+        if self.visibility == "restricted" and not self.acl.has_explicit_allow():
+            raise ValueError("restricted contact requires ACL allow-list")
+        if not self.classification.contains_personal_data:
+            raise ValueError("contacts must flag contains_personal_data=true")
+        return self
+
+
+class EmailMessageRecord(BaseModel):
+    """Single inbound/outbound message feeding the operational corpus."""
+
+    id: str
+    tenant_id: str
+    message_id: str
+    direction: str  # inbound | outbound
+    thread_id: str
+    subject: str
+    from_email: str
+    to_emails: list[str] = Field(default_factory=list)
+    cc_emails: list[str] = Field(default_factory=list)
+    sent_at: datetime | None = None
+    project_id: str | None = None
+    visibility: str = "restricted"
+    acl: ACL = Field(default_factory=ACL)
+    classification: Classification = Field(
+        default_factory=lambda: Classification(
+            level=ClassificationLevel.CONFIDENTIAL,
+            contains_personal_data=True,
+        )
+    )
+    body_hash: str
+    attachment_file_ids: list[str] = Field(default_factory=list)
+    acl_revision: int = 1
+    status: DocumentStatus = DocumentStatus.ACTIVE
+
+    @field_validator("direction")
+    @classmethod
+    def direction_ok(cls, v: str) -> str:
+        if v not in ("inbound", "outbound"):
+            raise ValueError("direction must be inbound|outbound")
+        return v
+
+    @model_validator(mode="after")
+    def mail_security(self) -> EmailMessageRecord:
+        if self.visibility == "public":
+            raise ValueError("email must not be auto-public")
+        if self.visibility == "restricted" and not self.acl.has_explicit_allow():
+            raise ValueError("restricted email requires ACL allow-list")
+        return self
+
+
+class FileAssetRecord(BaseModel):
+    """Server file or mail attachment indexed into the knowledge corpus."""
+
+    id: str
+    tenant_id: str
+    path: str
+    filename: str
+    content_hash: str
+    source: str  # server_root | mail_attachment | vault
+    project_id: str | None = None
+    visibility: str = "company"
+    acl: ACL = Field(default_factory=ACL)
+    classification: Classification = Field(default_factory=Classification)
+    acl_revision: int = 1
+    status: DocumentStatus = DocumentStatus.ACTIVE
+
+    @model_validator(mode="after")
+    def file_security(self) -> FileAssetRecord:
+        if not self.tenant_id or not self.path or not self.content_hash:
+            raise ValueError("tenant_id, path, content_hash required")
+        if self.visibility == "restricted" and not self.acl.has_explicit_allow():
+            raise ValueError("restricted file requires ACL allow-list")
+        if self.visibility == "public":
+            raise ValueError("server files are not auto-public; use manual publish flow")
+        return self
+
+
+class ThreadRecord(BaseModel):
+    """Correspondence / discussion thread linked to people and projects."""
+
+    id: str
+    tenant_id: str
+    subject: str
+    channel: str  # email | meeting | discussion
+    project_id: str | None = None
+    participant_contact_ids: list[str] = Field(default_factory=list)
+    message_ids: list[str] = Field(default_factory=list)
+    last_message_at: datetime | None = None
+    visibility: str = "restricted"
+    acl: ACL = Field(default_factory=ACL)
+    topics: list[str] = Field(default_factory=list)
+    acl_revision: int = 1
+
+    @model_validator(mode="after")
+    def thread_security(self) -> ThreadRecord:
+        if self.visibility == "restricted" and not self.acl.has_explicit_allow():
+            raise ValueError("restricted thread requires ACL allow-list")
+        if self.visibility == "public":
+            raise ValueError("threads must not be public without manual publish")
+        return self
+
+
 PrincipalId = Annotated[str, Field(pattern=r"^(user|group|service):.+")]

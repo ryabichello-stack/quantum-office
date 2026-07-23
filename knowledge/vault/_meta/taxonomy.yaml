@@ -24,6 +24,10 @@ document_types:
   - meeting
   - protocol
   - email
+  - email_thread
+  - contact
+  - file
+  - discussion
   - idea
   - task
   - requirement
@@ -38,6 +42,28 @@ document_types:
   - faq
   - incident
   - timeline
+
+entity_kinds:
+  - Person
+  - Company
+  - Product
+  - Project
+  - Decision
+  - Meeting
+  - EmailThread
+  - Mailbox
+  - FileAsset
+  - Discussion
+  - Incident
+  - TimelineEvent
+
+operational_sources:
+  - faq_markdown
+  - mailbox_inbound
+  - mailbox_outbound
+  - server_files
+  - meeting_notes
+  - project_discussions
 
 channels:
   - office-assistant   # assistant-safe collection for voice-office / text-secretary
