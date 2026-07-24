@@ -14,6 +14,7 @@
 | `ava-conference` | `/opt/ava-conference` | `127.0.0.1:8016` | Telemost + invites — voice `create_conference` |
 | `ava-files` | `/opt/ava-files` | `127.0.0.1:8015` | disks/repo → email/Telegram |
 | `ava-text-bot` | `/opt/ava-text-bot` | `127.0.0.1:8011` | Telegram text bot |
+| `ava-sheets-campaign` | `/opt/ava-sheets-campaign` | `127.0.0.1:8018` | Google Sheet → payouts outbound campaign |
 
 ## Public routes
 

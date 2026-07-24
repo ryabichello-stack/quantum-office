@@ -22,6 +22,8 @@ CONFERENCE_BASE = os.getenv("AVA_CONFERENCE_BASE", "http://127.0.0.1:8016").rstr
 FILES_BASE = os.getenv("AVA_FILES_BASE", "http://127.0.0.1:8015").rstrip("/")
 CONSOLE_BASE = os.getenv("AVA_CONSOLE_BASE", "http://127.0.0.1:8013").rstrip("/")
 CONSOLE_TOKEN = os.getenv("CONSOLE_TOKEN", os.getenv("QUANTUM_CONSOLE_TOKEN", "")).strip()
+CAMPAIGN_BASE = os.getenv("AVA_CAMPAIGN_BASE", "http://127.0.0.1:8018").rstrip("/")
+CAMPAIGN_ENABLED = os.getenv("CAMPAIGN_ENABLED", "true").lower() not in ("0", "false", "no", "off")
 OFFICE_WEBHOOK_TOKEN = os.getenv("OFFICE_WEBHOOK_TOKEN", os.getenv("WEBHOOK_TOKEN", "")).strip()
 BRAIN_ENABLED = os.getenv("BRAIN_ENABLED", "true").lower() not in ("0", "false", "no", "off")
 BRAIN_TENANT_ID = os.getenv("BRAIN_TENANT_ID", "quantum-labs").strip() or "quantum-labs"
@@ -401,6 +403,66 @@ _OUTBOUND_OWNER_TOOLS: list[dict[str, Any]] = [
     },
 ]
 
+_CAMPAIGN_OWNER_TOOLS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "preview_payouts_campaign",
+            "description": (
+                "Показать номера из Google Sheets (НомераКлиентов / Архив) без пометки, "
+                "готовые к обзвону по теме массовых выплат."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer"},
+                    "sheet": {
+                        "type": "string",
+                        "description": "Фильтр: «НомераКлиентов» или «НомераКлиентов Архив»",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "start_payouts_campaign",
+            "description": (
+                "Запустить обзвон из Google Sheets по массовым выплатам "
+                "(Second Brain + календарь/Телемост). Итог пишется в «Пометки Клиента». "
+                "Сначала спроси лимит max_calls (по умолчанию 5). dry_run=true — без реальных звонков."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "max_calls": {"type": "integer", "description": "Сколько номеров за этот запуск"},
+                    "sheet": {"type": "string"},
+                    "dry_run": {"type": "boolean"},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "payouts_campaign_status",
+            "description": "Статус кампании обзвона Google Sheets (обработано / интересно / ошибки).",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "stop_payouts_campaign",
+            "description": "Остановить текущий обзвон Google Sheets.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+]
+
 _OFFICE_TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
@@ -577,6 +639,8 @@ def tools_for_role(role: str) -> list[dict[str, Any]]:
             owner_extra.extend(_BRAIN_OWNER_TOOLS)
         if CONSOLE_ENABLED and CONSOLE_BASE:
             owner_extra.extend(_OUTBOUND_OWNER_TOOLS)
+        if CAMPAIGN_ENABLED and CAMPAIGN_BASE:
+            owner_extra.extend(_CAMPAIGN_OWNER_TOOLS)
         if owner_extra:
             tools = list(_KNOWLEDGE_TOOLS) + owner_extra + list(_OFFICE_TOOLS)
     return tools
@@ -1772,12 +1836,69 @@ def run_tool(
             "list_outbound_calls",
             "await_outbound_result",
             "get_outbound_call",
+            "preview_payouts_campaign",
+            "start_payouts_campaign",
+            "payouts_campaign_status",
+            "stop_payouts_campaign",
         ):
             if not is_owner:
                 return json.dumps(
                     {"ok": False, "error": "forbidden", "message": "Исходящие звонки только для владельца"},
                     ensure_ascii=False,
                 )
+
+        if name in (
+            "preview_payouts_campaign",
+            "start_payouts_campaign",
+            "payouts_campaign_status",
+            "stop_payouts_campaign",
+        ):
+            if not CAMPAIGN_ENABLED or not CAMPAIGN_BASE:
+                return json.dumps(
+                    {
+                        "ok": False,
+                        "error": "campaign_disabled",
+                        "message": "Кампания Sheets не настроена",
+                    },
+                    ensure_ascii=False,
+                )
+            try:
+                if name == "preview_payouts_campaign":
+                    q: list[str] = []
+                    if arguments.get("limit") is not None:
+                        q.append(f"limit={int(arguments.get('limit'))}")
+                    if arguments.get("sheet"):
+                        q.append(
+                            "sheet=" + urllib.parse.quote(str(arguments.get("sheet")))
+                        )
+                    url = f"{CAMPAIGN_BASE}/api/campaign/preview"
+                    if q:
+                        url += "?" + "&".join(q)
+                    data = _get_json(url, timeout=60.0)
+                elif name == "payouts_campaign_status":
+                    data = _get_json(
+                        f"{CAMPAIGN_BASE}/api/campaign/status", timeout=30.0
+                    )
+                elif name == "stop_payouts_campaign":
+                    data = _post_json(
+                        f"{CAMPAIGN_BASE}/api/campaign/stop", {}, timeout=30.0
+                    )
+                else:
+                    body: dict[str, Any] = {}
+                    if arguments.get("max_calls") is not None:
+                        body["max_calls"] = int(arguments.get("max_calls"))
+                    if arguments.get("sheet"):
+                        body["sheet"] = str(arguments.get("sheet"))
+                    if arguments.get("dry_run") is not None:
+                        body["dry_run"] = bool(arguments.get("dry_run"))
+                    data = _post_json(
+                        f"{CAMPAIGN_BASE}/api/campaign/start", body, timeout=60.0
+                    )
+            except Exception as exc:
+                return json.dumps(
+                    {"ok": False, "error": str(exc)}, ensure_ascii=False
+                )
+            return json.dumps(data, ensure_ascii=False)
 
         if name == "draft_outbound_call":
             goal = str(arguments.get("goal") or "").strip()
