@@ -15,13 +15,14 @@ shard: tool-quantum-console
 
 # Инструмент: quantum-console
 
-Операционный веб-интерфейс **нашей** телефонии (не стоковый AVA Admin UI).
+Операционный веб-интерфейс **нашей** системы (телефония + outreach + знания), не стоковый AVA Admin UI.
 
 - Путь: `/opt/quantum-console`
 - Порт: `8013`
 - Unit: `quantum-console.service`
 - UI: `http://127.0.0.1:8013/` и `https://a.47z.ru/_quantum_console/`
 - Auth UI: `CONSOLE_USER` + `CONSOLE_PASSWORD` (session cookie); API bots: `CONSOLE_TOKEN`
+- **Outreach** встроен в меню консоли (прокси на `:8012`, отдельный токен outreach в браузере не нужен)
 
 ## Возможности
 
