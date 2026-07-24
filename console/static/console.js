@@ -7,6 +7,11 @@
         ? "/_quantum_console"
         : "";
 
+  // Brand assets from Mail.ru «Графика/Лого» (latest square orange mark)
+  const LOGO_MARK = BASE + "/assets/brand/logo-mark.png";
+  if ($("loginLogo")) $("loginLogo").src = LOGO_MARK;
+  if ($("sideLogo")) $("sideLogo").src = LOGO_MARK;
+
   const TAB_META = {
     status: { title: "Обзор", hint: "Сервисы и здоровье системы" },
     outreach: { title: "Outreach", hint: "Bitrix, очередь писем, ответы, anti-ban" },

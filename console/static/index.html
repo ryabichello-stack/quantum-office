@@ -4,6 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Quantum Labs — Центр управления</title>
+  <link rel="icon" type="image/png" href="" id="qcFavicon" />
+  <link rel="apple-touch-icon" href="" id="qcAppleIcon" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
@@ -14,12 +16,20 @@
     document.write(
       '<link rel="stylesheet" href="' + window.__QC_BASE__ + '/assets/console.css" />'
     );
+    (function () {
+      var mark = window.__QC_BASE__ + "/assets/brand/logo-mark.png";
+      var icon = window.__QC_BASE__ + "/assets/brand/favicon-180.png";
+      document.getElementById("qcFavicon").href = icon;
+      document.getElementById("qcAppleIcon").href = icon;
+      window.__QC_LOGO_MARK__ = mark;
+    })();
   </script>
 </head>
 <body>
   <div id="loginGate" class="login-gate" hidden>
     <div class="login-atmosphere" aria-hidden="true"></div>
     <form id="loginForm" class="login-panel" autocomplete="on">
+      <script>document.write('<img class="login-logo" id="loginLogo" alt="Quantum Labs" width="88" height="88" src="' + (window.__QC_LOGO_MARK__ || "") + '" />');</script>
       <p class="login-brand">Quantum Labs</p>
       <h1 class="login-title">Центр управления</h1>
       <p class="login-sub">Телефония, outreach, знания и сервисы</p>
@@ -39,8 +49,11 @@
   <div id="appShell" class="app" hidden>
     <aside class="sidebar">
       <div class="sidebar-brand">
-        <p class="brand-mark">Quantum Labs</p>
-        <p class="brand-sub">Центр управления</p>
+        <script>document.write('<img class="brand-logo" id="sideLogo" alt="Quantum Labs" width="44" height="44" src="' + (window.__QC_LOGO_MARK__ || "") + '" />');</script>
+        <div class="brand-copy">
+          <p class="brand-mark">Quantum Labs</p>
+          <p class="brand-sub">Центр управления</p>
+        </div>
       </div>
       <nav class="side-nav" id="tabs" aria-label="Разделы">
         <button type="button" data-tab="status" class="active">Обзор</button>
