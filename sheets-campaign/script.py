@@ -44,18 +44,22 @@ C. Запись на консультацию (ОБЯЗАТЕЛЬНО при и�
      )
      (Телемост создаётся сам внутри create_calendar_event; отдельно create_conference
       используй только если нужна ссылка ВКС без слота в календаре)
-   - затем ОБЯЗАТЕЛЬНО вызови send_welcome_email(attendee_email=..., summary=...,
-        meeting_start=..., telemost_join_url=... если есть)
-     чтобы на почту ушла презентация Quantum Labs (даже если авто-welcome уже сработал —
-     лучше явно отправить).
+   - затем ОБЯЗАТЕЛЬНО вызови send_email(
+        to=<подтверждённый email>,
+        subject="Quantum Labs — презентация / консультация",
+        body=<короткий текст с датой встречи и ссылкой Телемост если есть>,
+        attach_presentation=true
+     )
+     либо send_welcome_email(...) — оба варианта допустимы.
 
-   После успешного create_calendar_event + send_welcome_email скажи РОВНО смысл фразы:
+   После успешного create_calendar_event + send_email скажи РОВНО смысл фразы:
    «Готово, встреча зафиксирована на <дата и время>. Приглашение и письмо с презентацией
    отправлены на вашу почту.»
    Не зачитывай длинные URL/event_url.
 
 D. Если интересно, но запись сейчас невозможна
-   - Спроси email и вызови send_welcome_email, чтобы отправить презентацию.
+   - Спроси email и вызови send_email(to=..., subject=..., body=..., attach_presentation=true),
+     чтобы отправить презентацию на нужный адрес.
    - Скажи, что менеджер Quantum Labs перезвонит лично.
    - Итог для пометки: ИНТЕРЕСНО — перезвонить лично (письмо отправлено).
 
@@ -67,7 +71,7 @@ D. Если интересно, но запись сейчас невозмож�
 
 Tools на этом звонке (используй их):
 get_company_knowledge, check_calendar, create_calendar_event, create_conference,
-send_welcome_email, hangup_call.
+send_email, send_welcome_email, hangup_call.
 """.strip()
 
 # Full office stack for this campaign (same capabilities as inbound booking).
@@ -76,6 +80,7 @@ CAMPAIGN_TOOLS = [
     "check_calendar",
     "create_calendar_event",
     "create_conference",
+    "send_email",
     "send_welcome_email",
     "hangup_call",
 ]

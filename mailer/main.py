@@ -20,7 +20,7 @@ import pytz
 from dateutil import parser as dtparser
 import caldav
 from icalendar import Calendar, Event
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 import logging
 
 # --------------------
@@ -1474,6 +1474,106 @@ class WelcomePresentationRequest(BaseModel):
     description: str = ""
     meeting_start: str = ""
     telemost_join_url: str = ""
+
+
+class SendEmailRequest(BaseModel):
+    to: str = Field(..., description="Recipient email")
+    subject: str = Field(..., min_length=1, max_length=200)
+    body: str = Field(..., min_length=1, max_length=20000)
+    attach_presentation: bool = Field(
+        default=False,
+        description="Attach Quantum Labs welcome PDF if configured",
+    )
+    reply_to: Optional[str] = None
+
+    @field_validator("attach_presentation", mode="before")
+    @classmethod
+    def coerce_attach_presentation(cls, v):
+        """Accept bool or common string forms from AVA templates."""
+        if isinstance(v, bool):
+            return v
+        if v is None:
+            return False
+        if isinstance(v, (int, float)):
+            return bool(v)
+        s = str(v).strip().lower()
+        if s in ("1", "true", "yes", "y", "on"):
+            return True
+        if s in ("0", "false", "no", "n", "off", ""):
+            return False
+        return bool(v)
+
+
+@app.post("/api/email/send")
+async def api_send_email(
+    req: SendEmailRequest,
+    background_tasks: BackgroundTasks,
+    x_webhook_token: str = Header(None),
+):
+    """Send an arbitrary email to a given address (in-call / office tool)."""
+    if x_webhook_token != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="bad token")
+    to = (req.to or "").strip()
+    if "@" not in to or "." not in to.split("@")[-1]:
+        return {"ok": False, "sent": False, "queued": False, "error": "bad_email", "message": "Некорректный email"}
+    subject = (req.subject or "").strip()
+    body = (req.body or "").strip()
+    if not subject or not body:
+        return {
+            "ok": False,
+            "sent": False,
+            "queued": False,
+            "error": "subject_or_body_required",
+            "message": "Нужны subject и body",
+        }
+
+    def _send() -> None:
+        attachments = []
+        if req.attach_presentation and WELCOME_PDF_PATH and os.path.isfile(WELCOME_PDF_PATH):
+            attachments.append(
+                {
+                    "path": WELCOME_PDF_PATH,
+                    "filename": os.path.basename(WELCOME_PDF_PATH),
+                    "subtype": "pdf",
+                }
+            )
+        try:
+            send_email_to(
+                to,
+                subject,
+                body,
+                reply_to=(req.reply_to or WELCOME_CONTACT_EMAIL or SMTP_USER or None),
+                attachments=attachments or None,
+            )
+            write_log(
+                {
+                    "status": "email_sent",
+                    "to": to,
+                    "subject": subject,
+                    "attach_presentation": bool(req.attach_presentation),
+                }
+            )
+            logger.info("[EMAIL SEND] ok to=%s subject=%s", to, subject[:80])
+        except Exception as exc:
+            logger.exception("[EMAIL SEND] failed to=%s", to)
+            write_log(
+                {
+                    "status": "email_send_failed",
+                    "to": to,
+                    "subject": subject,
+                    "error": str(exc),
+                }
+            )
+
+    background_tasks.add_task(_send)
+    return {
+        "ok": True,
+        "queued": True,
+        "sent": True,
+        "to": to,
+        "subject": subject,
+        "message": f"Письмо поставлено в очередь на отправку на {to}",
+    }
 
 
 @app.post("/api/welcome/presentation")
