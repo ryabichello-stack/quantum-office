@@ -56,6 +56,37 @@
     return String(s || "").replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
   }
 
+  /** ISO/UTC → «24.07.2026, 17:46:43» in Europe/Moscow */
+  function fmtMsk(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return String(iso);
+    try {
+      return new Intl.DateTimeFormat("ru-RU", {
+        timeZone: "Europe/Moscow",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }).format(d);
+    } catch {
+      return String(iso);
+    }
+  }
+
+  function fmtDuration(sec) {
+    if (sec === null || sec === undefined || sec === "") return "";
+    const n = Number(sec);
+    if (!Number.isFinite(n)) return String(sec);
+    if (n < 60) return Math.round(n) + " с";
+    const m = Math.floor(n / 60);
+    const s = Math.round(n % 60);
+    return m + " мин " + String(s).padStart(2, "0") + " с";
+  }
+
   function showLogin(errMsg) {
     $("appShell").hidden = true;
     $("loginGate").hidden = false;
@@ -390,17 +421,17 @@
     const rows = c.calls || [];
     $("callsBox").innerHTML = `<p class="muted">Всего: ${c.total}${
       filter ? " · фильтр " + esc(filter) : ""
-    }. Клик по строке — расшифровка.</p>
+    }. Время — Москва (МСК). Клик по строке — расшифровка.</p>
       <table class="calls-table"><thead><tr>
-        <th>Когда</th><th>Контекст</th><th>Кто</th><th>Сек</th><th>Outcome</th><th>Сообщения</th>
+        <th>Когда (МСК)</th><th>Контекст</th><th>Кто</th><th>Длит.</th><th>Outcome</th><th>Сообщения</th>
       </tr></thead><tbody>
       ${rows
         .map(
           (r) => `<tr data-call-id="${esc(r.call_id)}" class="call-row" style="cursor:pointer">
-        <td>${esc(r.start_time)}</td>
+        <td title="${esc(r.start_time || "")}">${esc(fmtMsk(r.start_time))}</td>
         <td><code>${esc(r.context_name || "")}</code></td>
         <td>${esc(r.caller_number)} ${esc(r.caller_name)}</td>
-        <td>${r.duration_seconds ?? ""}</td>
+        <td>${esc(fmtDuration(r.duration_seconds))}</td>
         <td>${esc(r.outcome)}</td>
         <td class="preview">${esc(r.transcript_preview || "—")}</td>
       </tr>`
@@ -426,9 +457,9 @@
         `<div><b>call_id</b> <code>${esc(call.call_id || "")}</code></div>` +
         `<div><b>контекст</b> <code>${esc(call.context_name || "")}</code></div>` +
         `<div><b>номер</b> ${esc(call.caller_number || "")} ${esc(call.caller_name || "")}</div>` +
-        `<div><b>время</b> ${esc(call.start_time || "")} → ${esc(call.end_time || "")} · ${
-          call.duration_seconds ?? "?"
-        }с</div>` +
+        `<div><b>время (МСК)</b> ${esc(fmtMsk(call.start_time))} → ${esc(
+          fmtMsk(call.end_time)
+        )} · ${esc(fmtDuration(call.duration_seconds))}</div>` +
         `<div><b>outcome</b> ${esc(call.outcome || "")}</div>` +
         `<div><b>реплики</b> всего ${turns.length} · клиент ${userTurns}</div>` +
         `</div>`;
