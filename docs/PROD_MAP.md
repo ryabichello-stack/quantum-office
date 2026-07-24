@@ -43,3 +43,5 @@
 | `conference/` | `/opt/ava-conference` |
 | `files/` | `/opt/ava-files` |
 | `text-bot/` | `/opt/ava-text-bot` |
+| `sheets-campaign/` | `/opt/ava-sheets-campaign` |
+| `console/` | `/opt/quantum-console` |
