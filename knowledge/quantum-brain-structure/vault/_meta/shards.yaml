@@ -1,0 +1,15 @@
+# Vault shard manifest (structure only — no content sizes required)
+
+# When real shards exist, list them here for export-monolith / publish-bundle.
+source: content/quantum_labs.md
+shards:
+  - id: products-stub
+    path: products/_stub.md
+  - id: lombards-stub
+    path: lombards/_stub.md
+  - id: ops-stub
+    path: ops/_stub.md
+  - id: platform-stub
+    path: platform/_stub.md
+  - id: meetings-stub
+    path: meetings/_stub.md
