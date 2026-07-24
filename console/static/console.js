@@ -711,15 +711,15 @@
         box.innerHTML = `<p class="muted">Пока нет локальных результатов (total=${r.total || 0})</p>`;
         return r;
       }
-      box.innerHTML = `<p class="muted">Всего в БД: ${r.total} · показаны последние ${items.length}</p>
+      box.innerHTML = `<p class="muted">Наша БД · всего: ${r.total} · показаны последние ${items.length}</p>
         <table class="calls-table"><thead><tr>
-          <th>Когда</th><th>Телефон</th><th>Лист</th><th>Пометка</th><th>Расшифровка</th><th>В Sheet</th>
+          <th>Когда (МСК)</th><th>Телефон</th><th>Пометка</th><th>Статус</th><th>Расшифровка</th><th>Sheet</th>
         </tr></thead><tbody>
         ${items
           .map((it) => {
             const tr = String(it.transcript || "").trim();
             const preview = tr
-              ? esc(tr.length > 220 ? tr.slice(0, 219) + "…" : tr)
+              ? esc(tr.length > 180 ? tr.slice(0, 179) + "…" : tr)
               : "<span class='muted'>—</span>";
             const openBtn = it.call_id
               ? `<button type="button" class="linkish" data-open-call="${esc(
@@ -727,12 +727,12 @@
                 )}">открыть в Звонках</button>`
               : "";
             return `<tr>
-          <td>${esc(it.created_at || "")}</td>
-          <td><code>${esc(it.phone)}</code></td>
-          <td>${esc(it.sheet_name || "")} #${esc(it.row_number)}</td>
-          <td class="preview">${esc(it.note || "")}<div class="muted">${esc(
-              it.status || it.interest || ""
+          <td title="${esc(it.created_at || "")}">${esc(fmtMsk(it.created_at))}</td>
+          <td><code>${esc(it.phone)}</code><div class="muted">${esc(it.sheet_name || "")} #${esc(
+              it.row_number
             )}</div></td>
+          <td class="preview">${esc(it.note || "")}</td>
+          <td><b>${esc(it.status || "—")}</b></td>
           <td class="preview camp-transcript">${preview}${
               openBtn ? "<div>" + openBtn + "</div>" : ""
             }</td>
