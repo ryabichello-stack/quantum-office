@@ -39,6 +39,22 @@ NEGATIVE_RE = re.compile(
 NOANSWER_RE = re.compile(
     r"(?i)(?:^|[^\w])(автоответчик|голосовая\s+почта|не\s*бер\w*\s*труб\w*|недозвон|не\s*отвеча\w*|молчан\w*)"
 )
+# IVR / electronic secretary / voicemail — not a live decision-maker.
+MACHINE_RE = re.compile(
+    r"(?i)("
+    r"электронн\w*\s+помощник"
+    r"|голосовой\s+помощник"
+    r"|виртуальн\w*\s+(?:секретар\w*|помощник|ассистент)"
+    r"|автосекретар\w*"
+    r"|я\s+(?:робот|бот|автоответчик)"
+    r"|озвучьте,?\s+что\s+передать"
+    r"|оставьте\s+(?:сообщение|голосовое)"
+    r"|после\s+сигнала"
+    r"|абонент\s+(?:недоступен|занят)"
+    r"|сейчас\s+не\s+может\s+ответить"
+    r"|перезвоните\s+позднее"
+    r")"
+)
 CALLBACK_RE = re.compile(
     r"(?i)(?:^|[^\w])(перезвон\w*|свяжит\w*|позже|через\s+\d+|завтра|вечером)"
 )
@@ -92,9 +108,18 @@ def has_user_speech(conversation: list[Any] | str) -> bool:
     return bool(_user_text(conversation).strip())
 
 
+def is_machine_or_assistant(conversation: list[Any] | str) -> bool:
+    """True if callee side is IVR / electronic assistant / voicemail."""
+    user = _user_text(conversation)
+    text = _turns_text(conversation)
+    return bool(MACHINE_RE.search(user) or MACHINE_RE.search(text))
+
+
 def client_expressed_interest(conversation: list[Any] | str) -> bool:
     user = _user_text(conversation)
     if not user.strip():
+        return False
+    if is_machine_or_assistant(conversation):
         return False
     if NEGATIVE_RE.search(user):
         return False
@@ -112,7 +137,12 @@ def status_for(*, note: str, interest: str, status: str = "") -> str:
         return "Положительный"
     if "НЕ ИНТЕРЕСНО" in n:
         return "Отрицательный"
-    if "НЕ ДОЗВОН" in n or "АВТООТВЕТЧИК" in n:
+    if (
+        "НЕ ДОЗВОН" in n
+        or "АВТООТВЕТЧИК" in n
+        or "ЭЛЕКТРОННЫЙ ПОМОЩНИК" in n
+        or "ГОЛОСОВОЙ ПОМОЩНИК" in n
+    ):
         return "Недозвон"
     if n.startswith("ПЕРЕЗВОНИТЬ"):
         return "Перезвонить"
@@ -141,6 +171,14 @@ def classify_rules(conversation: list[Any] | str, *, outcome: str = "", duration
             "status": "Состоялся",
             "interest": "maybe",
             "method": "rules_no_user",
+        }
+    # Electronic assistant / IVR first — never treat as live interest.
+    if is_machine_or_assistant(conversation):
+        return {
+            "note": "НЕ ДОЗВОН / электронный помощник",
+            "status": "Недозвон",
+            "interest": "no",
+            "method": "rules_machine",
         }
     if NOANSWER_RE.search(user) or NOANSWER_RE.search(text) or "no-answer" in out or "busy" in out:
         return {
@@ -201,6 +239,11 @@ def _sanitize_llm_result(
     conversation: list[Any] | str,
 ) -> dict[str, str]:
     """Drop invented «ИНТЕРЕСНО» unless client said so or booking tools fired."""
+    if is_machine_or_assistant(conversation):
+        out = classify_rules(conversation)
+        out["method"] = "llm_sanitized_" + out["method"]
+        return out
+
     note = str(data.get("note") or "").strip() or "СОСТОЯЛСЯ — уточнить итог"
     interest = str(data.get("interest") or "maybe").strip().lower()
     status = str(data.get("status") or "").strip()
@@ -241,6 +284,8 @@ def classify_llm(conversation: list[Any] | str, *, outcome: str = "", duration: 
         "явно сказал об интересе (интересно/актуально/давайте обсудим/запишите меня) "
         "ИЛИ реально создана запись на консультацию (календарь/Телемост).\n"
         "Реплики ассистента (AVA) сами по себе НЕ считаются интересом.\n"
+        "Если на линии электронный/голосовой помощник, автоответчик, «озвучьте что передать» "
+        "— это НЕ ДОЗВОН / электронный помощник, interest=no, даже если бот сказал «заинтересовали».\n"
         "Короткие «да/алло/удобно» без интереса → не ИНТЕРЕСНО.\n"
         "note — короткая пометка для колонки «Пометки Клиента» на русском.\n"
         "Если запись на консультацию — note начинай с "
@@ -294,8 +339,8 @@ def classify_llm(conversation: list[Any] | str, *, outcome: str = "", duration: 
 
 
 def classify(conversation: list[Any] | str, *, outcome: str = "", duration: int = 0) -> dict[str, str]:
-    # Without caller ASR, LLM often invents «ИНТЕРЕСНО» from AVA greeting alone.
-    if not has_user_speech(conversation):
+    # Machine / no real caller ASR — do not let LLM invent «ИНТЕРЕСНО».
+    if is_machine_or_assistant(conversation) or not has_user_speech(conversation):
         out = classify_rules(conversation, outcome=outcome, duration=duration)
     else:
         llm = classify_llm(conversation, outcome=outcome, duration=duration)

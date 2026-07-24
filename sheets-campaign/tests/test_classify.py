@@ -112,6 +112,33 @@ def test_classify_negative_has_status():
     assert out["status"] == "Отрицательный"
 
 
+def test_classify_electronic_assistant_not_interest(monkeypatch):
+    def boom(*_a, **_k):
+        raise AssertionError("LLM must not run for electronic assistant")
+
+    monkeypatch.setattr(classify, "classify_llm", boom)
+    conv = [
+        {"role": "assistant", "content": "Здравствуйте! Звоню по теме массовых выплат."},
+        {
+            "role": "user",
+            "content": "Думали принять звонок. Я электронный помощник. Озвучьте, что передать.",
+        },
+        {
+            "role": "user",
+            "content": "Ну, вы меня заинтересовали. Готова записать. Можете уточнить и условия?",
+        },
+        {
+            "role": "user",
+            "content": "Я вас услышала. Подумаю, и если надумаю, сама обращусь. Хорошо?",
+        },
+    ]
+    out = classify.classify(conv, duration=91, outcome="completed")
+    assert out["interest"] == "no"
+    assert out["status"] == "Недозвон"
+    assert "электронный помощник" in out["note"].lower()
+    assert not out["note"].upper().startswith("ИНТЕРЕСНО")
+
+
 def test_col_letter():
     assert sheets_io._col_letter(0) == "A"
     assert sheets_io._col_letter(22) == "W"
