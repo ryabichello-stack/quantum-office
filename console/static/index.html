@@ -201,10 +201,10 @@
             <p id="campActionMsg" class="msg"></p>
             <div id="campWriteBanner" class="camp-run-banner idle">Проверка записи в Sheet…</div>
             <div id="campLeadsBox" class="table-wrap">Загрузка…</div>
-            <h2 class="section-title">Локальные результаты</h2>
+            <h2 class="section-title">Результаты в нашей БД</h2>
             <p class="muted tight">
-              Обзвон идёт сверху вниз. После каждого звонка ставится пометка (локально + в Sheet, если writeback включён).
-              Полный диалог — колонка «Расшифровка» или вкладка «Звонки».
+              После каждого звонка пишем пометку и статус в <code>campaign.db</code> (очередь двигается по ней).
+              Google Sheet — опционально, если подключён ключ.
             </p>
             <div id="campResultsBox">—</div>
 

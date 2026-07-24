@@ -160,10 +160,21 @@ def init_db() -> None:
                 call_id TEXT,
                 channel_id TEXT,
                 written INTEGER DEFAULT 0,
-                created_at TEXT
+                created_at TEXT,
+                duration_seconds INTEGER,
+                outcome TEXT,
+                classify_method TEXT
             )
             """
         )
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(results)").fetchall()}
+        for name, ddl in (
+            ("duration_seconds", "INTEGER"),
+            ("outcome", "TEXT"),
+            ("classify_method", "TEXT"),
+        ):
+            if name not in cols:
+                conn.execute(f"ALTER TABLE results ADD COLUMN {name} {ddl}")
         conn.commit()
     finally:
         conn.close()
@@ -254,15 +265,18 @@ def await_call(phone: str, *, dialed_after: float, timeout: float) -> dict[str, 
     return best
 
 
-def _save_result(row: dict[str, Any]) -> None:
+def _save_result(row: dict[str, Any]) -> int:
+    """Persist dial result into our local campaign.db. Returns row id."""
+    init_db()
     conn = sqlite3.connect(str(_db_path()))
     try:
-        conn.execute(
+        cur = conn.execute(
             """
             INSERT INTO results (
                 sheet_name, gid, row_number, phone, note, status, interest,
-                transcript, call_id, channel_id, written, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                transcript, call_id, channel_id, written, created_at,
+                duration_seconds, outcome, classify_method
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 row.get("sheet_name"),
@@ -277,8 +291,31 @@ def _save_result(row: dict[str, Any]) -> None:
                 row.get("channel_id"),
                 1 if row.get("written") else 0,
                 row.get("created_at"),
+                row.get("duration_seconds"),
+                row.get("outcome"),
+                row.get("classify_method"),
             ),
         )
+        conn.commit()
+        rid = int(cur.lastrowid or 0)
+        logger.info(
+            "saved to campaign.db id=%s phone=%s status=%s note=%s",
+            rid,
+            row.get("phone"),
+            row.get("status"),
+            row.get("note"),
+        )
+        return rid
+    finally:
+        conn.close()
+
+
+def _mark_written(result_id: int) -> None:
+    if not result_id:
+        return
+    conn = sqlite3.connect(str(_db_path()))
+    try:
+        conn.execute("UPDATE results SET written = 1 WHERE id = ?", (result_id,))
         conn.commit()
     finally:
         conn.close()
@@ -390,16 +427,19 @@ def _process_one(lead: sheets_io.LeadRow, *, dry_run: bool) -> dict[str, Any]:
             "row_number": lead.row_number,
             "phone": normalize_phone(lead.phone),
             "note": note,
-            "status": "",
+            "status": classify.status_for(note=note, interest="maybe"),
             "interest": "maybe",
             "transcript": "",
             "call_id": "",
             "channel_id": "",
             "written": False,
+            "duration_seconds": 0,
+            "outcome": "dry_run",
+            "classify_method": "dry_run",
             "created_at": datetime.now(timezone.utc).isoformat(),
             "dial": dial,
         }
-        _save_result(result)
+        result["id"] = _save_result(result)
         return result
 
     if not dial.get("ok"):
@@ -427,47 +467,57 @@ def _process_one(lead: sheets_io.LeadRow, *, dry_run: bool) -> dict[str, Any]:
             ]
         )
     )
-    written = False
-    write_info: dict[str, Any] = {}
-    write_info = sheets_io.update_lead_result(
-        lead,
-        note=cls["note"],
-        transcript=transcript,
+    status = classify.status_for(
+        note=cls.get("note") or "",
+        interest=cls.get("interest") or "",
         status=cls.get("status") or "",
     )
-    written = bool(write_info.get("ok"))
-    if not written:
-        logger.warning(
-            "sheet writeback skipped/failed phone=%s row=%s err=%s",
-            lead.phone,
-            lead.row_number,
-            write_info.get("error") or write_info,
-        )
-    else:
-        logger.info(
-            "sheet writeback ok phone=%s row=%s mode=%s note=%s",
-            lead.phone,
-            lead.row_number,
-            write_info.get("mode"),
-            cls["note"],
-        )
+    # Primary store: our local campaign.db (note + status). Sheet is optional.
     result = {
         "sheet_name": lead.sheet_name,
         "gid": lead.gid,
         "row_number": lead.row_number,
         "phone": normalize_phone(lead.phone),
         "note": cls["note"],
-        "status": cls.get("status") or "",
+        "status": status,
         "interest": cls.get("interest") or "",
         "transcript": transcript,
         "call_id": str((call or {}).get("call_id") or ""),
         "channel_id": str(dial.get("channel_id") or ""),
-        "written": written,
-        "write_info": write_info,
-        "classify_method": cls.get("method"),
+        "written": False,
+        "duration_seconds": duration,
+        "outcome": outcome,
+        "classify_method": cls.get("method") or "",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    _save_result(result)
+    result["id"] = _save_result(result)
+
+    write_info = sheets_io.update_lead_result(
+        lead,
+        note=cls["note"],
+        transcript=transcript,
+        status=status,
+    )
+    written = bool(write_info.get("ok"))
+    if written:
+        _mark_written(int(result["id"] or 0))
+        result["written"] = True
+        logger.info(
+            "sheet writeback ok phone=%s row=%s mode=%s status=%s note=%s",
+            lead.phone,
+            lead.row_number,
+            write_info.get("mode"),
+            status,
+            cls["note"],
+        )
+    else:
+        logger.info(
+            "local DB saved; sheet writeback pending phone=%s status=%s err=%s",
+            lead.phone,
+            status,
+            write_info.get("error") or write_info.get("mode") or write_info,
+        )
+    result["write_info"] = write_info
     return result
 
 
@@ -701,7 +751,8 @@ def list_results(limit: int = 50) -> dict[str, Any]:
         rows = conn.execute(
             """
             SELECT id, sheet_name, gid, row_number, phone, note, status, interest,
-                   transcript, call_id, written, created_at
+                   transcript, call_id, written, created_at,
+                   duration_seconds, outcome, classify_method
             FROM results
             ORDER BY id DESC
             LIMIT ?
@@ -710,6 +761,12 @@ def list_results(limit: int = 50) -> dict[str, Any]:
         ).fetchall()
         total = conn.execute("SELECT COUNT(*) FROM results").fetchone()[0]
         items = [dict(r) for r in rows]
+        for it in items:
+            it["status"] = classify.status_for(
+                note=it.get("note") or "",
+                interest=it.get("interest") or "",
+                status=it.get("status") or "",
+            )
     finally:
         conn.close()
     return {"ok": True, "total": total, "showing": len(items), "items": items}

@@ -101,6 +101,28 @@ def client_expressed_interest(conversation: list[Any] | str) -> bool:
     return bool(INTEREST_RE.search(user))
 
 
+def status_for(*, note: str, interest: str, status: str = "") -> str:
+    """Always produce a concrete status label for our local DB / Sheet."""
+    s = (status or "").strip()
+    if s:
+        return s
+    n = (note or "").strip().upper()
+    interest = (interest or "").strip().lower()
+    if n.startswith("ИНТЕРЕСНО") or interest == "yes":
+        return "Положительный"
+    if "НЕ ИНТЕРЕСНО" in n:
+        return "Отрицательный"
+    if "НЕ ДОЗВОН" in n or "АВТООТВЕТЧИК" in n:
+        return "Недозвон"
+    if n.startswith("ПЕРЕЗВОНИТЬ"):
+        return "Перезвонить"
+    if n.startswith("DRY_RUN"):
+        return "Тест"
+    if n.startswith("СОСТОЯЛСЯ"):
+        return "Состоялся"
+    return "Состоялся" if note else "Неизвестно"
+
+
 def classify_rules(conversation: list[Any] | str, *, outcome: str = "", duration: int = 0) -> dict[str, str]:
     text = _turns_text(conversation)
     user = _user_text(conversation)
@@ -110,20 +132,20 @@ def classify_rules(conversation: list[Any] | str, *, outcome: str = "", duration
         if duration and duration < 20:
             return {
                 "note": "НЕ ДОЗВОН",
-                "status": "",
+                "status": "Недозвон",
                 "interest": "no",
                 "method": "rules_no_user_short",
             }
         return {
             "note": "СОСТОЯЛСЯ — клиент не говорил / ASR пусто",
-            "status": "",
+            "status": "Состоялся",
             "interest": "maybe",
             "method": "rules_no_user",
         }
     if NOANSWER_RE.search(user) or NOANSWER_RE.search(text) or "no-answer" in out or "busy" in out:
         return {
             "note": "НЕ ДОЗВОН / автоответчик",
-            "status": "",
+            "status": "Недозвон",
             "interest": "no",
             "method": "rules_noanswer",
         }
@@ -148,27 +170,27 @@ def classify_rules(conversation: list[Any] | str, *, outcome: str = "", duration
     if NEGATIVE_RE.search(user):
         return {
             "note": "НЕ ИНТЕРЕСНО",
-            "status": "",
+            "status": "Отрицательный",
             "interest": "no",
             "method": "rules_negative",
         }
     if CALLBACK_RE.search(user):
         return {
             "note": "ПЕРЕЗВОНИТЬ позже",
-            "status": "",
+            "status": "Перезвонить",
             "interest": "maybe",
             "method": "rules_callback",
         }
     if not text.strip():
         return {
             "note": "НЕ ДОЗВОН",
-            "status": "",
+            "status": "Недозвон",
             "interest": "no",
             "method": "rules_empty",
         }
     return {
         "note": "СОСТОЯЛСЯ — уточнить итог",
-        "status": "",
+        "status": "Состоялся",
         "interest": "maybe",
         "method": "rules_unclear",
     }
@@ -199,7 +221,7 @@ def _sanitize_llm_result(
 
     return {
         "note": note,
-        "status": status if interest == "yes" else "",
+        "status": status_for(note=note, interest=interest, status=status),
         "interest": interest,
         "method": "llm",
     }
@@ -224,7 +246,7 @@ def classify_llm(conversation: list[Any] | str, *, outcome: str = "", duration: 
         "Если запись на консультацию — note начинай с "
         "«ИНТЕРЕСНО — записан на консультацию».\n"
         "Если клиент явно заинтересован без записи — «ИНТЕРЕСНО — перезвонить лично».\n"
-        "status — «Положительный» только при интересе/записи, иначе пустая строка.\n"
+        "status — всегда заполняй: Положительный | Отрицательный | Недозвон | Перезвонить | Состоялся.\n"
         "interest — yes|no|maybe.\n"
         f"outcome={outcome} duration={duration}\n"
         f"client_only:\n{user}\n"
@@ -274,8 +296,13 @@ def classify_llm(conversation: list[Any] | str, *, outcome: str = "", duration: 
 def classify(conversation: list[Any] | str, *, outcome: str = "", duration: int = 0) -> dict[str, str]:
     # Without caller ASR, LLM often invents «ИНТЕРЕСНО» from AVA greeting alone.
     if not has_user_speech(conversation):
-        return classify_rules(conversation, outcome=outcome, duration=duration)
-    llm = classify_llm(conversation, outcome=outcome, duration=duration)
-    if llm:
-        return llm
-    return classify_rules(conversation, outcome=outcome, duration=duration)
+        out = classify_rules(conversation, outcome=outcome, duration=duration)
+    else:
+        llm = classify_llm(conversation, outcome=outcome, duration=duration)
+        out = llm or classify_rules(conversation, outcome=outcome, duration=duration)
+    out["status"] = status_for(
+        note=out.get("note") or "",
+        interest=out.get("interest") or "",
+        status=out.get("status") or "",
+    )
+    return out

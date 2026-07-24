@@ -96,6 +96,22 @@ def test_classify_skips_llm_without_user_speech(monkeypatch):
     assert out["interest"] == "no"
 
 
+def test_status_always_filled():
+    assert classify.status_for(note="НЕ ДОЗВОН", interest="no") == "Недозвон"
+    assert classify.status_for(note="НЕ ИНТЕРЕСНО", interest="no") == "Отрицательный"
+    assert classify.status_for(note="ПЕРЕЗВОНИТЬ позже", interest="maybe") == "Перезвонить"
+    assert (
+        classify.status_for(note="ИНТЕРЕСНО — перезвонить лично", interest="yes")
+        == "Положительный"
+    )
+
+
+def test_classify_negative_has_status():
+    conv = [{"role": "user", "content": "Нет, не интересно, спасибо"}]
+    out = classify.classify_rules(conv, duration=25)
+    assert out["status"] == "Отрицательный"
+
+
 def test_col_letter():
     assert sheets_io._col_letter(0) == "A"
     assert sheets_io._col_letter(22) == "W"
