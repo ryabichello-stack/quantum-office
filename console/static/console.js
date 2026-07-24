@@ -8,7 +8,8 @@
         : "";
 
   const TAB_META = {
-    status: { title: "Статус", hint: "Сервисы, SIP и пути на хосте" },
+    status: { title: "Обзор", hint: "Сервисы и здоровье системы" },
+    outreach: { title: "Outreach", hint: "Bitrix, очередь писем, ответы, anti-ban" },
     scenario: { title: "Сценарий", hint: "YAML-профили входящих и исходящих" },
     knowledge: { title: "База знаний", hint: "Second Brain · quantum_labs.md" },
     calls: { title: "Звонки", hint: "История и расшифровки" },
@@ -485,6 +486,12 @@
           $("campMsg").className = "msg bad";
         }
       });
+    }
+    if (name === "outreach") {
+      const frame = $("outreachFrame");
+      if (frame && !frame.getAttribute("src")) {
+        frame.src = BASE + "/assets/outreach/index.html";
+      }
     }
   }
 

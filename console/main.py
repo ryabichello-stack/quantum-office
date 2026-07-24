@@ -55,6 +55,9 @@ MAILER_HEALTH_URL = os.getenv("MAILER_HEALTH_URL", "http://127.0.0.1:8000/health
 ENGINE_HEALTH_URL = os.getenv("ENGINE_HEALTH_URL", "http://127.0.0.1:15000/health")
 TEXT_BOT_HEALTH_URL = os.getenv("TEXT_BOT_HEALTH_URL", "http://127.0.0.1:8011/health")
 OUTREACH_HEALTH_URL = os.getenv("OUTREACH_HEALTH_URL", "http://127.0.0.1:8012/health")
+OUTREACH_BASE = os.getenv("OUTREACH_BASE", "http://127.0.0.1:8012").rstrip("/")
+OUTREACH_UI_TOKEN = os.getenv("OUTREACH_UI_TOKEN", "").strip()
+OUTREACH_ENV_PATH = Path(os.getenv("OUTREACH_ENV_PATH", "/opt/ava-outreach/.env"))
 CAMPAIGN_BASE = os.getenv("CAMPAIGN_BASE", "http://127.0.0.1:8018").rstrip("/")
 CAMPAIGN_TOKEN = os.getenv(
     "CAMPAIGN_TOKEN",
@@ -94,6 +97,20 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 app = FastAPI(title="Quantum Labs Console", version="0.1.0")
 if STATIC_DIR.is_dir():
     app.mount("/assets", StaticFiles(directory=str(STATIC_DIR)), name="assets")
+
+
+def _load_outreach_ui_token() -> str:
+    """Resolve OUTREACH_UI_TOKEN for server-side proxy (never expose to browser)."""
+    if OUTREACH_UI_TOKEN:
+        return OUTREACH_UI_TOKEN
+    try:
+        if OUTREACH_ENV_PATH.is_file():
+            for line in OUTREACH_ENV_PATH.read_text(encoding="utf-8", errors="replace").splitlines():
+                if line.startswith("OUTREACH_UI_TOKEN="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception as exc:
+        logger.warning("read OUTREACH_UI_TOKEN failed: %s", exc)
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -1956,3 +1973,76 @@ def api_campaign_stop(
 ) -> dict[str, Any]:
     _require_token(x_console_token)
     return _campaign_request("POST", "/api/campaign/stop", body={})
+
+
+# ---------------------------------------------------------------------------
+# Outreach — reverse proxy (full admin UI embedded in Console)
+# ---------------------------------------------------------------------------
+
+
+def _outreach_proxy_headers() -> dict[str, str]:
+    tok = _load_outreach_ui_token()
+    h = {"Accept": "application/json"}
+    if tok:
+        h["X-Outreach-Token"] = tok
+    return h
+
+
+@app.api_route(
+    "/api/outreach/{full_path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+)
+async def api_outreach_proxy(full_path: str, request: Request):
+    """Proxy authenticated Console sessions to ava-outreach (:8012).
+
+    Browser never sees OUTREACH_UI_TOKEN — Console injects it server-side.
+    """
+    from fastapi.responses import Response
+
+    if not _request_authenticated(request):
+        raise HTTPException(401, "unauthorized")
+    if not OUTREACH_BASE:
+        raise HTTPException(503, "OUTREACH_BASE not configured")
+    tok = _load_outreach_ui_token()
+    if not tok:
+        raise HTTPException(
+            503,
+            "OUTREACH_UI_TOKEN not configured (set in console .env or /opt/ava-outreach/.env)",
+        )
+
+    qs = request.url.query
+    url = f"{OUTREACH_BASE}/{full_path.lstrip('/')}"
+    if qs:
+        url = f"{url}?{qs}"
+
+    body = await request.body()
+    headers = _outreach_proxy_headers()
+    ctype = request.headers.get("content-type")
+    if ctype:
+        headers["Content-Type"] = ctype
+    elif body:
+        headers["Content-Type"] = "application/json"
+
+    req = urllib.request.Request(
+        url,
+        data=body if body else None,
+        method=request.method,
+        headers=headers,
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            raw = resp.read()
+            return Response(
+                content=raw,
+                status_code=resp.status,
+                media_type=resp.headers.get("Content-Type") or "application/json",
+            )
+    except urllib.error.HTTPError as exc:
+        err = exc.read()
+        return Response(
+            content=err,
+            status_code=exc.code,
+            media_type=exc.headers.get("Content-Type") or "application/json",
+        )
+    except Exception as exc:
+        raise HTTPException(502, f"outreach unreachable: {exc}") from exc

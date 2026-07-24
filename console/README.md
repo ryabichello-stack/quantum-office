@@ -1,6 +1,8 @@
-# Console — Quantum Labs telephony ops UI
+# Console — Quantum Labs control center
 
 Prod: `/opt/quantum-console` · `https://a.47z.ru/_quantum_console/` · port `8013`
+
+Центр управления системой: телефония, outreach (Bitrix/email), знания, кампании.
 
 ## Auth
 
@@ -13,25 +15,23 @@ Human UI uses **login + password** (session cookie `qc_session`):
 | `CONSOLE_SESSION_SECRET` | `CONSOLE_TOKEN` / dev | HMAC for session cookie |
 | `CONSOLE_TOKEN` | — | Still required for bots / API (`X-Console-Token` or `Bearer`) |
 
-`POST /api/auth/login` `{ "username", "password" }` → sets cookie.  
-`POST /api/auth/logout` · `GET /api/auth/me`
+## Outreach (embedded)
 
-Machine clients (text-bot, sheets campaign) keep using `CONSOLE_TOKEN`.
+Menu **Outreach** loads the full outreach admin UI inside Console.
+API calls go through `/api/outreach/{path}` → `ava-outreach:8012` with
+`OUTREACH_UI_TOKEN` injected server-side (from console `.env` or `/opt/ava-outreach/.env`).
 
-## Calls / transcripts
+| Env | Notes |
+|-----|--------|
+| `OUTREACH_BASE` | default `http://127.0.0.1:8012` |
+| `OUTREACH_UI_TOKEN` | optional if readable from outreach `.env` |
 
-Tab **Звонки** is the source of truth for **outbound** results:
-
-- Filter defaults to `outbound`
-- Click a row → full turn table
-
-Inbound still gets «Новый лид» email via mailer. Outbound does not.
+Standalone UI remains at `https://a.47z.ru/_ava_outreach/ui/` for emergencies.
 
 ## Deploy
 
 ```bash
 cp main.py /opt/quantum-console/
-cp static/* /opt/quantum-console/static/
-# add CONSOLE_USER / CONSOLE_PASSWORD to /opt/quantum-console/.env
+cp -r static/* /opt/quantum-console/static/
 systemctl restart quantum-console
 ```

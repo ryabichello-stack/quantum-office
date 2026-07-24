@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Quantum Labs — Console</title>
+  <title>Quantum Labs — Центр управления</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
@@ -21,8 +21,8 @@
     <div class="login-atmosphere" aria-hidden="true"></div>
     <form id="loginForm" class="login-panel" autocomplete="on">
       <p class="login-brand">Quantum Labs</p>
-      <h1 class="login-title">Console</h1>
-      <p class="login-sub">Операционная панель телефонии AVA</p>
+      <h1 class="login-title">Центр управления</h1>
+      <p class="login-sub">Телефония, outreach, знания и сервисы</p>
       <label class="field">
         <span>Логин</span>
         <input id="loginUser" name="username" type="text" autocomplete="username" required />
@@ -40,10 +40,11 @@
     <aside class="sidebar">
       <div class="sidebar-brand">
         <p class="brand-mark">Quantum Labs</p>
-        <p class="brand-sub">Telephony Console</p>
+        <p class="brand-sub">Центр управления</p>
       </div>
       <nav class="side-nav" id="tabs" aria-label="Разделы">
-        <button type="button" data-tab="status" class="active">Статус</button>
+        <button type="button" data-tab="status" class="active">Обзор</button>
+        <button type="button" data-tab="outreach">Outreach</button>
         <button type="button" data-tab="scenario">Сценарий</button>
         <button type="button" data-tab="knowledge">База знаний</button>
         <button type="button" data-tab="calls">Звонки</button>
@@ -63,8 +64,8 @@
     <div class="workspace">
       <header class="topbar">
         <div>
-          <h1 id="pageTitle">Статус</h1>
-          <p class="top-hint" id="pageHint">Сервисы, SIP и пути на хосте</p>
+          <h1 id="pageTitle">Обзор</h1>
+          <p class="top-hint" id="pageHint">Сервисы и здоровье системы</p>
         </div>
         <div class="top-actions">
           <button type="button" id="btnRefresh" class="primary">Обновить</button>
@@ -74,6 +75,17 @@
       <main>
         <section id="tab-status" class="panel active">
           <div id="statusBox" class="surface">Загрузка…</div>
+        </section>
+
+        <section id="tab-outreach" class="panel panel-flush">
+          <div class="outreach-frame-wrap">
+            <iframe
+              id="outreachFrame"
+              class="outreach-frame"
+              title="Outreach"
+              loading="lazy"
+            ></iframe>
+          </div>
         </section>
 
         <section id="tab-scenario" class="panel">

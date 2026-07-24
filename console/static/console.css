@@ -236,6 +236,28 @@ main {
 
 .panel { display: none; animation: rise 0.35s ease both; }
 .panel.active { display: block; }
+.panel-flush.active {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 7.5rem);
+}
+.outreach-frame-wrap {
+  flex: 1;
+  min-height: calc(100vh - 8rem);
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid rgba(201, 213, 224, 0.85);
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: var(--shadow);
+}
+.outreach-frame {
+  width: 100%;
+  height: calc(100vh - 8.2rem);
+  min-height: 640px;
+  border: 0;
+  display: block;
+  background: transparent;
+}
 
 .surface {
   background: var(--surface);
