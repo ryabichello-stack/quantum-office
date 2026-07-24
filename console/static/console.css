@@ -664,6 +664,10 @@ button.linkish {
   border-color: rgba(13, 143, 122, 0.25);
   background: #f3faf7;
 }
+.camp-run-banner.warn {
+  border-color: rgba(196, 122, 26, 0.45);
+  background: #fff8ee;
+}
 .camp-run-banner .run-title {
   font-family: var(--display);
   font-weight: 700;
