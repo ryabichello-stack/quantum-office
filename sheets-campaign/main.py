@@ -148,3 +148,32 @@ def api_stop(x_webhook_token: Optional[str] = Header(None)):
 def api_flush(x_webhook_token: Optional[str] = Header(None)):
     _auth(x_webhook_token)
     return runner.flush_writebacks()
+
+
+class GoogleSaBody(BaseModel):
+    """Paste Google Cloud service-account JSON to enable Sheet writeback."""
+
+    service_account: dict = Field(
+        ...,
+        alias="json",
+        description="Full service account key JSON object",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+@app.get("/api/campaign/writeback")
+def api_writeback_status(x_webhook_token: Optional[str] = Header(None)):
+    _auth(x_webhook_token)
+    return {"ok": True, **sheets_io.write_status()}
+
+
+@app.post("/api/campaign/google-sa")
+def api_install_google_sa(body: GoogleSaBody, x_webhook_token: Optional[str] = Header(None)):
+    _auth(x_webhook_token)
+    result = sheets_io.install_service_account(body.service_account)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error") or "install_failed")
+    flushed = runner.flush_writebacks(limit=200)
+    result["flush"] = flushed
+    return result

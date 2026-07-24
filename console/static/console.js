@@ -571,7 +571,7 @@
     box.className =
       "camp-run-banner " + (running ? "running" : interrupted ? "warn" : "idle");
     box.innerHTML = running
-      ? `<div class="run-title">● Обзвон идёт</div>
+      ? `<div class="run-title">● Обзвон идёт по очереди</div>
          <div>${esc(msg)}</div>
          <div class="muted">Сделано: ${processed}${queued ? " / " + queued : ""} · ошибок: ${errors}${
            lastPhone ? " · последний: " + esc(lastPhone) : ""
@@ -581,13 +581,41 @@
         }</div>
          <div class="muted">${esc(
            msg === "idle" || !msg
-             ? "Нажмите «Старт обзвона», чтобы начать звонки из очереди"
+             ? "Нажмите «Старт обзвона» — звонки сверху вниз, пометка после каждого"
              : msg
          )}</div>
          <div class="muted">Сделано в прошлом прогоне: ${processed} · ошибок: ${errors}${
            lastPhone ? " · последний: " + esc(lastPhone) : ""
          }${finished ? " · окончание: " + esc(finished) + " МСК" : ""}</div>`;
     if ($("btnCampStart")) $("btnCampStart").disabled = running;
+    renderWritebackStatus(st);
+  }
+
+  function renderWritebackStatus(st) {
+    const box = $("campWriteBanner");
+    if (!box) return;
+    const enabled = !!(st && st.sheets_write_enabled);
+    const mode = (st && st.write_mode) || "off";
+    const email = (st && st.sa_email) || "";
+    box.className = "camp-run-banner " + (enabled ? "idle" : "warn");
+    box.innerHTML = enabled
+      ? `<div class="run-title">✓ Пометки пишутся в Sheet</div>
+         <div class="muted">режим: ${esc(mode)}${email ? " · " + esc(email) : ""}</div>`
+      : `<div class="run-title">⚠ Пометки пока только локально</div>
+         <div class="muted">Вставьте Google Service Account JSON ниже и расшарьте таблицу на его email — тогда «Пометки Клиента» будут обновляться после каждого звонка.</div>`;
+  }
+
+  async function loadWritebackStatus() {
+    try {
+      const st = await api("/api/campaign/writeback");
+      renderWritebackStatus(st);
+      return st;
+    } catch (e) {
+      if ($("campWriteBanner")) {
+        $("campWriteBanner").textContent = "Writeback: " + e.message;
+        $("campWriteBanner").className = "camp-run-banner warn";
+      }
+    }
   }
 
   async function loadCampaignRunStatus() {
@@ -746,6 +774,7 @@
           $("campRunBanner").className = "camp-run-banner";
         }
       }),
+      loadWritebackStatus(),
     ]);
     startCampPolling();
   }
@@ -907,6 +936,73 @@
         await loadCampaignRunStatus();
       } catch (e) {
         setCampActionMsg(e.message, false);
+      }
+    };
+  }
+  if ($("btnCampFlush")) {
+    $("btnCampFlush").onclick = async () => {
+      setCampActionMsg("Дописываю пометки в Sheet…", null);
+      try {
+        const r = await api("/api/campaign/flush-writebacks", { method: "POST", body: "{}" });
+        setCampActionMsg(
+          r.ok === false
+            ? r.error || "writeback недоступен"
+            : `Дописано в Sheet: ${r.flushed || 0}`,
+          r.ok !== false && (r.flushed || 0) >= 0
+        );
+        await loadCampaignResults();
+        await loadWritebackStatus();
+      } catch (e) {
+        setCampActionMsg(e.message, false);
+      }
+    };
+  }
+  if ($("btnCampSaSave")) {
+    $("btnCampSaSave").onclick = async () => {
+      const raw = (($("campSaJson") && $("campSaJson").value) || "").trim();
+      const msg = $("campSaMsg");
+      if (!raw) {
+        if (msg) {
+          msg.textContent = "Вставьте JSON ключа";
+          msg.className = "msg bad";
+        }
+        return;
+      }
+      let doc;
+      try {
+        doc = JSON.parse(raw);
+      } catch (e) {
+        if (msg) {
+          msg.textContent = "Невалидный JSON";
+          msg.className = "msg bad";
+        }
+        return;
+      }
+      if (msg) {
+        msg.textContent = "Сохраняю…";
+        msg.className = "msg";
+      }
+      try {
+        const r = await api("/api/campaign/google-sa", {
+          method: "POST",
+          body: JSON.stringify({ json: doc }),
+        });
+        if (msg) {
+          msg.textContent =
+            "OK · " +
+            (r.sa_email || "") +
+            (r.share_hint ? " · " + r.share_hint : "") +
+            (r.flush ? ` · flush=${r.flush.flushed || 0}` : "");
+          msg.className = "msg ok";
+        }
+        if ($("campSaJson")) $("campSaJson").value = "";
+        await loadWritebackStatus();
+        await loadCampaignResults();
+      } catch (e) {
+        if (msg) {
+          msg.textContent = e.message;
+          msg.className = "msg bad";
+        }
       }
     };
   }

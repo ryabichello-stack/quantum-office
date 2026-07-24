@@ -321,7 +321,12 @@ def _filter_unprocessed(leads: list[sheets_io.LeadRow]) -> list[sheets_io.LeadRo
 
 def flush_writebacks(limit: int = 50) -> dict[str, Any]:
     if not sheets_io.sheets_write_enabled():
-        return {"ok": False, "error": "google_sa_not_configured", "flushed": 0}
+        return {
+            "ok": False,
+            "error": "writeback_not_configured",
+            "flushed": 0,
+            **sheets_io.write_status(),
+        }
     conn = sqlite3.connect(str(_db_path()))
     conn.row_factory = sqlite3.Row
     flushed = 0
@@ -424,15 +429,28 @@ def _process_one(lead: sheets_io.LeadRow, *, dry_run: bool) -> dict[str, Any]:
     )
     written = False
     write_info: dict[str, Any] = {}
-    if sheets_io.sheets_write_enabled():
-        write_info = sheets_io.update_lead_result(
-            lead,
-            note=cls["note"],
-            transcript=transcript,
-            status=cls.get("status") or "",
+    write_info = sheets_io.update_lead_result(
+        lead,
+        note=cls["note"],
+        transcript=transcript,
+        status=cls.get("status") or "",
+    )
+    written = bool(write_info.get("ok"))
+    if not written:
+        logger.warning(
+            "sheet writeback skipped/failed phone=%s row=%s err=%s",
+            lead.phone,
+            lead.row_number,
+            write_info.get("error") or write_info,
         )
-        written = bool(write_info.get("ok"))
-
+    else:
+        logger.info(
+            "sheet writeback ok phone=%s row=%s mode=%s note=%s",
+            lead.phone,
+            lead.row_number,
+            write_info.get("mode"),
+            cls["note"],
+        )
     result = {
         "sheet_name": lead.sheet_name,
         "gid": lead.gid,
@@ -622,9 +640,12 @@ def stop_campaign() -> dict[str, Any]:
 def get_status() -> dict[str, Any]:
     with STATE.lock:
         st = dict(STATE.status)
-        st["sheets_write_enabled"] = sheets_io.sheets_write_enabled()
-        st["sa_email"] = sheets_io.sa_email()
-        return st
+    ws = sheets_io.write_status()
+    st["sheets_write_enabled"] = ws["sheets_write_enabled"]
+    st["write_mode"] = ws["write_mode"]
+    st["sa_email"] = ws["sa_email"]
+    st["webhook_configured"] = ws["webhook_configured"]
+    return st
 
 
 def preview(limit: int = 30, sheet: str | None = None) -> dict[str, Any]:

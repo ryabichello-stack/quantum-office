@@ -190,20 +190,37 @@
                 </select>
               </label>
               <label class="field">Сколько звонков
-                <input id="campMax" type="number" value="3" min="1" max="200" />
+                <input id="campMax" type="number" value="20" min="1" max="200" />
               </label>
               <label class="check"><input type="checkbox" id="campDry" /> только тест (dry_run)</label>
               <button type="button" id="btnCampPreview">Обновить базу</button>
               <button type="button" id="btnCampStart" class="primary">▶ Старт обзвона</button>
               <button type="button" id="btnCampStop">■ Стоп</button>
+              <button type="button" id="btnCampFlush">Дописать пометки в Sheet</button>
             </div>
             <p id="campActionMsg" class="msg"></p>
+            <div id="campWriteBanner" class="camp-run-banner idle">Проверка записи в Sheet…</div>
             <div id="campLeadsBox" class="table-wrap">Загрузка…</div>
             <h2 class="section-title">Локальные результаты</h2>
             <p class="muted tight">
-              Пометка — краткий итог. Полный диалог (AVA + Клиент) — в колонке «Расшифровка» или вкладка «Звонки».
+              Обзвон идёт сверху вниз. После каждого звонка ставится пометка (локально + в Sheet, если writeback включён).
+              Полный диалог — колонка «Расшифровка» или вкладка «Звонки».
             </p>
             <div id="campResultsBox">—</div>
+
+            <hr class="sep" />
+            <h2 class="section-title">Запись пометок в Google Sheet</h2>
+            <p class="muted">
+              Чтобы пометки попадали в колонку «Пометки Клиента», нужен Google Service Account (JSON-ключ)
+              с правом <b>Редактор</b> на таблицу. Вставьте JSON ниже один раз.
+            </p>
+            <label class="field full">Service Account JSON
+              <textarea id="campSaJson" rows="6" placeholder='{"type":"service_account","project_id":"...","private_key":"...","client_email":"...@....iam.gserviceaccount.com",...}'></textarea>
+            </label>
+            <div class="row actions">
+              <button type="button" id="btnCampSaSave" class="primary">Сохранить ключ и включить writeback</button>
+              <span id="campSaMsg" class="msg"></span>
+            </div>
 
             <hr class="sep" />
             <h2 class="section-title">Скрипт обзвона</h2>

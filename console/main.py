@@ -2003,6 +2003,40 @@ def api_campaign_stop(
     return _campaign_request("POST", "/api/campaign/stop", body={})
 
 
+@app.get("/api/campaign/writeback")
+def api_campaign_writeback(
+    x_console_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_token(x_console_token)
+    return _campaign_request("GET", "/api/campaign/writeback")
+
+
+class CampaignGoogleSaBody(BaseModel):
+    service_account: dict[str, Any] = Field(alias="json")
+    model_config = {"populate_by_name": True}
+
+
+@app.post("/api/campaign/google-sa")
+def api_campaign_google_sa(
+    body: CampaignGoogleSaBody,
+    x_console_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_token(x_console_token)
+    return _campaign_request(
+        "POST",
+        "/api/campaign/google-sa",
+        body={"json": body.service_account},
+    )
+
+
+@app.post("/api/campaign/flush-writebacks")
+def api_campaign_flush(
+    x_console_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_token(x_console_token)
+    return _campaign_request("POST", "/api/campaign/flush-writebacks", body={})
+
+
 # ---------------------------------------------------------------------------
 # Outreach — reverse proxy (full admin UI embedded in Console)
 # ---------------------------------------------------------------------------

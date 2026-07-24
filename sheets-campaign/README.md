@@ -9,16 +9,22 @@ Quantum Console (AVA outbound) с Second Brain + календарь/Телемо
 - ID: `1xjr7vtz56ro9WD8lTIBj3uGliSSN3mh2KHZFJPdLGXE`
 - gids: `467949580` (актив), `323510684` (архив)
 
-Чтение работает по публичному CSV export. **Запись** требует Google Service Account
-с правом Editor на таблицу (`GOOGLE_SERVICE_ACCOUNT_FILE`).
+Чтение работает по публичному CSV export. **Запись** — через Google Service Account
+(Редактор на таблице) или Apps Script webhook.
 
 ## Setup (Google write)
 
-1. GCP → создать SA → JSON ключ → положить на сервер, например `/opt/ava-sheets-campaign/sa.json`
-2. Share таблицу с `client_email` из JSON (Редактор)
-3. В `.env`: `GOOGLE_SERVICE_ACCOUNT_FILE=/opt/ava-sheets-campaign/sa.json`
+### Вариант A — Service Account (предпочтительно)
+1. GCP → IAM → Service Account → JSON ключ
+2. Console → **Обзвон Sheets** → вставить JSON → «Сохранить ключ»
+   (или файл `/opt/ava-sheets-campaign/sa.json` + `GOOGLE_SERVICE_ACCOUNT_FILE=...` в `.env`)
+3. Share таблицу с `client_email` из JSON (**Редактор**)
 
-Без SA сервис всё равно звонит и копит результаты локально; writeback в Sheets — когда ключ появится (`POST /api/campaign/flush-writebacks`).
+### Вариант B — Apps Script
+См. `apps_script_writeback.gs` → Deploy as Web App → `SHEETS_WEBHOOK_URL` в `.env`.
+
+Без writeback сервис всё равно звонит **по очереди** и копит пометки локально;
+кнопка «Дописать пометки в Sheet» / авто-flush после установки ключа.
 
 ## Где скрипт разговора
 
