@@ -8,7 +8,9 @@
 Сервис: `ava-sheets-campaign` `:8018`  
 Telegram tools: `preview_payouts_campaign`, `start_payouts_campaign`, `payouts_campaign_status`, `stop_payouts_campaign`
 
-На каждый звонок: Second Brain + calendar + conference tools, скрипт квалификации массовых выплат.
+На каждый звонок: Second Brain + **запись на консультацию** (calendar `:8014`) +
+Телемост (`:8016` внутри create) + welcome-письмо на email клиента.
+Если интересно, но слот не взяли — пометка «перезвонить лично».
 
 **Перед боевым прогоном:** выдать Google Service Account Editor на таблицу
 (`GOOGLE_SERVICE_ACCOUNT_FILE`), иначе итоги копятся локально до `flush-writebacks`.

@@ -6,6 +6,16 @@ import classify
 import sheets_io
 
 
+def test_classify_booked():
+    conv = [
+        {"role": "assistant", "content": "Готово, встреча зафиксирована на завтра 15:00. Приглашение отправлено на вашу почту."},
+        {"role": "user", "content": "Отлично, спасибо"},
+    ]
+    out = classify.classify_rules(conv, duration=90)
+    assert out["interest"] == "yes"
+    assert "записан на консультацию" in out["note"]
+
+
 def test_classify_interest():
     conv = [
         {"role": "assistant", "content": "Вам интересны массовые выплаты?"},

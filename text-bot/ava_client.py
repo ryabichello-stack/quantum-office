@@ -430,9 +430,10 @@ _CAMPAIGN_OWNER_TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "start_payouts_campaign",
             "description": (
-                "Запустить обзвон из Google Sheets по массовым выплатам "
-                "(Second Brain + календарь/Телемост). Итог пишется в «Пометки Клиента». "
-                "Сначала спроси лимит max_calls (по умолчанию 5). dry_run=true — без реальных звонков."
+                "Запустить обзвон из Google Sheets по массовым выплатам. "
+                "На звонке: Second Brain + запись на консультацию (календарь) + "
+                "Телемост + welcome-письмо на email. Итог → «Пометки Клиента». "
+                "Спроси max_calls (по умолчанию 5). dry_run=true — без реальных звонков."
             ),
             "parameters": {
                 "type": "object",

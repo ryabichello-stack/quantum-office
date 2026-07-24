@@ -39,7 +39,11 @@ Auth: `X-Webhook-Token` = `WEBHOOK_TOKEN`.
 
 - `use_knowledge=true` → Second Brain (`get_company_knowledge`)
 - tools: `get_company_knowledge`, `check_calendar`, `create_calendar_event`, `create_conference`, `hangup_call`
-- скрипт: квалификация интереса к массовым выплатам Quantum Labs
-- после звонка: poll Console `GET /api/calls`, классификация → пометка
+- сценарий: квалификация → рассказ о Quantum Labs → **запись на консультацию**
+  (`check_calendar` → `create_calendar_event` → Телемост + welcome PDF на email)
+- если интересно, но без слота — пометка «перезвонить лично»
+- после звонка: poll Console `GET /api/calls`, классификация → пометка в Sheet
 
-Пометки (примеры): `ИНТЕРЕСНО — перезвонить лично`, `НЕ ИНТЕРЕСНО`, `НЕ ДОЗВОН`, `АВТООТВЕТЧИК`, `ПЕРЕЗВОНИТЬ позже`.
+Пометки (примеры):
+`ИНТЕРЕСНО — записан на консультацию (календарь+Телемост+почта)`,
+`ИНТЕРЕСНО — перезвонить лично`, `НЕ ИНТЕРЕСНО`, `НЕ ДОЗВОН`, `ПЕРЕЗВОНИТЬ позже`.

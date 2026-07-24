@@ -12,6 +12,9 @@ from typing import Any
 INTEREST_RE = re.compile(
     r"(?i)(?:^|[^\w])(интересн\w*|давайте|перезвон\w*|свяжит\w*|встреч\w*|хочу\s+узнать|актуальн\w*|подходит)"
 )
+BOOKED_RE = re.compile(
+    r"(?i)(?:^|[^\w])(встречу?\s+зафиксир|приглашение\s+отправлен|создал\w*\s+встреч|записан\w*\s+на|create_calendar_event|telemost|телемост)"
+)
 NEGATIVE_RE = re.compile(
     r"(?i)(?:^|[^\w])(не\s*интерес\w*|не\s*актуаль\w*|не\s*надо|отказа\w*|не\s*нужн\w*)"
 )
@@ -55,6 +58,13 @@ def classify_rules(conversation: list[Any] | str, *, outcome: str = "", duration
             "status": "",
             "interest": "no",
             "method": "rules_noanswer",
+        }
+    if BOOKED_RE.search(text):
+        return {
+            "note": "ИНТЕРЕСНО — записан на консультацию (календарь+Телемост+почта)",
+            "status": "Положительный",
+            "interest": "yes",
+            "method": "rules_booked",
         }
     if INTEREST_RE.search(text) and not NEGATIVE_RE.search(text):
         note = "ИНТЕРЕСНО — перезвонить лично"
@@ -104,9 +114,11 @@ def classify_llm(conversation: list[Any] | str, *, outcome: str = "", duration: 
     prompt = (
         "По расшифровке исходящего звонка Quantum Labs про массовые выплаты "
         "верни JSON с полями note, status, interest.\n"
-        "note — короткая пометка для колонки «Пометки Клиента» на русском, "
-        "если интересно обязательно начни с «ИНТЕРЕСНО — перезвонить лично».\n"
-        "status — «Положительный» если интерес есть, иначе пустая строка.\n"
+        "note — короткая пометка для колонки «Пометки Клиента» на русском.\n"
+        "Если клиента записали на консультацию — note начинай с "
+        "«ИНТЕРЕСНО — записан на консультацию».\n"
+        "Если интересно, но без записи — «ИНТЕРЕСНО — перезвонить лично».\n"
+        "status — «Положительный» если интерес/запись есть, иначе пустая строка.\n"
         "interest — yes|no|maybe.\n"
         f"outcome={outcome} duration={duration}\n"
         f"transcript:\n{text}"
