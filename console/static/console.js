@@ -420,6 +420,7 @@
       const d = await api("/api/calls/" + encodeURIComponent(callId));
       const call = d.call || {};
       const turns = call.turns || [];
+      const userTurns = turns.filter((t) => String(t.role || "").toLowerCase() === "user").length;
       const meta =
         `<div class="call-meta">` +
         `<div><b>call_id</b> <code>${esc(call.call_id || "")}</code></div>` +
@@ -429,25 +430,41 @@
           call.duration_seconds ?? "?"
         }с</div>` +
         `<div><b>outcome</b> ${esc(call.outcome || "")}</div>` +
+        `<div><b>реплики</b> всего ${turns.length} · клиент ${userTurns}</div>` +
         `</div>`;
       if (!turns.length) {
         box.innerHTML = meta + "<p class='muted'>Нет сообщений в расшифровке</p>";
         return;
       }
+      const hint =
+        userTurns === 0
+          ? `<p class="muted">Реплик клиента нет — либо молчание/недозвон, либо ASR не распознал речь.</p>`
+          : "";
       const table =
         `<table class="transcript-table"><thead><tr><th>#</th><th>Кто</th><th>Сообщение</th></tr></thead><tbody>` +
         turns
-          .map(
-            (t) =>
-              `<tr><td>${t.n ?? ""}</td><td>${esc(t.who || t.role || "")}</td>` +
+          .map((t) => {
+            const role = String(t.role || "").toLowerCase();
+            const who = esc(t.who || t.role || "");
+            const cls = role === "user" ? "turn-user" : role === "assistant" ? "turn-ava" : "";
+            return (
+              `<tr class="${cls}"><td>${t.n ?? ""}</td><td>${who}</td>` +
               `<td>${esc(t.text || "")}</td></tr>`
-          )
+            );
+          })
           .join("") +
         `</tbody></table>`;
-      box.innerHTML = meta + table;
+      box.innerHTML = meta + hint + table;
+      box.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } catch (e) {
       box.textContent = e.message;
     }
+  }
+
+  function openCallFromCampaign(callId) {
+    if (!callId) return;
+    setTab("calls");
+    openCall(callId).catch((e) => alert(e.message));
   }
 
   async function loadSecrets() {
@@ -628,21 +645,41 @@
       }
       box.innerHTML = `<p class="muted">Всего в БД: ${r.total} · показаны последние ${items.length}</p>
         <table class="calls-table"><thead><tr>
-          <th>Когда</th><th>Телефон</th><th>Лист</th><th>Пометка</th><th>Статус</th><th>В Sheet</th>
+          <th>Когда</th><th>Телефон</th><th>Лист</th><th>Пометка</th><th>Расшифровка</th><th>В Sheet</th>
         </tr></thead><tbody>
         ${items
-          .map(
-            (it) => `<tr>
+          .map((it) => {
+            const tr = String(it.transcript || "").trim();
+            const preview = tr
+              ? esc(tr.length > 220 ? tr.slice(0, 219) + "…" : tr)
+              : "<span class='muted'>—</span>";
+            const openBtn = it.call_id
+              ? `<button type="button" class="linkish" data-open-call="${esc(
+                  it.call_id
+                )}">открыть в Звонках</button>`
+              : "";
+            return `<tr>
           <td>${esc(it.created_at || "")}</td>
           <td><code>${esc(it.phone)}</code></td>
           <td>${esc(it.sheet_name || "")} #${esc(it.row_number)}</td>
-          <td class="preview">${esc(it.note || "")}</td>
-          <td>${esc(it.status || it.interest || "")}</td>
+          <td class="preview">${esc(it.note || "")}<div class="muted">${esc(
+              it.status || it.interest || ""
+            )}</div></td>
+          <td class="preview camp-transcript">${preview}${
+              openBtn ? "<div>" + openBtn + "</div>" : ""
+            }</td>
           <td>${pill(!!it.written, it.written ? "да" : "нет")}</td>
-        </tr>`
-          )
+        </tr>`;
+          })
           .join("")}
         </tbody></table>`;
+      box.querySelectorAll("[data-open-call]").forEach((btn) => {
+        btn.onclick = (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          openCallFromCampaign(btn.getAttribute("data-open-call"));
+        };
+      });
       return r;
     } catch (e) {
       box.innerHTML = `<p class="bad">${esc(e.message)}</p>`;

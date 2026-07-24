@@ -152,7 +152,7 @@
 
         <section id="tab-calls" class="panel">
           <div class="surface">
-            <p class="muted">Исходящие — расшифровки в Console. Входящие лиды по-прежнему уходят на почту.</p>
+            <p class="muted">Клик по строке — полная расшифровка ниже (AVA и Клиент). Короткие/молчащие звонки могут содержать только приветствие AVA.</p>
             <div class="row">
               <label class="field">Фильтр
                 <select id="callsFilter">
@@ -200,7 +200,9 @@
             <p id="campActionMsg" class="msg"></p>
             <div id="campLeadsBox" class="table-wrap">Загрузка…</div>
             <h2 class="section-title">Локальные результаты</h2>
-            <p class="muted tight">Из campaign.db на сервере (до writeback в Sheets)</p>
+            <p class="muted tight">
+              Пометка — краткий итог. Полный диалог (AVA + Клиент) — в колонке «Расшифровка» или вкладка «Звонки».
+            </p>
             <div id="campResultsBox">—</div>
 
             <hr class="sep" />

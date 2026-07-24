@@ -509,9 +509,31 @@ tbody tr:hover { background: rgba(232, 90, 26, 0.05); }
   font-weight: 600;
   color: var(--accent-strong);
 }
+.transcript-table tr.turn-user td:nth-child(2) {
+  color: #0f6b4c;
+}
+.transcript-table tr.turn-ava td:nth-child(2) {
+  color: var(--accent-strong);
+}
 .transcript-table td:nth-child(3) {
   white-space: pre-wrap;
   line-height: 1.4;
+}
+.camp-transcript {
+  white-space: pre-wrap;
+  max-width: 28rem;
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+button.linkish {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: var(--accent-strong);
+  cursor: pointer;
+  padding: 0.15rem 0;
+  font: inherit;
+  text-decoration: underline;
 }
 
 /* Tools accordion */

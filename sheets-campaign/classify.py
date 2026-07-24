@@ -26,6 +26,15 @@ CALLBACK_RE = re.compile(
 )
 
 
+def _turn_role(t: dict[str, Any]) -> str:
+    role = str(t.get("role") or t.get("who") or "").strip().lower()
+    if role in ("клиент", "client", "caller"):
+        return "user"
+    if role in ("ava", "assistant", "bot"):
+        return "assistant"
+    return role
+
+
 def _turns_text(conversation: list[Any] | str) -> str:
     if isinstance(conversation, str):
         return conversation
@@ -33,32 +42,66 @@ def _turns_text(conversation: list[Any] | str) -> str:
     for t in conversation or []:
         if not isinstance(t, dict):
             continue
-        role = str(t.get("role") or "")
+        role = _turn_role(t) or str(t.get("role") or "")
         content = str(t.get("content") or t.get("text") or "").strip()
         if content:
             parts.append(f"{role}: {content}")
     return "\n".join(parts)
 
 
+def _user_text(conversation: list[Any] | str) -> str:
+    """Only caller/ASR turns — never classify interest from AVA greeting/script."""
+    if isinstance(conversation, str):
+        # Legacy plain transcript: keep lines labeled user/клиент when present.
+        lines = []
+        for line in conversation.splitlines():
+            low = line.strip().lower()
+            if low.startswith(("user:", "клиент:", "client:", "caller:")):
+                lines.append(line)
+        return "\n".join(lines) if lines else ""
+    parts: list[str] = []
+    for t in conversation or []:
+        if not isinstance(t, dict):
+            continue
+        if _turn_role(t) != "user":
+            continue
+        content = str(t.get("content") or t.get("text") or "").strip()
+        if content:
+            parts.append(content)
+    return "\n".join(parts)
+
+
+def has_user_speech(conversation: list[Any] | str) -> bool:
+    return bool(_user_text(conversation).strip())
+
+
 def classify_rules(conversation: list[Any] | str, *, outcome: str = "", duration: int = 0) -> dict[str, str]:
     text = _turns_text(conversation)
-    low = text.lower()
+    user = _user_text(conversation)
     out = (outcome or "").lower()
 
-    if duration and duration < 8 and not any(x in low for x in ("user:", "клиент")):
+    if not user.strip():
+        if duration and duration < 20:
+            return {
+                "note": "НЕ ДОЗВОН",
+                "status": "",
+                "interest": "no",
+                "method": "rules_no_user_short",
+            }
         return {
-            "note": "НЕ ДОЗВОН",
+            "note": "СОСТОЯЛСЯ — клиент не говорил / ASR пусто",
             "status": "",
-            "interest": "no",
-            "method": "rules_short",
+            "interest": "maybe",
+            "method": "rules_no_user",
         }
-    if NOANSWER_RE.search(text) or "no-answer" in out or "busy" in out:
+    if NOANSWER_RE.search(user) or NOANSWER_RE.search(text) or "no-answer" in out or "busy" in out:
         return {
             "note": "НЕ ДОЗВОН / автоответчик",
             "status": "",
             "interest": "no",
             "method": "rules_noanswer",
         }
+    # Booking tools/phrases can be on the assistant side — keep full transcript.
     if BOOKED_RE.search(text):
         return {
             "note": "ИНТЕРЕСНО — записан на консультацию (календарь+Телемост+почта)",
@@ -66,9 +109,9 @@ def classify_rules(conversation: list[Any] | str, *, outcome: str = "", duration
             "interest": "yes",
             "method": "rules_booked",
         }
-    if INTEREST_RE.search(text) and not NEGATIVE_RE.search(text):
+    if INTEREST_RE.search(user) and not NEGATIVE_RE.search(user):
         note = "ИНТЕРЕСНО — перезвонить лично"
-        if CALLBACK_RE.search(text):
+        if CALLBACK_RE.search(user):
             note = "ИНТЕРЕСНО — перезвонить лично (просил перезвонить)"
         return {
             "note": note,
@@ -76,14 +119,14 @@ def classify_rules(conversation: list[Any] | str, *, outcome: str = "", duration
             "interest": "yes",
             "method": "rules_interest",
         }
-    if NEGATIVE_RE.search(text):
+    if NEGATIVE_RE.search(user):
         return {
             "note": "НЕ ИНТЕРЕСНО",
             "status": "",
             "interest": "no",
             "method": "rules_negative",
         }
-    if CALLBACK_RE.search(text):
+    if CALLBACK_RE.search(user):
         return {
             "note": "ПЕРЕЗВОНИТЬ позже",
             "status": "",
@@ -158,6 +201,9 @@ def classify_llm(conversation: list[Any] | str, *, outcome: str = "", duration: 
 
 
 def classify(conversation: list[Any] | str, *, outcome: str = "", duration: int = 0) -> dict[str, str]:
+    # Without caller ASR, LLM often invents «ИНТЕРЕСНО» from AVA greeting alone.
+    if not has_user_speech(conversation):
+        return classify_rules(conversation, outcome=outcome, duration=duration)
     llm = classify_llm(conversation, outcome=outcome, duration=duration)
     if llm:
         return llm

@@ -567,7 +567,7 @@ def list_results(limit: int = 50) -> dict[str, Any]:
         rows = conn.execute(
             """
             SELECT id, sheet_name, gid, row_number, phone, note, status, interest,
-                   call_id, written, created_at
+                   transcript, call_id, written, created_at
             FROM results
             ORDER BY id DESC
             LIMIT ?
