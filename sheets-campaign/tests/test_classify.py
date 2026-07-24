@@ -45,6 +45,46 @@ def test_classify_ignores_assistant_only_interest_words():
     assert "НЕ ДОЗВОН" in out["note"]
 
 
+def test_classify_soft_yes_is_not_interest():
+    conv = [
+        {"role": "assistant", "content": "Вам интересны массовые выплаты?"},
+        {"role": "user", "content": "да"},
+        {"role": "assistant", "content": "Отлично, расскажу кратко."},
+        {"role": "user", "content": "удобно"},
+    ]
+    out = classify.classify_rules(conv, duration=40)
+    assert out["interest"] != "yes"
+    assert not out["note"].upper().startswith("ИНТЕРЕСНО")
+
+
+def test_classify_callback_without_interest():
+    conv = [
+        {"role": "assistant", "content": "Удобно говорить?"},
+        {"role": "user", "content": "Перезвоните вечером"},
+    ]
+    out = classify.classify_rules(conv, duration=30)
+    assert out["interest"] == "maybe"
+    assert "ПЕРЕЗВОНИТЬ" in out["note"]
+    assert not out["note"].upper().startswith("ИНТЕРЕСНО")
+
+
+def test_sanitize_llm_false_interest():
+    conv = [
+        {"role": "assistant", "content": "Звоню про выплаты, вам интересно?"},
+        {"role": "user", "content": "алло"},
+    ]
+    out = classify._sanitize_llm_result(
+        {
+            "note": "ИНТЕРЕСНО — перезвонить лично",
+            "status": "Положительный",
+            "interest": "yes",
+        },
+        conv,
+    )
+    assert out["interest"] != "yes"
+    assert not out["note"].upper().startswith("ИНТЕРЕСНО")
+
+
 def test_classify_skips_llm_without_user_speech(monkeypatch):
     def boom(*_a, **_k):
         raise AssertionError("LLM must not run without user speech")

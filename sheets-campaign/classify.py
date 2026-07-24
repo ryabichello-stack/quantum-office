@@ -9,11 +9,29 @@ import urllib.request
 from typing import Any
 
 
+# «ИНТЕРЕСНО» — только если так высказался клиент (не AVA).
 INTEREST_RE = re.compile(
-    r"(?i)(?:^|[^\w])(интересн\w*|давайте|перезвон\w*|свяжит\w*|встреч\w*|хочу\s+узнать|актуальн\w*|подходит)"
+    r"(?i)(?:^|[^\w])("
+    r"интересн\w*"
+    r"|актуальн\w*"
+    r"|хочу\s+(?:узнать|послушать|разобрать|обсудить|подробн\w*)"
+    r"|давайте\s+(?:обсуд\w*|созвон\w*|созвонимся|продолж\w*|запиш\w*|поговор\w*)"
+    r"|готов\w*\s+(?:обсуд\w*|созвон\w*|встрет\w*|посмотр\w*)"
+    r"|согласен\w*"
+    r"|запишите?\s+меня"
+    r"|можно\s+запис\w*"
+    r")"
 )
 BOOKED_RE = re.compile(
-    r"(?i)(?:^|[^\w])(встречу?\s+зафиксир|приглашение\s+отправлен|создал\w*\s+встреч|записан\w*\s+на|create_calendar_event|telemost|телемост)"
+    r"(?i)(?:^|[^\w])("
+    r"встречу?\s+зафиксир"
+    r"|приглашение\s+отправлен"
+    r"|создал\w*\s+встреч"
+    r"|записан\w*\s+на"
+    r"|create_calendar_event"
+    r"|telemost"
+    r"|телемост"
+    r")"
 )
 NEGATIVE_RE = re.compile(
     r"(?i)(?:^|[^\w])(не\s*интерес\w*|не\s*актуаль\w*|не\s*надо|отказа\w*|не\s*нужн\w*)"
@@ -22,7 +40,7 @@ NOANSWER_RE = re.compile(
     r"(?i)(?:^|[^\w])(автоответчик|голосовая\s+почта|не\s*бер\w*\s*труб\w*|недозвон|не\s*отвеча\w*|молчан\w*)"
 )
 CALLBACK_RE = re.compile(
-    r"(?i)(?:^|[^\w])(перезвон\w*|позже|через\s+\d+|завтра|вечером)"
+    r"(?i)(?:^|[^\w])(перезвон\w*|свяжит\w*|позже|через\s+\d+|завтра|вечером)"
 )
 
 
@@ -52,7 +70,6 @@ def _turns_text(conversation: list[Any] | str) -> str:
 def _user_text(conversation: list[Any] | str) -> str:
     """Only caller/ASR turns — never classify interest from AVA greeting/script."""
     if isinstance(conversation, str):
-        # Legacy plain transcript: keep lines labeled user/клиент when present.
         lines = []
         for line in conversation.splitlines():
             low = line.strip().lower()
@@ -73,6 +90,15 @@ def _user_text(conversation: list[Any] | str) -> str:
 
 def has_user_speech(conversation: list[Any] | str) -> bool:
     return bool(_user_text(conversation).strip())
+
+
+def client_expressed_interest(conversation: list[Any] | str) -> bool:
+    user = _user_text(conversation)
+    if not user.strip():
+        return False
+    if NEGATIVE_RE.search(user):
+        return False
+    return bool(INTEREST_RE.search(user))
 
 
 def classify_rules(conversation: list[Any] | str, *, outcome: str = "", duration: int = 0) -> dict[str, str]:
@@ -101,7 +127,7 @@ def classify_rules(conversation: list[Any] | str, *, outcome: str = "", duration
             "interest": "no",
             "method": "rules_noanswer",
         }
-    # Booking tools/phrases can be on the assistant side — keep full transcript.
+    # Запись на консультацию — интерес подтверждён действием (календарь/Телемост).
     if BOOKED_RE.search(text):
         return {
             "note": "ИНТЕРЕСНО — записан на консультацию (календарь+Телемост+почта)",
@@ -109,7 +135,7 @@ def classify_rules(conversation: list[Any] | str, *, outcome: str = "", duration
             "interest": "yes",
             "method": "rules_booked",
         }
-    if INTEREST_RE.search(user) and not NEGATIVE_RE.search(user):
+    if client_expressed_interest(conversation):
         note = "ИНТЕРЕСНО — перезвонить лично"
         if CALLBACK_RE.search(user):
             note = "ИНТЕРЕСНО — перезвонить лично (просил перезвонить)"
@@ -148,30 +174,74 @@ def classify_rules(conversation: list[Any] | str, *, outcome: str = "", duration
     }
 
 
+def _sanitize_llm_result(
+    data: dict[str, str],
+    conversation: list[Any] | str,
+) -> dict[str, str]:
+    """Drop invented «ИНТЕРЕСНО» unless client said so or booking tools fired."""
+    note = str(data.get("note") or "").strip() or "СОСТОЯЛСЯ — уточнить итог"
+    interest = str(data.get("interest") or "maybe").strip().lower()
+    status = str(data.get("status") or "").strip()
+    text = _turns_text(conversation)
+    booked = bool(BOOKED_RE.search(text))
+    client_yes = client_expressed_interest(conversation)
+
+    wants_interest = interest == "yes" or note.upper().startswith("ИНТЕРЕСНО")
+    if wants_interest and not booked and not client_yes:
+        fallback = classify_rules(conversation)
+        fallback["method"] = "llm_sanitized_" + fallback["method"]
+        return fallback
+
+    if booked and not note.upper().startswith("ИНТЕРЕСНО"):
+        note = "ИНТЕРЕСНО — записан на консультацию (календарь+Телемост+почта)"
+        interest = "yes"
+        status = "Положительный"
+
+    return {
+        "note": note,
+        "status": status if interest == "yes" else "",
+        "interest": interest,
+        "method": "llm",
+    }
+
+
 def classify_llm(conversation: list[Any] | str, *, outcome: str = "", duration: int = 0) -> dict[str, str] | None:
     api_key = (os.getenv("OPENAI_API_KEY") or "").strip()
     if not api_key:
         return None
     model = (os.getenv("OPENAI_MODEL") or "gpt-4.1-mini").strip()
     text = _turns_text(conversation)[:6000]
+    user = _user_text(conversation)[:3000]
     prompt = (
         "По расшифровке исходящего звонка Quantum Labs про массовые выплаты "
         "верни JSON с полями note, status, interest.\n"
+        "КРИТИЧНО: «ИНТЕРЕСНО» и interest=yes ставь ТОЛЬКО если клиент сам "
+        "явно сказал об интересе (интересно/актуально/давайте обсудим/запишите меня) "
+        "ИЛИ реально создана запись на консультацию (календарь/Телемост).\n"
+        "Реплики ассистента (AVA) сами по себе НЕ считаются интересом.\n"
+        "Короткие «да/алло/удобно» без интереса → не ИНТЕРЕСНО.\n"
         "note — короткая пометка для колонки «Пометки Клиента» на русском.\n"
-        "Если клиента записали на консультацию — note начинай с "
+        "Если запись на консультацию — note начинай с "
         "«ИНТЕРЕСНО — записан на консультацию».\n"
-        "Если интересно, но без записи — «ИНТЕРЕСНО — перезвонить лично».\n"
-        "status — «Положительный» если интерес/запись есть, иначе пустая строка.\n"
+        "Если клиент явно заинтересован без записи — «ИНТЕРЕСНО — перезвонить лично».\n"
+        "status — «Положительный» только при интересе/записи, иначе пустая строка.\n"
         "interest — yes|no|maybe.\n"
         f"outcome={outcome} duration={duration}\n"
-        f"transcript:\n{text}"
+        f"client_only:\n{user}\n"
+        f"full_transcript:\n{text}"
     )
     body = {
         "model": model,
         "temperature": 0,
         "response_format": {"type": "json_object"},
         "messages": [
-            {"role": "system", "content": "Ты классификатор итогов звонков. Отвечай только JSON."},
+            {
+                "role": "system",
+                "content": (
+                    "Ты классификатор итогов звонков. Отвечай только JSON. "
+                    "ИНТЕРЕСНО только по словам клиента или факту записи."
+                ),
+            },
             {"role": "user", "content": prompt},
         ],
     }
@@ -189,13 +259,14 @@ def classify_llm(conversation: list[Any] | str, *, outcome: str = "", duration: 
             payload = json.loads(resp.read().decode())
         content = payload["choices"][0]["message"]["content"]
         data = json.loads(content)
-        note = str(data.get("note") or "").strip() or "СОСТОЯЛСЯ — уточнить итог"
-        return {
-            "note": note,
-            "status": str(data.get("status") or "").strip(),
-            "interest": str(data.get("interest") or "maybe").strip().lower(),
-            "method": "llm",
-        }
+        return _sanitize_llm_result(
+            {
+                "note": str(data.get("note") or "").strip(),
+                "status": str(data.get("status") or "").strip(),
+                "interest": str(data.get("interest") or "maybe").strip().lower(),
+            },
+            conversation,
+        )
     except Exception:
         return None
 
