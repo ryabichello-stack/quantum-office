@@ -113,45 +113,207 @@
     showLogin();
   }
 
+  let toolsCatalogCache = null;
+
+  async function getToolsCatalog() {
+    if (toolsCatalogCache) return toolsCatalogCache;
+    toolsCatalogCache = await api("/api/tools");
+    return toolsCatalogCache;
+  }
+
+  function selectedScenarioTools() {
+    return Array.from(document.querySelectorAll("input.sc-tool:checked"))
+      .filter((el) => !el.getAttribute("data-post-call"))
+      .map((el) => el.value);
+  }
+
+  function renderScenarioTools(enabledNames, expandTool) {
+    const box = $("scToolsPanel");
+    if (!box) return;
+    const cat = toolsCatalogCache || { tools: [] };
+    const enabled = new Set(enabledNames || []);
+    const tools = (cat.tools || []).filter(
+      (t) => t.phase === "in_call" || t.phase === "post_call"
+    );
+    const groups = {};
+    tools.forEach((t) => {
+      const g = t.group_label || t.group || "Прочее";
+      (groups[g] = groups[g] || []).push(t);
+    });
+    const order = ["Бизнес", "Телефония", "HTTP / интеграции", "После звонка", "Прочее"];
+    const keys = [
+      ...order.filter((k) => groups[k]),
+      ...Object.keys(groups).filter((k) => !order.includes(k)),
+    ];
+    box.innerHTML = keys
+      .map((g) => {
+        const rows = groups[g]
+          .map((t) => {
+            const on = enabled.has(t.name);
+            const open = expandTool && expandTool === t.name ? " open" : "";
+            const phaseNote =
+              t.phase === "post_call" ? "после звонка" : "во время звонка";
+            return `<div class="tool-row${open}" data-tool-name="${esc(t.name)}">
+              <div class="tool-row-main">
+                <input type="checkbox" class="sc-tool" value="${esc(t.name)}" ${
+                  on ? "checked" : ""
+                } ${t.phase === "post_call" ? 'data-post-call="1"' : ""} />
+                <div class="tool-row-text">
+                  <div class="tool-row-title">${esc(t.label || t.name)}</div>
+                  <div class="tool-row-meta">${esc(phaseNote)} · <code>${esc(t.name)}</code></div>
+                </div>
+                <span class="tool-chevron" aria-hidden="true">›</span>
+              </div>
+              <div class="tool-row-body">
+                <p>${esc(t.description || "Нет описания — служебный tool AVA.")}</p>
+                <p>Группа: ${esc(t.group_label || t.group || "—")} · источник: ${esc(
+                  t.source || "—"
+                )}</p>
+                ${
+                  t.phase === "post_call"
+                    ? "<p class='muted'>Post-call на исходящих отключён (лиды только на входящих).</p>"
+                    : ""
+                }
+              </div>
+            </div>`;
+          })
+          .join("");
+        return `<div class="tool-group-title">${esc(g)}</div>${rows}`;
+      })
+      .join("");
+
+    box.querySelectorAll(".tool-row-main").forEach((main) => {
+      main.addEventListener("click", (ev) => {
+        if (ev.target && ev.target.matches("input.sc-tool")) return;
+        const row = main.closest(".tool-row");
+        if (row) row.classList.toggle("open");
+      });
+    });
+    box.querySelectorAll("input.sc-tool").forEach((cb) => {
+      cb.addEventListener("click", (ev) => ev.stopPropagation());
+      cb.addEventListener("change", () => {
+        if ($("scToolsHint")) {
+          $("scToolsHint").textContent =
+            "Включено in-call: " +
+            selectedScenarioTools().length +
+            " · нажмите «Сохранить профиль»";
+        }
+      });
+    });
+
+    if (expandTool) {
+      const safe =
+        typeof CSS !== "undefined" && CSS.escape
+          ? CSS.escape(expandTool)
+          : expandTool.replace(/"/g, '\\"');
+      const row = box.querySelector(`.tool-row[data-tool-name="${safe}"]`);
+      if (row) {
+        row.classList.add("open");
+        row.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }
+    if ($("scToolsHint")) {
+      $("scToolsHint").textContent =
+        "Включено in-call: " +
+        selectedScenarioTools().length +
+        " · нажмите «Сохранить профиль»";
+    }
+  }
+
+  async function openScenarioTools(context, toolName) {
+    if ($("scContext")) $("scContext").value = context || "default";
+    setTab("scenario");
+    try {
+      await loadScenario(toolName || "");
+      const block = $("scToolsBlock");
+      if (block) block.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
   async function loadStatus() {
     const s = await api("/api/status");
-    const h = s.health || {};
-    const u = s.units || {};
-    const o = s.outbound || {};
-    const cards = [
-      ["mailer", h.mailer],
-      ["ai_engine", h.ai_engine],
-      ["text_bot", h.text_bot],
-      ["outreach", h.outreach],
-      ["mango SIP", s.mango_registered],
-      ["outbound DP", o.dialplan_from_internal],
-      ["AMD DP", o.dialplan_amd],
-    ];
+    const services = s.services || [];
+    const unitsUi = s.units_ui || [];
+    const profiles = s.profiles || {};
+    const sipOk = !!s.mango_registered;
+
+    function profileCard(key) {
+      const p = profiles[key] || {};
+      const tools = p.tools || [];
+      const chips = tools.length
+        ? tools
+            .map(
+              (t) =>
+                `<button type="button" class="tool-chip" data-goto-context="${esc(
+                  p.context || ""
+                )}" data-tool="${esc(t.name)}" title="${esc(t.description || "")}">${esc(
+                  t.label || t.name
+                )}</button>`
+            )
+            .join("")
+        : `<span class="muted">нет tools</span>`;
+      return `<div class="profile-card">
+        <h3>${esc(p.label || key)}</h3>
+        <div>${chips}</div>
+        <div class="actions" style="margin-top:0.65rem">
+          <button type="button" data-goto-context="${esc(
+            p.context || ""
+          )}">Настроить tools</button>
+        </div>
+      </div>`;
+    }
+
     $("statusBox").innerHTML = `
       <div class="status-head">
-        <div class="status-host">${esc(s.host || "host")}</div>
-        <div>${pill(!!s.mango_registered, s.mango_registered ? "SIP ok" : "SIP down")}</div>
+        <div>
+          <div class="status-host">${esc(s.host_label || "Quantum Labs · телефония")}</div>
+          <p class="host-note">${esc(s.host_note || "")}</p>
+        </div>
+        <div>${pill(sipOk, sipOk ? "SIP на связи" : "SIP не зарегистрирован")}</div>
       </div>
       <div class="status-grid">
-        ${cards
+        ${services
           .map(
-            ([label, ok]) =>
-              `<div class="status-card ${ok ? "ok" : "bad"}">
-                <span class="label">${esc(label)}</span>
-                <span class="value">${ok ? "online" : "down"}</span>
+            (svc) =>
+              `<div class="status-card ${svc.ok ? "ok" : "bad"}" title="${esc(svc.hint || "")}">
+                <span class="label">${esc(svc.label || svc.id)}</span>
+                <span class="value">${svc.ok ? "работает" : "недоступен"}</span>
               </div>`
           )
           .join("")}
       </div>
-      <h2 class="section-title">systemd</h2>
-      <pre class="msg codeblock">${Object.entries(u)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join("\n")}</pre>
-      <h2 class="section-title">Mango registration</h2>
+      <h2 class="section-title">Инструменты в профилях</h2>
+      <p class="muted">Клик по tool или «Настроить» — детали и включение в сценарии</p>
+      <div class="profile-tools">
+        ${profileCard("inbound")}
+        ${profileCard("outbound")}
+      </div>
+      <h2 class="section-title">Службы systemd</h2>
+      <table><thead><tr><th>Служба</th><th>Состояние</th></tr></thead><tbody>
+        ${unitsUi
+          .map(
+            (u) =>
+              `<tr><td>${esc(u.label)}</td><td>${pill(u.ok, u.state)}</td></tr>`
+          )
+          .join("")}
+      </tbody></table>
+      <h2 class="section-title">Регистрация Mango</h2>
       <pre class="msg codeblock">${esc(s.registration_raw)}</pre>
       <h2 class="section-title">Пути</h2>
       <pre class="msg codeblock">${esc(JSON.stringify(s.paths || {}, null, 2))}</pre>
     `;
+
+    $("statusBox").querySelectorAll("[data-goto-context]").forEach((el) => {
+      el.addEventListener("click", () => {
+        openScenarioTools(
+          el.getAttribute("data-goto-context") || "default",
+          el.getAttribute("data-tool") || ""
+        );
+      });
+    });
+
     const pack = s.pack || [];
     $("packBox").innerHTML = `<table><thead><tr><th>Ключ</th><th>Путь</th><th></th><th>Заметка</th></tr></thead><tbody>
       ${pack
@@ -166,8 +328,9 @@
     </tbody></table>`;
   }
 
-  async function loadScenario() {
+  async function loadScenario(expandTool) {
     const ctx = ($("scContext") && $("scContext").value) || "default";
+    await getToolsCatalog();
     const s = await api("/api/scenario?context=" + encodeURIComponent(ctx));
     $("scGreeting").value = s.greeting || "";
     $("scPrompt").value = s.prompt || "";
@@ -175,17 +338,16 @@
     $("scVoice").value = s.voice || "";
     $("scTemp").value = s.temperature ?? "";
     $("scProvider").value = s.provider || "";
-    if ($("scTools")) {
-      $("scTools").textContent = "tools: " + (s.tools || []).join(", ");
-    }
     if ($("scIsolate")) {
       $("scIsolate").textContent =
         (s.profile_label ? "Профиль: " + s.profile_label + " · " : "") +
-        "provider=" +
+        "провайдер " +
         (s.provider || "?") +
         " · " +
         (s.note || "изолирован от другого направления");
     }
+    const enabled = [...(s.tools || []), ...(s.post_call_tools || [])];
+    renderScenarioTools(enabled, expandTool || "");
   }
 
   async function loadKnowledge() {
@@ -442,6 +604,7 @@
   if ($("btnSaveScenario")) {
     $("btnSaveScenario").onclick = async () => {
       try {
+        const tools = selectedScenarioTools();
         const r = await api("/api/scenario", {
           method: "PUT",
           body: JSON.stringify({
@@ -452,12 +615,15 @@
             voice: $("scVoice").value,
             temperature: $("scTemp").value === "" ? null : Number($("scTemp").value),
             provider: $("scProvider").value,
+            tools,
+            restart: true,
           }),
         });
         $("scMsg").textContent =
           (r.note || "сохранено") +
-          (r.isolated_from ? ` · не тронут: ${r.isolated_from}` : " · нужен restart ai_engine");
+          (r.isolated_from ? ` · не тронут: ${r.isolated_from}` : " · AI engine перезапущен");
         $("scMsg").className = "msg ok";
+        toolsCatalogCache = null;
         await loadScenario();
       } catch (e) {
         $("scMsg").textContent = e.message;

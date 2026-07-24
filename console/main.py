@@ -637,16 +637,104 @@ def api_status(x_console_token: str | None = Header(default=None)) -> dict[str, 
 
     mango_key, mango_salt = _mango_api_creds()
     mango_api_ok = bool(mango_key and mango_salt)
-    return {
-        "host": os.uname().nodename,
-        "health": {
-            "mailer": _http_ok(MAILER_HEALTH_URL),
-            "ai_engine": _http_ok(ENGINE_HEALTH_URL),
-            "text_bot": _http_ok(TEXT_BOT_HEALTH_URL),
-            "outreach": _http_ok(OUTREACH_HEALTH_URL),
-            "sheets_campaign": _http_ok(CAMPAIGN_HEALTH_URL),
+    host_raw = os.uname().nodename
+    # Friendly labels for UI (avoid exposing random VPS hostnames as brand)
+    health = {
+        "mailer": _http_ok(MAILER_HEALTH_URL),
+        "ai_engine": _http_ok(ENGINE_HEALTH_URL),
+        "text_bot": _http_ok(TEXT_BOT_HEALTH_URL),
+        "outreach": _http_ok(OUTREACH_HEALTH_URL),
+        "sheets_campaign": _http_ok(CAMPAIGN_HEALTH_URL),
+    }
+    services = [
+        {
+            "id": "mailer",
+            "label": _SERVICE_LABELS["mailer"],
+            "ok": health["mailer"],
+            "hint": "порт 8000 · письма, welcome, knowledge proxy",
         },
+        {
+            "id": "ai_engine",
+            "label": _SERVICE_LABELS["ai_engine"],
+            "ok": health["ai_engine"],
+            "hint": "Realtime голос · docker ai_engine",
+        },
+        {
+            "id": "text_bot",
+            "label": _SERVICE_LABELS["text_bot"],
+            "ok": health["text_bot"],
+            "hint": "порт 8011 · секретарь в Telegram",
+        },
+        {
+            "id": "outreach",
+            "label": _SERVICE_LABELS["outreach"],
+            "ok": health["outreach"],
+            "hint": "порт 8012 · Bitrix",
+        },
+        {
+            "id": "sheets_campaign",
+            "label": _SERVICE_LABELS["sheets_campaign"],
+            "ok": health["sheets_campaign"],
+            "hint": "порт 8018 · обзвон из Google Sheet",
+        },
+        {
+            "id": "mango_sip",
+            "label": "Mango SIP",
+            "ok": mango_registered,
+            "hint": "регистрация транка на АТС",
+        },
+        {
+            "id": "outbound_dialplan",
+            "label": "Исходящий dialplan",
+            "ok": outbound_dialplan,
+            "hint": "контекст from-internal",
+        },
+        {
+            "id": "amd_dialplan",
+            "label": "AMD (автоответчик)",
+            "ok": amd_dialplan,
+            "hint": "детектор автоответчика",
+        },
+    ]
+    units_ui = [
+        {
+            "id": k,
+            "label": _UNIT_LABELS.get(k, k),
+            "state": v,
+            "ok": v == "active",
+        }
+        for k, v in units.items()
+    ]
+    # Quick tool summary for status → drill into scenario
+    try:
+        inbound_tools = list((_load_yaml().get("contexts") or {}).get("default", {}).get("tools") or [])
+        outbound_tools = list((_load_yaml().get("contexts") or {}).get("outbound", {}).get("tools") or [])
+    except Exception:
+        inbound_tools, outbound_tools = [], []
+    catalog = {t["name"]: t for t in _tool_catalog()["tools"]}
+
+    def _tool_chips(names: list[str]) -> list[dict[str, str]]:
+        out = []
+        for n in names:
+            meta = catalog.get(n) or _enrich_tool({"name": n, "group": "other", "label": n})
+            out.append(
+                {
+                    "name": n,
+                    "label": meta.get("label") or n,
+                    "description": meta.get("description") or "",
+                    "group_label": meta.get("group_label") or "",
+                }
+            )
+        return out
+
+    return {
+        "host": host_raw,
+        "host_label": "Quantum Labs · телефония",
+        "host_note": f"системное имя хоста: {host_raw}",
+        "health": health,
+        "services": services,
         "units": units,
+        "units_ui": units_ui,
         "mango_registered": mango_registered,
         "registration_raw": "\n".join(reg_out.splitlines()[:12]),
         "outbound": {
@@ -657,6 +745,18 @@ def api_status(x_console_token: str | None = Header(default=None)) -> dict[str, 
             "mango_api_configured": mango_api_ok,
             "mango_callback_extension": MANGO_CALLBACK_EXTENSION,
             "preferred": "mango_api_callback" if mango_api_ok else "sip_pjsip",
+        },
+        "profiles": {
+            "inbound": {
+                "context": "default",
+                "label": "Входящие",
+                "tools": _tool_chips(inbound_tools),
+            },
+            "outbound": {
+                "context": "outbound",
+                "label": "Исходящие",
+                "tools": _tool_chips(outbound_tools),
+            },
         },
         "pack": _pack_inventory(),
         "paths": {
@@ -924,17 +1024,184 @@ HANGUP_GUARD_FOOTER = (
 _BUILTIN_IN_CALL_TOOLS: list[dict[str, str]] = [
     {"name": "hangup_call", "group": "telephony", "label": "Завершить звонок"},
     {"name": "leave_voicemail", "group": "telephony", "label": "Оставить голосовое"},
-    {"name": "blind_transfer", "group": "telephony", "label": "Blind transfer"},
-    {"name": "attended_transfer", "group": "telephony", "label": "Attended transfer"},
-    {"name": "cancel_transfer", "group": "telephony", "label": "Отменить transfer"},
-    {"name": "live_agent_transfer", "group": "telephony", "label": "Transfer на живого агента"},
-    {"name": "transfer_call", "group": "telephony", "label": "Unified transfer"},
-    {"name": "transfer_to_queue", "group": "telephony", "label": "Transfer в очередь"},
-    {"name": "check_extension_status", "group": "telephony", "label": "Статус extension"},
-    {"name": "google_calendar", "group": "business", "label": "Google Calendar (builtin)"},
+    {"name": "blind_transfer", "group": "telephony", "label": "Слепой перевод"},
+    {"name": "attended_transfer", "group": "telephony", "label": "Сопровождаемый перевод"},
+    {"name": "cancel_transfer", "group": "telephony", "label": "Отменить перевод"},
+    {"name": "live_agent_transfer", "group": "telephony", "label": "Перевод на оператора"},
+    {"name": "transfer_call", "group": "telephony", "label": "Перевод звонка"},
+    {"name": "transfer_to_queue", "group": "telephony", "label": "Перевод в очередь"},
+    {"name": "check_extension_status", "group": "telephony", "label": "Статус добавочного"},
+    {"name": "google_calendar", "group": "business", "label": "Google Calendar (встроенный)"},
     {"name": "request_transcript", "group": "business", "label": "Запросить транскрипт"},
-    {"name": "send_email_summary", "group": "business", "label": "Email summary"},
+    {"name": "send_email_summary", "group": "business", "label": "Email-сводка звонка"},
 ]
+
+# Human labels / descriptions for Console UI (builtins + HTTP Quantum tools).
+_TOOL_META: dict[str, dict[str, str]] = {
+    "hangup_call": {
+        "label": "Завершить звонок",
+        "description": "Положить трубку. Не вызывать в первые секунды и на обрывках ASR.",
+        "group": "telephony",
+    },
+    "leave_voicemail": {
+        "label": "Оставить голосовое",
+        "description": "Запись сообщения на автоответчик собеседника.",
+        "group": "telephony",
+    },
+    "blind_transfer": {
+        "label": "Слепой перевод",
+        "description": "Перевести звонок без предварительного разговора с целью.",
+        "group": "telephony",
+    },
+    "attended_transfer": {
+        "label": "Сопровождаемый перевод",
+        "description": "Перевод с удержанием и представлением оператору.",
+        "group": "telephony",
+    },
+    "cancel_transfer": {
+        "label": "Отменить перевод",
+        "description": "Отмена незавершённого перевода.",
+        "group": "telephony",
+    },
+    "live_agent_transfer": {
+        "label": "Перевод на оператора",
+        "description": "Соединить с живым сотрудником.",
+        "group": "telephony",
+    },
+    "transfer_call": {
+        "label": "Перевод звонка",
+        "description": "Унифицированный перевод (engine).",
+        "group": "telephony",
+    },
+    "transfer_to_queue": {
+        "label": "Перевод в очередь",
+        "description": "Поставить звонок в очередь ожидания.",
+        "group": "telephony",
+    },
+    "check_extension_status": {
+        "label": "Статус добавочного",
+        "description": "Проверить, доступен ли внутренний номер.",
+        "group": "telephony",
+    },
+    "google_calendar": {
+        "label": "Google Calendar (встроенный)",
+        "description": "Встроенный календарь engine — у Quantum Labs обычно не используется.",
+        "group": "business",
+    },
+    "request_transcript": {
+        "label": "Запросить транскрипт",
+        "description": "Запросить текст разговора во время звонка.",
+        "group": "business",
+    },
+    "send_email_summary": {
+        "label": "Email-сводка",
+        "description": "Отправить краткое резюме звонка на почту.",
+        "group": "business",
+    },
+    "get_company_knowledge": {
+        "label": "Second Brain — база знаний",
+        "description": "Факты о компании через knowledge (:8017 / mailer proxy).",
+        "group": "business",
+    },
+    "check_calendar": {
+        "label": "Проверить календарь",
+        "description": "Свободные слоты через calendar-сервис (:8014).",
+        "group": "business",
+    },
+    "create_calendar_event": {
+        "label": "Создать встречу",
+        "description": "Запись в календарь через calendar-сервис (:8014).",
+        "group": "business",
+    },
+    "create_conference": {
+        "label": "Создать конференцию",
+        "description": "Ссылка Яндекс Телемост через conference (:8016).",
+        "group": "business",
+    },
+    "send_welcome_email": {
+        "label": "Welcome-письмо",
+        "description": "Презентация / welcome через mailer (:8000).",
+        "group": "business",
+    },
+    "send_email": {
+        "label": "Отправить email",
+        "description": "Произвольное письмо (to, subject, body) через mailer.",
+        "group": "business",
+    },
+    "ai_identity": {
+        "label": "Идентичность AI",
+        "description": "Служебный tool профиля (обычно не включать вручную).",
+        "group": "http",
+    },
+    "sample_n8n_in_call_tool": {
+        "label": "Пример n8n (образец)",
+        "description": "Демо-tool из YAML AVA — не для продакшена Quantum.",
+        "group": "http",
+    },
+    "mailru_post_call": {
+        "label": "Post-call → Mail.ru / лид",
+        "description": "После звонка: письмо «Новый лид» (только входящие).",
+        "group": "post_call",
+    },
+}
+
+_TOOL_META_SKIP_NAMES = {
+    "enabled",
+    "extensions",
+    "transfer",
+    "default_action_timeout",
+    "sample_gohighlevel_pre_call_lookup",
+    "demo_post_call_webhook",
+    "sample_discord_post_call_webhook",
+}
+
+_GROUP_LABELS = {
+    "telephony": "Телефония",
+    "business": "Бизнес",
+    "http": "HTTP / интеграции",
+    "post_call": "После звонка",
+    "other": "Прочее",
+}
+
+_SERVICE_LABELS = {
+    "mailer": "Почта и welcome",
+    "ai_engine": "Голосовой AI (AVA)",
+    "text_bot": "Telegram-бот",
+    "outreach": "Bitrix / outreach",
+    "sheets_campaign": "Кампания Sheets",
+    "mango SIP": "Регистрация Mango SIP",
+    "outbound DP": "Dialplan исходящих",
+    "AMD DP": "Dialplan AMD",
+}
+
+_UNIT_LABELS = {
+    "asterisk": "Asterisk",
+    "ava-mailer": "Почта (mailer)",
+    "quantum-ava-docker": "Docker AVA / AI engine",
+    "ava-text-bot": "Telegram-бот",
+    "ava-outreach": "Outreach Bitrix",
+    "quantum-console": "Эта консоль",
+    "ava-sheets-campaign": "Кампания Sheets",
+}
+
+
+def _enrich_tool(t: dict[str, Any]) -> dict[str, Any]:
+    name = str(t.get("name") or "")
+    meta = _TOOL_META.get(name) or {}
+    out = dict(t)
+    if meta.get("label"):
+        out["label"] = meta["label"]
+    elif not out.get("label") or out.get("label") == name:
+        out["label"] = name.replace("_", " ")
+    if meta.get("description"):
+        out["description"] = meta["description"]
+    else:
+        out.setdefault("description", "")
+    if meta.get("group"):
+        out["group"] = meta["group"]
+    out["group_label"] = _GROUP_LABELS.get(str(out.get("group") or "other"), str(out.get("group") or ""))
+    return out
+
 
 def _tool_catalog() -> dict[str, Any]:
     """Full in-call tool catalog: builtins + YAML HTTP tools (base + local)."""
@@ -957,7 +1224,11 @@ def _tool_catalog() -> dict[str, Any]:
                 merged_in_call.update(data["in_call_tools"])
             if isinstance(data.get("tools"), dict):
                 merged_post.update(data["tools"])
-        for name in merged_in_call:
+        for name, cfg in merged_in_call.items():
+            if name in _TOOL_META_SKIP_NAMES:
+                continue
+            if not isinstance(cfg, dict):
+                continue
             http_tools.append(
                 {
                     "name": str(name),
@@ -966,8 +1237,11 @@ def _tool_catalog() -> dict[str, Any]:
                     "source": "in_call_tools",
                 }
             )
-        for name in merged_post:
-            # post/pre HTTP webhooks — listed for awareness, not for dial allowlist by default
+        for name, cfg in merged_post.items():
+            if name in _TOOL_META_SKIP_NAMES:
+                continue
+            if not isinstance(cfg, dict):
+                continue
             http_tools.append(
                 {
                     "name": str(name),
@@ -986,25 +1260,24 @@ def _tool_catalog() -> dict[str, Any]:
 
     # Dedup by name, prefer first (builtin) then http
     seen: set[str] = set()
-    tools: list[dict[str, str]] = []
+    tools: list[dict[str, Any]] = []
     for t in in_call:
         n = t["name"]
-        if n in seen:
+        if n in seen or n in _TOOL_META_SKIP_NAMES:
             continue
         seen.add(n)
-        tools.append(t)
+        tools.append(_enrich_tool(t))
 
-    dialable = sorted(
-        t["name"] for t in tools if t.get("phase") == "in_call"
-    )
+    dialable = sorted(t["name"] for t in tools if t.get("phase") == "in_call")
     return {
         "ok": True,
         "tools": tools,
         "dialable": dialable,
+        "groups": _GROUP_LABELS,
         "default_outbound": ["hangup_call"],
         "note": (
-            "Pass tools on POST /api/outbound/dial for THIS call only (no Ava restart). "
-            "Post-call tools are not dialable here — they stay on the YAML context."
+            "В сценарии профиля включайте нужные tools. "
+            "На исходящем one-shot dial список можно переопределить на этот звонок."
         ),
     }
 

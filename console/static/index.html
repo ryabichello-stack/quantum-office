@@ -79,30 +79,37 @@
         <section id="tab-scenario" class="panel">
           <div class="surface grid2">
             <div class="full row">
-              <label class="field grow">Контекст
+              <label class="field grow">Профиль
                 <select id="scContext">
-                  <option value="default">Входящие — default</option>
-                  <option value="outbound">Исходящие — outbound</option>
+                  <option value="default">Входящие звонки</option>
+                  <option value="outbound">Исходящие звонки</option>
                 </select>
               </label>
               <button type="button" id="btnLoadScenario">Загрузить</button>
             </div>
-            <label class="field">Greeting<textarea id="scGreeting" rows="3"></textarea></label>
+            <label class="field">Приветствие (greeting)<textarea id="scGreeting" rows="3"></textarea></label>
             <div class="stack">
-              <label class="field">Model <input id="scModel" /></label>
-              <label class="field">Voice <input id="scVoice" /></label>
+              <label class="field">Модель <input id="scModel" /></label>
+              <label class="field">Голос <input id="scVoice" /></label>
               <label class="field">Temperature <input id="scTemp" type="number" step="0.1" min="0" max="2" /></label>
-              <label class="field">Provider <input id="scProvider" readonly /></label>
-              <p class="muted" id="scTools"></p>
+              <label class="field">Провайдер <input id="scProvider" readonly /></label>
               <p class="muted" id="scIsolate">Профили изолированы: входящие ≠ исходящие.</p>
             </div>
-            <label class="field full">Prompt / сценарий<textarea id="scPrompt" rows="18"></textarea></label>
+            <label class="field full">Скрипт разговора (prompt)<textarea id="scPrompt" rows="14"></textarea></label>
+            <div class="full tools-block" id="scToolsBlock">
+              <div class="tools-head">
+                <h2 class="section-title" style="margin-top:0">Инструменты профиля</h2>
+                <p class="muted tight">Включите нужные · клик по строке — детали</p>
+              </div>
+              <div id="scToolsPanel" class="tools-panel">Загрузка…</div>
+              <p class="muted" id="scToolsHint"></p>
+            </div>
             <div class="full actions">
               <button type="button" id="btnSaveScenario" class="primary">Сохранить профиль</button>
-              <button type="button" id="btnRestartEngine">Restart ai_engine</button>
+              <button type="button" id="btnRestartEngine">Перезапустить AI engine</button>
               <span id="scMsg" class="msg"></span>
             </div>
-            <p class="full muted">Сохранение одного профиля не меняет greeting/prompt/model другого.</p>
+            <p class="full muted">Сохранение одного профиля не меняет greeting / prompt / tools другого.</p>
           </div>
         </section>
 
