@@ -196,6 +196,41 @@ def _save_result(row: dict[str, Any]) -> None:
         conn.close()
 
 
+def _processed_row_keys() -> set[tuple[str, int]]:
+    """Rows already handled locally (gid, row_number).
+
+    Sheet writeback is often off — without this the queue forever restarts
+    at the first empty «Пометки Клиента» cell and redials the same number.
+    """
+    init_db()
+    conn = sqlite3.connect(str(_db_path()))
+    try:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT gid, row_number
+            FROM results
+            WHERE gid IS NOT NULL AND row_number IS NOT NULL
+              AND note IS NOT NULL AND TRIM(note) != ''
+            """
+        ).fetchall()
+        out: set[tuple[str, int]] = set()
+        for gid, row_number in rows:
+            try:
+                out.add((str(gid), int(row_number)))
+            except (TypeError, ValueError):
+                continue
+        return out
+    finally:
+        conn.close()
+
+
+def _filter_unprocessed(leads: list[sheets_io.LeadRow]) -> list[sheets_io.LeadRow]:
+    done = _processed_row_keys()
+    if not done:
+        return leads
+    return [x for x in leads if (str(x.gid), int(x.row_number)) not in done]
+
+
 def flush_writebacks(limit: int = 50) -> dict[str, Any]:
     if not sheets_io.sheets_write_enabled():
         return {"ok": False, "error": "google_sa_not_configured", "flushed": 0}
@@ -349,11 +384,24 @@ def _worker(*, max_calls: int, sheet_filter: str | None, dry_run: bool) -> None:
         leads = sheets_io.load_leads(only_empty_notes=True, sheet_filter=sheet_filter)
         # Prefer active tab first
         leads.sort(key=lambda x: (0 if "Архив" not in x.sheet_name else 1, x.row_number))
+        before = len(leads)
+        leads = _filter_unprocessed(leads)
+        skipped = before - len(leads)
         if max_calls > 0:
             leads = leads[:max_calls]
         with STATE.lock:
             STATE.status["queued"] = len(leads)
-            STATE.status["message"] = f"queued {len(leads)}"
+            STATE.status["skipped_local"] = skipped
+            STATE.status["message"] = (
+                f"queued {len(leads)}"
+                + (f" (skipped {skipped} already done locally)" if skipped else "")
+            )
+        if not leads:
+            with STATE.lock:
+                STATE.status["message"] = (
+                    "no new leads — all pending sheet rows already have local results"
+                )
+            return
         for lead in leads:
             if STATE.stop_flag:
                 break
@@ -469,6 +517,8 @@ def get_status() -> dict[str, Any]:
 def preview(limit: int = 30, sheet: str | None = None) -> dict[str, Any]:
     leads = sheets_io.load_leads(only_empty_notes=True, sheet_filter=sheet)
     leads.sort(key=lambda x: (0 if "Архив" not in x.sheet_name else 1, x.row_number))
+    sheet_pending = len(leads)
+    leads = _filter_unprocessed(leads)
     by_sheet: dict[str, int] = {}
     for x in leads:
         by_sheet[x.sheet_name] = by_sheet.get(x.sheet_name, 0) + 1
@@ -490,6 +540,8 @@ def preview(limit: int = 30, sheet: str | None = None) -> dict[str, Any]:
     return {
         "ok": True,
         "total_pending": len(leads),
+        "sheet_pending_empty_notes": sheet_pending,
+        "skipped_local_done": max(0, sheet_pending - len(leads)),
         "showing": len(items),
         "by_sheet": by_sheet,
         "items": items,
@@ -499,6 +551,11 @@ def preview(limit: int = 30, sheet: str | None = None) -> dict[str, Any]:
         "sa_email": sheets_io.sa_email(),
         "tools": (script_store.load_script().get("tools") or script.CAMPAIGN_TOOLS),
         "script_source": script_store.load_script().get("source"),
+        "note": (
+            "Очередь = строки Sheet без «Пометки Клиента», минус уже обработанные "
+            "локально в campaign.db (чтобы не звонить один номер по кругу, пока "
+            "writeback в Sheet выключен)."
+        ),
     }
 
 

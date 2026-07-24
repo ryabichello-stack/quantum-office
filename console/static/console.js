@@ -559,12 +559,18 @@
     const items = r.items || [];
     const by = r.by_sheet || {};
     if ($("campLeadsMeta")) {
+      const skipped = r.skipped_local_done || 0;
       $("campLeadsMeta").textContent =
-        "В очереди без пометки: " +
+        "В очереди на звонок: " +
         (r.total_pending ?? items.length) +
         " · показано " +
         (r.showing ?? items.length) +
-        (r.sheets_write_enabled ? " · writeback Sheets: да" : " · writeback Sheets: нет (результаты локально)");
+        (skipped
+          ? " · уже обработано локально (пропуск): " + skipped
+          : "") +
+        (r.sheets_write_enabled
+          ? " · writeback Sheets: да"
+          : " · writeback Sheets: нет — очередь двигается по локальной БД");
     }
     if ($("campSheetLink") && r.sheet_url) {
       $("campSheetLink").href = r.sheet_url;
