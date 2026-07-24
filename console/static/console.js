@@ -466,14 +466,36 @@
   }
 
   async function refreshAll() {
-    await loadStatus();
-    await Promise.all([
-      loadScenario(),
-      loadKnowledge(),
-      loadCalls(),
-      loadSecrets(),
-      loadDialTools(),
-    ]);
+    const errors = [];
+    try {
+      await loadStatus();
+    } catch (e) {
+      if ($("statusBox")) $("statusBox").textContent = e.message;
+      errors.push(e);
+    }
+    const jobs = [
+      ["scenario", loadScenario],
+      ["knowledge", loadKnowledge],
+      ["calls", loadCalls],
+      ["secrets", loadSecrets],
+      ["tools", loadDialTools],
+    ];
+    await Promise.all(
+      jobs.map(async ([name, fn]) => {
+        try {
+          await fn();
+        } catch (e) {
+          errors.push(new Error(`${name}: ${e.message || e}`));
+        }
+      })
+    );
+    if (errors.length && !($("statusBox") && $("statusBox").querySelector(".status-grid"))) {
+      // status itself failed — already shown
+      return;
+    }
+    if (errors.length) {
+      console.warn("refresh partial errors", errors.map((e) => e.message));
+    }
   }
 
   async function loadCampaignLeads() {

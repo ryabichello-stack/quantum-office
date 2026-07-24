@@ -1446,6 +1446,24 @@ def _reload_knowledge_service() -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
+@app.get("/api/knowledge")
+def api_knowledge_get(
+    x_console_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_token(x_console_token)
+    text = ""
+    if KNOWLEDGE_PATH.is_file():
+        text = KNOWLEDGE_PATH.read_text(encoding="utf-8", errors="replace")
+    return {
+        "ok": True,
+        "path": str(KNOWLEDGE_PATH),
+        "chars": len(text),
+        "text": text,
+        "second_brain": "ava-knowledge / get_company_knowledge",
+        "exists": KNOWLEDGE_PATH.is_file(),
+    }
+
+
 @app.put("/api/knowledge")
 def api_knowledge_put(
     body: KnowledgeUpdate,
