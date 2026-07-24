@@ -545,6 +545,40 @@ _OFFICE_TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "send_email",
+            "description": (
+                "Отправить письмо на указанный email (to + subject + body). "
+                "Вызывай при «отправь письмо / напиши на почту / вышли презентацию на …». "
+                "attach_presentation=true — приложить PDF презентацию Quantum Labs. "
+                "Перед отправкой подтверди адрес у владельца, если он неочевиден."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "to": {
+                        "type": "string",
+                        "description": "Email получателя",
+                    },
+                    "subject": {
+                        "type": "string",
+                        "description": "Тема письма",
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Текст письма",
+                    },
+                    "attach_presentation": {
+                        "type": "boolean",
+                        "description": "Приложить PDF презентацию Quantum Labs",
+                    },
+                },
+                "required": ["to", "subject", "body"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "browse_files",
             "description": (
                 "Показать список папок и файлов (с датами) в Mail.ru / Я.Диск / local. "
@@ -1733,6 +1767,64 @@ def run_tool(
                 },
                 timeout=30.0,
             )
+            return json.dumps(data, ensure_ascii=False)
+
+        if name == "send_email":
+            if not is_owner:
+                return json.dumps(
+                    {
+                        "ok": False,
+                        "error": "forbidden",
+                        "message": "Отправка писем только для владельца",
+                    },
+                    ensure_ascii=False,
+                )
+            to = str(arguments.get("to") or "").strip()
+            subject = str(arguments.get("subject") or "").strip()
+            body = str(arguments.get("body") or "").strip()
+            if not to or "@" not in to:
+                return json.dumps(
+                    {
+                        "ok": False,
+                        "error": "bad_email",
+                        "message": "Нужен корректный email в поле to",
+                    },
+                    ensure_ascii=False,
+                )
+            if not subject or not body:
+                return json.dumps(
+                    {
+                        "ok": False,
+                        "error": "subject_or_body_required",
+                        "message": "Нужны subject и body",
+                    },
+                    ensure_ascii=False,
+                )
+            attach = arguments.get("attach_presentation")
+            if attach is None:
+                attach = False
+            data = _post_json(
+                f"{MAILER_BASE}/api/email/send",
+                {
+                    "to": to,
+                    "subject": subject,
+                    "body": body,
+                    "attach_presentation": bool(attach),
+                },
+                timeout=60.0,
+            )
+            if isinstance(data, dict) and data.get("ok"):
+                data = {
+                    **data,
+                    "owner_message": (
+                        f"Письмо поставлено в очередь на {data.get('to') or to}.\n"
+                        f"Тема: {data.get('subject') or subject}"
+                    ),
+                    "instruction_for_assistant": (
+                        "Кратко подтверди владельцу, что письмо ушло/в очереди. "
+                        "Покажи адрес и тему. Не выдумывай доставку."
+                    ),
+                }
             return json.dumps(data, ensure_ascii=False)
 
         if name == "browse_files":

@@ -344,6 +344,12 @@ class Secretary:
         ):
             return owner
 
+        # Email send confirmation.
+        if "Письмо поставлено в очередь" in owner and "Письмо поставлено" not in text:
+            if text:
+                return f"{text}\n\n{owner}"
+            return owner
+
         if not text:
             return owner
         return text
