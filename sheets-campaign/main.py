@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 load_dotenv()
 
 import runner
+import script_store
 import sheets_io
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -38,25 +39,61 @@ class StartRequest(BaseModel):
     dry_run: Optional[bool] = None
 
 
+class ScriptUpdate(BaseModel):
+    greeting: Optional[str] = None
+    script: Optional[str] = None
+    tools: Optional[list[str]] = None
+
+
 @app.on_event("startup")
 def _startup() -> None:
     runner.init_db()
+    play = script_store.load_script()
     logger.info(
-        "sheets-campaign ready write=%s sa=%s",
+        "sheets-campaign ready write=%s sa=%s script_source=%s",
         sheets_io.sheets_write_enabled(),
         sheets_io.sa_email(),
+        play.get("source"),
     )
 
 
 @app.get("/health")
 def health():
+    play = script_store.load_script()
     return {
         "ok": True,
         "service": "ava-sheets-campaign",
         "sheets_write_enabled": sheets_io.sheets_write_enabled(),
         "sa_email": sheets_io.sa_email(),
+        "script_source": play.get("source"),
         "campaign": runner.get_status(),
     }
+
+
+@app.get("/api/campaign/script")
+def api_get_script(x_webhook_token: Optional[str] = Header(None)):
+    """Greeting + full conversation playbook used for sheet dials."""
+    _auth(x_webhook_token)
+    doc = script_store.load_script()
+    return {"ok": True, **doc}
+
+
+@app.put("/api/campaign/script")
+def api_put_script(body: ScriptUpdate, x_webhook_token: Optional[str] = Header(None)):
+    _auth(x_webhook_token)
+    doc = script_store.save_script(
+        greeting=body.greeting,
+        script=body.script,
+        tools=body.tools,
+    )
+    return {"ok": True, **doc}
+
+
+@app.post("/api/campaign/script/reset")
+def api_reset_script(x_webhook_token: Optional[str] = Header(None)):
+    _auth(x_webhook_token)
+    doc = script_store.reset_script()
+    return {"ok": True, **doc}
 
 
 @app.get("/api/campaign/preview")

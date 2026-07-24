@@ -20,6 +20,16 @@ Quantum Console (AVA outbound) с Second Brain + календарь/Телемо
 
 Без SA сервис всё равно звонит и копит результаты локально; writeback в Sheets — когда ключ появится (`POST /api/campaign/flush-writebacks`).
 
+## Где скрипт разговора
+
+Не во вкладке Console «Сценарий» (это YAML `outbound`).
+
+Скрипт кампании:
+- UI: Console → **Кампания Sheets** (greeting + playbook, сохранить)
+- API: `GET/PUT /api/campaign/script` на `:8018` (и proxy на Console)
+- Файл override: `/opt/ava-sheets-campaign/data/campaign_script.json`
+- Builtin default: `sheets-campaign/script.py`
+
 ## API (port 8018)
 
 | Method | Path | Назначение |

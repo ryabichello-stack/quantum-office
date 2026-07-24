@@ -163,12 +163,129 @@
     ]);
   }
 
+  async function loadCampaignScript() {
+    const r = await api("/api/campaign/script");
+    if ($("campGreeting")) $("campGreeting").value = r.greeting || "";
+    if ($("campScript")) $("campScript").value = r.script || "";
+    if ($("campTools")) {
+      $("campTools").textContent =
+        "tools: " + ((r.tools || []).join(", ") || "—") +
+        " · source=" + (r.source || "?") +
+        (r.path ? " · " + r.path : "");
+    }
+    if ($("campMeta")) {
+      $("campMeta").textContent =
+        "Источник: " + (r.source || "?") +
+        (r.path ? " (" + r.path + ")" : "");
+    }
+    return r;
+  }
+
+  if ($("btnCampLoad")) {
+    $("btnCampLoad").onclick = () =>
+      loadCampaignScript()
+        .then(() => {
+          $("campMsg").textContent = "загружено";
+          $("campMsg").className = "msg ok";
+        })
+        .catch((e) => {
+          $("campMsg").textContent = e.message;
+          $("campMsg").className = "msg bad";
+        });
+  }
+  if ($("btnCampSave")) {
+    $("btnCampSave").onclick = async () => {
+      try {
+        const r = await api("/api/campaign/script", {
+          method: "PUT",
+          body: JSON.stringify({
+            greeting: ($("campGreeting") && $("campGreeting").value) || "",
+            script: ($("campScript") && $("campScript").value) || "",
+          }),
+        });
+        $("campMsg").textContent = "сохранено (" + (r.source || "file") + ")";
+        $("campMsg").className = "msg ok";
+        await loadCampaignScript();
+      } catch (e) {
+        $("campMsg").textContent = e.message;
+        $("campMsg").className = "msg bad";
+      }
+    };
+  }
+  if ($("btnCampReset")) {
+    $("btnCampReset").onclick = async () => {
+      try {
+        await api("/api/campaign/script/reset", { method: "POST", body: "{}" });
+        await loadCampaignScript();
+        $("campMsg").textContent = "сброшено к builtin";
+        $("campMsg").className = "msg ok";
+      } catch (e) {
+        $("campMsg").textContent = e.message;
+        $("campMsg").className = "msg bad";
+      }
+    };
+  }
+  if ($("btnCampPreview")) {
+    $("btnCampPreview").onclick = async () => {
+      try {
+        const r = await api("/api/campaign/preview?limit=15");
+        $("campOut").textContent = JSON.stringify(r, null, 2);
+      } catch (e) {
+        $("campOut").textContent = e.message;
+      }
+    };
+  }
+  if ($("btnCampStart")) {
+    $("btnCampStart").onclick = async () => {
+      try {
+        const r = await api("/api/campaign/start", {
+          method: "POST",
+          body: JSON.stringify({
+            max_calls: Number(($("campMax") && $("campMax").value) || 3),
+            dry_run: !!( $("campDry") && $("campDry").checked ),
+          }),
+        });
+        $("campOut").textContent = JSON.stringify(r, null, 2);
+      } catch (e) {
+        $("campOut").textContent = e.message;
+      }
+    };
+  }
+  if ($("btnCampStop")) {
+    $("btnCampStop").onclick = async () => {
+      try {
+        const r = await api("/api/campaign/stop", { method: "POST", body: "{}" });
+        $("campOut").textContent = JSON.stringify(r, null, 2);
+      } catch (e) {
+        $("campOut").textContent = e.message;
+      }
+    };
+  }
+  if ($("btnCampStatus")) {
+    $("btnCampStatus").onclick = async () => {
+      try {
+        const r = await api("/api/campaign/status");
+        $("campOut").textContent = JSON.stringify(r, null, 2);
+      } catch (e) {
+        $("campOut").textContent = e.message;
+      }
+    };
+  }
+
   document.querySelectorAll(".tabs button").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".tabs button").forEach((b) => b.classList.remove("active"));
       document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
       btn.classList.add("active");
       $("tab-" + btn.dataset.tab).classList.add("active");
+      if (btn.dataset.tab === "campaign") {
+        loadCampaignScript().catch((e) => {
+          if ($("campMsg")) {
+            $("campMsg").textContent = e.message;
+            $("campMsg").className = "msg bad";
+          }
+        });
+      }
     });
   });
 

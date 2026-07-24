@@ -41,6 +41,12 @@ MAILER_HEALTH_URL = os.getenv("MAILER_HEALTH_URL", "http://127.0.0.1:8000/health
 ENGINE_HEALTH_URL = os.getenv("ENGINE_HEALTH_URL", "http://127.0.0.1:15000/health")
 TEXT_BOT_HEALTH_URL = os.getenv("TEXT_BOT_HEALTH_URL", "http://127.0.0.1:8011/health")
 OUTREACH_HEALTH_URL = os.getenv("OUTREACH_HEALTH_URL", "http://127.0.0.1:8012/health")
+CAMPAIGN_BASE = os.getenv("CAMPAIGN_BASE", "http://127.0.0.1:8018").rstrip("/")
+CAMPAIGN_TOKEN = os.getenv(
+    "CAMPAIGN_TOKEN",
+    os.getenv("WEBHOOK_TOKEN", ""),
+).strip()
+CAMPAIGN_HEALTH_URL = os.getenv("CAMPAIGN_HEALTH_URL", f"{CAMPAIGN_BASE}/health")
 
 OUTBOUND_ENABLED = os.getenv("OUTBOUND_ENABLED", "true").lower() in {"1", "true", "yes"}
 OUTBOUND_DIAL_CONTEXT = os.getenv("OUTBOUND_DIAL_CONTEXT", "from-internal")
@@ -507,6 +513,7 @@ def api_status(x_console_token: str | None = Header(default=None)) -> dict[str, 
         "ava-text-bot",
         "ava-outreach",
         "quantum-console",
+        "ava-sheets-campaign",
     ):
         rc, out = _run(["systemctl", "is-active", u], timeout=5)
         units[u] = out.strip() or ("inactive" if rc else "unknown")
@@ -520,6 +527,7 @@ def api_status(x_console_token: str | None = Header(default=None)) -> dict[str, 
             "ai_engine": _http_ok(ENGINE_HEALTH_URL),
             "text_bot": _http_ok(TEXT_BOT_HEALTH_URL),
             "outreach": _http_ok(OUTREACH_HEALTH_URL),
+            "sheets_campaign": _http_ok(CAMPAIGN_HEALTH_URL),
         },
         "units": units,
         "mango_registered": mango_registered,
@@ -1445,3 +1453,116 @@ def api_outbound_callback(
             "Success = mobile rings, not only result=1000."
         ),
     }
+
+
+def _campaign_headers() -> dict[str, str]:
+    h = {"Content-Type": "application/json", "Accept": "application/json"}
+    if CAMPAIGN_TOKEN:
+        h["X-Webhook-Token"] = CAMPAIGN_TOKEN
+    return h
+
+
+def _campaign_request(
+    method: str,
+    path: str,
+    *,
+    body: dict[str, Any] | None = None,
+    timeout: float = 60.0,
+) -> dict[str, Any]:
+    if not CAMPAIGN_BASE:
+        raise HTTPException(503, "CAMPAIGN_BASE not configured")
+    url = f"{CAMPAIGN_BASE}{path}"
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(
+        url, data=data, method=method, headers=_campaign_headers()
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as exc:
+        err = exc.read().decode("utf-8", errors="replace")
+        raise HTTPException(exc.code, f"campaign: {err[:500]}") from exc
+    except Exception as exc:
+        raise HTTPException(502, f"campaign unreachable: {exc}") from exc
+
+
+class CampaignScriptUpdate(BaseModel):
+    greeting: str | None = None
+    script: str | None = None
+    tools: list[str] | None = None
+
+
+class CampaignStartBody(BaseModel):
+    max_calls: int = Field(default=5, ge=0, le=200)
+    sheet: str | None = None
+    dry_run: bool | None = None
+
+
+@app.get("/api/campaign/script")
+def api_campaign_script_get(
+    x_console_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    """Playbook for Google Sheets payouts campaign (not YAML outbound profile)."""
+    _require_token(x_console_token)
+    return _campaign_request("GET", "/api/campaign/script")
+
+
+@app.put("/api/campaign/script")
+def api_campaign_script_put(
+    body: CampaignScriptUpdate,
+    x_console_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_token(x_console_token)
+    payload = {k: v for k, v in body.model_dump().items() if v is not None}
+    return _campaign_request("PUT", "/api/campaign/script", body=payload)
+
+
+@app.post("/api/campaign/script/reset")
+def api_campaign_script_reset(
+    x_console_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_token(x_console_token)
+    return _campaign_request("POST", "/api/campaign/script/reset", body={})
+
+
+@app.get("/api/campaign/preview")
+def api_campaign_preview(
+    limit: int = 20,
+    sheet: str | None = None,
+    x_console_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_token(x_console_token)
+    q = f"?limit={max(1, min(limit, 200))}"
+    if sheet:
+        q += f"&sheet={urllib.parse.quote(sheet)}"
+    return _campaign_request("GET", f"/api/campaign/preview{q}")
+
+
+@app.get("/api/campaign/status")
+def api_campaign_status(
+    x_console_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_token(x_console_token)
+    return _campaign_request("GET", "/api/campaign/status")
+
+
+@app.post("/api/campaign/start")
+def api_campaign_start(
+    body: CampaignStartBody,
+    x_console_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_token(x_console_token)
+    return _campaign_request(
+        "POST",
+        "/api/campaign/start",
+        body=body.model_dump(exclude_none=True),
+    )
+
+
+@app.post("/api/campaign/stop")
+def api_campaign_stop(
+    x_console_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_token(x_console_token)
+    return _campaign_request("POST", "/api/campaign/stop", body={})

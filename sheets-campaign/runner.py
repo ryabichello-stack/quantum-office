@@ -18,6 +18,7 @@ from typing import Any, Optional
 
 import classify
 import script
+import script_store
 import sheets_io
 
 logger = logging.getLogger("sheets-campaign.runner")
@@ -111,13 +112,15 @@ def normalize_phone(raw: str) -> str:
 
 def dial_lead(phone: str, *, dry_run: bool = False) -> dict[str, Any]:
     phone_n = normalize_phone(phone)
+    playbook = script_store.load_script()
+    tools = list(playbook.get("tools") or script.CAMPAIGN_TOOLS)
     payload = {
         "phone": phone_n,
         "context": "outbound",
-        "greeting": script.GREETING,
-        "script": script.SCRIPT,
-        "use_knowledge": True,
-        "tools": list(script.CAMPAIGN_TOOLS),
+        "greeting": str(playbook.get("greeting") or script.GREETING),
+        "script": str(playbook.get("script") or script.SCRIPT),
+        "use_knowledge": "get_company_knowledge" in tools,
+        "tools": tools,
     }
     if dry_run:
         return {"ok": True, "dry_run": True, "phone": phone_n, "payload": payload}
@@ -444,5 +447,6 @@ def preview(limit: int = 30, sheet: str | None = None) -> dict[str, Any]:
         "items": items,
         "sheets_write_enabled": sheets_io.sheets_write_enabled(),
         "sa_email": sheets_io.sa_email(),
-        "tools": script.CAMPAIGN_TOOLS,
+        "tools": (script_store.load_script().get("tools") or script.CAMPAIGN_TOOLS),
+        "script_source": script_store.load_script().get("source"),
     }

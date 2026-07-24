@@ -32,6 +32,7 @@
     <button data-tab="scenario">Сценарий</button>
     <button data-tab="knowledge">База знаний</button>
     <button data-tab="calls">Звонки</button>
+    <button data-tab="campaign">Кампания Sheets</button>
     <button data-tab="outbound">Исходящий</button>
     <button data-tab="pack">Пакет / бэкап</button>
   </nav>
@@ -98,6 +99,40 @@
         <div id="callsBox">Загрузка…</div>
         <h2>Расшифровка и сообщения</h2>
         <div id="callDetail" class="call-detail">Выберите звонок в таблице</div>
+      </div>
+    </section>
+
+    <section id="tab-campaign" class="panel">
+      <div class="card">
+        <p class="muted">
+          Скрипт обзвона Google Sheet (массовые выплаты) живёт здесь — не во вкладке
+          «Сценарий» (там YAML <code>outbound</code>, пустая оболочка под one-shot dial).
+          При каждом звонке кампании этот greeting+script уходит per-call в AVA.
+        </p>
+        <p class="muted" id="campMeta">Загрузка…</p>
+        <label class="full">Greeting (первая фраза)
+          <textarea id="campGreeting" rows="3"></textarea>
+        </label>
+        <label class="full">Script / playbook
+          <textarea id="campScript" rows="22"></textarea>
+        </label>
+        <p class="muted" id="campTools"></p>
+        <div class="row actions">
+          <button type="button" id="btnCampLoad">Загрузить</button>
+          <button type="button" id="btnCampSave" class="primary">Сохранить</button>
+          <button type="button" id="btnCampReset">Сбросить к встроенному</button>
+          <span id="campMsg" class="msg"></span>
+        </div>
+        <hr />
+        <div class="row">
+          <label>max_calls <input id="campMax" type="number" value="3" min="0" max="200" /></label>
+          <label class="check"><input type="checkbox" id="campDry" /> dry_run</label>
+          <button type="button" id="btnCampPreview">Превью номеров</button>
+          <button type="button" id="btnCampStart" class="primary">Старт обзвона</button>
+          <button type="button" id="btnCampStop">Стоп</button>
+          <button type="button" id="btnCampStatus">Статус</button>
+        </div>
+        <pre id="campOut" class="msg">—</pre>
       </div>
     </section>
 
