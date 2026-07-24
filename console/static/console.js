@@ -563,21 +563,30 @@
     const processed = (st && st.processed) || 0;
     const queued = (st && st.queued) || 0;
     const errors = (st && st.errors) || 0;
+    const interrupted = !!(st && (st.interrupted || String(msg).includes("interrupted")));
     const last = (st && st.last) || {};
     const lastPhone = last.phone || "";
     const lastNote = last.note || "";
-    box.className = "camp-run-banner " + (running ? "running" : "idle");
+    const finished = st && st.finished_at ? fmtMsk(st.finished_at) : "";
+    box.className =
+      "camp-run-banner " + (running ? "running" : interrupted ? "warn" : "idle");
     box.innerHTML = running
       ? `<div class="run-title">● Обзвон идёт</div>
          <div>${esc(msg)}</div>
          <div class="muted">Сделано: ${processed}${queued ? " / " + queued : ""} · ошибок: ${errors}${
            lastPhone ? " · последний: " + esc(lastPhone) : ""
          }${lastNote ? " — " + esc(lastNote) : ""}</div>`
-      : `<div class="run-title">○ Обзвон не запущен</div>
-         <div class="muted">${esc(msg === "idle" || !msg ? "Нажмите «Старт обзвона», чтобы начать звонки из очереди" : msg)}</div>
+      : `<div class="run-title">${
+          interrupted ? "⚠ Обзвон прерван" : "○ Обзвон не запущен"
+        }</div>
+         <div class="muted">${esc(
+           msg === "idle" || !msg
+             ? "Нажмите «Старт обзвона», чтобы начать звонки из очереди"
+             : msg
+         )}</div>
          <div class="muted">Сделано в прошлом прогоне: ${processed} · ошибок: ${errors}${
            lastPhone ? " · последний: " + esc(lastPhone) : ""
-         }</div>`;
+         }${finished ? " · окончание: " + esc(finished) + " МСК" : ""}</div>`;
     if ($("btnCampStart")) $("btnCampStart").disabled = running;
   }
 

@@ -28,6 +28,7 @@ CONSOLE_TOKEN = os.getenv("CONSOLE_TOKEN", "").strip()
 CALL_GAP_SECONDS = int(os.getenv("CALL_GAP_SECONDS", "45") or "45")
 CALL_WAIT_SECONDS = int(os.getenv("CALL_WAIT_SECONDS", "240") or "240")
 DATA_DIR = Path(os.getenv("DATA_DIR", "/opt/ava-sheets-campaign/data"))
+STATUS_PATH = DATA_DIR / "last_run.json"
 
 
 class CampaignState:
@@ -47,6 +48,93 @@ class CampaignState:
 
 
 STATE = CampaignState()
+
+
+def _persist_status() -> None:
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with STATE.lock:
+            payload = dict(STATE.status)
+            payload["running"] = bool(STATE.running)
+        STATUS_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        logger.exception("persist status failed")
+
+
+def _load_persisted_status() -> dict[str, Any] | None:
+    if not STATUS_PATH.is_file():
+        return None
+    try:
+        data = json.loads(STATUS_PATH.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def recover_after_restart() -> None:
+    """If a previous process was killed mid-run, surface that in status."""
+    prev = _load_persisted_status()
+    if not prev:
+        return
+    if prev.get("running"):
+        prev["running"] = False
+        prev["message"] = "interrupted_by_restart — нажмите Старт, чтобы продолжить (уже сделанные номера пропускаются)"
+        prev["finished_at"] = datetime.now(timezone.utc).isoformat()
+        prev["interrupted"] = True
+        with STATE.lock:
+            STATE.running = False
+            STATE.status.update(prev)
+        _persist_status()
+        logger.warning("campaign was interrupted by service restart: %s", prev.get("last"))
+    else:
+        with STATE.lock:
+            # Keep last counters/message visible after idle restart
+            for key in (
+                "processed",
+                "interested",
+                "errors",
+                "last",
+                "message",
+                "started_at",
+                "finished_at",
+                "queued",
+                "skipped_local",
+                "last_error",
+            ):
+                if key in prev and prev[key] is not None:
+                    STATE.status[key] = prev[key]
+            STATE.status["running"] = False
+
+
+def request_shutdown(timeout: float = 20.0) -> None:
+    """Ask worker to stop and wait briefly (systemd restart / deploy)."""
+    with STATE.lock:
+        alive = bool(STATE.thread and STATE.thread.is_alive())
+        if not alive:
+            if STATE.running:
+                STATE.running = False
+                STATE.status["running"] = False
+                STATE.status["message"] = "interrupted_by_restart"
+                STATE.status["finished_at"] = datetime.now(timezone.utc).isoformat()
+                _persist_status()
+            return
+        STATE.stop_flag = True
+        STATE.status["message"] = "stopping_for_restart"
+        thread = STATE.thread
+    logger.info("campaign shutdown requested, waiting up to %.0fs", timeout)
+    if thread:
+        thread.join(timeout=timeout)
+    with STATE.lock:
+        if STATE.thread and STATE.thread.is_alive():
+            STATE.status["message"] = "interrupted_by_restart — поток ещё работал при остановке сервиса"
+            STATE.status["interrupted"] = True
+        elif STATE.status.get("message") in ("stopping_for_restart", "starting", "loading leads") or STATE.running:
+            STATE.status["message"] = "interrupted_by_restart — нажмите Старт, чтобы продолжить"
+            STATE.status["interrupted"] = True
+        STATE.running = False
+        STATE.status["running"] = False
+        STATE.status["finished_at"] = datetime.now(timezone.utc).isoformat()
+    _persist_status()
 
 
 def _db_path() -> Path:
@@ -402,12 +490,20 @@ def _worker(*, max_calls: int, sheet_filter: str | None, dry_run: bool) -> None:
                     "no new leads — all pending sheet rows already have local results"
                 )
             return
+        logger.info(
+            "campaign worker start queued=%s skipped_local=%s max_calls=%s dry_run=%s",
+            len(leads),
+            skipped,
+            max_calls,
+            dry_run,
+        )
         for lead in leads:
             if STATE.stop_flag:
                 break
             try:
                 with STATE.lock:
                     STATE.status["message"] = f"dialing {lead.phone} ({lead.sheet_name}#{lead.row_number})"
+                _persist_status()
                 result = _process_one(lead, dry_run=dry_run)
                 with STATE.lock:
                     STATE.status["processed"] += 1
@@ -419,21 +515,36 @@ def _worker(*, max_calls: int, sheet_filter: str | None, dry_run: bool) -> None:
                         "written": result.get("written"),
                         "call_id": result.get("call_id"),
                     }
+                logger.info(
+                    "campaign lead done phone=%s note=%s call_id=%s",
+                    result.get("phone"),
+                    result.get("note"),
+                    result.get("call_id"),
+                )
+                _persist_status()
             except Exception as exc:
                 logger.exception("lead failed phone=%s", lead.phone)
                 with STATE.lock:
                     STATE.status["errors"] += 1
                     STATE.status["last_error"] = str(exc)
+                _persist_status()
             if STATE.stop_flag:
                 break
             time.sleep(max(0, CALL_GAP_SECONDS))
         with STATE.lock:
             STATE.status["message"] = "done" if not STATE.stop_flag else "stopped"
+            logger.info(
+                "campaign worker end message=%s processed=%s errors=%s",
+                STATE.status["message"],
+                STATE.status.get("processed"),
+                STATE.status.get("errors"),
+            )
     finally:
         with STATE.lock:
             STATE.running = False
             STATE.status["running"] = False
             STATE.status["finished_at"] = datetime.now(timezone.utc).isoformat()
+        _persist_status()
 
 
 def start_campaign(
@@ -472,11 +583,13 @@ def start_campaign(
     t = threading.Thread(
         target=_worker,
         kwargs={"max_calls": int(max_calls), "sheet_filter": sheet, "dry_run": bool(dry_run)},
-        daemon=True,
+        daemon=False,
+        name="sheets-campaign-worker",
     )
     with STATE.lock:
         STATE.thread = t
     t.start()
+    _persist_status()
     return {
         "ok": True,
         "started": True,

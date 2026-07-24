@@ -48,6 +48,7 @@ class ScriptUpdate(BaseModel):
 @app.on_event("startup")
 def _startup() -> None:
     runner.init_db()
+    runner.recover_after_restart()
     play = script_store.load_script()
     logger.info(
         "sheets-campaign ready write=%s sa=%s script_source=%s",
@@ -55,6 +56,11 @@ def _startup() -> None:
         sheets_io.sa_email(),
         play.get("source"),
     )
+
+
+@app.on_event("shutdown")
+def _shutdown() -> None:
+    runner.request_shutdown(timeout=25.0)
 
 
 @app.get("/health")
