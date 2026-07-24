@@ -308,6 +308,46 @@ class Secretary:
             return f"{text}\n\n{block}"
         return block
 
+    @staticmethod
+    def _extract_owner_messages(tool_payloads: list[str]) -> list[str]:
+        found: list[str] = []
+        for raw in tool_payloads:
+            try:
+                data = json.loads(raw)
+            except Exception:
+                continue
+            if not isinstance(data, dict):
+                continue
+            msg = str(data.get("owner_message") or "").strip()
+            if msg:
+                found.append(msg)
+        return found
+
+    @classmethod
+    def _ensure_owner_messages_in_reply(cls, reply: str, tool_payloads: list[str]) -> str:
+        """If a tool built owner_message (draft/files) but the model omitted it, send it."""
+        owner_msgs = cls._extract_owner_messages(tool_payloads)
+        if not owner_msgs:
+            return reply
+        owner = owner_msgs[-1]
+        text = (reply or "").strip()
+
+        # Outbound draft: must include Greeting + Script, not a teaser line.
+        if "Greeting:" in owner and "Script:" in owner:
+            if "Greeting:" in text and "Script:" in text:
+                return text
+            return owner
+
+        # Files browse/search: must include the formatted list.
+        if ("Папки:" in owner or "Файлы:" in owner or "Поиск:" in owner) and not (
+            "Папки:" in text or "Файлы:" in text or "Поиск:" in text or "•" in text
+        ):
+            return owner
+
+        if not text:
+            return owner
+        return text
+
     def _generate(
         self,
         *,
@@ -401,6 +441,7 @@ class Secretary:
                 continue
 
             reply = str(choice.content or "Извините, не смог сформулировать ответ.").strip()
+            reply = self._ensure_owner_messages_in_reply(reply, tool_payloads)
             reply = self._ensure_links_in_reply(reply, tool_payloads)
 
             # Agentic continue: block search-method menus; allow one concrete clarify ask

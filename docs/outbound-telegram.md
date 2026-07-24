@@ -5,7 +5,9 @@
 ## Цепочка
 
 1. Владелец в Telegram: «позвони 7900…, задача: …»
-2. Бот сразу `draft_outbound_call` и в **первом** ответе показывает полный сценарий (Greeting+Script)
+2. Бот сразу `draft_outbound_call` и в **первом** ответе показывает полный сценарий
+   (номер + задача + Greeting + Script). Если модель пишет только «черновик готов»,
+   secretary подставляет `owner_message` сам.
 3. После «да, звони» → `outbound_dial` с этими полями
 4. `await_outbound_result` → сводка только по этому звонку
 5. Console → AVA per-call `provider_overrides` (без рестарта)

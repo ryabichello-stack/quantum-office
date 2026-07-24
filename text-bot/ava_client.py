@@ -949,15 +949,29 @@ def _synthesize_outbound_override(
 
 def _format_draft_for_owner(draft: dict[str, Any]) -> str:
     phone = draft.get("phone") or "—"
+    goal = str(draft.get("goal") or "").strip()
     greeting = draft.get("greeting") or ""
     script = draft.get("script") or ""
-    return (
-        "Черновик звонка (сценарий):\n\n"
-        f"Номер: {phone}\n\n"
-        f"Greeting:\n«{greeting}»\n\n"
-        f"Script:\n{script}\n\n"
-        "Если ок — напишите «да, звони». Можно поправить текст."
+    lines = [
+        "Черновик звонка:",
+        "",
+        f"Номер: {phone}",
+    ]
+    if goal:
+        lines.extend(["", f"Задача: {goal}"])
+    lines.extend(
+        [
+            "",
+            "Greeting:",
+            f"«{greeting}»",
+            "",
+            "Script:",
+            str(script),
+            "",
+            "Если ок — напишите «да, звони». Можно поправить текст.",
+        ]
     )
+    return "\n".join(lines)
 
 
 def _human_bytes(n: Any) -> str:
@@ -1796,14 +1810,16 @@ def run_tool(
                 "owner_message": _format_draft_for_owner(
                     {
                         "phone": phone or phone_raw or "—",
+                        "goal": goal,
                         "greeting": override.get("greeting"),
                         "script": override.get("script"),
                     }
                 ),
                 "instruction_for_assistant": (
-                    "Вставь owner_message владельцу КАК ЕСТЬ (или тот же Greeting+Script). "
-                    "Нельзя отвечать без текста сценария. Жди «да, звони», потом outbound_dial "
-                    "с этими greeting/script/goal/phone."
+                    "Скопируй owner_message владельцу ЦЕЛИКОМ и без сокращений "
+                    "(номер + задача + Greeting + Script). "
+                    "Запрещено писать «черновик готов / сценарий ниже» без полного текста. "
+                    "Жди «да, звони», потом outbound_dial с этими greeting/script/goal/phone."
                 ),
             }
             return json.dumps(draft, ensure_ascii=False)

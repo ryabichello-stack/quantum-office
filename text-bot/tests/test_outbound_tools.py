@@ -52,6 +52,8 @@ def test_draft_outbound_call_shows_full_scenario():
     assert "Света" in (out["greeting"] or "")
     assert "Greeting:" in out["owner_message"]
     assert "Script:" in out["owner_message"]
+    assert "Задача:" in out["owner_message"]
+    assert "свидание" in out["owner_message"]
     assert "да, звони" in out["owner_message"]
 
 
