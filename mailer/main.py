@@ -498,11 +498,21 @@ def _transcript_user_turns(payload: dict) -> list:
     return turns
 
 
+def _is_outbound_call(payload: dict) -> bool:
+    """True for AVA outbound / console dial calls (not inbound default)."""
+    from post_call_policy import is_outbound_call
+
+    return is_outbound_call(payload)
+
+
 def _should_send_lead_email(payload: dict) -> tuple[bool, str]:
-    """Return (send, skip_reason)."""
+    """Return (send, skip_reason). Lead emails are for inbound only."""
     call_id = str(payload.get("call_id") or "").strip()
     if call_id.startswith("codex-smoke"):
         return False, "codex_smoke_test"
+
+    if _is_outbound_call(payload):
+        return False, "outbound_no_lead_email"
 
     caller_raw = str(
         payload.get("caller_number")

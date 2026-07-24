@@ -12,6 +12,12 @@
 4. `await_outbound_result` → сводка только по этому звонку
 5. Console → AVA per-call `provider_overrides` (без рестарта)
 
+## После исходящего
+
+- Письмо «Новый лид» **не** отправляется (только для входящих `default`).
+- Расшифровка и реплики — в Console → вкладка **Звонки** (фильтр outbound),
+  и через tools `list_outbound_calls` / `get_outbound_call` / `await_outbound_result`.
+
 ## Env (text-bot)
 
 ```bash
