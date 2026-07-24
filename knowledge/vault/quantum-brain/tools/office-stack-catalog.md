@@ -39,12 +39,15 @@ shard: office-stack-catalog
 
 ## Голосовая AVA (in-call tools)
 
-Во время звонка `ai_engine` вызывает HTTP-tools на mailer:
+Во время звонка `ai_engine` вызывает HTTP-tools:
 
-- `check_calendar` → календарь
-- `create_calendar_event` → событие + Телемост + welcome email
-- `get_company_knowledge` → база знаний (через mailer → `:8017`)
+- `check_calendar` → **ava-calendar `:8014`**
+- `create_calendar_event` → **`:8014`** (Telemost через **`:8016`**, welcome через mailer)
+- `create_conference` → **ava-conference `:8016`**
+- `get_company_knowledge` → mailer `:8000` → `:8017`
 - `hangup_call`
+
+Post-call webhook остаётся на mailer `:8000`.
 
 ## Что не кладём в эту базу
 

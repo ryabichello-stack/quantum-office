@@ -17,16 +17,17 @@ shard: tool-ava-voice-tools
 
 Голосовой ассистент Quantum Labs на входящей линии 8 (800) 555-94-18.
 
-Поток (кратко): Mango SIP → Asterisk → Stasis AVA → OpenAI Realtime → HTTP tools на ava-mailer.
+Поток (кратко): Mango SIP → Asterisk → Stasis AVA → OpenAI Realtime → HTTP tools на office-сервисы.
 
 ## Tools во время звонка
 
-| Tool | Действие |
-|------|----------|
-| check_calendar | проверить занятость |
-| create_calendar_event | слот + Телемост + письмо |
-| get_company_knowledge | ответ из базы знаний / Second Brain |
-| hangup_call | завершить звонок |
+| Tool | Куда | Действие |
+|------|------|----------|
+| check_calendar | `:8014` | проверить занятость |
+| create_calendar_event | `:8014` → `:8016` + mailer welcome | слот + Телемост + welcome |
+| create_conference | `:8016` | только ссылка Телемост |
+| get_company_knowledge | mailer `:8000` → `:8017` | ответ из базы знаний |
+| hangup_call | engine | завершить звонок |
 
 Greeting (типовой): «Добрый день! Вы позвонили в Quantum Labs. Чем могу помочь?»
 

@@ -27,6 +27,7 @@ load_dotenv()
 
 import caldav_client as cal
 import conference_client
+import mailer_client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("ava-calendar")
@@ -258,6 +259,20 @@ async def calendar_create(
         elif want_telemost and telemost_error:
             message += f". Телемост не создан ({telemost_error})"
 
+        welcome: dict = {"ok": False, "skipped": True}
+        if attendee_email:
+            welcome = mailer_client.queue_welcome_presentation(
+                attendee_email=attendee_email,
+                summary=summary,
+                description=description,
+                meeting_start=start_dt.isoformat(),
+                telemost_join_url=telemost_join_url,
+            )
+            if welcome.get("ok") and welcome.get("queued"):
+                message += ". Welcome-письмо поставлено в очередь"
+            elif not welcome.get("skipped"):
+                logger.warning("[CREATE] welcome soft-fail: %s", welcome)
+
         return {
             "ok": True,
             "created": True,
@@ -267,6 +282,7 @@ async def calendar_create(
             "telemost_id": telemost_id,
             "telemost_join_url": telemost_join_url,
             "telemost_error": telemost_error,
+            "welcome_email_queued": bool(welcome.get("ok") and welcome.get("queued")),
             "start": start_dt.isoformat(),
             "end": end_dt.isoformat(),
             "duration_min": int((end_dt - start_dt).total_seconds() // 60),

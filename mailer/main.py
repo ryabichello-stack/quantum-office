@@ -1456,6 +1456,40 @@ async def calendar_create(request: Request, background_tasks: BackgroundTasks):
         )
 
 # --------------------
+# WELCOME (used by ava-calendar after create)
+# --------------------
+class WelcomePresentationRequest(BaseModel):
+    attendee_email: str = ""
+    summary: str = ""
+    description: str = ""
+    meeting_start: str = ""
+    telemost_join_url: str = ""
+
+
+@app.post("/api/welcome/presentation")
+async def welcome_presentation(
+    req: WelcomePresentationRequest,
+    background_tasks: BackgroundTasks,
+    x_webhook_token: str = Header(None),
+):
+    """Queue welcome PDF email. Called by ava-calendar after booking."""
+    if x_webhook_token != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="bad token")
+    email = (req.attendee_email or "").strip()
+    if not email:
+        return {"ok": False, "queued": False, "error": "attendee_email_required"}
+    background_tasks.add_task(
+        _send_welcome_presentation_email_logged,
+        email,
+        req.summary or "",
+        req.description or "",
+        req.meeting_start or "",
+        req.telemost_join_url or "",
+    )
+    return {"ok": True, "queued": True, "attendee_email": email}
+
+
+# --------------------
 # WEBHOOK
 # --------------------
 @app.post("/api/ava/post-call")

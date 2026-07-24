@@ -23,12 +23,15 @@ POST /api/calendar/create
 
 Health: `GET /health`
 
-## Связь с conference/
+## Связь с conference/ и mailer/
 
 При `create_telemost=true` (или `CREATE_TELEMOST_BY_DEFAULT=true`) calendar вызывает  
 `POST {CONFERENCE_BASE_URL}/api/conferences` и кладёт `join_url` в событие.
 
-## Прод (когда задеплоим)
+После create (если есть `attendee_email`) calendar ставит welcome в очередь:  
+`POST {MAILER_BASE_URL}/api/welcome/presentation` (`WELCOME_VIA_MAILER=true`).
+
+## Прод
 
 | | |
 |--|--|
@@ -36,4 +39,5 @@ Health: `GET /health`
 | port | `8014` |
 | unit | `ava-calendar.service` |
 
-Mailer `:8000` calendar routes пока не трогаем — сначала выкат calendar, потом переключим AVA tools.
+Голосовая AVA (`ai-agent.local.yaml`) ходит сюда для `check_calendar` / `create_calendar_event`.  
+Legacy calendar routes на mailer `:8000` ещё живы, но voice tools на них не указывают.
