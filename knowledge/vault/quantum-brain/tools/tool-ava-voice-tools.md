@@ -26,6 +26,7 @@ shard: tool-ava-voice-tools
 | check_calendar | `:8014` | проверить занятость |
 | create_calendar_event | `:8014` → `:8016` + mailer welcome | слот + Телемост + welcome |
 | create_conference | `:8016` | только ссылка Телемост |
+| send_welcome_email | `:8000` | письмо с презентацией PDF |
 | get_company_knowledge | mailer `:8000` → `:8017` | ответ из базы знаний |
 | hangup_call | engine | завершить звонок |
 

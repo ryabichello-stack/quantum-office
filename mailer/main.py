@@ -1496,7 +1496,13 @@ async def welcome_presentation(
         req.meeting_start or "",
         req.telemost_join_url or "",
     )
-    return {"ok": True, "queued": True, "attendee_email": email}
+    return {
+        "ok": True,
+        "queued": True,
+        "email_queued": True,
+        "attendee_email": email,
+        "message": "Письмо с презентацией поставлено в очередь на отправку",
+    }
 
 
 # --------------------

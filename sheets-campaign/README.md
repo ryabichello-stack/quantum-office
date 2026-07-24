@@ -38,9 +38,11 @@ Auth: `X-Webhook-Token` = `WEBHOOK_TOKEN`.
 На каждый звонок:
 
 - `use_knowledge=true` → Second Brain (`get_company_knowledge`)
-- tools: `get_company_knowledge`, `check_calendar`, `create_calendar_event`, `create_conference`, `hangup_call`
+- tools: `get_company_knowledge`, `check_calendar`, `create_calendar_event`, `create_conference`, `send_welcome_email`, `hangup_call`
 - сценарий: квалификация → рассказ о Quantum Labs → **запись на консультацию**
-  (`check_calendar` → `create_calendar_event` → Телемост + welcome PDF на email)
+  (`check_calendar` → `create_calendar_event` → Телемост) → **явная отправка письма**
+  (`send_welcome_email` с презентацией PDF)
+  либо письмо без слота, если интересно, но записаться сейчас нельзя
 - если интересно, но без слота — пометка «перезвонить лично»
 - после звонка: poll Console `GET /api/calls`, классификация → пометка в Sheet
 

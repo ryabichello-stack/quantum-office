@@ -165,6 +165,7 @@ asterisk -rx "pjsip show endpoints"        # mango-endpoint, ava-test
 | `check_calendar` | `POST http://127.0.0.1:8014/api/calendar/check` | `free: true/false` для слота |
 | `create_calendar_event` | `POST http://127.0.0.1:8014/api/calendar/create` | Событие + Telemost (через `:8016`) + welcome (через mailer) |
 | `create_conference` | `POST http://127.0.0.1:8016/api/conferences` | Только Телемост-ссылка (без календаря) |
+| `send_welcome_email` | `POST http://127.0.0.1:8000/api/welcome/presentation` | Письмо с презентацией PDF на email клиента |
 | `get_company_knowledge` | `POST http://127.0.0.1:8000/api/knowledge/query` | FAQ / Second Brain (mailer proxy → `:8017`) |
 
 Заголовок `X-Webhook-Token` обязателен для calendar/conference (тот же секрет, что у post-call).

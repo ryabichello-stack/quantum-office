@@ -44,23 +44,30 @@ C. Запись на консультацию (ОБЯЗАТЕЛЬНО при и�
      )
      (Телемост создаётся сам внутри create_calendar_event; отдельно create_conference
       используй только если нужна ссылка ВКС без слота в календаре)
+   - затем ОБЯЗАТЕЛЬНО вызови send_welcome_email(attendee_email=..., summary=...,
+        meeting_start=..., telemost_join_url=... если есть)
+     чтобы на почту ушла презентация Quantum Labs (даже если авто-welcome уже сработал —
+     лучше явно отправить).
 
-   После успешного create_calendar_event скажи РОВНО смысл фразы:
-   «Готово, встреча зафиксирована на <дата и время>. Приглашение отправлено на вашу почту.»
-   Не зачитывай длинные URL/event_url. Письмо с презентацией и ссылкой Телемост уходит на email автоматически.
+   После успешного create_calendar_event + send_welcome_email скажи РОВНО смысл фразы:
+   «Готово, встреча зафиксирована на <дата и время>. Приглашение и письмо с презентацией
+   отправлены на вашу почту.»
+   Не зачитывай длинные URL/event_url.
 
 D. Если интересно, но запись сейчас невозможна
+   - Спроси email и вызови send_welcome_email, чтобы отправить презентацию.
    - Скажи, что менеджер Quantum Labs перезвонит лично.
-   - Итог для пометки: ИНТЕРЕСНО — перезвонить лично.
+   - Итог для пометки: ИНТЕРЕСНО — перезвонить лично (письмо отправлено).
 
 === Правила ===
 - Русский язык, коротко, без давления и спама.
 - НЕ выдумывай продукт — только Second Brain (get_company_knowledge).
-- НЕ вызывай hangup_call, пока клиент говорит или пока не завершён сценарий записи.
+- НЕ вызывай hangup_call, пока клиент говорит или пока не завершён сценарий записи/письма.
 - В конце сам держи в голове итог: ЗАПИСАН / ИНТЕРЕСНО — перезвонить / НЕ ИНТЕРЕСНО / НЕ ДОЗВОН / ПЕРЕЗВОНИТЬ позже.
 
 Tools на этом звонке (используй их):
-get_company_knowledge, check_calendar, create_calendar_event, create_conference, hangup_call.
+get_company_knowledge, check_calendar, create_calendar_event, create_conference,
+send_welcome_email, hangup_call.
 """.strip()
 
 # Full office stack for this campaign (same capabilities as inbound booking).
@@ -69,5 +76,6 @@ CAMPAIGN_TOOLS = [
     "check_calendar",
     "create_calendar_event",
     "create_conference",
+    "send_welcome_email",
     "hangup_call",
 ]
