@@ -263,7 +263,7 @@ main {
 .panel { display: none; animation: rise 0.35s ease both; }
 .panel.active { display: block; }
 .panel-flush.active {
-  display: flex;
+  display: flex !important;
   flex-direction: column;
   min-height: calc(100vh - 7.5rem);
 }

@@ -514,26 +514,28 @@
   async function boot() {
     bindTabs();
 
-    $("loginBtn").addEventListener("click", async () => {
-      $("loginError").textContent = "";
-      const t = $("tokenInput").value.trim();
-      try {
-        await fetch(BASE + "/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: t }),
-        }).then(async (res) => {
-          if (!res.ok) throw new Error("Неверный токен");
-        });
-        token = t;
-        localStorage.setItem("outreach_token", t);
-        showApp();
-        await loadDash();
-        await loadSettingsIntoForms();
-      } catch (e) {
-        $("loginError").textContent = e.message || String(e);
-      }
-    });
+    if ($("loginBtn") && $("tokenInput")) {
+      $("loginBtn").addEventListener("click", async () => {
+        $("loginError").textContent = "";
+        const t = $("tokenInput").value.trim();
+        try {
+          await fetch(BASE + "/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token: t }),
+          }).then(async (res) => {
+            if (!res.ok) throw new Error("Неверный токен");
+          });
+          token = t;
+          localStorage.setItem("outreach_token", t);
+          showApp();
+          await loadDash();
+          await loadSettingsIntoForms();
+        } catch (e) {
+          if ($("loginError")) $("loginError").textContent = e.message || String(e);
+        }
+      });
+    }
 
     $("refreshBtn").addEventListener("click", () => {
       loadDash().catch(logAction);

@@ -639,7 +639,21 @@
     }
     if (name === "outreach") {
       const frame = $("outreachFrame");
+      const status = $("outreachLoadStatus");
       if (frame && !frame.getAttribute("src")) {
+        if (status) {
+          status.hidden = false;
+          status.textContent = "Загрузка Outreach…";
+        }
+        frame.onload = () => {
+          if (status) status.hidden = true;
+        };
+        frame.onerror = () => {
+          if (status) {
+            status.hidden = false;
+            status.textContent = "Не удалось загрузить Outreach UI";
+          }
+        };
         frame.src = BASE + "/assets/outreach/index.html";
       }
     }
