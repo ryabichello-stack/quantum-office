@@ -21,7 +21,7 @@ shard: tool-quantum-console
 - Порт: `8013`
 - Unit: `quantum-console.service`
 - UI: `http://127.0.0.1:8013/` и `https://a.47z.ru/_quantum_console/`
-- Auth: `CONSOLE_TOKEN`
+- Auth UI: `CONSOLE_USER` + `CONSOLE_PASSWORD` (session cookie); API bots: `CONSOLE_TOKEN`
 
 ## Возможности
 

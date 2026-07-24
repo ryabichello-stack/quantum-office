@@ -4,8 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Quantum Labs — Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
   <script>
-    // Works on localhost:8013 and under public prefix /_quantum_console/
     window.__QC_BASE__ = location.pathname.startsWith("/_quantum_console")
       ? "/_quantum_console"
       : "";
@@ -15,172 +17,204 @@
   </script>
 </head>
 <body>
-  <header class="top">
-    <div>
-      <p class="brand">Quantum Labs</p>
-      <h1>Телефония · управление</h1>
+  <div id="loginGate" class="login-gate" hidden>
+    <div class="login-atmosphere" aria-hidden="true"></div>
+    <form id="loginForm" class="login-panel" autocomplete="on">
+      <p class="login-brand">Quantum Labs</p>
+      <h1 class="login-title">Console</h1>
+      <p class="login-sub">Операционная панель телефонии AVA</p>
+      <label class="field">
+        <span>Логин</span>
+        <input id="loginUser" name="username" type="text" autocomplete="username" required />
+      </label>
+      <label class="field">
+        <span>Пароль</span>
+        <input id="loginPass" name="password" type="password" autocomplete="current-password" required />
+      </label>
+      <button type="submit" class="primary wide" id="btnLogin">Войти</button>
+      <p id="loginErr" class="login-err" hidden></p>
+    </form>
+  </div>
+
+  <div id="appShell" class="app" hidden>
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <p class="brand-mark">Quantum Labs</p>
+        <p class="brand-sub">Telephony Console</p>
+      </div>
+      <nav class="side-nav" id="tabs" aria-label="Разделы">
+        <button type="button" data-tab="status" class="active">Статус</button>
+        <button type="button" data-tab="scenario">Сценарий</button>
+        <button type="button" data-tab="knowledge">База знаний</button>
+        <button type="button" data-tab="calls">Звонки</button>
+        <button type="button" data-tab="campaign">Кампания Sheets</button>
+        <button type="button" data-tab="outbound">Исходящий</button>
+        <button type="button" data-tab="pack">Пакет / бэкап</button>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="user-chip">
+          <span class="user-dot" aria-hidden="true"></span>
+          <span id="userLabel">—</span>
+        </div>
+        <button type="button" id="btnLogout" class="ghost">Выйти</button>
+      </div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <div>
+          <h1 id="pageTitle">Статус</h1>
+          <p class="top-hint" id="pageHint">Сервисы, SIP и пути на хосте</p>
+        </div>
+        <div class="top-actions">
+          <button type="button" id="btnRefresh" class="primary">Обновить</button>
+        </div>
+      </header>
+
+      <main>
+        <section id="tab-status" class="panel active">
+          <div id="statusBox" class="surface">Загрузка…</div>
+        </section>
+
+        <section id="tab-scenario" class="panel">
+          <div class="surface grid2">
+            <div class="full row">
+              <label class="field grow">Контекст
+                <select id="scContext">
+                  <option value="default">Входящие — default</option>
+                  <option value="outbound">Исходящие — outbound</option>
+                </select>
+              </label>
+              <button type="button" id="btnLoadScenario">Загрузить</button>
+            </div>
+            <label class="field">Greeting<textarea id="scGreeting" rows="3"></textarea></label>
+            <div class="stack">
+              <label class="field">Model <input id="scModel" /></label>
+              <label class="field">Voice <input id="scVoice" /></label>
+              <label class="field">Temperature <input id="scTemp" type="number" step="0.1" min="0" max="2" /></label>
+              <label class="field">Provider <input id="scProvider" readonly /></label>
+              <p class="muted" id="scTools"></p>
+              <p class="muted" id="scIsolate">Профили изолированы: входящие ≠ исходящие.</p>
+            </div>
+            <label class="field full">Prompt / сценарий<textarea id="scPrompt" rows="18"></textarea></label>
+            <div class="full actions">
+              <button type="button" id="btnSaveScenario" class="primary">Сохранить профиль</button>
+              <button type="button" id="btnRestartEngine">Restart ai_engine</button>
+              <span id="scMsg" class="msg"></span>
+            </div>
+            <p class="full muted">Сохранение одного профиля не меняет greeting/prompt/model другого.</p>
+          </div>
+        </section>
+
+        <section id="tab-knowledge" class="panel">
+          <div class="surface">
+            <p class="muted" id="knPath"></p>
+            <textarea id="knText" rows="24"></textarea>
+            <div class="actions">
+              <button type="button" id="btnSaveKnowledge" class="primary">Сохранить + reload Second Brain</button>
+              <span id="knMsg" class="msg"></span>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-calls" class="panel">
+          <div class="surface">
+            <p class="muted">Исходящие — расшифровки в Console. Входящие лиды по-прежнему уходят на почту.</p>
+            <div class="row">
+              <label class="field">Фильтр
+                <select id="callsFilter">
+                  <option value="outbound" selected>исходящие (outbound)</option>
+                  <option value="default">входящие (default)</option>
+                  <option value="">все</option>
+                </select>
+              </label>
+              <button type="button" id="btnReloadCalls">Обновить список</button>
+            </div>
+            <div id="callsBox">Загрузка…</div>
+            <h2 class="section-title">Расшифровка</h2>
+            <div id="callDetail" class="call-detail">Выберите звонок в таблице</div>
+          </div>
+        </section>
+
+        <section id="tab-campaign" class="panel">
+          <div class="surface">
+            <p class="muted">
+              Скрипт обзвона Google Sheet живёт здесь — не во вкладке «Сценарий»
+              (там YAML <code>outbound</code>). При каждом звонке greeting+script уходит per-call в AVA.
+            </p>
+            <p class="muted" id="campMeta">Загрузка…</p>
+            <label class="field full">Greeting
+              <textarea id="campGreeting" rows="3"></textarea>
+            </label>
+            <label class="field full">Script / playbook
+              <textarea id="campScript" rows="22"></textarea>
+            </label>
+            <p class="muted" id="campTools"></p>
+            <div class="row actions">
+              <button type="button" id="btnCampLoad">Загрузить</button>
+              <button type="button" id="btnCampSave" class="primary">Сохранить</button>
+              <button type="button" id="btnCampReset">Сбросить к встроенному</button>
+              <span id="campMsg" class="msg"></span>
+            </div>
+            <hr class="sep" />
+            <div class="row">
+              <label class="field">max_calls <input id="campMax" type="number" value="3" min="0" max="200" /></label>
+              <label class="check"><input type="checkbox" id="campDry" /> dry_run</label>
+              <button type="button" id="btnCampPreview">Превью</button>
+              <button type="button" id="btnCampStart" class="primary">Старт</button>
+              <button type="button" id="btnCampStop">Стоп</button>
+              <button type="button" id="btnCampStatus">Статус</button>
+            </div>
+            <pre id="campOut" class="msg codeblock">—</pre>
+          </div>
+        </section>
+
+        <section id="tab-outbound" class="panel">
+          <div class="surface">
+            <p class="muted">SIP → профиль <b>outbound</b>. Сценарий задаётся на этот звонок ниже.</p>
+            <div class="row">
+              <label class="field">Телефон <input id="dialPhone" placeholder="79001234567" /></label>
+              <label class="field">Профиль
+                <select id="dialContext">
+                  <option value="outbound" selected>outbound</option>
+                </select>
+              </label>
+              <label class="check"><input type="checkbox" id="dialUseKnowledge" /> Second Brain</label>
+            </div>
+            <label class="field full">Приветствие
+              <input id="dialGreeting" placeholder="Алло, это … Удобно 20 секунд?" />
+            </label>
+            <label class="field full">Сценарий звонка
+              <textarea id="dialScript" rows="8" placeholder="Кто ты, зачем звонишь…"></textarea>
+            </label>
+            <div class="full">
+              <p class="muted tight">Tools на этот звонок</p>
+              <div id="dialTools" class="tool-grid"></div>
+            </div>
+            <div class="row">
+              <button type="button" id="btnDial" class="primary">Позвонить (SIP)</button>
+              <button type="button" id="btnCallback">Callback API</button>
+            </div>
+            <pre id="dialMsg" class="msg codeblock"></pre>
+          </div>
+        </section>
+
+        <section id="tab-pack" class="panel">
+          <div class="surface">
+            <h2 class="section-title">Канонический пакет</h2>
+            <div id="packBox"></div>
+            <h2 class="section-title">Секреты</h2>
+            <div id="secretsBox"></div>
+            <div class="actions">
+              <button type="button" id="btnBackup" class="primary">Снять бэкап</button>
+              <button type="button" id="btnReloadDp">Reload dialplan</button>
+              <pre id="packMsg" class="msg codeblock"></pre>
+            </div>
+          </div>
+        </section>
+      </main>
     </div>
-    <div class="auth">
-      <label>Токен <input id="token" type="password" autocomplete="off" placeholder="CONSOLE_TOKEN" /></label>
-      <button type="button" id="btnSaveToken">Сохранить</button>
-      <button type="button" id="btnRefresh" class="primary">Обновить</button>
-    </div>
-  </header>
-
-  <nav class="tabs" id="tabs">
-    <button data-tab="status" class="active">Статус</button>
-    <button data-tab="scenario">Сценарий</button>
-    <button data-tab="knowledge">База знаний</button>
-    <button data-tab="calls">Звонки</button>
-    <button data-tab="campaign">Кампания Sheets</button>
-    <button data-tab="outbound">Исходящий</button>
-    <button data-tab="pack">Пакет / бэкап</button>
-  </nav>
-
-  <main>
-    <section id="tab-status" class="panel active">
-      <div id="statusBox" class="card">Загрузка…</div>
-    </section>
-
-    <section id="tab-scenario" class="panel">
-      <div class="card grid2">
-        <div class="full row">
-          <label>Контекст
-            <select id="scContext">
-              <option value="default">Входящие — default (не трогает исходящие)</option>
-              <option value="outbound">Исходящие — outbound (отдельный профиль)</option>
-            </select>
-          </label>
-          <button type="button" id="btnLoadScenario">Загрузить</button>
-        </div>
-        <label>Greeting<textarea id="scGreeting" rows="3"></textarea></label>
-        <div class="stack">
-          <label>Model <input id="scModel" /></label>
-          <label>Voice <input id="scVoice" /></label>
-          <label>Temperature <input id="scTemp" type="number" step="0.1" min="0" max="2" /></label>
-          <label>Provider <input id="scProvider" readonly /></label>
-          <p class="muted" id="scTools"></p>
-          <p class="muted" id="scIsolate">Профили изолированы: входящие = context default + provider openai_realtime; исходящие = outbound + openai_realtime_outbound.</p>
-        </div>
-        <label class="full">Prompt / сценарий разговора<textarea id="scPrompt" rows="18"></textarea></label>
-        <div class="full actions">
-          <button type="button" id="btnSaveScenario" class="primary">Сохранить только этот профиль</button>
-          <button type="button" id="btnRestartEngine">Restart ai_engine</button>
-          <span id="scMsg" class="msg"></span>
-        </div>
-        <p class="full muted">Входящие и исходящие — разные YAML-контексты. Сохранение одного профиля не меняет greeting/prompt/model другого.</p>
-      </div>
-    </section>
-
-    <section id="tab-knowledge" class="panel">
-      <div class="card">
-        <p class="muted" id="knPath"></p>
-        <textarea id="knText" rows="24"></textarea>
-        <div class="actions">
-          <button type="button" id="btnSaveKnowledge" class="primary">Сохранить + reload Second Brain</button>
-          <span id="knMsg" class="msg"></span>
-        </div>
-      </div>
-    </section>
-
-    <section id="tab-calls" class="panel">
-      <div class="card">
-        <p class="muted">Исходящие — таблица расшифровок (без письма «Новый лид»). Входящие лиды по-прежнему уходят на почту.</p>
-        <div class="row">
-          <label>Фильтр
-            <select id="callsFilter">
-              <option value="outbound" selected>исходящие (outbound)</option>
-              <option value="default">входящие (default)</option>
-              <option value="">все</option>
-            </select>
-          </label>
-          <button type="button" id="btnReloadCalls">Обновить список</button>
-        </div>
-        <div id="callsBox">Загрузка…</div>
-        <h2>Расшифровка и сообщения</h2>
-        <div id="callDetail" class="call-detail">Выберите звонок в таблице</div>
-      </div>
-    </section>
-
-    <section id="tab-campaign" class="panel">
-      <div class="card">
-        <p class="muted">
-          Скрипт обзвона Google Sheet (массовые выплаты) живёт здесь — не во вкладке
-          «Сценарий» (там YAML <code>outbound</code>, пустая оболочка под one-shot dial).
-          При каждом звонке кампании этот greeting+script уходит per-call в AVA.
-        </p>
-        <p class="muted" id="campMeta">Загрузка…</p>
-        <label class="full">Greeting (первая фраза)
-          <textarea id="campGreeting" rows="3"></textarea>
-        </label>
-        <label class="full">Script / playbook
-          <textarea id="campScript" rows="22"></textarea>
-        </label>
-        <p class="muted" id="campTools"></p>
-        <div class="row actions">
-          <button type="button" id="btnCampLoad">Загрузить</button>
-          <button type="button" id="btnCampSave" class="primary">Сохранить</button>
-          <button type="button" id="btnCampReset">Сбросить к встроенному</button>
-          <span id="campMsg" class="msg"></span>
-        </div>
-        <hr />
-        <div class="row">
-          <label>max_calls <input id="campMax" type="number" value="3" min="0" max="200" /></label>
-          <label class="check"><input type="checkbox" id="campDry" /> dry_run</label>
-          <button type="button" id="btnCampPreview">Превью номеров</button>
-          <button type="button" id="btnCampStart" class="primary">Старт обзвона</button>
-          <button type="button" id="btnCampStop">Стоп</button>
-          <button type="button" id="btnCampStatus">Статус</button>
-        </div>
-        <pre id="campOut" class="msg">—</pre>
-      </div>
-    </section>
-
-    <section id="tab-outbound" class="panel">
-      <div class="card">
-        <p class="muted">Исходящий SIP → профиль <b>outbound</b> (не входящий <code>default</code>). YAML по умолчанию пустой — сценарий задаётся <b>на этот звонок</b> ниже.</p>
-        <div class="row">
-          <label>Телефон <input id="dialPhone" placeholder="79001234567" /></label>
-          <label>Профиль
-            <select id="dialContext">
-              <option value="outbound" selected>outbound — исходящие</option>
-            </select>
-          </label>
-          <label class="check"><input type="checkbox" id="dialUseKnowledge" /> Second Brain (get_company_knowledge)</label>
-        </div>
-        <label class="full">Приветствие (первая фраза)
-          <input id="dialGreeting" placeholder="Алло, это … Удобно 20 секунд?" />
-        </label>
-        <label class="full">Сценарий звонка (полный playbook)
-          <textarea id="dialScript" rows="8" placeholder="Кто ты, зачем звонишь, что спрашивать, чего НЕ говорить…"></textarea>
-        </label>
-        <div class="full">
-          <p class="muted" style="margin:0.8rem 0 0.35rem">Tools на этот звонок <code>GET /api/tools</code> — без выбора = YAML outbound (сейчас hangup_call)</p>
-          <div id="dialTools" class="tool-grid"></div>
-        </div>
-        <div class="row">
-          <button type="button" id="btnDial" class="primary">Позвонить (SIP + бот)</button>
-          <button type="button" id="btnCallback">Callback API</button>
-        </div>
-        <pre id="dialMsg" class="msg"></pre>
-        <p class="muted">greeting/script/tools — per-call, без рестарта Ava. Входящие не затрагиваются.</p>
-      </div>
-    </section>
-
-    <section id="tab-pack" class="panel">
-      <div class="card">
-        <h2>Канонический пакет (что переносить)</h2>
-        <div id="packBox"></div>
-        <h2>Секреты (наличие)</h2>
-        <div id="secretsBox"></div>
-        <div class="actions">
-          <button type="button" id="btnBackup" class="primary">Снять бэкап сейчас</button>
-          <button type="button" id="btnReloadDp">Reload dialplan</button>
-          <pre id="packMsg" class="msg"></pre>
-        </div>
-      </div>
-    </section>
-  </main>
+  </div>
 
   <script>
     document.write(

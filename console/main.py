@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -29,6 +31,18 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("quantum-console")
 
 CONSOLE_TOKEN = os.getenv("CONSOLE_TOKEN", "").strip()
+CONSOLE_USER = os.getenv("CONSOLE_USER", "admin").strip() or "admin"
+CONSOLE_PASSWORD = os.getenv("CONSOLE_PASSWORD", "").strip()
+# If password empty, fall back to CONSOLE_TOKEN as password (migration).
+if not CONSOLE_PASSWORD and CONSOLE_TOKEN:
+    CONSOLE_PASSWORD = CONSOLE_TOKEN
+CONSOLE_SESSION_SECRET = (
+    os.getenv("CONSOLE_SESSION_SECRET", "").strip()
+    or CONSOLE_TOKEN
+    or "quantum-console-dev-secret"
+)
+CONSOLE_SESSION_TTL_SEC = int(os.getenv("CONSOLE_SESSION_TTL_SEC", str(7 * 24 * 3600)))
+SESSION_COOKIE = "qc_session"
 AVA_ROOT = Path(os.getenv("AVA_ROOT", "/root/ava"))
 AVA_ENV_PATH = Path(os.getenv("AVA_ENV_PATH", str(AVA_ROOT / ".env")))
 AVA_CONFIG_PATH = Path(os.getenv("AVA_CONFIG_PATH", str(AVA_ROOT / "config/ai-agent.local.yaml")))
@@ -86,6 +100,52 @@ if STATIC_DIR.is_dir():
 # Auth / helpers
 # ---------------------------------------------------------------------------
 
+_PUBLIC_API_PATHS = {
+    "/api/auth/login",
+    "/api/auth/logout",
+    "/api/auth/me",
+}
+
+
+def _session_secret_bytes() -> bytes:
+    return CONSOLE_SESSION_SECRET.encode("utf-8")
+
+
+def _sign_session(username: str) -> str:
+    exp = int(time.time()) + max(3600, CONSOLE_SESSION_TTL_SEC)
+    payload = f"{username}:{exp}"
+    sig = hmac.new(_session_secret_bytes(), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    raw = f"{payload}:{sig}".encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii")
+
+
+def _verify_session(cookie: str | None) -> str | None:
+    if not cookie:
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(cookie.encode("ascii")).decode("utf-8")
+        user, exp_s, sig = raw.rsplit(":", 2)
+        payload = f"{user}:{exp_s}"
+        expect = hmac.new(
+            _session_secret_bytes(), payload.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(expect, sig):
+            return None
+        if int(exp_s) < int(time.time()):
+            return None
+        if user != CONSOLE_USER:
+            return None
+        return user
+    except Exception:
+        return None
+
+
+def _password_ok(password: str) -> bool:
+    if not CONSOLE_PASSWORD:
+        return False
+    return hmac.compare_digest(password, CONSOLE_PASSWORD)
+
+
 def _extract_token(
     request: Request | None = None,
     x_console_token: str | None = None,
@@ -117,6 +177,15 @@ def _extract_token(
     return ""
 
 
+def _request_authenticated(request: Request) -> bool:
+    """True if valid API token or login session cookie."""
+    tok = _extract_token(request)
+    if CONSOLE_TOKEN and tok and hmac.compare_digest(tok, CONSOLE_TOKEN):
+        return True
+    user = _verify_session(request.cookies.get(SESSION_COOKIE))
+    return bool(user)
+
+
 def _require_token(
     request: Request | None = None,
     x_console_token: str | None = None,
@@ -131,10 +200,10 @@ def _require_token(
     if isinstance(request, str):
         x_console_token = request
         request = None
-    if not CONSOLE_TOKEN:
-        raise HTTPException(503, "CONSOLE_TOKEN is not configured on server")
+    if not CONSOLE_TOKEN and not CONSOLE_PASSWORD:
+        raise HTTPException(503, "CONSOLE auth is not configured on server")
     got = _extract_token(request, x_console_token, authorization)
-    if got and got != CONSOLE_TOKEN:
+    if got and CONSOLE_TOKEN and not hmac.compare_digest(got, CONSOLE_TOKEN):
         raise HTTPException(
             401,
             "invalid or missing token (use header X-Console-Token or Authorization: Bearer …)",
@@ -142,26 +211,74 @@ def _require_token(
 
 
 @app.middleware("http")
-async def _api_token_middleware(request: Request, call_next):
+async def _api_auth_middleware(request: Request, call_next):
     path = request.url.path or ""
-    if path.startswith("/api/"):
-        if not CONSOLE_TOKEN:
+    # Strip public prefix if proxied oddly
+    if path.startswith("/_quantum_console/"):
+        path = path[len("/_quantum_console") :] or "/"
+    if path.startswith("/api/") and path not in _PUBLIC_API_PATHS:
+        if not CONSOLE_TOKEN and not CONSOLE_PASSWORD:
             return JSONResponse(
                 status_code=503,
-                content={"detail": "CONSOLE_TOKEN is not configured on server"},
+                content={"detail": "Console auth is not configured on server"},
             )
-        tok = _extract_token(request)
-        if tok != CONSOLE_TOKEN:
+        if not _request_authenticated(request):
             return JSONResponse(
                 status_code=401,
                 content={
-                    "detail": (
-                        "invalid or missing token "
-                        "(use X-Console-Token or Authorization: Bearer <CONSOLE_TOKEN>)"
-                    )
+                    "detail": "unauthorized — login or pass X-Console-Token / Bearer token"
                 },
             )
     return await call_next(request)
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=120)
+    password: str = Field(..., min_length=1, max_length=200)
+
+
+@app.post("/api/auth/login")
+def api_auth_login(body: LoginRequest):
+    user = (body.username or "").strip()
+    password = body.password or ""
+    if user != CONSOLE_USER or not _password_ok(password):
+        raise HTTPException(401, "Неверный логин или пароль")
+    token = _sign_session(user)
+    resp = JSONResponse(
+        {
+            "ok": True,
+            "user": user,
+            "message": "Вход выполнен",
+        }
+    )
+    resp.set_cookie(
+        key=SESSION_COOKIE,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        max_age=CONSOLE_SESSION_TTL_SEC,
+        path="/",
+    )
+    return resp
+
+
+@app.post("/api/auth/logout")
+def api_auth_logout():
+    resp = JSONResponse({"ok": True, "message": "Выход выполнен"})
+    resp.delete_cookie(SESSION_COOKIE, path="/")
+    return resp
+
+
+@app.get("/api/auth/me")
+def api_auth_me(request: Request):
+    user = _verify_session(request.cookies.get(SESSION_COOKIE))
+    tok = _extract_token(request)
+    token_ok = bool(CONSOLE_TOKEN and tok and hmac.compare_digest(tok, CONSOLE_TOKEN))
+    if user:
+        return {"ok": True, "authenticated": True, "user": user, "via": "session"}
+    if token_ok:
+        return {"ok": True, "authenticated": True, "user": CONSOLE_USER, "via": "token"}
+    return {"ok": True, "authenticated": False, "user": None}
 
 
 def _restart_ai_engine() -> dict[str, Any]:
