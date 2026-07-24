@@ -106,6 +106,16 @@ def api_preview(
     return runner.preview(limit=max(1, min(limit, 200)), sheet=sheet)
 
 
+@app.get("/api/campaign/results")
+def api_results(
+    limit: int = 50,
+    x_webhook_token: Optional[str] = Header(None),
+):
+    """Local dial results from campaign.db (even when Sheets writeback is off)."""
+    _auth(x_webhook_token)
+    return runner.list_results(limit=max(1, min(limit, 500)))
+
+
 @app.get("/api/campaign/status")
 def api_status(x_webhook_token: Optional[str] = Header(None)):
     _auth(x_webhook_token)

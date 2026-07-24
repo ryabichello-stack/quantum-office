@@ -13,7 +13,7 @@
     scenario: { title: "Сценарий", hint: "YAML-профили входящих и исходящих" },
     knowledge: { title: "База знаний", hint: "Second Brain · quantum_labs.md" },
     calls: { title: "Звонки", hint: "История и расшифровки" },
-    campaign: { title: "Кампания Sheets", hint: "Скрипт массового обзвона из Google Sheet" },
+    campaign: { title: "Обзвон Sheets", hint: "База номеров из Google Sheet и скрипт кампании" },
     outbound: { title: "Исходящий", hint: "Один звонок с per-call сценарием" },
     pack: { title: "Пакет / бэкап", hint: "Канонические пути и секреты" },
   };
@@ -291,6 +291,7 @@
         ${profileCard("inbound")}
         ${profileCard("outbound")}
       </div>
+      <div id="campaignGlance" class="profile-tools"></div>
       <h2 class="section-title">Службы systemd</h2>
       <table><thead><tr><th>Служба</th><th>Состояние</th></tr></thead><tbody>
         ${unitsUi
@@ -314,6 +315,26 @@
         );
       });
     });
+
+    // Glance: pending dial list size
+    const glance = $("campaignGlance");
+    if (glance) {
+      api("/api/campaign/preview?limit=1")
+        .then((r) => {
+          glance.innerHTML = `<div class="profile-card">
+            <h3>Обзвон Sheets</h3>
+            <p class="muted">В очереди без пометки: <b>${esc(r.total_pending ?? 0)}</b></p>
+            <div class="actions" style="margin-top:0.55rem">
+              <button type="button" id="btnGotoCampaign">Открыть базу</button>
+            </div>
+          </div>`;
+          const b = $("btnGotoCampaign");
+          if (b) b.onclick = () => setTab("campaign");
+        })
+        .catch(() => {
+          glance.innerHTML = "";
+        });
+    }
 
     const pack = s.pack || [];
     $("packBox").innerHTML = `<table><thead><tr><th>Ключ</th><th>Путь</th><th></th><th>Заметка</th></tr></thead><tbody>
@@ -450,6 +471,113 @@
     ]);
   }
 
+  async function loadCampaignLeads() {
+    const limit = Number(($("campLimit") && $("campLimit").value) || 50);
+    const r = await api("/api/campaign/preview?limit=" + encodeURIComponent(limit));
+    const items = r.items || [];
+    const by = r.by_sheet || {};
+    if ($("campLeadsMeta")) {
+      $("campLeadsMeta").textContent =
+        "В очереди без пометки: " +
+        (r.total_pending ?? items.length) +
+        " · показано " +
+        (r.showing ?? items.length) +
+        (r.sheets_write_enabled ? " · writeback Sheets: да" : " · writeback Sheets: нет (результаты локально)");
+    }
+    if ($("campSheetLink") && r.sheet_url) {
+      $("campSheetLink").href = r.sheet_url;
+      $("campSheetLink").hidden = false;
+    }
+    if ($("campStats")) {
+      const cards = [
+        ["В очереди", r.total_pending ?? 0],
+        ...Object.entries(by).map(([name, n]) => [name, n]),
+      ];
+      $("campStats").innerHTML = cards
+        .map(
+          ([label, n]) =>
+            `<div class="status-card ok"><span class="label">${esc(label)}</span><span class="value">${esc(
+              n
+            )}</span></div>`
+        )
+        .join("");
+    }
+    if ($("campLeadsBox")) {
+      if (!items.length) {
+        $("campLeadsBox").innerHTML =
+          "<p class='muted'>Нет номеров без пометки — очередь пуста или Sheet недоступен.</p>";
+      } else {
+        $("campLeadsBox").innerHTML = `<table class="calls-table"><thead><tr>
+          <th>#</th><th>Телефон</th><th>Лист</th><th>Строка</th><th>Дата</th><th>Источник</th>
+        </tr></thead><tbody>
+        ${items
+          .map(
+            (it, i) => `<tr>
+          <td>${i + 1}</td>
+          <td><code>${esc(it.phone)}</code></td>
+          <td>${esc(it.sheet)}</td>
+          <td>${esc(it.row)}</td>
+          <td>${esc(it.date || "")}</td>
+          <td class="preview">${esc(it.source || "")}</td>
+        </tr>`
+          )
+          .join("")}
+        </tbody></table>`;
+      }
+    }
+    return r;
+  }
+
+  async function loadCampaignResults() {
+    const box = $("campResultsBox");
+    if (!box) return;
+    try {
+      const r = await api("/api/campaign/results?limit=40");
+      const items = r.items || [];
+      if (!items.length) {
+        box.innerHTML = `<p class="muted">Пока нет локальных результатов (total=${r.total || 0})</p>`;
+        return r;
+      }
+      box.innerHTML = `<p class="muted">Всего в БД: ${r.total} · показаны последние ${items.length}</p>
+        <table class="calls-table"><thead><tr>
+          <th>Когда</th><th>Телефон</th><th>Лист</th><th>Пометка</th><th>Статус</th><th>В Sheet</th>
+        </tr></thead><tbody>
+        ${items
+          .map(
+            (it) => `<tr>
+          <td>${esc(it.created_at || "")}</td>
+          <td><code>${esc(it.phone)}</code></td>
+          <td>${esc(it.sheet_name || "")} #${esc(it.row_number)}</td>
+          <td class="preview">${esc(it.note || "")}</td>
+          <td>${esc(it.status || it.interest || "")}</td>
+          <td>${pill(!!it.written, it.written ? "да" : "нет")}</td>
+        </tr>`
+          )
+          .join("")}
+        </tbody></table>`;
+      return r;
+    } catch (e) {
+      box.innerHTML = `<p class="bad">${esc(e.message)}</p>`;
+    }
+  }
+
+  async function loadCampaignPanel() {
+    await Promise.all([
+      loadCampaignScript().catch((e) => {
+        if ($("campMsg")) {
+          $("campMsg").textContent = e.message;
+          $("campMsg").className = "msg bad";
+        }
+      }),
+      loadCampaignLeads().catch((e) => {
+        if ($("campLeadsBox")) {
+          $("campLeadsBox").innerHTML = `<p class="bad">${esc(e.message)}</p>`;
+        }
+      }),
+      loadCampaignResults(),
+    ]);
+  }
+
   async function loadCampaignScript() {
     const r = await api("/api/campaign/script");
     if ($("campGreeting")) $("campGreeting").value = r.greeting || "";
@@ -480,12 +608,7 @@
     if ($("pageTitle")) $("pageTitle").textContent = meta.title;
     if ($("pageHint")) $("pageHint").textContent = meta.hint;
     if (name === "campaign") {
-      loadCampaignScript().catch((e) => {
-        if ($("campMsg")) {
-          $("campMsg").textContent = e.message;
-          $("campMsg").className = "msg bad";
-        }
-      });
+      loadCampaignPanel();
     }
     if (name === "outreach") {
       const frame = $("outreachFrame");
@@ -542,12 +665,18 @@
   if ($("btnCampPreview")) {
     $("btnCampPreview").onclick = async () => {
       try {
-        const r = await api("/api/campaign/preview?limit=15");
-        $("campOut").textContent = JSON.stringify(r, null, 2);
+        await loadCampaignLeads();
+        await loadCampaignResults();
       } catch (e) {
-        $("campOut").textContent = e.message;
+        if ($("campLeadsBox")) $("campLeadsBox").innerHTML = `<p class="bad">${esc(e.message)}</p>`;
       }
     };
+  }
+  if ($("campLimit")) {
+    $("campLimit").onchange = () =>
+      loadCampaignLeads().catch((e) => {
+        if ($("campLeadsBox")) $("campLeadsBox").innerHTML = `<p class="bad">${esc(e.message)}</p>`;
+      });
   }
   if ($("btnCampStart")) {
     $("btnCampStart").onclick = async () => {
@@ -559,9 +688,16 @@
             dry_run: !!($("campDry") && $("campDry").checked),
           }),
         });
-        $("campOut").textContent = JSON.stringify(r, null, 2);
+        if ($("campOut")) {
+          $("campOut").hidden = false;
+          $("campOut").textContent = JSON.stringify(r, null, 2);
+        }
+        await loadCampaignResults();
       } catch (e) {
-        $("campOut").textContent = e.message;
+        if ($("campOut")) {
+          $("campOut").hidden = false;
+          $("campOut").textContent = e.message;
+        }
       }
     };
   }
@@ -569,9 +705,15 @@
     $("btnCampStop").onclick = async () => {
       try {
         const r = await api("/api/campaign/stop", { method: "POST", body: "{}" });
-        $("campOut").textContent = JSON.stringify(r, null, 2);
+        if ($("campOut")) {
+          $("campOut").hidden = false;
+          $("campOut").textContent = JSON.stringify(r, null, 2);
+        }
       } catch (e) {
-        $("campOut").textContent = e.message;
+        if ($("campOut")) {
+          $("campOut").hidden = false;
+          $("campOut").textContent = e.message;
+        }
       }
     };
   }
@@ -579,9 +721,15 @@
     $("btnCampStatus").onclick = async () => {
       try {
         const r = await api("/api/campaign/status");
-        $("campOut").textContent = JSON.stringify(r, null, 2);
+        if ($("campOut")) {
+          $("campOut").hidden = false;
+          $("campOut").textContent = JSON.stringify(r, null, 2);
+        }
       } catch (e) {
-        $("campOut").textContent = e.message;
+        if ($("campOut")) {
+          $("campOut").hidden = false;
+          $("campOut").textContent = e.message;
+        }
       }
     };
   }

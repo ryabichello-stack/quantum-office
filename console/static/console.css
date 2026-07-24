@@ -598,6 +598,15 @@ tbody tr:hover { background: rgba(13, 143, 122, 0.05); }
   color: var(--muted);
 }
 
+.table-wrap { overflow: auto; margin-top: 0.35rem; }
+a#campSheetLink {
+  font-size: 0.85rem;
+  color: var(--accent-strong);
+  text-decoration: none;
+  font-weight: 600;
+}
+a#campSheetLink:hover { text-decoration: underline; }
+
 @media (max-width: 960px) {
   .app { grid-template-columns: 1fr; }
   .sidebar {

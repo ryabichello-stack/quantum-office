@@ -48,7 +48,7 @@
         <button type="button" data-tab="scenario">Сценарий</button>
         <button type="button" data-tab="knowledge">База знаний</button>
         <button type="button" data-tab="calls">Звонки</button>
-        <button type="button" data-tab="campaign">Кампания Sheets</button>
+        <button type="button" data-tab="campaign">Обзвон Sheets</button>
         <button type="button" data-tab="outbound">Исходящий</button>
         <button type="button" data-tab="pack">Пакет / бэкап</button>
       </nav>
@@ -157,34 +157,56 @@
 
         <section id="tab-campaign" class="panel">
           <div class="surface">
+            <div class="status-head">
+              <div>
+                <h2 class="section-title" style="margin:0">База на обзвон</h2>
+                <p class="muted tight" id="campLeadsMeta">Загрузка очереди из Google Sheet…</p>
+              </div>
+              <a id="campSheetLink" class="muted" href="#" target="_blank" rel="noopener">Открыть Sheet ↗</a>
+            </div>
+            <div class="status-grid" id="campStats"></div>
+            <div class="row" style="margin:0.75rem 0">
+              <label class="field">Показать
+                <select id="campLimit">
+                  <option value="30">30</option>
+                  <option value="50" selected>50</option>
+                  <option value="100">100</option>
+                  <option value="200">200</option>
+                </select>
+              </label>
+              <label class="field">max_calls <input id="campMax" type="number" value="3" min="0" max="200" /></label>
+              <label class="check"><input type="checkbox" id="campDry" /> dry_run</label>
+              <button type="button" id="btnCampPreview">Обновить базу</button>
+              <button type="button" id="btnCampStart" class="primary">Старт обзвона</button>
+              <button type="button" id="btnCampStop">Стоп</button>
+              <button type="button" id="btnCampStatus">Статус</button>
+            </div>
+            <div id="campLeadsBox" class="table-wrap">Загрузка…</div>
+            <h2 class="section-title">Локальные результаты</h2>
+            <p class="muted tight">Из campaign.db на сервере (до writeback в Sheets)</p>
+            <div id="campResultsBox">—</div>
+            <pre id="campOut" class="msg codeblock" hidden></pre>
+
+            <hr class="sep" />
+            <h2 class="section-title">Скрипт обзвона</h2>
             <p class="muted">
-              Скрипт обзвона Google Sheet живёт здесь — не во вкладке «Сценарий»
-              (там YAML <code>outbound</code>). При каждом звонке greeting+script уходит per-call в AVA.
+              Playbook для Google Sheet — не вкладка «Сценарий» (там YAML outbound).
+              При каждом звонке greeting+script уходит per-call в AVA.
             </p>
             <p class="muted" id="campMeta">Загрузка…</p>
             <label class="field full">Greeting
               <textarea id="campGreeting" rows="3"></textarea>
             </label>
             <label class="field full">Script / playbook
-              <textarea id="campScript" rows="22"></textarea>
+              <textarea id="campScript" rows="14"></textarea>
             </label>
             <p class="muted" id="campTools"></p>
             <div class="row actions">
-              <button type="button" id="btnCampLoad">Загрузить</button>
-              <button type="button" id="btnCampSave" class="primary">Сохранить</button>
+              <button type="button" id="btnCampLoad">Загрузить скрипт</button>
+              <button type="button" id="btnCampSave" class="primary">Сохранить скрипт</button>
               <button type="button" id="btnCampReset">Сбросить к встроенному</button>
               <span id="campMsg" class="msg"></span>
             </div>
-            <hr class="sep" />
-            <div class="row">
-              <label class="field">max_calls <input id="campMax" type="number" value="3" min="0" max="200" /></label>
-              <label class="check"><input type="checkbox" id="campDry" /> dry_run</label>
-              <button type="button" id="btnCampPreview">Превью</button>
-              <button type="button" id="btnCampStart" class="primary">Старт</button>
-              <button type="button" id="btnCampStop">Стоп</button>
-              <button type="button" id="btnCampStatus">Статус</button>
-            </div>
-            <pre id="campOut" class="msg codeblock">—</pre>
           </div>
         </section>
 

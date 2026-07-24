@@ -429,6 +429,9 @@ def get_status() -> dict[str, Any]:
 def preview(limit: int = 30, sheet: str | None = None) -> dict[str, Any]:
     leads = sheets_io.load_leads(only_empty_notes=True, sheet_filter=sheet)
     leads.sort(key=lambda x: (0 if "Архив" not in x.sheet_name else 1, x.row_number))
+    by_sheet: dict[str, int] = {}
+    for x in leads:
+        by_sheet[x.sheet_name] = by_sheet.get(x.sheet_name, 0) + 1
     items = [
         {
             "sheet": x.sheet_name,
@@ -437,6 +440,10 @@ def preview(limit: int = 30, sheet: str | None = None) -> dict[str, Any]:
             "phone": x.phone,
             "source": x.source,
             "date": x.date,
+            "sheet_url": (
+                f"https://docs.google.com/spreadsheets/d/{sheets_io.SHEET_ID}"
+                f"/edit#gid={x.gid}"
+            ),
         }
         for x in leads[:limit]
     ]
@@ -444,9 +451,34 @@ def preview(limit: int = 30, sheet: str | None = None) -> dict[str, Any]:
         "ok": True,
         "total_pending": len(leads),
         "showing": len(items),
+        "by_sheet": by_sheet,
         "items": items,
+        "sheet_id": sheets_io.SHEET_ID,
+        "sheet_url": f"https://docs.google.com/spreadsheets/d/{sheets_io.SHEET_ID}/edit",
         "sheets_write_enabled": sheets_io.sheets_write_enabled(),
         "sa_email": sheets_io.sa_email(),
         "tools": (script_store.load_script().get("tools") or script.CAMPAIGN_TOOLS),
         "script_source": script_store.load_script().get("source"),
     }
+
+
+def list_results(limit: int = 50) -> dict[str, Any]:
+    init_db()
+    conn = sqlite3.connect(str(_db_path()))
+    try:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT id, sheet_name, gid, row_number, phone, note, status, interest,
+                   call_id, written, created_at
+            FROM results
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (max(1, min(int(limit), 500)),),
+        ).fetchall()
+        total = conn.execute("SELECT COUNT(*) FROM results").fetchone()[0]
+        items = [dict(r) for r in rows]
+    finally:
+        conn.close()
+    return {"ok": True, "total": total, "showing": len(items), "items": items}

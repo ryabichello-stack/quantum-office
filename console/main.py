@@ -1946,6 +1946,16 @@ def api_campaign_preview(
     return _campaign_request("GET", f"/api/campaign/preview{q}")
 
 
+@app.get("/api/campaign/results")
+def api_campaign_results(
+    limit: int = 50,
+    x_console_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_token(x_console_token)
+    q = f"?limit={max(1, min(limit, 500))}"
+    return _campaign_request("GET", f"/api/campaign/results{q}")
+
+
 @app.get("/api/campaign/status")
 def api_campaign_status(
     x_console_token: str | None = Header(default=None),
