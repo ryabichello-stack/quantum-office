@@ -498,6 +498,61 @@
     }
   }
 
+  let campPollTimer = null;
+
+  function setCampActionMsg(text, ok) {
+    const el = $("campActionMsg");
+    if (!el) return;
+    el.textContent = text || "";
+    el.className = "msg " + (ok === true ? "ok" : ok === false ? "bad" : "");
+  }
+
+  function renderCampaignRunStatus(st) {
+    const box = $("campRunBanner");
+    if (!box) return;
+    const running = !!(st && st.running);
+    const msg = (st && st.message) || "—";
+    const processed = (st && st.processed) || 0;
+    const queued = (st && st.queued) || 0;
+    const errors = (st && st.errors) || 0;
+    const last = (st && st.last) || {};
+    const lastPhone = last.phone || "";
+    const lastNote = last.note || "";
+    box.className = "camp-run-banner " + (running ? "running" : "idle");
+    box.innerHTML = running
+      ? `<div class="run-title">● Обзвон идёт</div>
+         <div>${esc(msg)}</div>
+         <div class="muted">Сделано: ${processed}${queued ? " / " + queued : ""} · ошибок: ${errors}${
+           lastPhone ? " · последний: " + esc(lastPhone) : ""
+         }${lastNote ? " — " + esc(lastNote) : ""}</div>`
+      : `<div class="run-title">○ Обзвон не запущен</div>
+         <div class="muted">${esc(msg === "idle" || !msg ? "Нажмите «Старт обзвона», чтобы начать звонки из очереди" : msg)}</div>
+         <div class="muted">Сделано в прошлом прогоне: ${processed} · ошибок: ${errors}${
+           lastPhone ? " · последний: " + esc(lastPhone) : ""
+         }</div>`;
+    if ($("btnCampStart")) $("btnCampStart").disabled = running;
+  }
+
+  async function loadCampaignRunStatus() {
+    const st = await api("/api/campaign/status");
+    renderCampaignRunStatus(st);
+    return st;
+  }
+
+  function startCampPolling() {
+    stopCampPolling();
+    campPollTimer = setInterval(() => {
+      loadCampaignRunStatus().catch(() => {});
+    }, 3000);
+  }
+
+  function stopCampPolling() {
+    if (campPollTimer) {
+      clearInterval(campPollTimer);
+      campPollTimer = null;
+    }
+  }
+
   async function loadCampaignLeads() {
     const limit = Number(($("campLimit") && $("campLimit").value) || 50);
     const r = await api("/api/campaign/preview?limit=" + encodeURIComponent(limit));
@@ -602,7 +657,14 @@
         }
       }),
       loadCampaignResults(),
+      loadCampaignRunStatus().catch((e) => {
+        if ($("campRunBanner")) {
+          $("campRunBanner").textContent = "Статус: " + e.message;
+          $("campRunBanner").className = "camp-run-banner";
+        }
+      }),
     ]);
+    startCampPolling();
   }
 
   async function loadCampaignScript() {
@@ -636,6 +698,8 @@
     if ($("pageHint")) $("pageHint").textContent = meta.hint;
     if (name === "campaign") {
       loadCampaignPanel();
+    } else {
+      stopCampPolling();
     }
     if (name === "outreach") {
       const frame = $("outreachFrame");
@@ -721,56 +785,45 @@
   }
   if ($("btnCampStart")) {
     $("btnCampStart").onclick = async () => {
+      const maxCalls = Number(($("campMax") && $("campMax").value) || 3);
+      const dry = !!($("campDry") && $("campDry").checked);
+      const label = dry
+        ? `Запустить тест (dry_run) на ${maxCalls} номеров? Звонков не будет.`
+        : `Запустить обзвон ${maxCalls} номеров из очереди?`;
+      if (!confirm(label)) return;
+      setCampActionMsg("Запуск…", null);
       try {
         const r = await api("/api/campaign/start", {
           method: "POST",
-          body: JSON.stringify({
-            max_calls: Number(($("campMax") && $("campMax").value) || 3),
-            dry_run: !!($("campDry") && $("campDry").checked),
-          }),
+          body: JSON.stringify({ max_calls: maxCalls, dry_run: dry }),
         });
-        if ($("campOut")) {
-          $("campOut").hidden = false;
-          $("campOut").textContent = JSON.stringify(r, null, 2);
+        if (r && r.ok === false) {
+          const why =
+            r.error === "already_running"
+              ? "Обзвон уже идёт — смотрите статус выше. Сначала Стоп, потом снова Старт."
+              : r.error || "не удалось запустить";
+          setCampActionMsg(why, false);
+          if (r.status) renderCampaignRunStatus(r.status);
+          return;
         }
+        setCampActionMsg(r.message || "Обзвон запущен", true);
+        await loadCampaignRunStatus();
         await loadCampaignResults();
+        startCampPolling();
       } catch (e) {
-        if ($("campOut")) {
-          $("campOut").hidden = false;
-          $("campOut").textContent = e.message;
-        }
+        setCampActionMsg(e.message, false);
       }
     };
   }
   if ($("btnCampStop")) {
     $("btnCampStop").onclick = async () => {
+      setCampActionMsg("Остановка…", null);
       try {
         const r = await api("/api/campaign/stop", { method: "POST", body: "{}" });
-        if ($("campOut")) {
-          $("campOut").hidden = false;
-          $("campOut").textContent = JSON.stringify(r, null, 2);
-        }
+        setCampActionMsg(r.message || "Остановка запрошена", true);
+        await loadCampaignRunStatus();
       } catch (e) {
-        if ($("campOut")) {
-          $("campOut").hidden = false;
-          $("campOut").textContent = e.message;
-        }
-      }
-    };
-  }
-  if ($("btnCampStatus")) {
-    $("btnCampStatus").onclick = async () => {
-      try {
-        const r = await api("/api/campaign/status");
-        if ($("campOut")) {
-          $("campOut").hidden = false;
-          $("campOut").textContent = JSON.stringify(r, null, 2);
-        }
-      } catch (e) {
-        if ($("campOut")) {
-          $("campOut").hidden = false;
-          $("campOut").textContent = e.message;
-        }
+        setCampActionMsg(e.message, false);
       }
     };
   }

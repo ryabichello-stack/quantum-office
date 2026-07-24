@@ -179,6 +179,7 @@
               <a id="campSheetLink" class="muted" href="#" target="_blank" rel="noopener">Открыть Sheet ↗</a>
             </div>
             <div class="status-grid" id="campStats"></div>
+            <div id="campRunBanner" class="camp-run-banner">Загрузка статуса…</div>
             <div class="row" style="margin:0.75rem 0">
               <label class="field">Показать
                 <select id="campLimit">
@@ -188,18 +189,19 @@
                   <option value="200">200</option>
                 </select>
               </label>
-              <label class="field">max_calls <input id="campMax" type="number" value="3" min="0" max="200" /></label>
-              <label class="check"><input type="checkbox" id="campDry" /> dry_run</label>
+              <label class="field">Сколько звонков
+                <input id="campMax" type="number" value="3" min="1" max="200" />
+              </label>
+              <label class="check"><input type="checkbox" id="campDry" /> только тест (dry_run)</label>
               <button type="button" id="btnCampPreview">Обновить базу</button>
-              <button type="button" id="btnCampStart" class="primary">Старт обзвона</button>
-              <button type="button" id="btnCampStop">Стоп</button>
-              <button type="button" id="btnCampStatus">Статус</button>
+              <button type="button" id="btnCampStart" class="primary">▶ Старт обзвона</button>
+              <button type="button" id="btnCampStop">■ Стоп</button>
             </div>
+            <p id="campActionMsg" class="msg"></p>
             <div id="campLeadsBox" class="table-wrap">Загрузка…</div>
             <h2 class="section-title">Локальные результаты</h2>
             <p class="muted tight">Из campaign.db на сервере (до writeback в Sheets)</p>
             <div id="campResultsBox">—</div>
-            <pre id="campOut" class="msg codeblock" hidden></pre>
 
             <hr class="sep" />
             <h2 class="section-title">Скрипт обзвона</h2>

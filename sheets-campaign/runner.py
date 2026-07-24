@@ -332,7 +332,7 @@ def _process_one(lead: sheets_io.LeadRow, *, dry_run: bool) -> dict[str, Any]:
 
 def _worker(*, max_calls: int, sheet_filter: str | None, dry_run: bool) -> None:
     with STATE.lock:
-        STATE.running = True
+        # running already set by start_campaign; refresh message
         STATE.stop_flag = False
         STATE.status.update(
             {
@@ -341,7 +341,8 @@ def _worker(*, max_calls: int, sheet_filter: str | None, dry_run: bool) -> None:
                 "interested": 0,
                 "errors": 0,
                 "message": "loading leads",
-                "started_at": datetime.now(timezone.utc).isoformat(),
+                "started_at": STATE.status.get("started_at")
+                or datetime.now(timezone.utc).isoformat(),
             }
         )
     try:
@@ -394,8 +395,27 @@ def start_campaign(
     dry_run: bool | None = None,
 ) -> dict[str, Any]:
     with STATE.lock:
+        # Recover if previous thread died without clearing the flag
+        if STATE.running and STATE.thread is not None and not STATE.thread.is_alive():
+            STATE.running = False
+            STATE.status["running"] = False
+            STATE.status["message"] = "recovered_stale_worker"
         if STATE.running:
             return {"ok": False, "error": "already_running", "status": dict(STATE.status)}
+        STATE.running = True
+        STATE.stop_flag = False
+        STATE.status.update(
+            {
+                "running": True,
+                "processed": 0,
+                "interested": 0,
+                "errors": 0,
+                "message": "starting",
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "finished_at": None,
+                "last_error": None,
+            }
+        )
     init_db()
     if max_calls is None:
         max_calls = int(os.getenv("MAX_CALLS_PER_RUN", "5") or "5")
@@ -409,13 +429,33 @@ def start_campaign(
     with STATE.lock:
         STATE.thread = t
     t.start()
-    return {"ok": True, "started": True, "max_calls": max_calls, "dry_run": dry_run, "sheet": sheet}
+    return {
+        "ok": True,
+        "started": True,
+        "max_calls": max_calls,
+        "dry_run": dry_run,
+        "sheet": sheet,
+        "message": f"Обзвон запущен (max_calls={max_calls}"
+        + (", dry_run" if dry_run else "")
+        + ")",
+    }
 
 
 def stop_campaign() -> dict[str, Any]:
     with STATE.lock:
         STATE.stop_flag = True
-        return {"ok": True, "stopping": STATE.running, "status": dict(STATE.status)}
+        alive = bool(STATE.thread and STATE.thread.is_alive())
+        if STATE.running and not alive:
+            STATE.running = False
+            STATE.status["running"] = False
+            STATE.status["message"] = "stopped_stale"
+        return {
+            "ok": True,
+            "stopping": STATE.running,
+            "thread_alive": alive,
+            "status": dict(STATE.status),
+            "message": "Остановка запрошена" if STATE.running else "Обзвон не был запущен",
+        }
 
 
 def get_status() -> dict[str, Any]:

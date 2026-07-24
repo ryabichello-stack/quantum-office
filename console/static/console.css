@@ -624,6 +624,34 @@ tbody tr:hover { background: rgba(232, 90, 26, 0.05); }
   color: var(--muted);
 }
 
+.camp-run-banner {
+  margin: 0.75rem 0 0.25rem;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+.camp-run-banner.running {
+  border-color: rgba(232, 90, 26, 0.45);
+  background: #fff4ec;
+  box-shadow: 0 0 0 3px rgba(232, 90, 26, 0.08);
+}
+.camp-run-banner.idle {
+  border-color: rgba(13, 143, 122, 0.25);
+  background: #f3faf7;
+}
+.camp-run-banner .run-title {
+  font-family: var(--display);
+  font-weight: 700;
+  margin: 0 0 0.25rem;
+}
+#campActionMsg {
+  min-height: 1.2em;
+  margin: 0.35rem 0 0.5rem;
+}
+
 .table-wrap { overflow: auto; margin-top: 0.35rem; }
 a#campSheetLink {
   font-size: 0.85rem;
