@@ -81,8 +81,16 @@ class BrainSearch:
             )
         )
 
-        # Multi-query expansion for better recall (lexical variants)
+        # Multi-query expansion for better recall (lexical + client aliases)
         queries = [query]
+        try:
+            from brain_platform.search.client_aliases import expand_client_aliases
+
+            for v in expand_client_aliases(query):
+                if v and v not in queries:
+                    queries.append(v)
+        except Exception:
+            logger.exception("client alias expansion failed")
         try:
             from brain_platform.search.memory import memory_query_variants
 
@@ -90,10 +98,10 @@ class BrainSearch:
             for v in variants:
                 if v and v not in queries:
                     queries.append(v)
-                if len(queries) >= 5:
-                    break
         except Exception:
             pass
+        # Cap expansions; keep original + client canonical/INN first
+        queries = queries[:12]
 
         keyword_hits: list[dict[str, Any]] = []
         semantic_hits: list[dict[str, Any]] = []
@@ -112,9 +120,20 @@ class BrainSearch:
 
         if search_mode in ("semantic", "hybrid"):
             try:
+                # Prefer canonical client form for embedding when aliases matched
+                sem_q = queries[1] if len(queries) > 1 else query
                 semantic_hits = self.repo.search_semantic(
-                    principal, query, limit=max(limit * 2, 12)
+                    principal, sem_q if sem_q != query else query, limit=max(limit * 2, 12)
                 )
+                # Also fuse original if different
+                if sem_q != query:
+                    extra = self.repo.search_semantic(
+                        principal, query, limit=max(limit, 8)
+                    )
+                    seen_sem = {h.get("chunk_id") for h in semantic_hits}
+                    for h in extra:
+                        if h.get("chunk_id") not in seen_sem:
+                            semantic_hits.append(h)
             except Exception:
                 logger.exception("semantic search failed; continuing with keyword")
                 if search_mode == "semantic":
