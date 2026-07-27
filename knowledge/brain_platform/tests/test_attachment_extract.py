@@ -38,5 +38,14 @@ def test_plain_text_csv_extract():
     assert "Client ID" in out["text"]
 
 
+def test_looks_like_provider_anketa():
+    text = (
+        "Наименование ЮЛ\nООО «Новые технологии демонтажа»\n"
+        "ИНН ЮЛ\n7814754000\nФИО ЛПР и должность\nИванов\n"
+        "Подключаемые продукты\nвыплаты\n"
+    )
+    assert looks_like_connection_data(text) is True
+
+
 def test_looks_like_connection_negative():
     assert looks_like_connection_data("просто встретимся завтра") is False

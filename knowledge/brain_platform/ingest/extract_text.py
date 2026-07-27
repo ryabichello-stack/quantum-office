@@ -17,12 +17,20 @@ MAX_CHARS = 40_000
 CONNECTION_MARKERS = re.compile(
     r"("
     r"данные\s+для\s+подключения|"
+    r"анкета\s+клиента\s+для\s+подключения|"
+    r"анкета\s+(для\s+)?прова[йи]дера|"
     r"client\s*id|"
     r"legal\s*id|"
     r"код\s*\(\s*client\s*id\s*\)|"
     r"тип\s+клиента|"
     r"настройки\s+терминал|"
     r"анкета\s+(партн[её]ра|клиента|оуио)|"
+    r"подключаемые\s+продукты|"
+    r"наименование\s+юл|"
+    r"инн\s+юл|"
+    r"инн\s+клиента|"
+    r"лимит\s+на\s+(сумму|общую\s+сумму)|"
+    r"номера?\s+счетов|"
     r"terminal[_ ]?id|"
     r"merchant[_ ]?id"
     r")",
@@ -34,18 +42,25 @@ def looks_like_connection_data(text: str) -> bool:
     if not text or len(text.strip()) < 40:
         return False
     hits = CONNECTION_MARKERS.findall(text)
-    return len(hits) >= 2 or (
-        len(hits) >= 1
-        and bool(
-            re.search(
-                r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
-                text,
-                re.I,
-            )
-            or re.search(r"\bL[AB]\d{10,}\b", text)
-            or re.search(r"\bИНН\b|\bINN\b", text, re.I)
+    if len(hits) >= 2:
+        return True
+    if len(hits) >= 1 and bool(
+        re.search(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            text,
+            re.I,
         )
-    )
+        or re.search(r"\bL[AB]\d{10,}\b", text)
+        or re.search(r"\bИНН\b|\bINN\b|\b\d{10}\b|\b\d{12}\b", text, re.I)
+    ):
+        return True
+    # Filename-driven / short provider questionnaires
+    low = text.lower()
+    if ("наименование юл" in low or "инн юл" in low) and (
+        "подключаемые продукты" in low or "лпр" in low
+    ):
+        return True
+    return False
 
 
 def extract_text_from_bytes(
