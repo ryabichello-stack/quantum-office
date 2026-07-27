@@ -1,0 +1,15 @@
+[Unit]
+Description=Quantum Labs Knowledge (shared KB for voice + text)
+After=network.target
+# Isolated from Asterisk / AVA docker / Polyhub trading.
+
+[Service]
+User=root
+WorkingDirectory=/opt/ava-knowledge
+EnvironmentFile=/opt/ava-knowledge/.env
+ExecStart=/opt/ava-knowledge/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8017
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
