@@ -5,22 +5,34 @@ from __future__ import annotations
 import email
 import email.header
 import email.utils
+import hashlib
 import imaplib
 import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import Any
+from pathlib import Path
+from typing import Any, Iterator
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
 from brain_platform.db.repository import BrainRepository
+from brain_platform.ingest.extract_text import (
+    extract_text_from_bytes,
+    looks_like_connection_data,
+)
 
 logger = logging.getLogger("brain.ingest.mail")
 
 _ANGLE_RE = re.compile(r"<([^>]+)>")
+_SKIP_ATTACHMENT_NAMES = {
+    "smime.p7s",
+    "smime.p7m",
+    "signature.asc",
+    "winmail.dat",
+}
 
 
 def _env(name: str, default: str = "") -> str:
@@ -145,6 +157,174 @@ def _plain_body(msg: email.message.Message, limit: int = 50000) -> str:
     return payload.decode(charset, errors="replace")[:limit]
 
 
+def attachments_root() -> Path:
+    raw = (_env("BRAIN_ATTACHMENTS_DIR") or "").strip()
+    if raw:
+        return Path(raw)
+    data = (_env("BRAIN_DATA_DIR") or "").strip()
+    if data:
+        return Path(data) / "mail-attachments"
+    return Path(__file__).resolve().parents[2] / "data" / "mail-attachments"
+
+
+def _safe_filename(name: str) -> str:
+    base = (name or "attachment").strip().replace("\x00", "")
+    base = re.sub(r"[\\/]+", "_", base)
+    base = re.sub(r"[^\w.\- ()а-яА-ЯёЁ]+", "_", base, flags=re.U).strip("._ ")
+    return (base or "attachment")[:180]
+
+
+def _iter_attachments(
+    msg: email.message.Message,
+) -> Iterator[tuple[str, str, bytes]]:
+    """Yield (filename, content_type, payload_bytes) for attachment-like parts."""
+    if not msg.is_multipart():
+        return
+    for part in msg.walk():
+        if part.get_content_maintype() == "multipart":
+            continue
+        disp = str(part.get("Content-Disposition") or "")
+        filename = part.get_filename()
+        if filename:
+            filename = _decode_header(filename)
+        ctype = part.get_content_type() or "application/octet-stream"
+        is_attach = "attachment" in disp.lower() or bool(filename)
+        # Also catch inline docs that are not body text/html
+        if not is_attach:
+            if ctype in ("text/plain", "text/html"):
+                continue
+            if not filename:
+                continue
+        if not filename:
+            ext = {
+                "application/pdf": ".pdf",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+            }.get(ctype, "")
+            filename = f"attachment{ext}"
+        if filename.lower() in _SKIP_ATTACHMENT_NAMES:
+            continue
+        payload = part.get_payload(decode=True) or b""
+        if not payload:
+            continue
+        # Skip tiny inline images
+        if ctype.startswith("image/") and len(payload) < 40_000 and "attachment" not in disp.lower():
+            continue
+        yield filename, ctype, payload
+
+
+def _process_message_attachments(
+    repo: BrainRepository,
+    *,
+    tenant_id: str,
+    email_id: str,
+    message_id: str,
+    subject: str,
+    body_text: str,
+    msg: email.message.Message,
+) -> dict[str, Any]:
+    """Save + index attachments; promote connection settings for office-assistant."""
+    root = attachments_root()
+    mid_key = hashlib.sha1(message_id.encode("utf-8")).hexdigest()[:16]
+    dest_dir = root / mid_key
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    attachment_ids: list[str] = []
+    indexed = 0
+    promoted = 0
+    encrypted = 0
+    errors: list[str] = []
+    connection_blobs: list[str] = []
+
+    # Body itself may already contain bank connection settings.
+    if looks_like_connection_data(body_text):
+        connection_blobs.append(f"## Из тела письма\n\n{body_text[:12000]}")
+
+    for filename, ctype, payload in _iter_attachments(msg):
+        safe = _safe_filename(filename)
+        path = dest_dir / safe
+        # Avoid collisions
+        if path.exists() and path.read_bytes() != payload:
+            stem, suf = path.stem, path.suffix
+            path = dest_dir / f"{stem}-{hashlib.sha1(payload).hexdigest()[:8]}{suf}"
+        try:
+            path.write_bytes(payload)
+        except OSError as exc:
+            errors.append(f"write:{safe}:{exc}")
+            continue
+
+        extracted = extract_text_from_bytes(payload, filename=safe, content_type=ctype)
+        text = str(extracted.get("text") or "")
+        if extracted.get("encrypted"):
+            encrypted += 1
+            text = f"(encrypted attachment: {safe}; cannot extract without password)"
+        content_hash = hashlib.sha256(payload).hexdigest()
+        is_conn = looks_like_connection_data(text)
+        visibility = "company" if is_conn else "restricted"
+        try:
+            result = repo.upsert_file_asset(
+                tenant_id=tenant_id,
+                path=str(path.resolve()),
+                filename=safe,
+                content_hash=content_hash,
+                source="mail_attachment",
+                text_excerpt=text[:20000],
+                visibility=visibility,
+                acl={
+                    "allow_users": [],
+                    "allow_groups": ["group:management", "group:sales", "group:ops"],
+                    "allow_services": [
+                        "service:cursor-admin",
+                        "service:text-secretary",
+                        *(["service:voice-office"] if is_conn else []),
+                    ],
+                    "deny_users": [],
+                    "deny_groups": [],
+                },
+            )
+            fid = result.get("id")
+            if fid:
+                attachment_ids.append(fid)
+            if not result.get("unchanged") and not result.get("skipped_duplicate_content"):
+                indexed += 1
+            if is_conn and text.strip():
+                connection_blobs.append(f"## Вложение: {safe}\n\n{text[:12000]}")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("attachment index failed %s: %s", safe, exc)
+            errors.append(f"index:{safe}:{exc}")
+
+    if attachment_ids:
+        try:
+            repo.set_email_attachment_ids(email_id, attachment_ids)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"link:{exc}")
+
+    if connection_blobs:
+        title_hint = re.sub(r"^(re|fw|fwd|aw|sv|re\[\d+\]):\s*", "", subject or "", flags=re.I)
+        title_hint = re.sub(r"\s+", " ", title_hint).strip()[:120] or "Данные для подключения"
+        title = f"Данные для подключения: {title_hint}"
+        try:
+            repo.promote_connection_settings_doc(
+                tenant_id=tenant_id,
+                title=title,
+                body="\n\n".join(connection_blobs)[:18000],
+                source=f"mail-attachment:{message_id}",
+                subject_hint=subject,
+            )
+            promoted += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("promote connection doc failed: %s", exc)
+            errors.append(f"promote:{exc}")
+
+    return {
+        "attachments": len(attachment_ids),
+        "indexed": indexed,
+        "promoted": promoted,
+        "encrypted": encrypted,
+        "errors": errors[:10],
+    }
+
+
 def _open_imap(account: MailAccount) -> imaplib.IMAP4_SSL:
     client = imaplib.IMAP4_SSL(account.host, account.port)
     client.login(account.username, account.password)
@@ -208,6 +388,9 @@ def _ingest_one_account(
     skipped = 0
     errors: list[str] = []
     local_user = account.username.lower()
+    attachments_total = 0
+    attachments_indexed = 0
+    attachments_promoted = 0
 
     try:
         available = _list_mailboxes(client)
@@ -300,6 +483,24 @@ def _ingest_one_account(
                         created += 1
                     else:
                         skipped += 1
+                    email_id = str(result.get("id") or "")
+                    if email_id:
+                        att = _process_message_attachments(
+                            repo,
+                            tenant_id=tenant_id,
+                            email_id=email_id,
+                            message_id=mid,
+                            subject=subject,
+                            body_text=body,
+                            msg=msg,
+                        )
+                        attachments_total += int(att.get("attachments") or 0)
+                        attachments_indexed += int(att.get("indexed") or 0)
+                        attachments_promoted += int(att.get("promoted") or 0)
+                        if att.get("errors"):
+                            errors.extend(
+                                f"{account.username}:{mid}:{e}" for e in att["errors"]
+                            )
                 except Exception as exc:  # noqa: BLE001
                     logger.exception("ingest mail failed account=%s", account.username)
                     errors.append(f"{account.username}:{mid}:{exc}")
@@ -314,6 +515,9 @@ def _ingest_one_account(
         "account": account.username,
         "created": created,
         "skipped": skipped,
+        "attachments": attachments_total,
+        "attachments_indexed": attachments_indexed,
+        "attachments_promoted": attachments_promoted,
         "errors": errors[:20],
     }
 
@@ -332,6 +536,9 @@ def ingest_mailbox(
 
     created = 0
     skipped = 0
+    attachments = 0
+    attachments_indexed = 0
+    attachments_promoted = 0
     errors: list[str] = []
     per_account: list[dict[str, Any]] = []
 
@@ -347,6 +554,9 @@ def ingest_mailbox(
             per_account.append(one)
             created += int(one.get("created") or 0)
             skipped += int(one.get("skipped") or 0)
+            attachments += int(one.get("attachments") or 0)
+            attachments_indexed += int(one.get("attachments_indexed") or 0)
+            attachments_promoted += int(one.get("attachments_promoted") or 0)
             errors.extend(one.get("errors") or [])
         except Exception as exc:  # noqa: BLE001
             logger.exception("imap account failed: %s", account.username)
@@ -356,12 +566,16 @@ def ingest_mailbox(
 
     repo.set_ingest_state(
         f"mail:{direction}:last",
-        f"accounts={len(accounts)};created={created};skipped={skipped}",
+        f"accounts={len(accounts)};created={created};skipped={skipped};"
+        f"att={attachments};att_idx={attachments_indexed};promoted={attachments_promoted}",
     )
     return {
         "ok": all(a.get("ok") for a in per_account) if per_account else False,
         "created": created,
         "skipped": skipped,
+        "attachments": attachments,
+        "attachments_indexed": attachments_indexed,
+        "attachments_promoted": attachments_promoted,
         "accounts": [a.username for a in accounts],
         "per_account": per_account,
         "errors": errors[:40],

@@ -76,6 +76,23 @@ class HybridBrainRepo:
                 result = {**result, "dual_write": self.last_dual_write}
         return result
 
+    def set_email_attachment_ids(self, email_id: str, attachment_ids: list):
+        self.sqlite.set_email_attachment_ids(email_id, attachment_ids)
+        if dual_write_enabled():
+            self.last_dual_write = sync_email(self.conn, email_id)
+        return None
+
+    def promote_connection_settings_doc(self, *args, **kwargs):
+        result = self.sqlite.promote_connection_settings_doc(*args, **kwargs)
+        doc_id = None
+        if isinstance(result, dict):
+            doc_id = result.get("id")
+        if doc_id and dual_write_enabled():
+            self.last_dual_write = sync_documents(self.conn, [doc_id])
+            if isinstance(result, dict):
+                result = {**result, "dual_write": self.last_dual_write}
+        return result
+
     def __getattr__(self, name: str) -> Any:
         # Prefer PG for search/directory/stats when available
         if self.pg is not None and name in {

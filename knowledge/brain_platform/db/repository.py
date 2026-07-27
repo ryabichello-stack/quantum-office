@@ -850,7 +850,12 @@ class BrainRepository:
                         )
                     except Exception:  # noqa: BLE001
                         pass
-            return {"id": existing["id"], "created": False}
+            return {
+                "id": existing["id"],
+                "created": False,
+                "subject": subject or "(no subject)",
+                "message_id": mid,
+            }
 
         acl = acl or DEFAULT_MAIL_ACL
         thread_key = self._thread_key(subject, from_email, to_emails)
@@ -964,7 +969,72 @@ class BrainRepository:
             source=f"mail:{direction}",
             index_zone="private",
         )
-        return {"id": email_id, "thread_id": thread_id, "created": True, "index": indexed}
+        return {
+            "id": email_id,
+            "thread_id": thread_id,
+            "created": True,
+            "index": indexed,
+            "subject": subject or "(no subject)",
+            "message_id": mid,
+        }
+
+    def set_email_attachment_ids(self, email_id: str, attachment_ids: list[str]) -> None:
+        self.conn.execute(
+            "UPDATE emails SET attachment_ids_json=? WHERE id=?",
+            (_j(attachment_ids), email_id),
+        )
+        self.conn.commit()
+
+    def promote_connection_settings_doc(
+        self,
+        *,
+        tenant_id: str,
+        title: str,
+        body: str,
+        source: str,
+        subject_hint: str = "",
+    ) -> dict[str, Any]:
+        """Index connection / questionnaire facts for office-assistant (not public)."""
+        doc_id = slug_id("ops-conn", tenant_id, title, source)
+        header = (
+            f"# {title}\n\n"
+            f"Кураторская карточка из почты/вложения (данные для подключения).\n"
+            f"Источник: `{source}`\n"
+        )
+        if subject_hint:
+            header += f"Письмо: {subject_hint}\n"
+        header += "\n"
+        acl = {
+            "allow_users": [],
+            "allow_groups": ["group:management", "group:sales", "group:ops"],
+            "allow_services": [
+                "service:cursor-admin",
+                "service:text-secretary",
+                "service:voice-office",
+            ],
+            "deny_users": [],
+            "deny_groups": [],
+        }
+        return self.upsert_document(
+            doc_id=doc_id,
+            tenant_id=tenant_id,
+            title=title,
+            doc_type="ops",
+            body=(header + body)[:20000],
+            visibility="company",
+            acl=acl,
+            classification={
+                "level": "internal",
+                "contains_personal_data": False,
+                "contains_bank_secret": True,
+                "contains_credentials": False,
+            },
+            channels=["office-assistant"],
+            source=source,
+            index_zone="private",
+            publication={"manual_approve": False},
+            ai_processing={"allow_external_embed": True},
+        )
 
     @staticmethod
     def _thread_key(subject: str, from_email: str, to_emails: list[str]) -> str:
