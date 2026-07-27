@@ -1,0 +1,144 @@
+"""Campaign classification + sheet helpers."""
+
+from __future__ import annotations
+
+import classify
+import sheets_io
+
+
+def test_classify_booked():
+    conv = [
+        {"role": "assistant", "content": "Готово, встреча зафиксирована на завтра 15:00. Приглашение отправлено на вашу почту."},
+        {"role": "user", "content": "Отлично, спасибо"},
+    ]
+    out = classify.classify_rules(conv, duration=90)
+    assert out["interest"] == "yes"
+    assert "записан на консультацию" in out["note"]
+
+
+def test_classify_interest():
+    conv = [
+        {"role": "assistant", "content": "Вам интересны массовые выплаты?"},
+        {"role": "user", "content": "Да, интересно, пусть менеджер перезвонит"},
+    ]
+    out = classify.classify_rules(conv, duration=40)
+    assert out["interest"] == "yes"
+    assert "ИНТЕРЕСНО" in out["note"]
+
+
+def test_classify_negative():
+    conv = [{"role": "user", "content": "Нет, не интересно, спасибо"}]
+    out = classify.classify_rules(conv, duration=25)
+    assert out["interest"] == "no"
+    assert "НЕ ИНТЕРЕСНО" in out["note"]
+
+
+def test_classify_ignores_assistant_only_interest_words():
+    conv = [
+        {
+            "role": "assistant",
+            "content": "Здравствуйте! Удобно пару минут? Звоню по теме массовых выплат.",
+        }
+    ]
+    out = classify.classify_rules(conv, duration=12)
+    assert out["interest"] == "no"
+    assert "НЕ ДОЗВОН" in out["note"]
+
+
+def test_classify_soft_yes_is_not_interest():
+    conv = [
+        {"role": "assistant", "content": "Вам интересны массовые выплаты?"},
+        {"role": "user", "content": "да"},
+        {"role": "assistant", "content": "Отлично, расскажу кратко."},
+        {"role": "user", "content": "удобно"},
+    ]
+    out = classify.classify_rules(conv, duration=40)
+    assert out["interest"] != "yes"
+    assert not out["note"].upper().startswith("ИНТЕРЕСНО")
+
+
+def test_classify_callback_without_interest():
+    conv = [
+        {"role": "assistant", "content": "Удобно говорить?"},
+        {"role": "user", "content": "Перезвоните вечером"},
+    ]
+    out = classify.classify_rules(conv, duration=30)
+    assert out["interest"] == "maybe"
+    assert "ПЕРЕЗВОНИТЬ" in out["note"]
+    assert not out["note"].upper().startswith("ИНТЕРЕСНО")
+
+
+def test_sanitize_llm_false_interest():
+    conv = [
+        {"role": "assistant", "content": "Звоню про выплаты, вам интересно?"},
+        {"role": "user", "content": "алло"},
+    ]
+    out = classify._sanitize_llm_result(
+        {
+            "note": "ИНТЕРЕСНО — перезвонить лично",
+            "status": "Положительный",
+            "interest": "yes",
+        },
+        conv,
+    )
+    assert out["interest"] != "yes"
+    assert not out["note"].upper().startswith("ИНТЕРЕСНО")
+
+
+def test_classify_skips_llm_without_user_speech(monkeypatch):
+    def boom(*_a, **_k):
+        raise AssertionError("LLM must not run without user speech")
+
+    monkeypatch.setattr(classify, "classify_llm", boom)
+    conv = [{"role": "assistant", "content": "Здравствуйте! Удобно пару минут?"}]
+    out = classify.classify(conv, duration=11, outcome="completed")
+    assert out["method"].startswith("rules_")
+    assert out["interest"] == "no"
+
+
+def test_status_always_filled():
+    assert classify.status_for(note="НЕ ДОЗВОН", interest="no") == "Недозвон"
+    assert classify.status_for(note="НЕ ИНТЕРЕСНО", interest="no") == "Отрицательный"
+    assert classify.status_for(note="ПЕРЕЗВОНИТЬ позже", interest="maybe") == "Перезвонить"
+    assert (
+        classify.status_for(note="ИНТЕРЕСНО — перезвонить лично", interest="yes")
+        == "Положительный"
+    )
+
+
+def test_classify_negative_has_status():
+    conv = [{"role": "user", "content": "Нет, не интересно, спасибо"}]
+    out = classify.classify_rules(conv, duration=25)
+    assert out["status"] == "Отрицательный"
+
+
+def test_classify_electronic_assistant_not_interest(monkeypatch):
+    def boom(*_a, **_k):
+        raise AssertionError("LLM must not run for electronic assistant")
+
+    monkeypatch.setattr(classify, "classify_llm", boom)
+    conv = [
+        {"role": "assistant", "content": "Здравствуйте! Звоню по теме массовых выплат."},
+        {
+            "role": "user",
+            "content": "Думали принять звонок. Я электронный помощник. Озвучьте, что передать.",
+        },
+        {
+            "role": "user",
+            "content": "Ну, вы меня заинтересовали. Готова записать. Можете уточнить и условия?",
+        },
+        {
+            "role": "user",
+            "content": "Я вас услышала. Подумаю, и если надумаю, сама обращусь. Хорошо?",
+        },
+    ]
+    out = classify.classify(conv, duration=91, outcome="completed")
+    assert out["interest"] == "no"
+    assert out["status"] == "Недозвон"
+    assert "электронный помощник" in out["note"].lower()
+    assert not out["note"].upper().startswith("ИНТЕРЕСНО")
+
+
+def test_col_letter():
+    assert sheets_io._col_letter(0) == "A"
+    assert sheets_io._col_letter(22) == "W"
