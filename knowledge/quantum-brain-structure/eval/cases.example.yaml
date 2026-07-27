@@ -1,0 +1,14 @@
+# Eval harness — structure example (no product knowledge assertions)
+
+# Copy to brain_platform/eval/cases.yaml in the app deploy and extend.
+cases:
+  - id: acl-unknown-deny
+    query: "smoke"
+    principal: service:unknown-bot
+    expect_denied: true
+
+  - id: acl-voice-public-empty-on-empty-corpus
+    query: "anything"
+    principal: service:voice-public
+    mode: keyword
+    expect_empty: true
