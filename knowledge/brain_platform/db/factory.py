@@ -104,6 +104,12 @@ def get_brain_repo():
         from brain_platform.db.pg_search import PgSearchRepository
 
         pg_conn = connect_postgres()
+        # Read path is a long-lived singleton; autocommit avoids one failed
+        # statement poisoning every subsequent request (InFailedSqlTransaction).
+        try:
+            pg_conn.autocommit = True
+        except Exception:
+            logger.warning("could not enable autocommit on brain postgres conn")
         pg_search = PgSearchRepository(pg_conn)
         _repo_singleton = HybridBrainRepo(sqlite_repo, pg_search)
         if dual_write_enabled():

@@ -59,6 +59,15 @@ class PgSearchRepository:
     def __init__(self, conn):
         self.conn = conn
 
+    def _rollback_quietly(self) -> None:
+        """Clear aborted txn so the long-lived API connection stays usable."""
+        try:
+            if getattr(self.conn, "autocommit", False):
+                return
+            self.conn.rollback()
+        except Exception:
+            pass
+
     def search_chunks(
         self,
         principal: Principal,
@@ -105,7 +114,8 @@ class PgSearchRepository:
                 cur.execute(sql, params)
                 return list(cur.fetchall())
         except Exception:
-            # fallback ILIKE
+            # Failed statement aborts the txn; must rollback before ILIKE fallback.
+            self._rollback_quietly()
             like = f"%{q}%"
             sql_like = f"""
             SELECT c.chunk_id, c.document_id, c.tenant_id, c.visibility, c.text,
@@ -127,12 +137,16 @@ class PgSearchRepository:
             ORDER BY c.ordinal
             LIMIT %s
             """
-            with self.conn.cursor() as cur:
-                cur.execute(
-                    sql_like,
-                    [principal.tenant_id, zones, like, like, *acl_params, limit],
-                )
-                return list(cur.fetchall())
+            try:
+                with self.conn.cursor() as cur:
+                    cur.execute(
+                        sql_like,
+                        [principal.tenant_id, zones, like, like, *acl_params, limit],
+                    )
+                    return list(cur.fetchall())
+            except Exception:
+                self._rollback_quietly()
+                raise
 
     def search_semantic(
         self,
