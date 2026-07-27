@@ -20,7 +20,7 @@ import pytz
 from dateutil import parser as dtparser
 import caldav
 from icalendar import Calendar, Event
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 import logging
 
 # --------------------
@@ -498,11 +498,21 @@ def _transcript_user_turns(payload: dict) -> list:
     return turns
 
 
+def _is_outbound_call(payload: dict) -> bool:
+    """True for AVA outbound / console dial calls (not inbound default)."""
+    from post_call_policy import is_outbound_call
+
+    return is_outbound_call(payload)
+
+
 def _should_send_lead_email(payload: dict) -> tuple[bool, str]:
-    """Return (send, skip_reason)."""
+    """Return (send, skip_reason). Lead emails are for inbound only."""
     call_id = str(payload.get("call_id") or "").strip()
     if call_id.startswith("codex-smoke"):
         return False, "codex_smoke_test"
+
+    if _is_outbound_call(payload):
+        return False, "outbound_no_lead_email"
 
     caller_raw = str(
         payload.get("caller_number")
@@ -1038,7 +1048,12 @@ def _suggest_slots(
 
 # --------------------
 # COMPANY KNOWLEDGE (AVA voice agent)
+# Prefer standalone ava-knowledge (:8017); fallback to local markdown search.
 # --------------------
+KNOWLEDGE_SERVICE_URL = os.getenv(
+    "KNOWLEDGE_SERVICE_URL",
+    "http://127.0.0.1:8017",
+).rstrip("/")
 KNOWLEDGE_QUANTUM_LABS_PATH = os.getenv(
     "KNOWLEDGE_QUANTUM_LABS_PATH",
     "/root/ava/config/knowledge/quantum_labs.md",
@@ -1047,6 +1062,10 @@ KNOWLEDGE_QUANTUM_LABS_PATH = os.getenv(
 
 class KnowledgeQueryRequest(BaseModel):
     topic: str = ""
+    topic_id: str = ""
+    q: str = ""
+    limit: int = 4
+    max_chars: int = 4500
 
 
 def _load_company_knowledge() -> str:
@@ -1111,15 +1130,49 @@ def _search_company_knowledge(topic: str, full_text: str, max_chars: int = 3500)
     return out[:max_chars]
 
 
+def _proxy_knowledge_query(req: KnowledgeQueryRequest) -> Optional[dict]:
+    """Forward to ava-knowledge when available."""
+    if not KNOWLEDGE_SERVICE_URL:
+        return None
+    payload = {
+        "topic": (req.topic or req.q or "").strip(),
+        "topic_id": (req.topic_id or "").strip(),
+        "limit": req.limit,
+        "max_chars": req.max_chars,
+    }
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    request = urllib.request.Request(
+        f"{KNOWLEDGE_SERVICE_URL}/api/knowledge/query",
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=6) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            data = json.loads(raw) if raw else {}
+            if isinstance(data, dict) and data.get("ok"):
+                data.setdefault("via", "ava-knowledge")
+                return data
+    except Exception as exc:
+        logger.warning("knowledge service proxy failed: %s", exc)
+    return None
+
+
 @app.post("/api/knowledge/query")
 def knowledge_query(req: KnowledgeQueryRequest):
+    proxied = _proxy_knowledge_query(req)
+    if proxied:
+        return proxied
     text = _load_company_knowledge()
-    snippet = _search_company_knowledge(req.topic, text)
+    snippet = _search_company_knowledge(req.topic or req.q, text, max_chars=req.max_chars or 3500)
     return {
         "ok": True,
-        "topic": (req.topic or "").strip(),
+        "topic": (req.topic or req.q or "").strip(),
+        "topic_id": (req.topic_id or "").strip() or None,
         "text": snippet,
         "chars": len(snippet),
+        "via": "mailer-local",
     }
 
 
@@ -1411,6 +1464,146 @@ async def calendar_create(request: Request, background_tasks: BackgroundTasks):
                 "error": str(e),
             },
         )
+
+# --------------------
+# WELCOME (used by ava-calendar after create)
+# --------------------
+class WelcomePresentationRequest(BaseModel):
+    attendee_email: str = ""
+    summary: str = ""
+    description: str = ""
+    meeting_start: str = ""
+    telemost_join_url: str = ""
+
+
+class SendEmailRequest(BaseModel):
+    to: str = Field(..., description="Recipient email")
+    subject: str = Field(..., min_length=1, max_length=200)
+    body: str = Field(..., min_length=1, max_length=20000)
+    attach_presentation: bool = Field(
+        default=False,
+        description="Attach Quantum Labs welcome PDF if configured",
+    )
+    reply_to: Optional[str] = None
+
+    @field_validator("attach_presentation", mode="before")
+    @classmethod
+    def coerce_attach_presentation(cls, v):
+        """Accept bool or common string forms from AVA templates."""
+        if isinstance(v, bool):
+            return v
+        if v is None:
+            return False
+        if isinstance(v, (int, float)):
+            return bool(v)
+        s = str(v).strip().lower()
+        if s in ("1", "true", "yes", "y", "on"):
+            return True
+        if s in ("0", "false", "no", "n", "off", ""):
+            return False
+        return bool(v)
+
+
+@app.post("/api/email/send")
+async def api_send_email(
+    req: SendEmailRequest,
+    background_tasks: BackgroundTasks,
+    x_webhook_token: str = Header(None),
+):
+    """Send an arbitrary email to a given address (in-call / office tool)."""
+    if x_webhook_token != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="bad token")
+    to = (req.to or "").strip()
+    if "@" not in to or "." not in to.split("@")[-1]:
+        return {"ok": False, "sent": False, "queued": False, "error": "bad_email", "message": "Некорректный email"}
+    subject = (req.subject or "").strip()
+    body = (req.body or "").strip()
+    if not subject or not body:
+        return {
+            "ok": False,
+            "sent": False,
+            "queued": False,
+            "error": "subject_or_body_required",
+            "message": "Нужны subject и body",
+        }
+
+    def _send() -> None:
+        attachments = []
+        if req.attach_presentation and WELCOME_PDF_PATH and os.path.isfile(WELCOME_PDF_PATH):
+            attachments.append(
+                {
+                    "path": WELCOME_PDF_PATH,
+                    "filename": os.path.basename(WELCOME_PDF_PATH),
+                    "subtype": "pdf",
+                }
+            )
+        try:
+            send_email_to(
+                to,
+                subject,
+                body,
+                reply_to=(req.reply_to or WELCOME_CONTACT_EMAIL or SMTP_USER or None),
+                attachments=attachments or None,
+            )
+            write_log(
+                {
+                    "status": "email_sent",
+                    "to": to,
+                    "subject": subject,
+                    "attach_presentation": bool(req.attach_presentation),
+                }
+            )
+            logger.info("[EMAIL SEND] ok to=%s subject=%s", to, subject[:80])
+        except Exception as exc:
+            logger.exception("[EMAIL SEND] failed to=%s", to)
+            write_log(
+                {
+                    "status": "email_send_failed",
+                    "to": to,
+                    "subject": subject,
+                    "error": str(exc),
+                }
+            )
+
+    background_tasks.add_task(_send)
+    return {
+        "ok": True,
+        "queued": True,
+        "sent": True,
+        "to": to,
+        "subject": subject,
+        "message": f"Письмо поставлено в очередь на отправку на {to}",
+    }
+
+
+@app.post("/api/welcome/presentation")
+async def welcome_presentation(
+    req: WelcomePresentationRequest,
+    background_tasks: BackgroundTasks,
+    x_webhook_token: str = Header(None),
+):
+    """Queue welcome PDF email. Called by ava-calendar after booking."""
+    if x_webhook_token != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="bad token")
+    email = (req.attendee_email or "").strip()
+    if not email:
+        return {"ok": False, "queued": False, "error": "attendee_email_required"}
+    background_tasks.add_task(
+        _send_welcome_presentation_email_logged,
+        email,
+        req.summary or "",
+        req.description or "",
+        req.meeting_start or "",
+        req.telemost_join_url or "",
+    )
+    return {
+        "ok": True,
+        "queued": True,
+        "email_queued": True,
+        "attendee_email": email,
+        "message": "Письмо с презентацией поставлено в очередь на отправку",
+    }
+
 
 # --------------------
 # WEBHOOK
