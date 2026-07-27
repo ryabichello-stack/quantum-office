@@ -1,4 +1,4 @@
-"""IMAP mail ingest — inbound + outbound (Sent)."""
+"""IMAP mail ingest — inbound + outbound (Sent). Supports multiple mailboxes."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import imaplib
 import logging
 import os
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from dotenv import load_dotenv
@@ -26,8 +27,58 @@ def _env(name: str, default: str = "") -> str:
     return (os.getenv(name) or default).strip()
 
 
+@dataclass(frozen=True)
+class MailAccount:
+    username: str
+    password: str
+    host: str = "imap.mail.ru"
+    port: int = 993
+    label: str = ""
+
+    @property
+    def id(self) -> str:
+        return (self.label or self.username).strip().lower()
+
+
+def configured_mail_accounts() -> list[MailAccount]:
+    """Primary MAIL_* plus optional MAIL2_* … MAIL9_* accounts."""
+    accounts: list[MailAccount] = []
+    primary_user = _env("MAIL_USERNAME")
+    primary_pass = os.getenv("MAIL_PASSWORD") or ""
+    if primary_user and primary_pass:
+        accounts.append(
+            MailAccount(
+                username=primary_user,
+                password=primary_pass,
+                host=_env("IMAP_HOST") or "imap.mail.ru",
+                port=int(_env("IMAP_PORT") or "993"),
+                label=_env("MAIL_LABEL") or primary_user,
+            )
+        )
+
+    for i in range(2, 10):
+        user = _env(f"MAIL{i}_USERNAME")
+        password = os.getenv(f"MAIL{i}_PASSWORD") or ""
+        if not user or not password:
+            continue
+        accounts.append(
+            MailAccount(
+                username=user,
+                password=password,
+                host=_env(f"MAIL{i}_IMAP_HOST") or _env("IMAP_HOST") or "imap.mail.ru",
+                port=int(_env(f"MAIL{i}_IMAP_PORT") or _env("IMAP_PORT") or "993"),
+                label=_env(f"MAIL{i}_LABEL") or user,
+            )
+        )
+    return accounts
+
+
 def imap_configured() -> bool:
-    return bool(_env("MAIL_USERNAME") and os.getenv("MAIL_PASSWORD") and (_env("IMAP_HOST") or "imap.mail.ru"))
+    return bool(configured_mail_accounts())
+
+
+def imap_account_usernames() -> list[str]:
+    return [a.username for a in configured_mail_accounts()]
 
 
 def _decode_header(value: str | None) -> str:
@@ -52,7 +103,6 @@ def _named_addrs(raw: str | None) -> list[tuple[str, str]]:
         a = (addr or "").strip().lower()
         if not a or "@" not in a:
             continue
-        # drop garbage if address still contains < or quotes
         m = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", a)
         if not m:
             continue
@@ -83,7 +133,6 @@ def _plain_body(msg: email.message.Message, limit: int = 50000) -> str:
                 payload = part.get_payload(decode=True) or b""
                 charset = part.get_content_charset() or "utf-8"
                 return payload.decode(charset, errors="replace")[:limit]
-        # fallback html stripped lightly
         for part in msg.walk():
             if part.get_content_type() == "text/html":
                 payload = part.get_payload(decode=True) or b""
@@ -96,13 +145,9 @@ def _plain_body(msg: email.message.Message, limit: int = 50000) -> str:
     return payload.decode(charset, errors="replace")[:limit]
 
 
-def _open_imap() -> imaplib.IMAP4_SSL:
-    host = _env("IMAP_HOST") or "imap.mail.ru"
-    port = int(_env("IMAP_PORT") or "993")
-    user = _env("MAIL_USERNAME")
-    password = os.getenv("MAIL_PASSWORD") or ""
-    client = imaplib.IMAP4_SSL(host, port)
-    client.login(user, password)
+def _open_imap(account: MailAccount) -> imaplib.IMAP4_SSL:
+    client = imaplib.IMAP4_SSL(account.host, account.port)
+    client.login(account.username, account.password)
     return client
 
 
@@ -139,7 +184,6 @@ def _list_mailboxes(client: imaplib.IMAP4_SSL) -> list[str]:
         if not raw:
             continue
         line = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw)
-        # last quoted token is mailbox name
         m = re.search(r'"([^"]*)"\s*$', line)
         if m:
             names.append(m.group(1))
@@ -150,34 +194,30 @@ def _list_mailboxes(client: imaplib.IMAP4_SSL) -> list[str]:
     return names
 
 
-def ingest_mailbox(
+def _ingest_one_account(
     repo: BrainRepository,
+    account: MailAccount,
     *,
     tenant_id: str,
-    direction: str = "both",
-    limit: int = 200,
+    direction: str,
+    limit: int,
 ) -> dict[str, Any]:
-    """Fetch recent messages and upsert into brain store."""
-    if not imap_configured():
-        return {"ok": False, "error": "imap_not_configured", "created": 0}
-
     directions = ["inbound", "outbound"] if direction == "both" else [direction]
-    client = _open_imap()
+    client = _open_imap(account)
     created = 0
     skipped = 0
     errors: list[str] = []
+    local_user = account.username.lower()
 
     try:
         available = _list_mailboxes(client)
-        logger.info("imap mailboxes: %s", available[:30])
+        logger.info("imap %s mailboxes: %s", account.username, available[:30])
 
         for d in directions:
             folders = _folder_candidates(d)
-            # Also auto-detect Sent/INBOX from LIST
             if d == "outbound":
                 for name in available:
                     low = name.lower()
-                    # Mail.ru Sent often appears as modified UTF-7 (&BB4EQgQ... = Отправленные)
                     if (
                         "sent" in low
                         or name.startswith("&BB4EQgQ")
@@ -187,7 +227,6 @@ def ingest_mailbox(
             if d == "inbound":
                 folders = ["INBOX", *folders]
 
-            # de-dupe preserving order
             seen: set[str] = set()
             uniq_folders: list[str] = []
             for f in folders:
@@ -197,7 +236,6 @@ def ingest_mailbox(
 
             selected = None
             for folder in uniq_folders:
-                # skip obvious non-ascii if encode fails hard — helper handles it
                 if _select_folder(client, folder):
                     selected = folder
                     break
@@ -232,9 +270,12 @@ def ingest_mailbox(
                     a: n for n, a in [*from_named, *to_named, *cc_named] if n and a
                 }
                 body = _plain_body(msg)
-                date_tuple = email.utils.parsedate_to_datetime(msg.get("Date")) if msg.get("Date") else None
+                date_tuple = (
+                    email.utils.parsedate_to_datetime(msg.get("Date"))
+                    if msg.get("Date")
+                    else None
+                )
                 sent_at = date_tuple.isoformat() if date_tuple else None
-                local_user = _env("MAIL_USERNAME").lower()
                 dir_final = d
                 if d == "outbound" or (from_email and from_email == local_user):
                     dir_final = "outbound"
@@ -260,18 +301,68 @@ def ingest_mailbox(
                     else:
                         skipped += 1
                 except Exception as exc:  # noqa: BLE001
-                    logger.exception("ingest mail failed")
-                    errors.append(f"{mid}:{exc}")
+                    logger.exception("ingest mail failed account=%s", account.username)
+                    errors.append(f"{account.username}:{mid}:{exc}")
     finally:
         try:
             client.logout()
         except Exception:  # noqa: BLE001
             pass
 
-    repo.set_ingest_state(f"mail:{direction}:last", f"created={created};skipped={skipped}")
     return {
         "ok": True,
+        "account": account.username,
         "created": created,
         "skipped": skipped,
         "errors": errors[:20],
+    }
+
+
+def ingest_mailbox(
+    repo: BrainRepository,
+    *,
+    tenant_id: str,
+    direction: str = "both",
+    limit: int = 200,
+) -> dict[str, Any]:
+    """Fetch recent messages from all configured mailboxes and upsert into brain store."""
+    accounts = configured_mail_accounts()
+    if not accounts:
+        return {"ok": False, "error": "imap_not_configured", "created": 0}
+
+    created = 0
+    skipped = 0
+    errors: list[str] = []
+    per_account: list[dict[str, Any]] = []
+
+    for account in accounts:
+        try:
+            one = _ingest_one_account(
+                repo,
+                account,
+                tenant_id=tenant_id,
+                direction=direction,
+                limit=limit,
+            )
+            per_account.append(one)
+            created += int(one.get("created") or 0)
+            skipped += int(one.get("skipped") or 0)
+            errors.extend(one.get("errors") or [])
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("imap account failed: %s", account.username)
+            err = {"ok": False, "account": account.username, "error": str(exc)}
+            per_account.append(err)
+            errors.append(f"{account.username}:{exc}")
+
+    repo.set_ingest_state(
+        f"mail:{direction}:last",
+        f"accounts={len(accounts)};created={created};skipped={skipped}",
+    )
+    return {
+        "ok": all(a.get("ok") for a in per_account) if per_account else False,
+        "created": created,
+        "skipped": skipped,
+        "accounts": [a.username for a in accounts],
+        "per_account": per_account,
+        "errors": errors[:40],
     }

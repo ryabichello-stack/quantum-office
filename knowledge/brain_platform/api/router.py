@@ -12,7 +12,11 @@ from brain_platform.auth import DEFAULT_TENANT, principal_from_headers, require_
 from brain_platform.db.factory import get_brain_repo, reset_repo_singleton
 from brain_platform.ingest.files import ingest_files
 from brain_platform.ingest.legacy_faq import ingest_legacy_faq
-from brain_platform.ingest.mail import imap_configured, ingest_mailbox
+from brain_platform.ingest.mail import (
+    imap_account_usernames,
+    imap_configured,
+    ingest_mailbox,
+)
 from brain_platform.search.engine import BrainSearch
 
 router = APIRouter(prefix="/api/brain", tags=["second-brain"])
@@ -115,6 +119,7 @@ def brain_health():
         "service": "second-brain",
         "tenant_default": tenant,
         "imap_configured": imap_configured(),
+        "imap_accounts": imap_account_usernames(),
         "stats": repo.stats(tenant),
         "legacy_knowledge_untouched": True,
     }
@@ -290,6 +295,7 @@ def brain_ingest_status(
         "state": state,
         "stats": repo.stats(DEFAULT_TENANT),
         "imap_configured": imap_configured(),
+        "imap_accounts": imap_account_usernames(),
     }
 
 
