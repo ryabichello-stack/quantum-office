@@ -1,0 +1,943 @@
+version: 1
+source: vault/legacy/quantum_labs.v1.md
+sha256: 63391b59435a0b42201bb701356868363de89792fd442895cd92163991ad5eff
+section_count: 117
+note: DRAFT proposals only — no files moved. Pending ADR-0001 Accept.
+sections:
+- index: 0
+  title: Quantum Payouts / Quantum Labs — база знаний для голосового ассистента
+  level: 1
+  chars: 929
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/000-quantum-payouts-quantum-labs-база-знаний.md
+  source_anchor: Quantum Payouts / Quantum Labs — база знаний для голосового ассистента
+- index: 1
+  title: 1. Быстрый профиль продукта
+  level: 2
+  chars: 518
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/001-1-быстрый-профиль-продукта.md
+  source_anchor: 1. Быстрый профиль продукта
+- index: 2
+  title: 2. Что ИИ‑секретарь должен говорить о Quantum Payouts
+  level: 2
+  chars: 56
+  proposed_type: sop
+  proposed_visibility: team:sales
+  proposed_path: products/quantum-payouts/_import/002-2-что-ии-секретарь-должен-говорить-о-qua.md
+  source_anchor: 2. Что ИИ‑секретарь должен говорить о Quantum Payouts
+- index: 3
+  title: 2.1. Короткое описание
+  level: 2
+  chars: 100
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/003-2-1-короткое-описание.md
+  source_anchor: 2.1. Короткое описание
+- index: 4
+  title: 2.2. Безопасные сильные формулировки
+  level: 2
+  chars: 360
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/004-2-2-безопасные-сильные-формулировки.md
+  source_anchor: 2.2. Безопасные сильные формулировки
+- index: 5
+  title: 2.3. Чего не говорить
+  level: 2
+  chars: 468
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/005-2-3-чего-не-говорить.md
+  source_anchor: 2.3. Чего не говорить
+- index: 6
+  title: 3. Что нельзя обещать и как отвечать безопасно
+  level: 2
+  chars: 49
+  proposed_type: legal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/006-3-что-нельзя-обещать-и-как-отвечать-безо.md
+  source_anchor: 3. Что нельзя обещать и как отвечать безопасно
+- index: 7
+  title: 3.1. Общий принцип
+  level: 2
+  chars: 312
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/007-3-1-общий-принцип.md
+  source_anchor: 3.1. Общий принцип
+- index: 8
+  title: 3.2. Формулы безопасного ответа
+  level: 2
+  chars: 548
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/008-3-2-формулы-безопасного-ответа.md
+  source_anchor: 3.2. Формулы безопасного ответа
+- index: 9
+  title: 4. Кому подходит сервис
+  level: 2
+  chars: 608
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/009-4-кому-подходит-сервис.md
+  source_anchor: 4. Кому подходит сервис
+- index: 10
+  title: 5. Кому сервис не подходит или требует отдельной проработки
+  level: 2
+  chars: 641
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/010-5-кому-сервис-не-подходит-или-требует-от.md
+  source_anchor: 5. Кому сервис не подходит или требует отдельной проработки
+- index: 11
+  title: 6. Базовый сценарий звонка
+  level: 2
+  chars: 722
+  proposed_type: sop
+  proposed_visibility: team:sales
+  proposed_path: products/quantum-payouts/_import/011-6-базовый-сценарий-звонка.md
+  source_anchor: 6. Базовый сценарий звонка
+- index: 12
+  title: 7. Обязательные квалификационные вопросы
+  level: 2
+  chars: 43
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/012-7-обязательные-квалификационные-вопросы.md
+  source_anchor: 7. Обязательные квалификационные вопросы
+- index: 13
+  title: 7.1. Базовые
+  level: 2
+  chars: 337
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/013-7-1-базовые.md
+  source_anchor: 7.1. Базовые
+- index: 14
+  title: 7.2. По процессу
+  level: 2
+  chars: 255
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/014-7-2-по-процессу.md
+  source_anchor: 7.2. По процессу
+- index: 15
+  title: 7.3. По правовой модели
+  level: 2
+  chars: 293
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/015-7-3-по-правовой-модели.md
+  source_anchor: 7.3. По правовой модели
+- index: 16
+  title: 7.4. Красные флаги
+  level: 2
+  chars: 388
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/016-7-4-красные-флаги.md
+  source_anchor: 7.4. Красные флаги
+- index: 17
+  title: 8. FAQ по продукту
+  level: 2
+  chars: 21
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/017-8-faq-по-продукту.md
+  source_anchor: 8. FAQ по продукту
+- index: 18
+  title: 8.1. Что делает Quantum Payouts?
+  level: 2
+  chars: 166
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/018-8-1-что-делает-quantum-payouts.md
+  source_anchor: 8.1. Что делает Quantum Payouts?
+- index: 19
+  title: 8.2. Куда можно отправлять выплаты?
+  level: 2
+  chars: 102
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/019-8-2-куда-можно-отправлять-выплаты.md
+  source_anchor: 8.2. Куда можно отправлять выплаты?
+- index: 20
+  title: 8.3. Как инициировать выплату?
+  level: 2
+  chars: 75
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/020-8-3-как-инициировать-выплату.md
+  source_anchor: 8.3. Как инициировать выплату?
+- index: 21
+  title: 8.4. Как быстро зачисляются деньги?
+  level: 2
+  chars: 198
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/021-8-4-как-быстро-зачисляются-деньги.md
+  source_anchor: 8.4. Как быстро зачисляются деньги?
+- index: 22
+  title: 8.5. Какая комиссия?
+  level: 2
+  chars: 117
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/022-8-5-какая-комиссия.md
+  source_anchor: 8.5. Какая комиссия?
+- index: 23
+  title: 8.6. С какими банками работаете?
+  level: 2
+  chars: 231
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/023-8-6-с-какими-банками-работаете.md
+  source_anchor: 8.6. С какими банками работаете?
+- index: 24
+  title: 8.7. Можно ли разграничивать роли сотрудников?
+  level: 2
+  chars: 120
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/024-8-7-можно-ли-разграничивать-роли-сотрудн.md
+  source_anchor: 8.7. Можно ли разграничивать роли сотрудников?
+- index: 25
+  title: 8.8. Какие документы и отчеты есть?
+  level: 2
+  chars: 151
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/025-8-8-какие-документы-и-отчеты-есть.md
+  source_anchor: 8.8. Какие документы и отчеты есть?
+- index: 26
+  title: 8.9. Подходит ли сервис для выплат блогерам / агентам / исполнителям?
+  level: 2
+  chars: 149
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/026-8-9-подходит-ли-сервис-для-выплат-блогер.md
+  source_anchor: 8.9. Подходит ли сервис для выплат блогерам / агентам / исполнителям?
+- index: 27
+  title: '9. Юридический контур: безопасные формулировки'
+  level: 2
+  chars: 1027
+  proposed_type: legal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/027-9-юридический-контур-безопасные-формулир.md
+  source_anchor: '9. Юридический контур: безопасные формулировки'
+- index: 28
+  title: 10. НПД / самозанятые / чеки ФНС
+  level: 2
+  chars: 35
+  proposed_type: legal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/028-10-нпд-самозанятые-чеки-фнс.md
+  source_anchor: 10. НПД / самозанятые / чеки ФНС
+- index: 29
+  title: 10.1. Что можно говорить
+  level: 2
+  chars: 248
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/029-10-1-что-можно-говорить.md
+  source_anchor: 10.1. Что можно говорить
+- index: 30
+  title: 10.2. Что нельзя обещать без уточнения
+  level: 2
+  chars: 339
+  proposed_type: legal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/030-10-2-что-нельзя-обещать-без-уточнения.md
+  source_anchor: 10.2. Что нельзя обещать без уточнения
+- index: 31
+  title: 10.3. Если клиент спрашивает про НПД прямо
+  level: 2
+  chars: 253
+  proposed_type: legal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/031-10-3-если-клиент-спрашивает-про-нпд-прям.md
+  source_anchor: 10.3. Если клиент спрашивает про НПД прямо
+- index: 32
+  title: 11. Личный кабинет, доступы и безопасность
+  level: 2
+  chars: 757
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/032-11-личный-кабинет-доступы-и-безопасность.md
+  source_anchor: 11. Личный кабинет, доступы и безопасность
+- index: 33
+  title: 12. API, реестры, 1С, интеграции
+  level: 2
+  chars: 629
+  proposed_type: api
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/033-12-api-реестры-1с-интеграции.md
+  source_anchor: 12. API, реестры, 1С, интеграции
+- index: 34
+  title: 13. Банки‑партнеры и модель расчетов
+  level: 2
+  chars: 618
+  proposed_type: reference
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/034-13-банки-партнеры-и-модель-расчетов.md
+  source_anchor: 13. Банки‑партнеры и модель расчетов
+- index: 35
+  title: 14. Сценарии клиентов и как их разбирать
+  level: 2
+  chars: 43
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/035-14-сценарии-клиентов-и-как-их-разбирать.md
+  source_anchor: 14. Сценарии клиентов и как их разбирать
+- index: 36
+  title: 14.1. Базовый payout‑кейс
+  level: 2
+  chars: 229
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/036-14-1-базовый-payout-кейс.md
+  source_anchor: 14.1. Базовый payout‑кейс
+- index: 37
+  title: 14.2. Платформа с выплатами агентам / блогерам
+  level: 2
+  chars: 344
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/037-14-2-платформа-с-выплатами-агентам-блоге.md
+  source_anchor: 14.2. Платформа с выплатами агентам / блогерам
+- index: 38
+  title: 14.3. Сложный фондовый / “одним платежом пополнить и всем раздать” кейс
+  level: 2
+  chars: 299
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/038-14-3-сложный-фондовый-одним-платежом-поп.md
+  source_anchor: 14.3. Сложный фондовый / “одним платежом пополнить и всем раздать”
+    кейс
+- index: 39
+  title: 14.4. Выплаты ИП и самозанятым
+  level: 2
+  chars: 156
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/039-14-4-выплаты-ип-и-самозанятым.md
+  source_anchor: 14.4. Выплаты ИП и самозанятым
+- index: 40
+  title: 14.5. B2B‑вопрос про массовые выплаты внештатным
+  level: 2
+  chars: 172
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/040-14-5-b2b-вопрос-про-массовые-выплаты-вне.md
+  source_anchor: 14.5. B2B‑вопрос про массовые выплаты внештатным
+- index: 41
+  title: 15. Работа с возражениями
+  level: 2
+  chars: 28
+  proposed_type: sop
+  proposed_visibility: team:sales
+  proposed_path: products/quantum-payouts/_import/041-15-работа-с-возражениями.md
+  source_anchor: 15. Работа с возражениями
+- index: 42
+  title: 15.1. “У нас уже есть банк/провайдер”
+  level: 2
+  chars: 216
+  proposed_type: reference
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/042-15-1-у-нас-уже-есть-банк-провайдер.md
+  source_anchor: 15.1. “У нас уже есть банк/провайдер”
+- index: 43
+  title: 15.2. “Нам нужна самая низкая комиссия”
+  level: 2
+  chars: 188
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/043-15-2-нам-нужна-самая-низкая-комиссия.md
+  source_anchor: 15.2. “Нам нужна самая низкая комиссия”
+- index: 44
+  title: 15.3. “Мы пока сами не понимаем, как оформить”
+  level: 2
+  chars: 189
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/044-15-3-мы-пока-сами-не-понимаем-как-оформи.md
+  source_anchor: 15.3. “Мы пока сами не понимаем, как оформить”
+- index: 45
+  title: 15.4. “Нам надо одним платежом завести деньги и дальше раздать всем”
+  level: 2
+  chars: 235
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/045-15-4-нам-надо-одним-платежом-завести-ден.md
+  source_anchor: 15.4. “Нам надо одним платежом завести деньги и дальше раздать всем”
+- index: 46
+  title: 16. Когда обязательно переводить на менеджера
+  level: 2
+  chars: 664
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/046-16-когда-обязательно-переводить-на-менед.md
+  source_anchor: 16. Когда обязательно переводить на менеджера
+- index: 47
+  title: 17. Шаблоны ответов для чатов и почты
+  level: 2
+  chars: 40
+  proposed_type: sop
+  proposed_visibility: team:sales
+  proposed_path: products/quantum-payouts/_import/047-17-шаблоны-ответов-для-чатов-и-почты.md
+  source_anchor: 17. Шаблоны ответов для чатов и почты
+- index: 48
+  title: 17.1. Общий первый ответ
+  level: 2
+  chars: 27
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/048-17-1-общий-первый-ответ.md
+  source_anchor: 17.1. Общий первый ответ
+- index: 49
+  title: 17.2. Ответ про НПД
+  level: 2
+  chars: 168
+  proposed_type: legal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/049-17-2-ответ-про-нпд.md
+  source_anchor: 17.2. Ответ про НПД
+- index: 50
+  title: 17.3. Ответ про номинальные счета
+  level: 2
+  chars: 228
+  proposed_type: legal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/050-17-3-ответ-про-номинальные-счета.md
+  source_anchor: 17.3. Ответ про номинальные счета
+- index: 51
+  title: 17.4. Ответ про ставку
+  level: 2
+  chars: 214
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/051-17-4-ответ-про-ставку.md
+  source_anchor: 17.4. Ответ про ставку
+- index: 52
+  title: 18. Что фиксировать после разговора
+  level: 2
+  chars: 406
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/052-18-что-фиксировать-после-разговора.md
+  source_anchor: 18. Что фиксировать после разговора
+- index: 53
+  title: 19. Decision tree для ИИ‑секретаря
+  level: 2
+  chars: 674
+  proposed_type: sop
+  proposed_visibility: team:sales
+  proposed_path: products/quantum-payouts/_import/053-19-decision-tree-для-ии-секретаря.md
+  source_anchor: 19. Decision tree для ИИ‑секретаря
+- index: 54
+  title: 20. Краткий словарь терминов
+  level: 2
+  chars: 709
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/054-20-краткий-словарь-терминов.md
+  source_anchor: 20. Краткий словарь терминов
+- index: 55
+  title: Приложение А. Короткие ответы на 10 самых частых вопросов
+  level: 1
+  chars: 59
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/055-приложение-а-короткие-ответы-на-10-самых.md
+  source_anchor: Приложение А. Короткие ответы на 10 самых частых вопросов
+- index: 56
+  title: 'Вопрос: Можно ли у вас делать массовые выплаты физлицам?'
+  level: 3
+  chars: 102
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/056-вопрос-можно-ли-у-вас-делать-массовые-вы.md
+  source_anchor: 'Вопрос: Можно ли у вас делать массовые выплаты физлицам?'
+- index: 57
+  title: 'Вопрос: Можно ли платить самозанятым?'
+  level: 3
+  chars: 107
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/057-вопрос-можно-ли-платить-самозанятым.md
+  source_anchor: 'Вопрос: Можно ли платить самозанятым?'
+- index: 58
+  title: 'Вопрос: Можно ли работать по API?'
+  level: 3
+  chars: 92
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/058-вопрос-можно-ли-работать-по-api.md
+  source_anchor: 'Вопрос: Можно ли работать по API?'
+- index: 59
+  title: 'Вопрос: Можно ли из 1С?'
+  level: 3
+  chars: 68
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/059-вопрос-можно-ли-из-1с.md
+  source_anchor: 'Вопрос: Можно ли из 1С?'
+- index: 60
+  title: 'Вопрос: Какая комиссия?'
+  level: 3
+  chars: 89
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/060-вопрос-какая-комиссия.md
+  source_anchor: 'Вопрос: Какая комиссия?'
+- index: 61
+  title: 'Вопрос: Как быстро приходят деньги?'
+  level: 3
+  chars: 80
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/061-вопрос-как-быстро-приходят-деньги.md
+  source_anchor: 'Вопрос: Как быстро приходят деньги?'
+- index: 62
+  title: 'Вопрос: Можно ли на карты и через СБП?'
+  level: 3
+  chars: 74
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/062-вопрос-можно-ли-на-карты-и-через-сбп.md
+  source_anchor: 'Вопрос: Можно ли на карты и через СБП?'
+- index: 63
+  title: 'Вопрос: Вы банк?'
+  level: 3
+  chars: 76
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/063-вопрос-вы-банк.md
+  source_anchor: 'Вопрос: Вы банк?'
+- index: 64
+  title: 'Вопрос: Подойдет ли это для блогеров/агентов?'
+  level: 3
+  chars: 123
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/064-вопрос-подойдет-ли-это-для-блогеров-аген.md
+  source_anchor: 'Вопрос: Подойдет ли это для блогеров/агентов?'
+- index: 65
+  title: 'Вопрос: Можем ли мы просто пополнить один счет и раздать всем?'
+  level: 3
+  chars: 155
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/065-вопрос-можем-ли-мы-просто-пополнить-один.md
+  source_anchor: 'Вопрос: Можем ли мы просто пополнить один счет и раздать всем?'
+- index: 66
+  title: Приложение Б. Стандарт закрытия разговора
+  level: 1
+  chars: 837
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/066-приложение-б-стандарт-закрытия-разговора.md
+  source_anchor: Приложение Б. Стандарт закрытия разговора
+- index: 67
+  title: 1. Краткая памятка для ИИ‑секретаря
+  level: 2
+  chars: 810
+  proposed_type: sop
+  proposed_visibility: team:sales
+  proposed_path: products/quantum-payouts/_import/067-1-краткая-памятка-для-ии-секретаря.md
+  source_anchor: 1. Краткая памятка для ИИ‑секретаря
+- index: 68
+  title: '2. О продукте: что говорить коротко'
+  level: 2
+  chars: 38
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/068-2-о-продукте-что-говорить-коротко.md
+  source_anchor: '2. О продукте: что говорить коротко'
+- index: 69
+  title: 'Короткий ответ на вопрос “что вы делаете”:'
+  level: 2
+  chars: 45
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/069-короткий-ответ-на-вопрос-что-вы-делаете.md
+  source_anchor: 'Короткий ответ на вопрос “что вы делаете”:'
+- index: 70
+  title: 'Короткий ответ на вопрос “в чем ценность”:'
+  level: 2
+  chars: 269
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/070-короткий-ответ-на-вопрос-в-чем-ценность.md
+  source_anchor: 'Короткий ответ на вопрос “в чем ценность”:'
+- index: 71
+  title: 'Короткий ответ на вопрос “кому подходит”:'
+  level: 2
+  chars: 284
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/071-короткий-ответ-на-вопрос-кому-подходит.md
+  source_anchor: 'Короткий ответ на вопрос “кому подходит”:'
+- index: 72
+  title: 4. Что ИИ‑секретарь должен обязательно выяснить у лида
+  level: 2
+  chars: 871
+  proposed_type: sop
+  proposed_visibility: team:sales
+  proposed_path: products/quantum-payouts/_import/072-4-что-ии-секретарь-должен-обязательно-вы.md
+  source_anchor: 4. Что ИИ‑секретарь должен обязательно выяснить у лида
+- index: 73
+  title: 6. Ключевые ответы на частые вопросы
+  level: 2
+  chars: 39
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/073-6-ключевые-ответы-на-частые-вопросы.md
+  source_anchor: 6. Ключевые ответы на частые вопросы
+- index: 74
+  title: Вы работаете через номинальные счета?
+  level: 2
+  chars: 224
+  proposed_type: legal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/074-вы-работаете-через-номинальные-счета.md
+  source_anchor: Вы работаете через номинальные счета?
+- index: 75
+  title: Договор на выплаты заключается с вами?
+  level: 2
+  chars: 225
+  proposed_type: legal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/075-договор-на-выплаты-заключается-с-вами.md
+  source_anchor: Договор на выплаты заключается с вами?
+- index: 76
+  title: Можно ли платить самозанятым?
+  level: 2
+  chars: 160
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/076-можно-ли-платить-самозанятым.md
+  source_anchor: Можно ли платить самозанятым?
+- index: 77
+  title: Есть ли проверка статуса НПД перед транзакцией?
+  level: 2
+  chars: 157
+  proposed_type: legal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/077-есть-ли-проверка-статуса-нпд-перед-транз.md
+  source_anchor: Есть ли проверка статуса НПД перед транзакцией?
+- index: 78
+  title: Можно ли автоматически работать с чеками ФНС?
+  level: 2
+  chars: 172
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/078-можно-ли-автоматически-работать-с-чеками.md
+  source_anchor: Можно ли автоматически работать с чеками ФНС?
+- index: 79
+  title: Можно ли выплачивать агентские / блогерские вознаграждения?
+  level: 2
+  chars: 238
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/079-можно-ли-выплачивать-агентские-блогерски.md
+  source_anchor: Можно ли выплачивать агентские / блогерские вознаграждения?
+- index: 80
+  title: Какая комиссия?
+  level: 2
+  chars: 161
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/080-какая-комиссия.md
+  source_anchor: Какая комиссия?
+- index: 81
+  title: Есть ли API?
+  level: 2
+  chars: 114
+  proposed_type: api
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/081-есть-ли-api.md
+  source_anchor: Есть ли API?
+- index: 82
+  title: Какие банки поддерживаются?
+  level: 2
+  chars: 153
+  proposed_type: reference
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/082-какие-банки-поддерживаются.md
+  source_anchor: Какие банки поддерживаются?
+- index: 83
+  title: Как быстро запускаетесь?
+  level: 2
+  chars: 165
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/083-как-быстро-запускаетесь.md
+  source_anchor: Как быстро запускаетесь?
+- index: 84
+  title: 7. Скрипт первичной квалификации
+  level: 2
+  chars: 35
+  proposed_type: sop
+  proposed_visibility: team:sales
+  proposed_path: products/quantum-payouts/_import/084-7-скрипт-первичной-квалификации.md
+  source_anchor: 7. Скрипт первичной квалификации
+- index: 85
+  title: Открытие
+  level: 2
+  chars: 11
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/085-открытие.md
+  source_anchor: Открытие
+- index: 86
+  title: Выявление модели
+  level: 2
+  chars: 119
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/086-выявление-модели.md
+  source_anchor: Выявление модели
+- index: 87
+  title: Каналы и интеграция
+  level: 2
+  chars: 150
+  proposed_type: api
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/087-каналы-и-интеграция.md
+  source_anchor: Каналы и интеграция
+- index: 88
+  title: Юр. контур
+  level: 2
+  chars: 129
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/088-юр-контур.md
+  source_anchor: Юр. контур
+- index: 89
+  title: Следующий шаг
+  level: 2
+  chars: 197
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/089-следующий-шаг.md
+  source_anchor: Следующий шаг
+- index: 90
+  title: '8. Эскалация: когда ИИ‑секретарь обязан перевести разговор человеку'
+  level: 2
+  chars: 660
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/090-8-эскалация-когда-ии-секретарь-обязан-пе.md
+  source_anchor: '8. Эскалация: когда ИИ‑секретарь обязан перевести разговор человеку'
+- index: 91
+  title: 9. Юридические и регуляторные ориентиры для ответов
+  level: 2
+  chars: 218
+  proposed_type: legal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/091-9-юридические-и-регуляторные-ориентиры-д.md
+  source_anchor: 9. Юридические и регуляторные ориентиры для ответов
+- index: 92
+  title: 'ГК РФ: оферта и публичная оферта'
+  level: 2
+  chars: 281
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/092-гк-рф-оферта-и-публичная-оферта.md
+  source_anchor: 'ГК РФ: оферта и публичная оферта'
+- index: 93
+  title: '152‑ФЗ: персональные данные'
+  level: 2
+  chars: 235
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/093-152-фз-персональные-данные.md
+  source_anchor: '152‑ФЗ: персональные данные'
+- index: 94
+  title: '38‑ФЗ: реклама'
+  level: 2
+  chars: 126
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/094-38-фз-реклама.md
+  source_anchor: '38‑ФЗ: реклама'
+- index: 95
+  title: '63‑ФЗ: электронная подпись'
+  level: 2
+  chars: 176
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/095-63-фз-электронная-подпись.md
+  source_anchor: '63‑ФЗ: электронная подпись'
+- index: 96
+  title: '161‑ФЗ: национальная платежная система'
+  level: 2
+  chars: 253
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/096-161-фз-национальная-платежная-система.md
+  source_anchor: '161‑ФЗ: национальная платежная система'
+- index: 97
+  title: '115‑ФЗ: комплаенс'
+  level: 2
+  chars: 180
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/097-115-фз-комплаенс.md
+  source_anchor: '115‑ФЗ: комплаенс'
+- index: 98
+  title: Самозанятые / НПД
+  level: 2
+  chars: 234
+  proposed_type: legal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/098-самозанятые-нпд.md
+  source_anchor: Самозанятые / НПД
+- index: 99
+  title: 10. Политика ответов на сложные вопросы
+  level: 2
+  chars: 42
+  proposed_type: faq
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/099-10-политика-ответов-на-сложные-вопросы.md
+  source_anchor: 10. Политика ответов на сложные вопросы
+- index: 100
+  title: “Вы можете сделать так же, как у сервиса N?”
+  level: 2
+  chars: 206
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/100-вы-можете-сделать-так-же-как-у-сервиса-n.md
+  source_anchor: “Вы можете сделать так же, как у сервиса N?”
+- index: 101
+  title: “Нам нужно одним платежом завести 100 млн и распределить сотням блогеров”
+  level: 2
+  chars: 249
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/101-нам-нужно-одним-платежом-завести-100-млн.md
+  source_anchor: “Нам нужно одним платежом завести 100 млн и распределить сотням блогеров”
+- index: 102
+  title: “Сделаете без договора / без банка / просто через вас?”
+  level: 2
+  chars: 157
+  proposed_type: legal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/102-сделаете-без-договора-без-банка-просто-ч.md
+  source_anchor: “Сделаете без договора / без банка / просто через вас?”
+- index: 103
+  title: “Дайте точную цену прямо сейчас”
+  level: 2
+  chars: 197
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/103-дайте-точную-цену-прямо-сейчас.md
+  source_anchor: “Дайте точную цену прямо сейчас”
+- index: 104
+  title: 11. Внутренние красные флаги
+  level: 2
+  chars: 505
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/104-11-внутренние-красные-флаги.md
+  source_anchor: 11. Внутренние красные флаги
+- index: 105
+  title: 12. Мини‑карточки ответов для ИИ‑секретаря
+  level: 2
+  chars: 45
+  proposed_type: sop
+  proposed_visibility: team:sales
+  proposed_path: products/quantum-payouts/_import/105-12-мини-карточки-ответов-для-ии-секретар.md
+  source_anchor: 12. Мини‑карточки ответов для ИИ‑секретаря
+- index: 106
+  title: Если клиент спрашивает “что мне дальше делать?”
+  level: 2
+  chars: 219
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/106-если-клиент-спрашивает-что-мне-дальше-де.md
+  source_anchor: Если клиент спрашивает “что мне дальше делать?”
+- index: 107
+  title: Если клиент спрашивает “какие документы нужны?”
+  level: 2
+  chars: 218
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/107-если-клиент-спрашивает-какие-документы-н.md
+  source_anchor: Если клиент спрашивает “какие документы нужны?”
+- index: 108
+  title: Если клиент спрашивает “подойдет ли нам решение?”
+  level: 2
+  chars: 203
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/108-если-клиент-спрашивает-подойдет-ли-нам-р.md
+  source_anchor: Если клиент спрашивает “подойдет ли нам решение?”
+- index: 109
+  title: 13. Источники и основания
+  level: 2
+  chars: 28
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/109-13-источники-и-основания.md
+  source_anchor: 13. Источники и основания
+- index: 110
+  title: 'Внутренние основания для базы знаний:'
+  level: 2
+  chars: 274
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/110-внутренние-основания-для-базы-знаний.md
+  source_anchor: 'Внутренние основания для базы знаний:'
+- index: 111
+  title: 'Нормативные ориентиры (официальные/правовые источники):'
+  level: 2
+  chars: 704
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/111-нормативные-ориентиры-официальные-правов.md
+  source_anchor: 'Нормативные ориентиры (официальные/правовые источники):'
+- index: 112
+  title: Голосовой ассистент AVA (операционка)
+  level: 2
+  chars: 40
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/112-голосовой-ассистент-ava-операционка.md
+  source_anchor: Голосовой ассистент AVA (операционка)
+- index: 113
+  title: Контакты для клиентов
+  level: 3
+  chars: 169
+  proposed_type: sop
+  proposed_visibility: team:ops
+  proposed_path: products/quantum-payouts/_import/113-контакты-для-клиентов.md
+  source_anchor: Контакты для клиентов
+- index: 114
+  title: Запись на встречу
+  level: 3
+  chars: 296
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/114-запись-на-встречу.md
+  source_anchor: Запись на встречу
+- index: 115
+  title: Речь на звонке
+  level: 3
+  chars: 383
+  proposed_type: article_internal
+  proposed_visibility: company
+  proposed_path: products/quantum-payouts/_import/115-речь-на-звонке.md
+  source_anchor: Речь на звонке
+- index: 116
+  title: Инструмент get_company_knowledge
+  level: 3
+  chars: 162
+  proposed_type: sop
+  proposed_visibility: team:ops
+  proposed_path: products/quantum-payouts/_import/116-инструмент-get-company-knowledge.md
+  source_anchor: Инструмент get_company_knowledge

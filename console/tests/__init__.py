@@ -1,0 +1,1 @@
+"""Shim for console.tests."""

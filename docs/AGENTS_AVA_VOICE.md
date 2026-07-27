@@ -44,7 +44,7 @@ flowchart LR
 1. Mango → `mango-endpoint` → контекст `[from-mango]` → `Answer()` → `Stasis(asterisk-ai-voice-agent)`.
 2. `ai_engine` подключается по **ARI** (управление каналом) и **AudioSocket** (аудио 8 kHz, см. `audio_transport: audiosocket` в конфиге).
 3. Провайдер **`openai_realtime`** (модель и голос — в `config/ai-agent.local.yaml`).
-4. Во время разговора: `check_calendar` → `create_calendar_event` на `http://127.0.0.1:8000`.
+4. Во время разговора: `check_calendar` / `create_calendar_event` на **ava-calendar `:8014`** (Telemost через **ava-conference `:8016`**), `create_conference` напрямую на `:8016`, knowledge пока через mailer `:8000`.
 5. После звонка: webhook `mailru_post_call` → `/api/ava/post-call` (транскрипт, извлечение лида, email).
 
 ---
@@ -156,14 +156,20 @@ asterisk -rx "pjsip show endpoints"        # mango-endpoint, ava-test
 
 ---
 
-## In-call tools → ava-mailer
+## In-call tools → office services
 
-Определены в **`config/ai-agent.local.yaml`** → секции `in_call_tools` и `contexts.default.tools`.
+Определены в **`/root/ava/config/ai-agent.local.yaml`** → `in_call_tools` + `contexts.default.tools`.
 
 | Tool | HTTP | Назначение |
 |------|------|------------|
-| `check_calendar` | `POST /api/calendar/check` | `free: true/false` для слота |
-| `create_calendar_event` | `POST /api/calendar/create` | Событие + Telemost + welcome email |
+| `check_calendar` | `POST http://127.0.0.1:8014/api/calendar/check` | `free: true/false` для слота |
+| `create_calendar_event` | `POST http://127.0.0.1:8014/api/calendar/create` | Событие + Telemost (через `:8016`) + welcome (через mailer) |
+| `create_conference` | `POST http://127.0.0.1:8016/api/conferences` | Только Телемост-ссылка (без календаря) |
+| `send_email` | `POST http://127.0.0.1:8000/api/email/send` | Произвольное письмо на указанный `to` (+ optional PDF) |
+| `send_welcome_email` | `POST http://127.0.0.1:8000/api/welcome/presentation` | Готовый welcome-шаблон с презентацией |
+| `get_company_knowledge` | `POST http://127.0.0.1:8000/api/knowledge/query` | FAQ / Second Brain (mailer proxy → `:8017`) |
+
+Заголовок `X-Webhook-Token` обязателен для calendar/conference (тот же секрет, что у post-call).
 
 **Параметры:** `start` как `YYYY-MM-DD HH:MM`, timezone `Europe/Moscow` в body template.
 
@@ -171,8 +177,11 @@ asterisk -rx "pjsip show endpoints"        # mango-endpoint, ava-test
 
 - `check_calendar`: `free`
 - `create_calendar_event`: `created`, `event_url`, `telemost_created`, **`telemost_join_url`**
+- `create_conference`: `conference_ok`, `conference_id`, **`telemost_join_url`**
 
 Промпт требует: имя и email **с подтверждением** → только потом `check_calendar` → при `free=true` сразу `create_calendar_event` → фиксированная фраза об успехе.
+
+После правки YAML нужен `docker compose restart ai_engine` (одного `POST /reload` недостаточно для in-call HTTP tools).
 
 ---
 
@@ -187,11 +196,16 @@ asterisk -rx "pjsip show endpoints"        # mango-endpoint, ava-test
 
 ## Welcome email + PDF
 
-При успешном `POST /api/calendar/create` mailer вызывает `_send_welcome_presentation_email()`:
+После успешного `create_calendar_event` на **ava-calendar `:8014`**:
 
-- Включается флагами из `/opt/ava-mailer/.env`: `WELCOME_EMAIL_ENABLED`, `WELCOME_PDF_PATH`, `WELCOME_EMAIL_SUBJECT`, контакты компании.
-- PDF: по умолчанию `assets/quantum_payouts_presentation_small.pdf` под mailer.
-- В теле письма — ссылка Telemost, если создана.
+1. Календарь создаёт событие (+ Telemost через `:8016`).
+2. Календарь ставит welcome в очередь: `POST http://127.0.0.1:8000/api/welcome/presentation` (mailer).
+3. Mailer шлёт PDF-презентацию (`WELCOME_*` в `/opt/ava-mailer/.env`).
+
+Legacy: тот же welcome раньше вызывался прямо из mailer `POST /api/calendar/create` (маршрут ещё жив, но голосовая AVA на него больше не ходит).
+
+Включается флагами mailer: `WELCOME_EMAIL_ENABLED`, `WELCOME_PDF_PATH`, `WELCOME_EMAIL_SUBJECT`, контакты компании.  
+На calendar: `WELCOME_VIA_MAILER=true`, `MAILER_BASE_URL=http://127.0.0.1:8000`.
 
 Ответ API включает `welcome_email_sent`, `welcome_pdf_attached` (см. E2E `section_mailer`).
 

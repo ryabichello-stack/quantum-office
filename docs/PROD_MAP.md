@@ -9,8 +9,12 @@
 | systemd | path | bind | notes |
 |---------|------|------|-------|
 | `ava-outreach` | `/opt/ava-outreach` | `127.0.0.1:8012` | Bitrix outreach + UI under `/_ava_outreach/` |
-| `ava-mailer` | `/opt/ava-mailer` | `0.0.0.0:8000` | calendar / Telemost / post-call |
+| `ava-mailer` | `/opt/ava-mailer` | `0.0.0.0:8000` | post-call, knowledge proxy, welcome PDF, legacy calendar |
+| `ava-calendar` | `/opt/ava-calendar` | `127.0.0.1:8014` | Mail.ru CalDAV — **voice AVA tools** check/create |
+| `ava-conference` | `/opt/ava-conference` | `127.0.0.1:8016` | Telemost + invites — voice `create_conference` |
+| `ava-files` | `/opt/ava-files` | `127.0.0.1:8015` | disks/repo → email/Telegram |
 | `ava-text-bot` | `/opt/ava-text-bot` | `127.0.0.1:8011` | Telegram text bot |
+| `ava-sheets-campaign` | `/opt/ava-sheets-campaign` | `127.0.0.1:8018` | Google Sheet → payouts outbound campaign |
 
 ## Public routes
 
@@ -35,4 +39,9 @@
 |-----|------|
 | `outreach/` | `/opt/ava-outreach` |
 | `mailer/` | `/opt/ava-mailer` |
+| `calendar/` | `/opt/ava-calendar` |
+| `conference/` | `/opt/ava-conference` |
+| `files/` | `/opt/ava-files` |
 | `text-bot/` | `/opt/ava-text-bot` |
+| `sheets-campaign/` | `/opt/ava-sheets-campaign` |
+| `console/` | `/opt/quantum-console` |
