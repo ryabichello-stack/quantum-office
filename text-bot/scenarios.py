@@ -113,20 +113,34 @@ def get_bundle() -> ScenarioBundle:
     return _bundle or load_scenarios()
 
 
-def is_owner(user_id: str, channel: str = "") -> bool:
+def is_owner(
+    user_id: str,
+    channel: str = "",
+    *,
+    chat_type: str | None = None,
+) -> bool:
+    """Full secretary privileges only for allowlisted owners.
+
+    Telegram: private DM only (groups/supergroups/channels → guest).
+    """
     uid = str(user_id or "").strip()
     if not uid:
         return False
+
+    ch = (channel or "").strip().lower()
+    ctype = (chat_type or "").strip().lower()
+
+    # Groups / channels never get owner full-access, even if the speaker is the owner.
+    if ch == "telegram" and ctype and ctype != "private":
+        return False
+
     owners = get_bundle().owners
     if uid in owners:
         return True
-    # API convenience: explicit owner channel/user markers
-    if channel.strip().lower() in ("owner", "personal") or uid.lower() in ("owner", "me", "boss"):
-        return True
-    # If no owners configured yet, treat telegram primary chatter as owner-capable via env default
-    if not owners and channel.strip().lower() == "telegram":
-        # Fail-open for first setup: personal secretary tone for telegram until owners set
-        return os.getenv("SECRETARY_TELEGRAM_DEFAULT_OWNER", "true").lower() in (
+
+    # Fail-open only when no owners configured yet (bootstrap). Prefer explicit IDs in prod.
+    if not owners and ch == "telegram" and (not ctype or ctype == "private"):
+        return os.getenv("SECRETARY_TELEGRAM_DEFAULT_OWNER", "false").lower() in (
             "1",
             "true",
             "yes",
@@ -135,8 +149,13 @@ def is_owner(user_id: str, channel: str = "") -> bool:
     return False
 
 
-def role_for(user_id: str, channel: str = "") -> str:
-    return "owner" if is_owner(user_id, channel) else "guest"
+def role_for(
+    user_id: str,
+    channel: str = "",
+    *,
+    chat_type: str | None = None,
+) -> str:
+    return "owner" if is_owner(user_id, channel, chat_type=chat_type) else "guest"
 
 
 def list_scenarios(role: str) -> list[Scenario]:

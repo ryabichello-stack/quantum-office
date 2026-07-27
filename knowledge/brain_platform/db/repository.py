@@ -54,7 +54,11 @@ def slug_id(prefix: str, *parts: str) -> str:
 DEFAULT_MAIL_ACL = {
     "allow_users": [],
     "allow_groups": ["group:management", "group:sales"],
-    "allow_services": ["service:cursor-admin", "service:text-secretary"],
+    "allow_services": [
+        "service:cursor-admin",
+        "service:text-owner",
+        "service:text-secretary",
+    ],
     "deny_users": [],
     "deny_groups": [],
 }
@@ -553,7 +557,7 @@ class BrainRepository:
         if "public" in filt.allowed_visibilities or filt.require_assistant_safe:
             parts.append("(c.visibility = 'public' AND c.index_zone = 'public')")
 
-        if filt.require_assistant_safe:
+        if filt.require_assistant_safe and "office-assistant" in filt.allowed_channels:
             parts.append(
                 "(c.channels_json LIKE ? AND c.visibility IN ('company','public','team:sales','team:ops'))"
             )
@@ -752,8 +756,8 @@ class BrainRepository:
         filt = resolve_principal_policy(principal)
         if filt.deny_all:
             return []
-        # voice-public: no PII contacts
-        if principal.principal_id == "service:voice-public":
+        # voice-public / guests: no PII contacts
+        if principal.principal_id in ("service:voice-public", "service:text-guest"):
             return []
 
         clauses = ["tenant_id = ?"]
@@ -1052,7 +1056,10 @@ class BrainRepository:
         limit: int = 20,
     ) -> list[dict[str, Any]]:
         filt = resolve_principal_policy(principal)
-        if filt.deny_all or principal.principal_id == "service:voice-public":
+        if filt.deny_all or principal.principal_id in (
+            "service:voice-public",
+            "service:text-guest",
+        ):
             return []
         clauses = ["tenant_id = ?"]
         params: list[Any] = [principal.tenant_id]

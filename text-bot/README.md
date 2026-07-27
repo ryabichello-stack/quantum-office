@@ -7,10 +7,11 @@
 
 | | |
 |--|--|
-| Владелец | `SECRETARY_OWNER_IDS` (Telegram chat_id) → личный секретарь |
-| Гость | все остальные → офисный секретарь |
+| Владелец | `SECRETARY_OWNER_IDS` (Telegram **user id**) + **private DM** → полный Second Brain (`service:text-owner`) |
+| Гость / группа | все остальные → только public FAQ (`service:text-guest`) |
 
-Пока owners не заданы, Telegram по умолчанию считается owner (`SECRETARY_TELEGRAM_DEFAULT_OWNER=true`).
+В группах даже владелец остаётся guest (полный доступ только в личном диалоге с ботом).  
+`SECRETARY_TELEGRAM_DEFAULT_OWNER` в проде держите `false`.
 
 ## Сценарии
 

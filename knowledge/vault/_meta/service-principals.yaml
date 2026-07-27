@@ -16,17 +16,23 @@ principals:
     channels: [office-assistant]
     notes: "public + assistant-safe collection; NOT blanket company."
 
+  service:text-owner:
+    indexes: [knowledge_public, knowledge_private, knowledge_secret]
+    visibilities: [public, company, restricted, secret]
+    channels: ["*"]
+    notes: "Full Second Brain for owner private Telegram DM only. Text-bot must never send this principal for guests/groups."
+
   service:text-secretary:
     indexes: [knowledge_public, knowledge_private]
     visibilities: [public]
     channels: [office-assistant]
-    notes: "public + assistant-safe; mail via explicit ACL allow_services."
+    notes: "Legacy assistant-safe + mail allow_services. Prefer text-owner for personal secretary."
 
   service:text-guest:
-    indexes: [knowledge_public, knowledge_private]
+    indexes: [knowledge_public]
     visibilities: [public]
-    channels: [office-assistant]
-    notes: "Guest text-bot — FAQ/assistant-safe only; no mail/PII tools."
+    channels: []
+    notes: "Non-owner text-bot dialogues — published public FAQ only; no company/mail/PII."
 
   service:outreach:
     indexes: [knowledge_public, knowledge_private]

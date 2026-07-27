@@ -132,6 +132,7 @@ def _safe_send(chat_id: str | int, text: str) -> None:
 def handle_telegram_update(update: dict[str, Any]) -> None:
     message = update.get("message") or {}
     chat = message.get("chat") or {}
+    from_user = message.get("from") or {}
     chat_id = chat.get("id")
     if chat_id is None:
         return
@@ -139,17 +140,30 @@ def handle_telegram_update(update: dict[str, Any]) -> None:
     if not text:
         return
 
-    logger.info("telegram incoming chat_id=%s text=%r", chat_id, text[:120])
+    chat_type = str(chat.get("type") or "private")
+    # Identity = Telegram user id (not group chat id). Full ACL only in private DM.
+    user_id = str(from_user.get("id") or chat_id)
+
+    logger.info(
+        "telegram incoming chat_id=%s user_id=%s chat_type=%s text=%r",
+        chat_id,
+        user_id,
+        chat_type,
+        text[:120],
+    )
     result = secretary.handle(
         channel="telegram",
-        user_id=str(chat_id),
+        user_id=user_id,
         text=text,
         reply_to=str(chat_id),
+        chat_type=chat_type,
     )
     _safe_send(chat_id, result.get("reply") or "…")
     logger.info(
-        "telegram replied chat_id=%s ok=%s chars=%s",
+        "telegram replied chat_id=%s user_id=%s role=%s ok=%s chars=%s",
         chat_id,
+        user_id,
+        result.get("role"),
         result.get("ok"),
         len(result.get("reply") or ""),
     )

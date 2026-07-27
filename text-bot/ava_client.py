@@ -1172,8 +1172,9 @@ def _get_json(url: str, *, timeout: float = 15.0, brain_principal: str | None = 
 
 
 def _brain_principal_for_role(role: str) -> str:
+    """Owner private DM → full brain; everyone else → public FAQ only."""
     if (role or "").strip().lower() == "owner":
-        return "service:text-secretary"
+        return "service:text-owner"
     return "service:text-guest"
 
 
@@ -1248,7 +1249,7 @@ def _autonomous_memory_search(
         mem = _query_brain_search(
             knowledge,
             v,
-            principal="service:text-secretary",
+            principal="service:text-owner",
             limit=6,
             max_chars=2500,
         )
@@ -1263,7 +1264,7 @@ def _autonomous_memory_search(
             th = _post_json(
                 f"{knowledge}/api/brain/threads/list",
                 {"q": v, "limit": 8},
-                brain_principal="service:text-secretary",
+                brain_principal="service:text-owner",
                 timeout=15.0,
             )
             for t in th.get("threads") or []:
@@ -1429,7 +1430,7 @@ def _autonomous_person_lookup(
                     "company": company if variant == company else "",
                     "limit": 20,
                 },
-                brain_principal="service:text-secretary",
+                brain_principal="service:text-owner",
                 timeout=15.0,
             )
         except Exception as exc:
@@ -1474,7 +1475,7 @@ def _autonomous_person_lookup(
         mem = _query_brain_search(
             knowledge,
             mq,
-            principal="service:text-secretary",
+            principal="service:text-owner",
             limit=4,
             max_chars=3500,
         )
@@ -1486,7 +1487,7 @@ def _autonomous_person_lookup(
             th = _post_json(
                 f"{knowledge}/api/brain/threads/list",
                 {"q": mq, "limit": 8},
-                brain_principal="service:text-secretary",
+                brain_principal="service:text-owner",
                 timeout=15.0,
             )
             for t in th.get("threads") or []:
@@ -1657,7 +1658,7 @@ def run_tool(
                     "since": arguments.get("since") or None,
                     "limit": int(arguments.get("limit") or 20),
                 },
-                brain_principal="service:text-secretary",
+                brain_principal="service:text-owner",
             )
             return json.dumps(data, ensure_ascii=False)
 
@@ -1675,7 +1676,7 @@ def run_tool(
                     "depth": int(arguments.get("depth") or 1),
                     "limit": int(arguments.get("limit") or 40),
                 },
-                brain_principal="service:text-secretary",
+                brain_principal="service:text-owner",
             )
             # Keep payload compact for the model
             if isinstance(data, dict) and data.get("ok"):

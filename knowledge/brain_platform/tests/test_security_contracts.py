@@ -218,6 +218,39 @@ class TestServicePrincipals:
         curated = _doc(visibility="company", channels=["office-assistant"])
         assert document_readable(curated, p) is True
 
+    def test_text_owner_full_tenant(self):
+        p = Principal(principal_id="service:text-owner", tenant_id=TENANT)
+        assert resolve_principal_policy(p).allow_all_in_tenant is True
+        restricted = _doc(
+            visibility="restricted",
+            acl=ACL(allow_services=["service:text-secretary"]),
+            channels=[],
+        )
+        assert document_readable(restricted, p) is True
+
+    def test_text_guest_public_only(self):
+        p = Principal(principal_id="service:text-guest", tenant_id=TENANT)
+        curated = _doc(visibility="company", channels=["office-assistant"])
+        assert document_readable(curated, p) is False
+        public = _doc(
+            id="pub2",
+            visibility="public",
+            publication=Publication(
+                status=PublicationStatus.PUBLISHED,
+                approved_by="user:denis",
+                approved_at=datetime(2026, 7, 23, tzinfo=timezone.utc),
+                public_version=1,
+            ),
+            classification=Classification(level=ClassificationLevel.PUBLIC),
+            channels=[],
+            ai_processing=AIProcessingPolicy(
+                external_llm_allowed=True,
+                external_embedding_allowed=True,
+                local_processing_required=False,
+            ),
+        )
+        assert document_readable(public, p) is True
+
 
 class TestChunkInheritance:
     def test_chunk_inherits_acl_tenant_revision(self):

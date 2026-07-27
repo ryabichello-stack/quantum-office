@@ -71,10 +71,10 @@ class Secretary:
     def ready(self) -> bool:
         return self.client is not None
 
-    def reset(self, channel: str, user_id: str) -> str:
+    def reset(self, channel: str, user_id: str, *, chat_type: str | None = None) -> str:
         key = session_key(channel, user_id)
         clear_chat(SESSION_DB, key)
-        role = role_for(user_id, channel)
+        role = role_for(user_id, channel, chat_type=chat_type)
         return greeting_text(AVA_CONFIG_PATH, role=role)
 
     def handle(
@@ -85,18 +85,20 @@ class Secretary:
         text: str,
         reply_to: Optional[str] = None,
         scenario: Optional[str] = None,
+        chat_type: Optional[str] = None,
     ) -> dict[str, Any]:
         """
         Process one user message in any channel.
         reply_to: for telegram file delivery = chat_id; otherwise optional.
         scenario: optional hard override for this turn (API).
+        chat_type: telegram chat type (private|group|supergroup|channel).
         """
         text = (text or "").strip()
         if not text:
             return {"ok": False, "error": "empty_text", "reply": ""}
 
         key = session_key(channel, user_id)
-        role = role_for(user_id, channel)
+        role = role_for(user_id, channel, chat_type=chat_type)
         lowered = text.lower()
         meta = get_session_meta(SESSION_DB, key)
         sticky = bool(meta.get("sticky"))

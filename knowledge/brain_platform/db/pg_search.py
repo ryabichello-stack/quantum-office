@@ -25,7 +25,7 @@ def _acl_sql(filt: ACLFilter, principal: Principal) -> tuple[str, list[Any]]:
     params: list[Any] = []
     if "public" in filt.allowed_visibilities or filt.require_assistant_safe:
         parts.append("(c.visibility = 'public' AND c.index_zone = 'public')")
-    if filt.require_assistant_safe:
+    if filt.require_assistant_safe and "office-assistant" in filt.allowed_channels:
         parts.append(
             "(c.channels_json::text LIKE %s AND c.visibility IN ('company','public','team:sales','team:ops'))"
         )
@@ -203,7 +203,10 @@ class PgSearchRepository:
         email = (kwargs.get("email") or "").strip().lower()
         limit = int(kwargs.get("limit") or 20)
         filt = resolve_principal_policy(principal)
-        if filt.deny_all or principal.principal_id == "service:voice-public":
+        if filt.deny_all or principal.principal_id in (
+            "service:voice-public",
+            "service:text-guest",
+        ):
             return []
         clauses = ["tenant_id = %s", "status = 'active'"]
         params: list[Any] = [principal.tenant_id]
@@ -259,7 +262,10 @@ class PgSearchRepository:
         q = (kwargs.get("q") or "").strip()
         limit = int(kwargs.get("limit") or 20)
         filt = resolve_principal_policy(principal)
-        if filt.deny_all:
+        if filt.deny_all or principal.principal_id in (
+            "service:voice-public",
+            "service:text-guest",
+        ):
             return []
         clauses = ["tenant_id = %s"]
         params: list[Any] = [principal.tenant_id]

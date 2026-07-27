@@ -23,6 +23,7 @@ SearchBackend = Literal["keyword", "vector", "graph"]
 SERVICE_PRINCIPALS = (
     "service:voice-public",
     "service:voice-office",
+    "service:text-owner",
     "service:text-secretary",
     "service:text-guest",
     "service:outreach",
@@ -97,12 +98,40 @@ def resolve_principal_policy(principal: Principal) -> ACLFilter:
             allowed_channels=set(),
         )
 
-    if pid in ("service:voice-office", "service:text-secretary", "service:text-guest"):
+    # Personal Telegram secretary (owner private DM only). Full tenant read.
+    if pid == "service:text-owner":
+        return ACLFilter(
+            tenant_id=principal.tenant_id,
+            principal_id=pid,
+            allow_all_in_tenant=True,
+        )
+
+    if pid == "service:voice-office":
         return ACLFilter(
             tenant_id=principal.tenant_id,
             principal_id=pid,
             allowed_visibilities={"public"},
             allowed_channels={"office-assistant"},
+            require_assistant_safe=True,
+        )
+
+    # Legacy middle tier (kept for mail allow_services); not used by owner DM anymore.
+    if pid == "service:text-secretary":
+        return ACLFilter(
+            tenant_id=principal.tenant_id,
+            principal_id=pid,
+            allowed_visibilities={"public"},
+            allowed_channels={"office-assistant"},
+            require_assistant_safe=True,
+        )
+
+    # External / non-owner text-bot dialogues — published FAQ only.
+    if pid == "service:text-guest":
+        return ACLFilter(
+            tenant_id=principal.tenant_id,
+            principal_id=pid,
+            allowed_visibilities={"public"},
+            allowed_channels=set(),
             require_assistant_safe=True,
         )
 
@@ -169,7 +198,8 @@ def document_readable(doc: DocumentFrontmatter, principal: Principal) -> bool:
     if filt.require_assistant_safe:
         if doc.visibility == "public" and doc.is_publishable_to_public_index():
             return True
-        if "office-assistant" in doc.channels:
+        # Channel grant only when principal is allowed that channel (text-guest has none).
+        if filt.allowed_channels and any(ch in filt.allowed_channels for ch in doc.channels):
             if doc.visibility == "restricted":
                 return _allowed_by_acl(doc.acl, principal)
             if doc.visibility in ("company", "public") or doc.visibility.startswith("team:"):
