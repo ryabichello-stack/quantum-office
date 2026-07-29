@@ -16,12 +16,14 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
+from scenarios import looks_like_outbound_request
 from secretary import secretary
 
 load_dotenv()
@@ -35,10 +37,14 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip()
 AVA_MAILER_BASE = os.getenv("AVA_MAILER_BASE", "http://127.0.0.1:8000").strip()
 WEBHOOK_TOKEN = os.getenv("OFFICE_WEBHOOK_TOKEN", os.getenv("WEBHOOK_TOKEN", "")).strip()
 POLL_INTERVAL_S = float(os.getenv("TELEGRAM_POLL_INTERVAL_SECONDS", "1"))
+TG_HANDLE_WORKERS = max(1, int(os.getenv("TELEGRAM_HANDLE_WORKERS", "4")))
 
 app = FastAPI(title="Quantum Labs Secretary", version="0.2.0")
 _poll_thread: threading.Thread | None = None
 _stop_event = threading.Event()
+_update_pool = ThreadPoolExecutor(
+    max_workers=TG_HANDLE_WORKERS, thread_name_prefix="tg-handle"
+)
 
 
 def _check_api_token(x_webhook_token: Optional[str] = None) -> None:
@@ -129,6 +135,17 @@ def _safe_send(chat_id: str | int, text: str) -> None:
         logger.exception("send_telegram failed chat_id=%s", chat_id)
 
 
+def _safe_typing(chat_id: str | int) -> None:
+    try:
+        _tg_post(
+            "sendChatAction",
+            {"chat_id": chat_id, "action": "typing"},
+            timeout=10.0,
+        )
+    except Exception:
+        logger.debug("sendChatAction failed chat_id=%s", chat_id, exc_info=True)
+
+
 def handle_telegram_update(update: dict[str, Any]) -> None:
     message = update.get("message") or {}
     chat = message.get("chat") or {}
@@ -151,6 +168,15 @@ def handle_telegram_update(update: dict[str, Any]) -> None:
         chat_type,
         text[:120],
     )
+
+    # Immediate feedback: poll used to block for minutes on await_outbound_result.
+    _safe_typing(chat_id)
+    if looks_like_outbound_request(text):
+        _safe_send(
+            chat_id,
+            "Принял. Готовлю/веду звонок — напишу, как будет результат (это может занять 1–2 мин).",
+        )
+
     result = secretary.handle(
         channel="telegram",
         user_id=user_id,
@@ -169,9 +195,16 @@ def handle_telegram_update(update: dict[str, Any]) -> None:
     )
 
 
+def _handle_update_safe(update: dict[str, Any]) -> None:
+    try:
+        handle_telegram_update(update)
+    except Exception:
+        logger.exception("update failed: %s", update.get("update_id"))
+
+
 def poll_loop() -> None:
     offset: int | None = None
-    logger.info("Telegram poll loop started")
+    logger.info("Telegram poll loop started workers=%s", TG_HANDLE_WORKERS)
     try:
         _tg_post("deleteWebhook", {"drop_pending_updates": False}, timeout=15.0)
         logger.info("webhook cleared for polling")
@@ -192,11 +225,9 @@ def poll_loop() -> None:
                 time.sleep(3)
                 continue
             for upd in out.get("result") or []:
+                # Advance offset immediately so long tool waits don't stall polling.
                 offset = int(upd.get("update_id", 0)) + 1
-                try:
-                    handle_telegram_update(upd)
-                except Exception:
-                    logger.exception("update failed: %s", upd.get("update_id"))
+                _update_pool.submit(_handle_update_safe, upd)
         except urllib.error.URLError as exc:
             logger.warning("poll error: %s", exc)
             time.sleep(3)

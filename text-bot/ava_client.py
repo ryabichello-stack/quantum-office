@@ -811,7 +811,7 @@ def _await_outbound_result(
     phone: str,
     *,
     dialed_after: str | None = None,
-    timeout_sec: int = 180,
+    timeout_sec: int = 90,
     poll_sec: float = 4.0,
 ) -> dict[str, Any]:
     phone_n = _normalize_dial_phone(phone)
@@ -826,7 +826,8 @@ def _await_outbound_result(
     # Small skew: accept calls starting a few seconds before dialed_at
     if after_ts is not None:
         after_ts -= 15
-    timeout_sec = max(15, min(int(timeout_sec or 180), 300))
+    # Cap hard: long waits freeze the Telegram turn and feel like a hung bot.
+    timeout_sec = max(15, min(int(timeout_sec or 90), 120))
     deadline = time.time() + timeout_sec
     last_seen: dict[str, Any] | None = None
 
@@ -2126,13 +2127,20 @@ def run_tool(
                         "use_default_script": use_default and not bool(override),
                     },
                     "hint": (
-                        "Звонок ЗАПУЩЕН. НЕ вызывай list/get сразу — там будет СТАРЫЙ звонок. "
-                        "Для отчёта вызови await_outbound_result(phone, dialed_after=dialed_at). "
-                        "Сводку пиши только по conversation из await."
-                    ),
+                        "Звонок ЗАПУЩЕН. Сначала коротко скажи владельцу: "
+                        "«Звоню на {phone}, жду результат». "
+                        "Потом await_outbound_result(phone, dialed_after=dialed_at, timeout_sec=90). "
+                        "НЕ вызывай list/get сразу — там будет СТАРЫЙ звонок. "
+                        "Сводку пиши только по conversation из await. "
+                        "Если await вернул timeout — так и скажи, предложи проверить позже."
+                    ).format(phone=phone),
                     "next_tool": {
                         "name": "await_outbound_result",
-                        "arguments": {"phone": phone, "dialed_after": dialed_at},
+                        "arguments": {
+                            "phone": phone,
+                            "dialed_after": dialed_at,
+                            "timeout_sec": 90,
+                        },
                     },
                 }
             return json.dumps(data, ensure_ascii=False)
@@ -2242,7 +2250,7 @@ def run_tool(
                 _await_outbound_result(
                     str(arguments.get("phone") or ""),
                     dialed_after=str(arguments.get("dialed_after") or "") or None,
-                    timeout_sec=int(arguments.get("timeout_sec") or 180),
+                    timeout_sec=int(arguments.get("timeout_sec") or 90),
                 ),
                 ensure_ascii=False,
             )
