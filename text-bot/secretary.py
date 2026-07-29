@@ -411,6 +411,18 @@ class Secretary:
                         round_i,
                         fn.name,
                     )
+                    # Interim message before long-running tools.
+                    if fn.name == "outbound_dial" and reply_to and channel == "telegram":
+                        phone_val = args.get("phone") or ""
+                        from main import _safe_send
+                        _safe_send(
+                            reply_to,
+                            f"⏳ Набираю {phone_val}… Жду результат (до 1.5 мин).",
+                        )
+                    elif fn.name == "await_outbound_result" and reply_to and channel == "telegram":
+                        from main import _safe_typing
+                        _safe_typing(reply_to)
+
                     result = run_tool(
                         fn.name,
                         args,
