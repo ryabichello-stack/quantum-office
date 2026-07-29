@@ -1,0 +1,23 @@
+# Empty Second Brain Postgres (pgvector). No knowledge data.
+# Apply schema with: ./scripts/init-postgres.sh
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: quantum-brain-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE_ME_SUPER}
+      POSTGRES_DB: postgres
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - quantum_brain_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  quantum_brain_pgdata:

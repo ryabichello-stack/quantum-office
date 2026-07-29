@@ -1,4 +1,4 @@
-"""SQLite conversation history per Telegram chat."""
+"""SQLite conversation history per session (channel:user_id)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 import sqlite3
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 _lock = threading.Lock()
 
@@ -39,12 +39,127 @@ def init_db(db_path: Path) -> None:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_chat_messages_chat_id ON chat_messages(chat_id)"
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS session_meta (
+                    chat_id TEXT PRIMARY KEY,
+                    scenario TEXT,
+                    sticky INTEGER DEFAULT 0,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
             conn.commit()
         finally:
             conn.close()
 
 
-def load_messages(db_path: Path, chat_id: str, *, limit: int = 24) -> list[dict[str, Any]]:
+def get_session_meta(db_path: Path, chat_id: str) -> dict[str, Any]:
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            row = conn.execute(
+                "SELECT scenario, sticky FROM session_meta WHERE chat_id = ?",
+                (str(chat_id),),
+            ).fetchone()
+        finally:
+            conn.close()
+    if not row:
+        return {"scenario": None, "sticky": False}
+    return {
+        "scenario": row["scenario"],
+        "sticky": bool(row["sticky"]),
+    }
+
+
+def set_session_scenario(
+    db_path: Path,
+    chat_id: str,
+    scenario: Optional[str],
+    *,
+    sticky: bool = False,
+) -> None:
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            if scenario is None and not sticky:
+                conn.execute("DELETE FROM session_meta WHERE chat_id = ?", (str(chat_id),))
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO session_meta (chat_id, scenario, sticky, updated_at)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(chat_id) DO UPDATE SET
+                      scenario=excluded.scenario,
+                      sticky=excluded.sticky,
+                      updated_at=CURRENT_TIMESTAMP
+                    """,
+                    (str(chat_id), scenario, 1 if sticky else 0),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def clear_chat(db_path: Path, chat_id: str) -> None:
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            conn.execute("DELETE FROM chat_messages WHERE chat_id = ?", (str(chat_id),))
+            # keep sticky scenario preference across /reset
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def _sanitize_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop orphan tool rows / incomplete tool rounds (OpenAI rejects them)."""
+    out: list[dict[str, Any]] = []
+    pending_ids: set[str] = set()
+
+    def _drop_incomplete_round() -> None:
+        nonlocal pending_ids
+        while out:
+            last = out[-1]
+            role = last.get("role")
+            if role == "tool" or (role == "assistant" and last.get("tool_calls")):
+                out.pop()
+                if role == "assistant" and last.get("tool_calls"):
+                    break
+                continue
+            break
+        pending_ids.clear()
+
+    for msg in messages:
+        role = msg.get("role")
+        if role == "tool":
+            tcid = str(msg.get("tool_call_id") or "")
+            if tcid and tcid in pending_ids:
+                out.append(msg)
+                pending_ids.discard(tcid)
+            continue
+
+        if role == "assistant" and msg.get("tool_calls"):
+            if pending_ids:
+                _drop_incomplete_round()
+            pending_ids = {
+                str(tc.get("id") or "")
+                for tc in (msg.get("tool_calls") or [])
+                if isinstance(tc, dict) and tc.get("id")
+            }
+            out.append(msg)
+            continue
+
+        if pending_ids:
+            _drop_incomplete_round()
+        out.append(msg)
+
+    if pending_ids:
+        _drop_incomplete_round()
+    return out
+
+
+def load_messages(db_path: Path, chat_id: str, *, limit: int = 40) -> list[dict[str, Any]]:
     with _lock:
         conn = _connect(db_path)
         try:
@@ -73,7 +188,7 @@ def load_messages(db_path: Path, chat_id: str, *, limit: int = 24) -> list[dict[
         if row["name"]:
             msg["name"] = row["name"]
         out.append(msg)
-    return out
+    return _sanitize_messages(out)
 
 
 def append_message(db_path: Path, chat_id: str, message: dict[str, Any]) -> None:
@@ -95,16 +210,6 @@ def append_message(db_path: Path, chat_id: str, message: dict[str, Any]) -> None
                     message.get("name"),
                 ),
             )
-            conn.commit()
-        finally:
-            conn.close()
-
-
-def clear_chat(db_path: Path, chat_id: str) -> None:
-    with _lock:
-        conn = _connect(db_path)
-        try:
-            conn.execute("DELETE FROM chat_messages WHERE chat_id = ?", (str(chat_id),))
             conn.commit()
         finally:
             conn.close()

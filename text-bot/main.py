@@ -1,4 +1,11 @@
-"""Quantum Labs — text secretary for Telegram (shared brain with AVA phone)."""
+"""
+ava-text-bot — Quantum Labs ИИ-секретарь.
+
+Ядро диалога channel-agnostic (secretary.py).
+Каналы-доставки:
+  - Telegram (@Quantum_office_bot)
+  - HTTP API: POST /api/chat  (web/Bitrix/любая среда)
+"""
 
 from __future__ import annotations
 
@@ -9,16 +16,15 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from pathlib import Path
-from typing import Any
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
-from openai import OpenAI
+from fastapi import FastAPI, Header, HTTPException
+from pydantic import BaseModel, Field
 
-from ava_client import OPENAI_TOOLS, run_tool
-from prompt_loader import greeting_text, load_system_prompt
-from session_store import append_message, clear_chat, init_db, load_messages
+from scenarios import looks_like_outbound_request
+from secretary import secretary
 
 load_dotenv()
 
@@ -29,18 +35,76 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip()
 AVA_MAILER_BASE = os.getenv("AVA_MAILER_BASE", "http://127.0.0.1:8000").strip()
-AVA_CONFIG_PATH = Path(os.getenv("AVA_CONFIG_PATH", "/root/ava/config/ai-agent.local.yaml"))
-DATA_DIR = Path(os.getenv("DATA_DIR", "/opt/ava-text-bot/data"))
-SESSION_DB = DATA_DIR / "sessions.db"
+WEBHOOK_TOKEN = os.getenv("OFFICE_WEBHOOK_TOKEN", os.getenv("WEBHOOK_TOKEN", "")).strip()
 POLL_INTERVAL_S = float(os.getenv("TELEGRAM_POLL_INTERVAL_SECONDS", "1"))
-MAX_TOOL_ROUNDS = int(os.getenv("MAX_TOOL_ROUNDS", "6"))
+TG_HANDLE_WORKERS = max(1, int(os.getenv("TELEGRAM_HANDLE_WORKERS", "4")))
 
-app = FastAPI(title="AVA Text Bot")
-_client: OpenAI | None = None
-_system_prompt: str = ""
-_greeting: str = ""
+app = FastAPI(title="Quantum Labs Secretary", version="0.2.0")
 _poll_thread: threading.Thread | None = None
 _stop_event = threading.Event()
+_update_pool = ThreadPoolExecutor(
+    max_workers=TG_HANDLE_WORKERS, thread_name_prefix="tg-handle"
+)
+
+
+def _check_api_token(x_webhook_token: Optional[str] = None) -> None:
+    if not WEBHOOK_TOKEN:
+        return
+    if (x_webhook_token or "").strip() != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="unauthorized")
+
+
+# --------------------
+# Universal chat API (any environment)
+# --------------------
+
+
+class ChatRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=8000)
+    user_id: str = Field(..., min_length=1, max_length=200, description="Stable user id in this channel")
+    channel: str = Field(
+        default="api",
+        description="telegram|api|web|bitrix|owner|...",
+    )
+    reply_to: Optional[str] = Field(
+        default=None,
+        description="For telegram file delivery: chat_id",
+    )
+    scenario: Optional[str] = Field(
+        default=None,
+        description="Optional scenario override for this turn: secretary|calendar|conference|knowledge|files|briefing|client_prep|office",
+    )
+
+
+class ChatResetRequest(BaseModel):
+    user_id: str
+    channel: str = "api"
+
+
+@app.post("/api/chat")
+def api_chat(req: ChatRequest, x_webhook_token: Optional[str] = Header(None)):
+    """Secretary dialogue entrypoint for any channel/environment."""
+    _check_api_token(x_webhook_token)
+    result = secretary.handle(
+        channel=req.channel,
+        user_id=req.user_id,
+        text=req.text,
+        reply_to=req.reply_to,
+        scenario=req.scenario,
+    )
+    return result
+
+
+@app.post("/api/chat/reset")
+def api_chat_reset(req: ChatResetRequest, x_webhook_token: Optional[str] = Header(None)):
+    _check_api_token(x_webhook_token)
+    reply = secretary.reset(req.channel, req.user_id)
+    return {"ok": True, "reply": reply, "channel": req.channel, "user_id": req.user_id}
+
+
+# --------------------
+# Telegram transport
+# --------------------
 
 
 def _tg_post(method: str, payload: dict[str, Any], *, timeout: float = 30.0) -> dict[str, Any]:
@@ -59,115 +123,94 @@ def _tg_post(method: str, payload: dict[str, Any], *, timeout: float = 30.0) -> 
 def send_telegram(chat_id: str | int, text: str) -> None:
     _tg_post(
         "sendMessage",
-        {
-            "chat_id": chat_id,
-            "text": str(text)[:4096],
-        },
+        {"chat_id": chat_id, "text": str(text)[:4096]},
         timeout=20.0,
     )
 
 
-def _serialize_assistant_message(message: Any) -> dict[str, Any]:
-    out: dict[str, Any] = {"role": "assistant"}
-    content = getattr(message, "content", None)
-    if content:
-        out["content"] = content
-    tool_calls = getattr(message, "tool_calls", None)
-    if tool_calls:
-        out["tool_calls"] = [
-            {
-                "id": tc.id,
-                "type": "function",
-                "function": {
-                    "name": tc.function.name,
-                    "arguments": tc.function.arguments,
-                },
-            }
-            for tc in tool_calls
-        ]
-    return out
+def _safe_send(chat_id: str | int, text: str) -> None:
+    try:
+        send_telegram(chat_id, text)
+    except Exception:
+        logger.exception("send_telegram failed chat_id=%s", chat_id)
 
 
-def generate_reply(chat_id: str, user_text: str) -> str:
-    assert _client is not None
-    append_message(SESSION_DB, chat_id, {"role": "user", "content": user_text})
-    history = load_messages(SESSION_DB, chat_id)
-    messages: list[dict[str, Any]] = [{"role": "system", "content": _system_prompt}]
-    messages.extend(history)
-
-    for _ in range(MAX_TOOL_ROUNDS):
-        response = _client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=messages,
-            tools=OPENAI_TOOLS,
-            tool_choice="auto",
-            temperature=0.4,
+def _safe_typing(chat_id: str | int) -> None:
+    try:
+        _tg_post(
+            "sendChatAction",
+            {"chat_id": chat_id, "action": "typing"},
+            timeout=10.0,
         )
-        choice = response.choices[0].message
-        assistant_msg = _serialize_assistant_message(choice)
-        messages.append(assistant_msg)
-        append_message(SESSION_DB, chat_id, assistant_msg)
-
-        tool_calls = getattr(choice, "tool_calls", None) or []
-        if not tool_calls:
-            return str(choice.content or "Извините, не смог сформулировать ответ.").strip()
-
-        for tc in tool_calls:
-            fn = tc.function
-            try:
-                args = json.loads(fn.arguments or "{}")
-            except json.JSONDecodeError:
-                args = {}
-            result = run_tool(fn.name, args, mailer_base=AVA_MAILER_BASE)
-            tool_msg = {
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "name": fn.name,
-                "content": result,
-            }
-            messages.append(tool_msg)
-            append_message(SESSION_DB, chat_id, tool_msg)
-
-    return "Сейчас не получается завершить запрос. Попробуйте переформулировать или напишите позже."
+    except Exception:
+        logger.debug("sendChatAction failed chat_id=%s", chat_id, exc_info=True)
 
 
-def handle_update(update: dict[str, Any]) -> None:
+def handle_telegram_update(update: dict[str, Any]) -> None:
     message = update.get("message") or {}
     chat = message.get("chat") or {}
+    from_user = message.get("from") or {}
     chat_id = chat.get("id")
     if chat_id is None:
         return
-
     text = str(message.get("text") or "").strip()
     if not text:
         return
 
-    if text in ("/start", "/help"):
-        clear_chat(SESSION_DB, str(chat_id))
-        send_telegram(chat_id, _greeting)
-        append_message(SESSION_DB, str(chat_id), {"role": "assistant", "content": _greeting})
-        return
+    chat_type = str(chat.get("type") or "private")
+    # Identity = Telegram user id (not group chat id). Full ACL only in private DM.
+    user_id = str(from_user.get("id") or chat_id)
 
-    if text == "/reset":
-        clear_chat(SESSION_DB, str(chat_id))
-        send_telegram(chat_id, "Диалог сброшен. " + _greeting)
-        append_message(SESSION_DB, str(chat_id), {"role": "assistant", "content": _greeting})
-        return
+    logger.info(
+        "telegram incoming chat_id=%s user_id=%s chat_type=%s text=%r",
+        chat_id,
+        user_id,
+        chat_type,
+        text[:120],
+    )
 
-    try:
-        reply = generate_reply(str(chat_id), text)
-        send_telegram(chat_id, reply)
-    except Exception:
-        logger.exception("handle message chat_id=%s", chat_id)
-        send_telegram(
+    # Immediate feedback: poll used to block for minutes on await_outbound_result.
+    _safe_typing(chat_id)
+    if looks_like_outbound_request(text):
+        _safe_send(
             chat_id,
-            "Извините, произошла ошибка. Попробуйте ещё раз через минуту или позвоните на линию Quantum Labs.",
+            "Принял. Готовлю/веду звонок — напишу, как будет результат (это может занять 1–2 мин).",
         )
+
+    result = secretary.handle(
+        channel="telegram",
+        user_id=user_id,
+        text=text,
+        reply_to=str(chat_id),
+        chat_type=chat_type,
+    )
+    _safe_send(chat_id, result.get("reply") or "…")
+    logger.info(
+        "telegram replied chat_id=%s user_id=%s role=%s ok=%s chars=%s",
+        chat_id,
+        user_id,
+        result.get("role"),
+        result.get("ok"),
+        len(result.get("reply") or ""),
+    )
+
+
+def _handle_update_safe(update: dict[str, Any]) -> None:
+    try:
+        handle_telegram_update(update)
+    except Exception:
+        logger.exception("update failed: %s", update.get("update_id"))
 
 
 def poll_loop() -> None:
     offset: int | None = None
-    logger.info("Telegram poll loop started")
+    logger.info("Telegram poll loop started workers=%s", TG_HANDLE_WORKERS)
+    try:
+        _tg_post("deleteWebhook", {"drop_pending_updates": False}, timeout=15.0)
+        logger.info("webhook cleared for polling")
+    except Exception:
+        logger.exception("deleteWebhook failed")
+
     while not _stop_event.is_set():
         if not TELEGRAM_BOT_TOKEN:
             time.sleep(5)
@@ -182,11 +225,9 @@ def poll_loop() -> None:
                 time.sleep(3)
                 continue
             for upd in out.get("result") or []:
+                # Advance offset immediately so long tool waits don't stall polling.
                 offset = int(upd.get("update_id", 0)) + 1
-                try:
-                    handle_update(upd)
-                except Exception:
-                    logger.exception("update failed: %s", upd.get("update_id"))
+                _update_pool.submit(_handle_update_safe, upd)
         except urllib.error.URLError as exc:
             logger.warning("poll error: %s", exc)
             time.sleep(3)
@@ -198,20 +239,14 @@ def poll_loop() -> None:
 
 @app.on_event("startup")
 def on_startup() -> None:
-    global _client, _system_prompt, _greeting, _poll_thread
-    init_db(SESSION_DB)
-    if not OPENAI_API_KEY:
-        logger.error("OPENAI_API_KEY missing")
-    else:
-        _client = OpenAI(api_key=OPENAI_API_KEY)
-    _system_prompt = load_system_prompt(AVA_CONFIG_PATH)
-    _greeting = greeting_text(AVA_CONFIG_PATH)
+    global _poll_thread
+    secretary.startup(OPENAI_API_KEY)
     if TELEGRAM_BOT_TOKEN:
         _poll_thread = threading.Thread(target=poll_loop, name="telegram-poll", daemon=True)
         _poll_thread.start()
-        logger.info("bot ready model=%s mailer=%s", OPENAI_MODEL, AVA_MAILER_BASE)
+        logger.info("telegram channel enabled model=%s", OPENAI_MODEL)
     else:
-        logger.error("TELEGRAM_BOT_TOKEN missing — poll loop not started")
+        logger.warning("TELEGRAM_BOT_TOKEN missing — API channel still available")
 
 
 @app.on_event("shutdown")
@@ -221,10 +256,22 @@ def on_shutdown() -> None:
 
 @app.get("/health")
 def health() -> dict[str, Any]:
+    from ava_client import KNOWLEDGE_BASE, OPENAI_TOOLS
+    from scenarios import get_bundle, list_scenarios
+
+    b = get_bundle()
     return {
-        "status": "ok" if TELEGRAM_BOT_TOKEN and OPENAI_API_KEY and _client else "degraded",
+        "status": "ok" if secretary.ready() else "degraded",
+        "service": "ava-text-bot",
+        "role": "quantum-labs-secretary",
         "telegram_configured": bool(TELEGRAM_BOT_TOKEN),
         "openai_configured": bool(OPENAI_API_KEY),
         "model": OPENAI_MODEL,
         "mailer_base": AVA_MAILER_BASE,
+        "knowledge_base": KNOWLEDGE_BASE,
+        "owners_configured": len(b.owners),
+        "scenarios": [s.id for s in list_scenarios("owner")],
+        "channels": ["telegram", "api", "web", "bitrix"],
+        "endpoints": ["/api/chat", "/api/chat/reset", "/health"],
+        "tools": [t["function"]["name"] for t in OPENAI_TOOLS if t.get("type") == "function"],
     }
