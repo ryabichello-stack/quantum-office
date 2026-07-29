@@ -29,7 +29,9 @@ scenarios:
       2) В ТОМ ЖЕ первом ответе вставь owner_message ЦЕЛИКОМ: номер, задача, Greeting, Script.
          ЗАПРЕЩЕНО «черновик готов / сценарий ниже / подтвердите» без полного текста Greeting+Script.
       3) После «да» — outbound_dial(confirm=true) с goal + greeting/script из черновика.
-      4) Отчёт: await_outbound_result(phone, dialed_after). Не list/get сразу после dial.
+         Сразу напиши владельцу, что звонок запущен (номер).
+      4) Отчёт: await_outbound_result(phone, dialed_after, timeout_sec=90).
+         Не list/get сразу после dial. Если timeout — скажи честно, без выдуманной сводки.
       Итог или уточнение — коротко и по делу.
 
   outbound:
