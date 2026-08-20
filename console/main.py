@@ -547,9 +547,22 @@ def _outreach_glance() -> dict[str, Any] | None:
     )
     if not data:
         return None
-    outbox = data.get("outbox") if isinstance(data.get("outbox"), dict) else {}
+    outbox_raw = data.get("outbox") if isinstance(data.get("outbox"), dict) else {}
+    counts = outbox_raw.get("counts") if isinstance(outbox_raw.get("counts"), dict) else {}
+    outbox = {
+        "pending": counts.get("pending"),
+        "sent": counts.get("sent"),
+        "replied": counts.get("replied"),
+        "failed": counts.get("failed") or counts.get("cancelled"),
+        "total": counts.get("total"),
+        "sent_today": outbox_raw.get("sent_today"),
+        "inbound_replies": outbox_raw.get("inbound_replies"),
+    }
     daily = data.get("daily") if isinstance(data.get("daily"), list) else []
     today = daily[0] if daily else {}
+    today_sent = outbox.get("sent_today")
+    if today_sent is None and isinstance(today, dict):
+        today_sent = today.get("sent")
     reply_inbox = data.get("reply_inbox") if isinstance(data.get("reply_inbox"), dict) else {}
     return {
         "outreach_enabled": bool(data.get("outreach_enabled")),
@@ -559,7 +572,7 @@ def _outreach_glance() -> dict[str, Any] | None:
         "smtp_configured": bool(data.get("smtp_configured")),
         "imap_configured": bool(data.get("imap_configured")),
         "outbox": outbox,
-        "today_sent": (today or {}).get("sent") if isinstance(today, dict) else None,
+        "today_sent": today_sent,
         "reply_inbox": reply_inbox,
         "engagement": data.get("engagement") if isinstance(data.get("engagement"), dict) else {},
     }
