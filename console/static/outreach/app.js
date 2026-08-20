@@ -1,15 +1,23 @@
 (() => {
   const titles = {
-    dash: "Обзор",
-    report: "Отчёт",
-    clients: "Клиенты",
+    letter: "Кампания",
+    dash: "Рассылка",
     outbox: "Очередь",
     replies: "Ответы",
     inbox: "Входящие",
-    letter: "Кампания",
-    antiban: "Защита",
-    schedule: "Расписание",
+    clients: "Клиенты",
+    report: "Отчёт",
     settings: "Настройки",
+  };
+  const hints = {
+    letter: "Отрасль, письмо, цепочка и презентация",
+    dash: "Старт рассылки, тест себе и пачка из очереди",
+    outbox: "Кого отправим следующим",
+    replies: "Ответы на отправленные письма",
+    inbox: "Классификация входящих",
+    clients: "База Bitrix и обогащение",
+    report: "Воронка доставки и чтения",
+    settings: "Лимиты, окно часов и защита ящика",
   };
 
   function apiBase() {
@@ -83,6 +91,22 @@
     const labels = { playing: "Идёт", paused: "Пауза", stopped: "Стоп" };
     el.textContent = labels[st] || st;
     el.className = "badge " + (st in labels ? st : "stopped");
+    const banner = $("runBanner");
+    if (banner) {
+      banner.className = "run-banner " + (st in labels ? st : "stopped");
+      const title = $("runBannerTitle");
+      const text = $("runBannerText");
+      if (st === "playing") {
+        if (title) title.textContent = "Рассылка идёт";
+        if (text) text.textContent = "Можно отправлять пачки из очереди. Пауза — временно остановить, Стоп — выключить.";
+      } else if (st === "paused") {
+        if (title) title.textContent = "На паузе";
+        if (text) text.textContent = "Массовая отправка приостановлена. Нажмите «Старт», чтобы продолжить.";
+      } else {
+        if (title) title.textContent = "Рассылка остановлена";
+        if (text) text.textContent = "Нажмите «Старт», чтобы разрешить массовую отправку из очереди.";
+      }
+    }
   }
 
   let packsCache = [];
@@ -601,14 +625,22 @@
         const tab = btn.dataset.tab;
         $("tab-" + tab).classList.add("active");
         $("pageTitle").textContent = titles[tab] || tab;
+        if ($("pageHint")) $("pageHint").textContent = hints[tab] || "";
         if (tab === "clients") loadClients().catch((e) => ($("clientsLog").textContent = String(e)));
         if (tab === "outbox") loadOutbox().catch(logAction);
         if (tab === "replies") loadReplies().catch(logAction);
         if (tab === "report") loadReport().catch(logAction);
-        if (tab === "antiban") loadAntiban().catch((e) => ($("antibanLog").textContent = String(e)));
-        if (tab === "letter" || tab === "schedule" || tab === "settings") {
+        if (tab === "settings") {
           loadSettingsIntoForms()
-            .then(() => (tab === "letter" ? loadPacks() : null))
+            .then(() => loadAntiban())
+            .catch((e) => {
+              if ($("antibanLog")) $("antibanLog").textContent = String(e);
+              logAction(e);
+            });
+        }
+        if (tab === "letter" || tab === "dash") {
+          loadSettingsIntoForms()
+            .then(() => (tab === "letter" ? loadPacks() : loadDash()))
             .catch(logAction);
         }
         if (tab === "inbox") loadInbox(true).catch(logAction);
@@ -870,11 +902,12 @@
         doc.open();
         doc.write(data.html || "");
         doc.close();
-        if ($("letterLog")) {
-          $("letterLog").textContent = data.attach_presentation
-            ? "К письму будет прикреплена презентация PDF."
-            : "Презентация не прикрепляется (флажок выключен).";
-        }
+          if ($("letterLog")) {
+            $("letterLog").hidden = false;
+            $("letterLog").textContent = data.attach_presentation
+              ? "К письму будет прикреплена презентация PDF."
+              : "Презентация не прикрепляется (флажок выключен).";
+          }
       } catch (e) {
         logAction(String(e));
       }
@@ -899,11 +932,13 @@
           renderPackCards(packId);
           await previewPack(packId, true);
           if ($("letterLog")) {
+            $("letterLog").hidden = false;
             $("letterLog").textContent =
               `Применена отрасль «${(data.pack && data.pack.title) || packId}». Цепочка follow-up активна.`;
           }
           logAction({ ok: true, pack: packId, updated: data.updated });
         } catch (e) {
+          if ($("letterLog")) $("letterLog").hidden = false;
           if ($("letterLog")) $("letterLog").textContent = String(e);
           logAction(String(e));
         }
@@ -924,7 +959,10 @@
           SEQUENCES_ENABLED: "true",
         };
         const data = await api("/api/settings", { method: "PUT", body: JSON.stringify({ settings: payload }) });
-        if ($("letterLog")) $("letterLog").textContent = "Кампания сохранена.";
+        if ($("letterLog")) {
+          $("letterLog").hidden = false;
+          $("letterLog").textContent = "Кампания сохранена.";
+        }
         logAction(data);
       } catch (e) {
         logAction(String(e));
@@ -1035,6 +1073,8 @@
         await loadDash();
         await loadSettingsIntoForms();
         await loadPacks();
+        // default tab is campaign
+        if ($("pageHint")) $("pageHint").textContent = hints.letter || "";
         return;
       } catch (e) {
         showLogin();
@@ -1050,6 +1090,8 @@
         await loadDash();
         await loadSettingsIntoForms();
         await loadPacks();
+        // default tab is campaign
+        if ($("pageHint")) $("pageHint").textContent = hints.letter || "";
         return;
       } catch (_) {
         showLogin();
