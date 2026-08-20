@@ -291,8 +291,16 @@
     const outreach = activity.outreach || null;
     const campaign = activity.campaign || null;
     const outbox = (outreach && outreach.outbox) || {};
-    const runState = outreach ? String(outreach.run_state || "stopped") : "—";
-    const runLive = runState === "running" || runState === "scheduled";
+    const runStateRaw = outreach ? String(outreach.run_state || "stopped") : "";
+    const runLive = runStateRaw === "running" || runStateRaw === "scheduled";
+    const runStateRu =
+      runStateRaw === "running"
+        ? "идёт"
+        : runStateRaw === "scheduled"
+          ? "по расписанию"
+          : runStateRaw === "stopped" || runStateRaw === "paused"
+            ? "стоп"
+            : runStateRaw || "нет данных";
 
     function profileCard(key) {
       const p = profiles[key] || {};
@@ -308,14 +316,14 @@
                 )}</button>`
             )
             .join("")
-        : `<span class="muted">нет tools</span>`;
+        : `<span class="muted">инструменты не включены</span>`;
       return `<div class="profile-card">
         <h3>${esc(p.label || key)}</h3>
-        <div>${chips}</div>
-        <div class="actions" style="margin-top:0.65rem">
-          <button type="button" data-goto-context="${esc(
+        <div class="tool-chip-row">${chips}</div>
+        <div class="actions">
+          <button type="button" class="btn-quiet" data-goto-context="${esc(
             p.context || ""
-          )}">Настроить tools</button>
+          )}">Настроить</button>
         </div>
       </div>`;
     }
@@ -323,7 +331,7 @@
     const callsRows = recent.length
       ? recent
           .map((c) => {
-            const ctx = c.context_name === "outbound" ? "исх" : "вх";
+            const ctx = c.context_name === "outbound" ? "исх." : "вх.";
             return `<tr class="call-row" data-call-id="${esc(c.call_id)}" tabindex="0">
               <td>${esc(fmtMsk(c.start_time))}</td>
               <td>${esc(c.caller_number || "—")}</td>
@@ -333,134 +341,141 @@
             </tr>`;
           })
           .join("")
-      : `<tr><td colspan="5" class="muted">Пока нет записей в call_history</td></tr>`;
+      : `<tr><td colspan="5" class="muted">Пока нет записей</td></tr>`;
 
     $("statusBox").innerHTML = `
       <div class="pult-hero">
         <div class="pult-hero-copy">
           <p class="pult-kicker">Quantum Labs</p>
-          <h2 class="pult-title">${esc(s.host_label || "Пульт секретаря")}</h2>
-          <p class="pult-sub">Управление автолинией, роботом, outreach и заданиями на звонки</p>
+          <h2 class="pult-title">Пульт</h2>
+          <p class="pult-sub">Линия · робот · письма · звонки</p>
         </div>
         <div class="pult-flags">
-          ${pill(!!robot.ok, robot.ok ? "Робот на приёме" : "Робот не готов")}
-          ${pill(sipOk, sipOk ? "SIP OK" : "SIP down")}
-          ${pill(!!s.inbound_line_gated, s.inbound_line_gated ? "Гейт dialplan" : "Гейт не в dialplan")}
+          ${pill(!!robot.ok, robot.ok ? "на приёме" : "не готов")}
+          ${pill(sipOk, sipOk ? "SIP" : "нет SIP")}
+          ${pill(lineOn, lineOn ? "линия вкл" : "линия выкл")}
         </div>
       </div>
 
       <div class="pult-controls">
         <div class="pult-card line-card ${lineOn ? "on" : "off"}">
           <div class="pult-card-top">
-            <span class="pult-card-label">Автолиния входящих</span>
-            <span class="pult-card-state">${lineOn ? "ВКЛ" : "ВЫКЛ"}</span>
+            <span class="pult-card-label">Входящая линия</span>
+            <span class="pill ${lineOn ? "ok" : "bad"}">${lineOn ? "принимает" : "закрыта"}</span>
           </div>
-          <p class="muted tight">${esc(line.hint || "Приём звонков на ИИ-секретаря")}</p>
-          <div class="pult-toggle-row">
-            <button type="button" id="btnLineOn" class="primary ${lineOn ? "active-toggle" : ""}">Включить</button>
-            <button type="button" id="btnLineOff" class="${!lineOn ? "active-toggle" : ""}">Выключить</button>
+          <p class="muted tight">Звонки на ИИ-секретаря</p>
+          <div class="seg" role="group" aria-label="Автолиния">
+            <button type="button" id="btnLineOn" class="${lineOn ? "seg-on" : ""}">Вкл</button>
+            <button type="button" id="btnLineOff" class="${!lineOn ? "seg-on" : ""}">Выкл</button>
           </div>
-          <p class="host-note" id="lineMsg">AstDB ${esc(line.astdb_path || "quantum/inbound_line")} = ${esc(line.value || "on")}</p>
+          <p class="meta-line" id="lineMsg">${esc(line.value || "on")}</p>
         </div>
 
         <div class="pult-card">
           <div class="pult-card-top">
-            <span class="pult-card-label">Робот (голосовой AI)</span>
-            <span class="pult-card-state">${robot.ai_engine ? "online" : "offline"}</span>
+            <span class="pult-card-label">Робот</span>
+            <span class="pill ${robot.ai_engine ? "ok" : "bad"}">${
+              robot.ai_engine ? "в сети" : "нет связи"
+            }</span>
           </div>
-          <p class="muted tight">${esc(robot.hint || "")}</p>
           <ul class="pult-checklist">
-            <li>${pill(!!robot.ai_engine, "AI engine")}</li>
-            <li>${pill(!!robot.sip, "Mango SIP")}</li>
-            <li>${pill(!!robot.line_enabled, "Автолиния")}</li>
+            <li>${pill(!!robot.ai_engine, "голос")}</li>
+            <li>${pill(!!robot.sip, "SIP")}</li>
+            <li>${pill(!!robot.line_enabled, "линия")}</li>
           </ul>
           <div class="actions">
-            <button type="button" data-goto-tab="scenario">Сценарий</button>
-            <button type="button" data-goto-tab="calls">Звонки</button>
+            <button type="button" class="btn-quiet" data-goto-tab="scenario">Сценарий</button>
+            <button type="button" class="btn-quiet" data-goto-tab="calls">Звонки</button>
           </div>
         </div>
 
         <div class="pult-card">
           <div class="pult-card-top">
-            <span class="pult-card-label">Outreach</span>
-            <span class="pult-card-state">${esc(runState)}</span>
+            <span class="pult-card-label">Письма</span>
+            <span class="pill ${runLive ? "ok" : ""}">${esc(runStateRu)}</span>
           </div>
           ${
             outreach
-              ? `<p class="muted tight">Сегодня отправлено: <b>${esc(
-                  outreach.today_sent ?? "—"
-                )}</b> · лимит ${esc(outreach.effective_daily_limit ?? outreach.daily_limit ?? "—")}</p>
+              ? `<p class="muted tight">Сегодня ${esc(
+                  outreach.today_sent ?? 0
+                )} / лимит ${esc(
+                  outreach.effective_daily_limit ?? outreach.daily_limit ?? "—"
+                )}</p>
                  <div class="pult-mini-grid">
-                   <div><span class="label">pending</span><b>${esc(outbox.pending ?? "—")}</b></div>
-                   <div><span class="label">sent</span><b>${esc(outbox.sent ?? "—")}</b></div>
-                   <div><span class="label">replied</span><b>${esc(outbox.replied ?? "—")}</b></div>
-                   <div><span class="label">failed</span><b>${esc(outbox.failed ?? "—")}</b></div>
+                   <div><span class="label">очередь</span><b>${esc(outbox.pending ?? "—")}</b></div>
+                   <div><span class="label">ушло</span><b>${esc(outbox.sent ?? "—")}</b></div>
+                   <div><span class="label">ответы</span><b>${esc(outbox.replied ?? "—")}</b></div>
+                   <div><span class="label">сбои</span><b>${esc(outbox.failed ?? "—")}</b></div>
                  </div>
                  <div class="actions">
-                   <button type="button" data-goto-tab="outreach" class="primary">Открыть Outreach</button>
-                   ${pill(runLive, runLive ? "рассылка активна" : "остановлена")}
+                   <button type="button" class="btn-quiet" data-goto-tab="outreach">Открыть</button>
                  </div>`
-              : `<p class="muted">Не удалось получить dashboard outreach</p>
-                 <div class="actions"><button type="button" data-goto-tab="outreach">Открыть Outreach</button></div>`
+              : `<p class="muted tight">Нет данных</p>
+                 <div class="actions"><button type="button" class="btn-quiet" data-goto-tab="outreach">Открыть</button></div>`
           }
         </div>
 
         <div class="pult-card">
           <div class="pult-card-top">
-            <span class="pult-card-label">Задания на звонки</span>
-            <span class="pult-card-state">${
-              campaign && campaign.running ? "идёт" : "ожидание"
+            <span class="pult-card-label">Обзвон</span>
+            <span class="pill ${campaign && campaign.running ? "ok" : ""}">${
+              campaign && campaign.running ? "идёт" : "пауза"
             }</span>
           </div>
           ${
             campaign
-              ? `<p class="muted tight">${esc(campaign.message || "Sheets campaign")}</p>
-                 <div class="pult-mini-grid">
-                   <div><span class="label">обработано</span><b>${esc(campaign.processed ?? "—")}</b></div>
+              ? `<div class="pult-mini-grid">
+                   <div><span class="label">сделано</span><b>${esc(campaign.processed ?? "—")}</b></div>
                    <div><span class="label">интерес</span><b>${esc(campaign.interested ?? "—")}</b></div>
                    <div><span class="label">ошибки</span><b>${esc(campaign.errors ?? "—")}</b></div>
-                   <div><span class="label">в очереди</span><b>${esc(campaign.queued ?? "—")}</b></div>
+                   <div><span class="label">в листе</span><b>${esc(campaign.queued ?? "—")}</b></div>
                  </div>`
-              : `<p class="muted tight">Статус кампании недоступен</p>`
+              : `<p class="muted tight">Нет данных кампании</p>`
           }
-          <div class="actions" style="margin-top:0.65rem">
-            <button type="button" data-goto-tab="campaign" class="primary">Обзвон Sheets</button>
-            <button type="button" data-goto-tab="outbound">Один звонок</button>
+          <div class="actions">
+            <button type="button" class="btn-quiet" data-goto-tab="campaign">Sheets</button>
+            <button type="button" class="btn-quiet" data-goto-tab="outbound">Один звонок</button>
           </div>
           <div id="campaignGlance"></div>
         </div>
       </div>
 
-      <h2 class="section-title">Последние звонки</h2>
-      <p class="muted">Клик — открыть расшифровку во вкладке «Звонки»</p>
+      <div class="pult-section-head">
+        <h2 class="section-title">Последние звонки</h2>
+        <p class="muted tight">Нажмите строку — расшифровка</p>
+      </div>
       <div class="surface-tight">
         <table class="calls-table"><thead><tr>
-          <th>Время (МСК)</th><th>Номер</th><th>Тип</th><th>Длит.</th><th>Исход</th>
+          <th>Время</th><th>Номер</th><th>Тип</th><th>Длит.</th><th>Исход</th>
         </tr></thead><tbody>${callsRows}</tbody></table>
       </div>
 
-      <h2 class="section-title">Сервисы</h2>
+      <div class="pult-section-head">
+        <h2 class="section-title">Сервисы</h2>
+      </div>
       <div class="status-grid">
         ${services
           .map(
             (svc) =>
               `<div class="status-card ${svc.ok ? "ok" : "bad"}" title="${esc(svc.hint || "")}">
                 <span class="label">${esc(svc.label || svc.id)}</span>
-                <span class="value">${svc.ok ? "работает" : "недоступен"}</span>
+                <span class="value">${svc.ok ? "ок" : "нет"}</span>
               </div>`
           )
           .join("")}
       </div>
 
-      <h2 class="section-title">Инструменты в профилях</h2>
-      <p class="muted">Клик по tool или «Настроить» — детали и включение в сценарии</p>
+      <div class="pult-section-head">
+        <h2 class="section-title">Инструменты</h2>
+        <p class="muted tight">В сценарии входящих и исходящих</p>
+      </div>
       <div class="profile-tools">
         ${profileCard("inbound")}
         ${profileCard("outbound")}
       </div>
 
       <details class="pult-details">
-        <summary>Службы systemd и SIP</summary>
+        <summary>Техническое</summary>
         <table><thead><tr><th>Служба</th><th>Состояние</th></tr></thead><tbody>
           ${unitsUi
             .map(
@@ -469,7 +484,7 @@
             )
             .join("")}
         </tbody></table>
-        <h3 class="section-title">Регистрация Mango</h3>
+        <h3 class="section-title">Mango SIP</h3>
         <pre class="msg codeblock">${esc(s.registration_raw)}</pre>
         <h3 class="section-title">Пути</h3>
         <pre class="msg codeblock">${esc(JSON.stringify(s.paths || {}, null, 2))}</pre>
@@ -542,7 +557,7 @@
     if (glance) {
       api("/api/campaign/preview?limit=1")
         .then((r) => {
-          glance.innerHTML = `<p class="muted tight" style="margin-top:0.55rem">В Sheet без пометки: <b>${esc(
+          glance.innerHTML = `<p class="muted tight" style="margin-top:0.35rem">без пометки в Sheet: <b>${esc(
             r.total_pending ?? 0
           )}</b></p>`;
         })
