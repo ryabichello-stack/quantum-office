@@ -39,6 +39,9 @@ html, body {
     radial-gradient(700px 380px at 100% 0%, rgba(56, 112, 168, 0.12), transparent 55%),
     linear-gradient(165deg, var(--bg1), var(--bg0));
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
 
 body.embedded {
@@ -256,6 +259,11 @@ textarea {
   font-size: 0.8rem;
   line-height: 1.45;
   min-height: 4.5rem;
+  max-height: min(52vh, 420px);
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 button {

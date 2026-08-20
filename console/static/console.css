@@ -296,6 +296,8 @@ main {
   border: 1px solid rgba(201, 213, 224, 0.85);
   background: rgba(255, 255, 255, 0.55);
   box-shadow: var(--shadow);
+  /* keep wheel events inside the iframe document */
+  overscroll-behavior: contain;
 }
 .outreach-frame {
   width: 100%;
@@ -304,6 +306,8 @@ main {
   border: 0;
   display: block;
   background: transparent;
+  /* allow iframe content to scroll independently */
+  overflow: auto;
 }
 
 .surface {
