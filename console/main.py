@@ -101,7 +101,7 @@ MANGO_VPBX_API_BASE = os.getenv(
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
-app = FastAPI(title="Quantum Labs Console", version="0.1.0")
+app = FastAPI(title="Quantum Labs Console", version="0.2.0")
 if STATIC_DIR.is_dir():
     app.mount("/assets", StaticFiles(directory=str(STATIC_DIR)), name="assets")
 

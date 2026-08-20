@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Second Brain ingest every 15 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=15min
+Persistent=true
+Unit=ava-brain-ingest.service
+
+[Install]
+WantedBy=timers.target
