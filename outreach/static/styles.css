@@ -548,28 +548,154 @@ iframe#previewFrame,
   border-radius: 999px;
 }
 
+.report-panel .rates-row {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
 .rates-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  margin: 0.5rem 0;
-}
-.rate-pill {
-  padding: 0.25rem 0.55rem;
-  border-radius: 999px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0;
+  margin: 0.15rem 0 0.65rem;
   border: 1px solid var(--line);
-  background: #fff;
-  font-size: 0.75rem;
-  color: var(--muted);
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.75);
 }
+.rate-card,
+.rate-pill {
+  padding: 0.55rem 0.7rem;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  min-height: 58px;
+}
+.rate-card:last-child,
+.rate-pill:last-child { border-right: 0; }
+.rate-card .n,
+.rate-pill .n {
+  font-family: var(--display);
+  font-size: 1.05rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.rate-card .l,
+.rate-pill .l {
+  margin-top: 0.15rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.report-panel {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  overflow: hidden;
+}
+.report-panel-head {
+  margin: 0;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: rgba(244, 247, 250, 0.9);
+  border-bottom: 1px solid var(--line);
+}
+.report-panel-body { padding: 0.55rem 0.7rem; }
+
+.funnel-viz {
+  margin: 0;
+  display: grid;
+  gap: 0;
+}
+.funnel-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 48px;
+  gap: 0.55rem;
+  align-items: center;
+  padding: 0.45rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.8rem;
+}
+.funnel-row:last-child { border-bottom: 0; }
+.funnel-row > span { color: var(--muted); font-weight: 500; }
+.funnel-row > b {
+  text-align: right;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.funnel-track {
+  height: 10px;
+  border-radius: 999px;
+  background: #edf2f6;
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.funnel-track > i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+  border-radius: 999px;
+}
+
 .notes-list {
   margin: 0;
-  padding-left: 1.1rem;
+  padding: 0;
+  list-style: none;
   font-size: 0.82rem;
-  color: var(--muted);
-  line-height: 1.45;
+  color: var(--ink);
+  line-height: 1.4;
 }
-.funnel-viz { margin: 0.5rem 0; }
+.notes-list li {
+  padding: 0.45rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+}
+.notes-list li:last-child { border-bottom: 0; }
+.notes-list strong { color: var(--muted); font-weight: 600; }
+
+.daily-bars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  align-items: flex-end;
+  min-height: 88px;
+}
+.bar-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.45rem 0.35rem 0.4rem;
+  min-width: 42px;
+  border-right: 1px solid var(--line);
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+.bar-group:last-child { border-right: 0; }
+.bar-stack {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 44px;
+}
+.bar-stack .bar {
+  width: 8px;
+  border-radius: 3px 3px 0 0;
+  background: var(--accent);
+  min-height: 2px;
+  border: 1px solid rgba(196, 71, 15, 0.35);
+}
+.bar-stack .bar.open {
+  background: #2bb0ed;
+  border-color: rgba(43, 176, 237, 0.45);
+}
+
 .toolbar, .report-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -577,6 +703,22 @@ iframe#previewFrame,
   align-items: center;
 }
 .transport { display: flex; gap: 0.3rem; }
+
+.eng {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 0.68rem;
+  font-weight: 600;
+  background: #fff;
+}
+.eng.ok { color: var(--ok); border-color: rgba(13, 143, 122, 0.35); background: #f3faf7; }
+.eng.warn { color: var(--warn); border-color: rgba(180, 83, 9, 0.35); background: #fff8ee; }
+.eng.bad { color: var(--danger); border-color: rgba(180, 35, 24, 0.3); background: #fff5f4; }
+.eng.muted { color: var(--muted); }
 
 @media (max-width: 860px) {
   .grid2 { grid-template-columns: 1fr; }

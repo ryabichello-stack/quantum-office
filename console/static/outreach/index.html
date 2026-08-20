@@ -367,29 +367,43 @@
           </div>
           <p class="muted tight" id="reportMeta"></p>
           <div class="stat-grid" id="reportFunnel"></div>
-          <div class="rates-row" id="reportRates"></div>
-          <div class="funnel-viz" id="reportFunnelBars" aria-label="Воронка"></div>
+
+          <div class="report-panel">
+            <p class="report-panel-head">Доли</p>
+            <div class="rates-row" id="reportRates"></div>
+          </div>
+
+          <div class="report-panel">
+            <p class="report-panel-head">Воронка</p>
+            <div class="funnel-viz" id="reportFunnelBars" aria-label="Воронка"></div>
+          </div>
+
           <div class="grid2">
-            <div>
-              <h3 class="section-title" style="font-size:0.9rem">По дням</h3>
-              <div id="reportDaily" class="bars"></div>
+            <div class="report-panel">
+              <p class="report-panel-head">По дням</p>
+              <div class="report-panel-body">
+                <div id="reportDaily" class="daily-bars"></div>
+              </div>
             </div>
-            <div>
-              <h3 class="section-title" style="font-size:0.9rem">Что это значит</h3>
+            <div class="report-panel">
+              <p class="report-panel-head">Что это значит</p>
               <ul class="notes-list" id="reportNotes"></ul>
             </div>
           </div>
-          <h3 class="section-title" style="font-size:0.9rem;margin-top:0.35rem">Последние письма</h3>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Статус</th><th>Кому</th><th>Компания</th><th>Тема</th>
-                  <th>Отправлено</th><th>Открыто</th><th>Bounce</th><th>Ответ</th>
-                </tr>
-              </thead>
-              <tbody id="reportRecent"></tbody>
-            </table>
+
+          <div class="report-panel">
+            <p class="report-panel-head">Последние письма</p>
+            <div class="table-wrap" style="margin:0;border:0;border-radius:0">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Статус</th><th>Кому</th><th>Компания</th><th>Тема</th>
+                    <th>Отправлено</th><th>Открыто</th><th>Bounce</th><th>Ответ</th>
+                  </tr>
+                </thead>
+                <tbody id="reportRecent"></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </section>

@@ -295,17 +295,17 @@
       .join("");
 
     $("reportRates").innerHTML = [
-      ["Delivery", fmtPct(r.delivery_rate_pct)],
+      ["Доставка", fmtPct(r.delivery_rate_pct)],
       ["Bounce", fmtPct(r.bounce_rate_pct)],
-      ["Open (от доставл.)", fmtPct(r.open_rate_pct)],
-      ["Reply", fmtPct(r.reply_rate_pct)],
-      ["Reply / open", fmtPct(r.reply_of_opened_pct)],
+      ["Открытия", fmtPct(r.open_rate_pct)],
+      ["Ответы", fmtPct(r.reply_rate_pct)],
+      ["Ответ / открытие", fmtPct(r.reply_of_opened_pct)],
     ]
       .map(
         ([l, v]) =>
           `<div class="rate-card"><div class="n">${v}</div><div class="l">${l}</div></div>`
       )
-      .join("");
+      .join("") || `<div class="rate-card"><div class="n">—</div><div class="l">нет данных</div></div>`;
 
     const stages = [
       ["Отправлено", f.sent || 0],
@@ -324,30 +324,34 @@
       .join("");
 
     const notes = (f.notes && Object.entries(f.notes)) || [];
-    $("reportNotes").innerHTML = notes
-      .map(([k, v]) => `<li><strong>${escapeHtml(k)}:</strong> ${escapeHtml(v)}</li>`)
-      .join("");
+    $("reportNotes").innerHTML = notes.length
+      ? notes
+          .map(([k, v]) => `<li><strong>${escapeHtml(k)}:</strong> ${escapeHtml(v)}</li>`)
+          .join("")
+      : `<li class="muted">Пока нет пояснений по воронке</li>`;
 
     const daily = data.daily || [];
     const maxD = Math.max(
       1,
       ...daily.map((d) => Math.max(d.sent || 0, d.opened || 0, d.bounced || 0, d.replied || 0))
     );
-    $("reportDaily").innerHTML = daily
-      .map((d) => {
-        const sentH = Math.round((40 * (d.sent || 0)) / maxD);
-        const openH = Math.round((40 * (d.opened || 0)) / maxD);
-        return `<div class="bar-group" title="${d.day}: sent ${d.sent || 0}, open ${
-          d.opened || 0
-        }, bounce ${d.bounced || 0}, reply ${d.replied || 0}">
+    $("reportDaily").innerHTML = daily.length
+      ? daily
+          .map((d) => {
+            const sentH = Math.max(2, Math.round((40 * (d.sent || 0)) / maxD));
+            const openH = Math.max(2, Math.round((40 * (d.opened || 0)) / maxD));
+            return `<div class="bar-group" title="${d.day}: отправлено ${d.sent || 0}, открыто ${
+              d.opened || 0
+            }, bounce ${d.bounced || 0}, ответ ${d.replied || 0}">
           <div class="bar-stack">
             <div class="bar sent" style="height:${sentH}px"></div>
             <div class="bar open" style="height:${openH}px"></div>
           </div>
           <span>${String(d.day).slice(5)}</span>
         </div>`;
-      })
-      .join("");
+          })
+          .join("")
+      : `<p class="muted tight" style="padding:0.35rem 0">Нет отправок за период</p>`;
 
     $("reportRecent").innerHTML = (data.recent || [])
       .map(
@@ -938,6 +942,7 @@
           }
           logAction({ ok: true, pack: packId, updated: data.updated });
         } catch (e) {
+          if ($("letterLog")) $("letterLog").hidden = false;
           if ($("letterLog")) $("letterLog").textContent = String(e);
           logAction(String(e));
         }
@@ -1072,6 +1077,8 @@
         await loadDash();
         await loadSettingsIntoForms();
         await loadPacks();
+        // default tab is campaign
+        if ($("pageHint")) $("pageHint").textContent = hints.letter || "";
         return;
       } catch (e) {
         showLogin();
@@ -1087,6 +1094,8 @@
         await loadDash();
         await loadSettingsIntoForms();
         await loadPacks();
+        // default tab is campaign
+        if ($("pageHint")) $("pageHint").textContent = hints.letter || "";
         return;
       } catch (_) {
         showLogin();
