@@ -25,9 +25,15 @@
 
 * { box-sizing: border-box; }
 
-html, body {
+html {
+  height: 100%;
+  overflow-y: scroll;
+  overflow-x: hidden;
+}
+body {
   margin: 0;
   min-height: 100%;
+  height: auto;
   color: var(--ink);
   font-family: var(--font);
   font-weight: 400;
@@ -39,14 +45,11 @@ html, body {
     radial-gradient(700px 380px at 100% 0%, rgba(56, 112, 168, 0.12), transparent 55%),
     linear-gradient(165deg, var(--bg1), var(--bg0));
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
+  overflow: visible;
 }
 
 body.embedded {
   background: transparent;
-  min-height: 100%;
 }
 
 .hidden { display: none !important; }
@@ -258,12 +261,9 @@ textarea {
   font-family: var(--mono);
   font-size: 0.8rem;
   line-height: 1.45;
-  min-height: 4.5rem;
-  max-height: min(52vh, 420px);
-  overflow-y: auto !important;
-  overflow-x: hidden;
-  overscroll-behavior: contain;
-  touch-action: pan-y;
+  min-height: 8rem;
+  /* grow with content / user resize — page scrolls in the iframe */
+  overflow: auto;
 }
 
 button {

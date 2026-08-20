@@ -654,29 +654,6 @@
 
   async function boot() {
     bindTabs();
-    // Keep mouse-wheel scrolling inside textareas (iframe parent otherwise steals it)
-    document.querySelectorAll("textarea").forEach((el) => {
-      el.addEventListener(
-        "wheel",
-        (ev) => {
-          const node = ev.currentTarget;
-          if (!node) return;
-          const canScroll = node.scrollHeight > node.clientHeight + 1;
-          if (!canScroll) return;
-          const atTop = node.scrollTop <= 0 && ev.deltaY < 0;
-          const atBottom =
-            node.scrollTop + node.clientHeight >= node.scrollHeight - 1 && ev.deltaY > 0;
-          if (!atTop && !atBottom) {
-            ev.stopPropagation();
-          } else {
-            ev.preventDefault();
-            ev.stopPropagation();
-            node.scrollTop += ev.deltaY;
-          }
-        },
-        { passive: false }
-      );
-    });
 
     if ($("loginBtn") && $("tokenInput")) {
       $("loginBtn").addEventListener("click", async () => {
