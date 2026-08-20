@@ -16,6 +16,8 @@
 - Юридический футер + «Отписаться» / List-Unsubscribe в шаблонах; презентация PDF на 1-м письме
 - API `GET/POST /api/packs` (+ apply) и вкладка «Кампания» в UI (Console embed + standalone)
 - Из Outreach: кнопка «Задание на звонок» → вкладка пульта через postMessage
+- Цепочки по playbook ломбардов: 5 касаний (дни 0/3/6/10/15), позиционирование «платёжная инфраструктура + подбор банка»; тот же каркас для МФО / trade-in / гиг / вторсырьё
+- Playbook: `outreach/content/playbooks/lombards.md`
 
 ### Changed
 
