@@ -60,11 +60,11 @@
         <h1 id="pageTitle">Обзор</h1>
       </div>
       <div class="top-actions">
-        <span id="runStateBadge" class="badge">Stop</span>
+        <span id="runStateBadge" class="badge">Стоп</span>
         <div class="transport" role="group" aria-label="Управление рассылкой">
-          <button type="button" id="runPlayBtn" class="play">Play</button>
-          <button type="button" id="runPauseBtn" class="ghost">Pause</button>
-          <button type="button" id="runStopBtn" class="danger">Stop</button>
+          <button type="button" id="runPlayBtn" class="play">Старт</button>
+          <button type="button" id="runPauseBtn" class="ghost">Пауза</button>
+          <button type="button" id="runStopBtn" class="danger">Стоп</button>
         </div>
         <button type="button" class="ghost" id="refreshBtn">Обновить</button>
       </div>
@@ -77,8 +77,8 @@
       <button type="button" data-tab="outbox">Очередь</button>
       <button type="button" data-tab="replies">Ответы</button>
       <button type="button" data-tab="inbox">Inbox</button>
-      <button type="button" data-tab="letter">Письмо</button>
-      <button type="button" data-tab="antiban">Anti-ban</button>
+      <button type="button" data-tab="letter">Кампания</button>
+      <button type="button" data-tab="antiban">Защита</button>
       <button type="button" data-tab="schedule">Расписание</button>
       <button type="button" data-tab="settings">Настройки</button>
     </nav>
@@ -94,27 +94,32 @@
             <div class="block">
             <h2>Действия</h2>
             <div class="oneshot-box">
-              <h2>Одно письмо (тест себе)</h2>
+              <h2>Тест себе</h2>
+              <p class="muted tight">Одно письмо с текущим шаблоном кампании. Очередь Bitrix не трогается.</p>
               <label>Кому<input id="oneTo" type="email" placeholder="you@quantumlabs.ru" /></label>
               <label>Имя в письме<input id="oneName" type="text" placeholder="коллега" /></label>
               <div class="action-row">
                 <button type="button" class="ghost" id="oneDryBtn">Превью</button>
-                <button type="button" id="oneSendBtn">Отправить одно</button>
+                <button type="button" id="oneSendBtn">Отправить тест</button>
               </div>
-              <p class="muted">Не требует OUTREACH_ENABLED. Лимит one-shot: до 5/сутки. Массовая очередь не трогается.</p>
+              <p class="muted">Лимит: до 5 тестовых писем в сутки. Старт массовой рассылки не нужен.</p>
             </div>
             <div class="action-row">
-              <button type="button" id="syncBtn">Sync Bitrix</button>
+              <button type="button" id="syncBtn">Синхронизировать Bitrix</button>
               <button type="button" id="checkRepliesBtn">Проверить ответы</button>
-              <button type="button" id="dryRunBtn">Dry-run ×5</button>
+              <button type="button" id="dryRunBtn">Пробный прогон ×5</button>
             </div>
             <div class="action-row">
-              <label>Отправить N
+              <label>Отправить из очереди
                 <input id="sendN" type="number" min="1" max="20" value="1" />
               </label>
-              <button type="button" id="sendBtn" class="danger">Send batch</button>
+              <button type="button" id="sendBtn" class="danger">Отправить пачку</button>
             </div>
-            <p class="muted">Batch работает только при <strong>Play</strong> (массовая рассылка).</p>
+            <p class="muted">Массовая пачка работает только после <strong>Старт</strong>. Шаблон и отрасль — во вкладке «Кампания».</p>
+            <div class="action-row">
+              <button type="button" class="ghost" id="gotoCampaignBtn">Открыть кампанию</button>
+              <button type="button" class="ghost" id="gotoCallBtn">Задание на звонок</button>
+            </div>
             <pre id="actionLog" class="log"></pre>
           </div>
         </div>
@@ -278,29 +283,53 @@
       </section>
 
       <section id="tab-letter" class="panel">
-        <div class="two-col">
-          <div class="block">
-            <label>Тема<input id="letterSubject" type="text" /></label>
-            <label>Компания (подпись)<input id="letterCompany" type="text" /></label>
-            <label>Сайт<input id="letterWebsite" type="text" /></label>
-            <label>Телефон<input id="letterPhone" type="text" /></label>
-            <label>Plain
-              <textarea id="letterPlain" rows="14"></textarea>
-            </label>
-            <label>HTML
-              <textarea id="letterHtml" rows="14"></textarea>
-            </label>
-            <p class="muted">Плейсхолдеры: <code>{name}</code> <code>{company}</code> <code>{website}</code> <code>{unsub}</code> <code>{phone_line}</code> <code>{phone_html}</code></p>
-            <div class="action-row">
-              <button type="button" id="letterPreview">Превью</button>
-              <button type="button" id="letterSave">Сохранить письмо</button>
-            </div>
+        <div class="campaign-hub">
+          <div class="task-intro">
+            <h2 class="section-title">Кампания по отрасли</h2>
+            <p class="muted tight">Выберите нишу — подставятся тема, письмо, цепочка follow-up и презентация. Юридический блок и «Отписаться» уже в шаблоне.</p>
           </div>
-          <div class="block">
-            <h2>Превью</h2>
-            <p id="previewSubject" class="preview-subject"></p>
-            <iframe id="previewFrame" title="preview"></iframe>
-            <pre id="previewPlain" class="log"></pre>
+
+          <fieldset class="pack-mode">
+            <legend>Отрасль</legend>
+            <div id="packCards" class="pack-cards">Загрузка пакетов…</div>
+          </fieldset>
+
+          <div class="campaign-meta">
+            <p id="packActiveMeta" class="muted tight">Активный пакет не выбран</p>
+            <ol id="packStepsPreview" class="pack-steps"></ol>
+          </div>
+
+          <div class="two-col">
+            <div class="block">
+              <label class="field">Тема письма<input id="letterSubject" type="text" /></label>
+              <div class="task-grid">
+                <label class="field">Компания (подпись)<input id="letterCompany" type="text" /></label>
+                <label class="field">Сайт<input id="letterWebsite" type="text" /></label>
+                <label class="field">Телефон<input id="letterPhone" type="text" /></label>
+              </div>
+              <label class="check"><input id="letterAttachPdf" type="checkbox" /> Прикреплять презентацию PDF к первому письму</label>
+              <p class="muted tight" id="letterPdfMeta"></p>
+              <label class="field">Текст (plain)
+                <textarea id="letterPlain" rows="12"></textarea>
+              </label>
+              <details class="task-advanced">
+                <summary>HTML-версия (можно править)</summary>
+                <textarea id="letterHtml" rows="10"></textarea>
+              </details>
+              <p class="muted tight">Плейсхолдеры: <code>{name}</code> <code>{company}</code> <code>{website}</code> <code>{unsub}</code> <code>{unsub_url}</code> <code>{phone_line}</code></p>
+              <div class="task-actions">
+                <button type="button" id="letterApplyPack" class="play">Применить отрасль</button>
+                <button type="button" id="letterPreview" class="ghost">Превью</button>
+                <button type="button" id="letterSave">Сохранить кампанию</button>
+              </div>
+              <pre id="letterLog" class="log"></pre>
+            </div>
+            <div class="block">
+              <h2>Превью</h2>
+              <p id="previewSubject" class="preview-subject"></p>
+              <iframe id="previewFrame" title="preview"></iframe>
+              <pre id="previewPlain" class="log"></pre>
+            </div>
           </div>
         </div>
       </section>

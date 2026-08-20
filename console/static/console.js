@@ -14,7 +14,7 @@
 
   const TAB_META = {
     status: { title: "Пульт", hint: "Линия, робот, outreach, звонки и сервисы" },
-    outreach: { title: "Outreach", hint: "Bitrix, очередь писем, ответы, anti-ban" },
+    outreach: { title: "Outreach", hint: "Кампании по отраслям, очередь писем, звонки" },
     scenario: { title: "Сценарий", hint: "YAML-профили входящих и исходящих" },
     knowledge: { title: "База знаний", hint: "Second Brain · quantum_labs.md" },
     calls: { title: "Звонки", hint: "История и расшифровки" },
@@ -1205,6 +1205,18 @@
 
   document.querySelectorAll(".side-nav button").forEach((btn) => {
     btn.addEventListener("click", () => setTab(btn.dataset.tab));
+  });
+
+  window.addEventListener("message", (ev) => {
+    const data = ev && ev.data;
+    if (!data || data.type !== "quantum-console") return;
+    if (data.action === "open-outbound") {
+      setTab("outbound");
+      if (data.phone && $("dialPhone")) $("dialPhone").value = String(data.phone);
+      if (data.contact && $("dialContact")) $("dialContact").value = String(data.contact);
+      if (data.company && $("dialCompany")) $("dialCompany").value = String(data.company);
+      if (data.topic && $("dialTopic")) $("dialTopic").value = String(data.topic);
+    }
   });
 
   if ($("loginForm")) $("loginForm").addEventListener("submit", doLogin);

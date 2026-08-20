@@ -1,42 +1,40 @@
-"""Outreach email templates (cooperation / сотрудничество)."""
+"""Outreach email templates (cooperation / industry packs)."""
 
 from __future__ import annotations
 
 from html import escape
 
+from content.packs import LEGAL_FOOTER_HTML, LEGAL_FOOTER_PLAIN, ensure_legal_footer
+
 
 DEFAULT_PLAIN = """Здравствуйте, {name}!
 
-Меня зовут команда {company}. Пишем по поводу возможного сотрудничества:
-AI-секретарь для телефонии, автоматизация записи и follow-up по заявкам.
+Мы в Quantum Labs развиваем Quantum Payouts — сервис массовых выплат физлицам
+(карта и СБП), а также платёжные сценарии: приём, выплаты, сплитование, удержание
+и другие финансовые инструменты под ваш процесс.
 
-Если тема актуальна — ответьте на это письмо, подберём короткое знакомство.
+Если тема автоматизации расчётов с физлицами для вас актуальна — ответьте на это
+письмо, подберём короткое знакомство на 15 минут.
 
 Сайт: {website}{phone_line}
 
 С уважением,
-{company}
-
----
-Отписаться: {unsub_url}
-Или mailto:{unsub}?subject=unsubscribe
-"""
+команда {company}
+""" + LEGAL_FOOTER_PLAIN
 
 DEFAULT_HTML = """<!DOCTYPE html>
 <html lang="ru">
-<body style="font-family: Georgia, 'Times New Roman', serif; line-height: 1.5; color: #1a1a1a;">
+<body style="font-family: Manrope, Segoe UI, sans-serif; line-height: 1.5; color: #1a1a1a; font-size: 15px;">
   <p>Здравствуйте, {name}!</p>
-  <p>Меня зовут команда <strong>{company}</strong>. Пишем по поводу возможного
-  сотрудничества: AI-секретарь для телефонии, автоматизация записи и follow-up по заявкам.</p>
-  <p>Если тема актуальна — ответьте на это письмо, подберём короткое знакомство.</p>
+  <p>Мы в <strong>{company}</strong> развиваем <strong>Quantum Payouts</strong> —
+  сервис массовых выплат физлицам (карта и СБП), а также платёжные сценарии:
+  приём, выплаты, сплитование, удержание и другие финансовые инструменты под ваш процесс.</p>
+  <p>Если тема автоматизации расчётов с физлицами для вас актуальна — ответьте на это
+  письмо, подберём короткое знакомство на 15 минут.</p>
   <p>Сайт: <a href="{website}">{website}</a></p>
   {phone_html}
-  <p>С уважением,<br>{company}</p>
-  <hr>
-  <p style="font-size: 12px; color: #555;">
-    <a href="{unsub_url}">Отписаться</a>
-    · <a href="mailto:{unsub}?subject=unsubscribe">mailto</a>
-  </p>
+  <p>С уважением,<br>команда {company}</p>
+""" + LEGAL_FOOTER_HTML + """
 </body>
 </html>
 """
@@ -72,31 +70,28 @@ def render_cooperation(
 
     plain_src = (plain_template or "").strip() or DEFAULT_PLAIN
     html_src = (html_template or "").strip() or DEFAULT_HTML
+    plain_src, html_src = ensure_legal_footer(plain_src, html_src)
 
-    plain = _safe_format(
-        plain_src,
-        {
-            "name": name,
-            "company": company,
-            "website": site,
-            "unsub": unsub,
-            "unsub_url": unsub_url,
-            "phone": phone_s,
-            "phone_line": phone_line,
-            "phone_html": phone_html,
-        },
-    )
-    html = _safe_format(
-        html_src,
-        {
-            "name": escape(name),
-            "company": escape(company),
-            "website": escape(site),
-            "unsub": escape(unsub),
-            "unsub_url": escape(unsub_url),
-            "phone": escape(phone_s),
-            "phone_line": escape(phone_line),
-            "phone_html": phone_html,
-        },
-    )
+    mapping_plain = {
+        "name": name,
+        "company": company,
+        "website": site,
+        "unsub": unsub,
+        "unsub_url": unsub_url,
+        "phone": phone_s,
+        "phone_line": phone_line,
+        "phone_html": phone_html,
+    }
+    mapping_html = {
+        "name": escape(name),
+        "company": escape(company),
+        "website": escape(site),
+        "unsub": escape(unsub),
+        "unsub_url": escape(unsub_url),
+        "phone": escape(phone_s),
+        "phone_line": escape(phone_line),
+        "phone_html": phone_html,
+    }
+    plain = _safe_format(plain_src, mapping_plain)
+    html = _safe_format(html_src, mapping_html)
     return plain, html

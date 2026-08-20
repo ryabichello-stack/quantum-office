@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import logging
+import mimetypes
 import os
 import random
 import smtplib
 import time
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr, make_msgid
+from pathlib import Path
 from typing import Any
 
 from bitrix_client import BitrixClient  # noqa: I001
@@ -17,6 +20,52 @@ from outbox import OutboxStore
 from templates import render_cooperation
 
 logger = logging.getLogger("ava-outreach.sender")
+
+_ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+_DEFAULT_PRESENTATION = _ASSETS_DIR / "quantum_payouts_presentation_small.pdf"
+
+
+def _presentation_path(settings: Any = None, pack_path: str | None = None) -> Path | None:
+    """Resolve PDF presentation path from settings / pack / default asset."""
+    candidates: list[Path] = []
+    for raw in (pack_path, _cfg(settings, "OUTREACH_PRESENTATION_PDF", "")):
+        if not raw:
+            continue
+        p = Path(str(raw)).expanduser()
+        checks = [
+            p,
+            _ASSETS_DIR / p,
+            _ASSETS_DIR / p.name,
+            Path(__file__).resolve().parent / p,
+        ]
+        for c in checks:
+            if c.is_file():
+                candidates.append(c)
+                break
+    if _DEFAULT_PRESENTATION.is_file():
+        candidates.append(_DEFAULT_PRESENTATION)
+    return candidates[0] if candidates else None
+
+
+def _should_attach_presentation(settings: Any, *, step_wants: bool = False) -> bool:
+    if step_wants:
+        # still respect explicit off
+        if _cfg(settings, "OUTREACH_ATTACH_PRESENTATION", "") in ("0", "false", "no", "off"):
+            return False
+        return True
+    return _cfg_bool(settings, "OUTREACH_ATTACH_PRESENTATION", False)
+
+
+def _attachments_for_send(
+    settings: Any,
+    *,
+    step_wants: bool = False,
+    pack_presentation: str | None = None,
+) -> list[Path]:
+    if not _should_attach_presentation(settings, step_wants=step_wants):
+        return []
+    path = _presentation_path(settings, pack_presentation)
+    return [path] if path else []
 
 
 def _cfg(settings: Any, key: str, default: str = "") -> str:
@@ -65,10 +114,12 @@ def send_email(
     outreach_id: str | None = None,
     message_id: str | None = None,
     unsubscribe_url: str | None = None,
+    attachments: list[Path] | None = None,
 ) -> str:
     """Send one message. Returns Message-ID (without angle brackets).
 
     If message_id is provided (pre-claim), reuse it for SMTP idempotency.
+    Optional PDF/file attachments use multipart/mixed wrapping alternative body.
     """
     host = os.getenv("MAIL_SMTP_HOST", "").strip()
     port = int(os.getenv("MAIL_SMTP_PORT", "465"))
@@ -88,7 +139,30 @@ def send_email(
     else:
         mid_header = make_msgid(domain=domain)
 
-    msg = MIMEMultipart("alternative")
+    files = [p for p in (attachments or []) if p and Path(p).is_file()]
+    if files:
+        msg: MIMEMultipart = MIMEMultipart("mixed")
+        alt = MIMEMultipart("alternative")
+        alt.attach(MIMEText(plain, "plain", "utf-8"))
+        alt.attach(MIMEText(html, "html", "utf-8"))
+        msg.attach(alt)
+        for path in files:
+            path = Path(path)
+            ctype, _ = mimetypes.guess_type(str(path))
+            maintype, subtype = (ctype or "application/pdf").split("/", 1)
+            with path.open("rb") as fh:
+                part = MIMEApplication(fh.read(), _subtype=subtype if maintype == "application" else "octet-stream")
+            part.add_header(
+                "Content-Disposition",
+                "attachment",
+                filename=path.name,
+            )
+            msg.attach(part)
+    else:
+        msg = MIMEMultipart("alternative")
+        msg.attach(MIMEText(plain, "plain", "utf-8"))
+        msg.attach(MIMEText(html, "html", "utf-8"))
+
     msg["From"] = formataddr((from_name, user))
     msg["To"] = to
     msg["Subject"] = subject
@@ -103,9 +177,6 @@ def send_email(
     # Stable From identity (anti-ban): never rotate From; tracking goes to Reply-To / Message-ID.
     if outreach_id:
         msg["X-Outreach-Id"] = outreach_id
-
-    msg.attach(MIMEText(plain, "plain", "utf-8"))
-    msg.attach(MIMEText(html, "html", "utf-8"))
 
     with smtplib.SMTP_SSL(host, port, timeout=timeout) as server:
         server.login(user, password)
@@ -446,6 +517,9 @@ def send_batch(
                 item["status"] = "dry_run"
                 item["subject"] = subject
                 item["preview_plain"] = plain[:500]
+                attach = _attachments_for_send(settings, step_wants=False)
+                if attach:
+                    item["would_attach"] = [p.name for p in attach]
                 logger.info("dry-run would send to %s (%s)", row.email, row.contact_name)
                 results.append(item)
                 processed_sends += 1
@@ -461,6 +535,7 @@ def send_batch(
                     )
                     continue
                 try:
+                    attach = _attachments_for_send(settings, step_wants=False)
                     message_id = send_email(
                         to=row.email,
                         subject=subject,
@@ -471,7 +546,10 @@ def send_batch(
                         outreach_id=str(row.id),
                         message_id=pre_mid,
                         unsubscribe_url=unsub_url,
+                        attachments=attach,
                     )
+                    if attach:
+                        item["attached"] = [p.name for p in attach]
                 except Exception:
                     store.release_claim(row.id, error="smtp_failed")
                     raise
@@ -536,6 +614,7 @@ def send_batch(
                         from modules.sequences import SequenceStore
                         from modules.policy import ContactPolicyStore
 
+                        pack_id = (_cfg(settings, "OUTREACH_SEQUENCE_PACK", "") or "").strip()
                         seq = SequenceStore()
                         lead = seq.enroll(
                             email=row.email,
@@ -543,6 +622,7 @@ def send_batch(
                             contact_name=row.contact_name or "",
                             subject_base=subject,
                             outbox_id=row.id,
+                            pack_id=pack_id,
                         )
                         if lead.get("id"):
                             seq.mark_step_sent(
@@ -552,6 +632,8 @@ def send_batch(
                                 subject_base=subject,
                             )
                             item["sequence_step"] = 1
+                            if pack_id:
+                                item["sequence_pack"] = pack_id
                         if row.company_id:
                             ContactPolicyStore().note_email_sent(
                                 row.company_id, email=row.email
@@ -681,16 +763,21 @@ def _send_due_sequence_steps(
 
         name = str(lead.get("contact_name") or "коллега")
         base_subj = str(lead.get("subject_base") or subject_default)
+        website = _cfg(settings, "OUTREACH_WEBSITE", "https://quantumlabs.ru")
+        phone = _cfg(settings, "OUTREACH_CONTACT_PHONE", "")
+        pack_id = str(lead.get("pack_id") or "")
         subj_tpl = step_def.get("subject") or base_subj
-        subject = str(subj_tpl).replace("{subject}", base_subj).replace("{name}", name)
-        plain_tpl = step_def.get("plain") or ""
-        plain = (
-            str(plain_tpl)
+        subject = (
+            str(subj_tpl)
+            .replace("{subject}", base_subj)
             .replace("{name}", name)
             .replace("{company}", company)
-            .replace("{subject}", base_subj)
         )
-        html = _plain_to_html(plain)
+        plain_tpl = step_def.get("plain") or (
+            "Добрый день, {name}!\n\nПодскажите, успели посмотреть моё письмо?\n\n"
+            "С уважением,\n{company}\n"
+        )
+        html_tpl = step_def.get("html")
 
         outbox_id = int(lead["last_outbox_id"] or 0) or None
         row = store.find_by_email(email)
@@ -715,27 +802,35 @@ def _send_due_sequence_steps(
                 unsub_addr = hdrs["unsubscribe_mailto"]
             unsub_token = make_unsubscribe_token(outbox_id=outbox_id, email=email)
             unsub_url = unsubscribe_url_for(unsub_token, settings)
-            if open_tracking_enabled(settings):
-                open_token = new_open_token()
-                html = inject_open_pixel(html, open_token, settings)
 
-        # Append unsub footer
-        if unsub_url:
-            plain = plain + f"\n\n---\nОтписаться: {unsub_url}\n"
-            html = html.replace(
-                "</body>",
-                f'<hr><p style="font-size:12px"><a href="{unsub_url}">Отписаться</a></p></body>',
-            )
+        plain, html = render_cooperation(
+            contact_name=name,
+            company_name=company,
+            website=website,
+            phone=phone,
+            unsubscribe_mailto=unsub_addr,
+            unsubscribe_url=unsub_url,
+            plain_template=str(plain_tpl),
+            html_template=str(html_tpl) if html_tpl else None,
+        )
+        if tracking is not None and outbox_id and open_tracking_enabled(settings):
+            open_token = new_open_token()
+            html = inject_open_pixel(html, open_token, settings)
 
         item: dict[str, Any] = {
             "email": email,
             "company_id": company_id,
             "sequence_lead_id": lead["id"],
             "sequence_step": int(step_def["step"]),
+            "sequence_pack": pack_id or None,
             "followup": True,
         }
         try:
             pre_mid = make_outbound_message_id()
+            attach = _attachments_for_send(
+                settings,
+                step_wants=bool(step_def.get("attach_presentation")),
+            )
             message_id = send_email(
                 to=email,
                 subject=subject,
@@ -746,6 +841,7 @@ def _send_due_sequence_steps(
                 outreach_id=f"seq-{lead['id']}-{step_def['step']}",
                 message_id=pre_mid,
                 unsubscribe_url=unsub_url,
+                attachments=attach,
             )
             item["message_id"] = message_id
             if tracking is not None and outbox_id:
@@ -942,6 +1038,7 @@ def send_one(
         }
 
     try:
+        attach = _attachments_for_send(settings, step_wants=False)
         message_id = send_email(
             to=to_email,
             subject=subject,
@@ -950,8 +1047,11 @@ def send_one(
             unsubscribe_mailto=unsub_addr,
             reply_to=reply_to,
             outreach_id=f"oneshot-{row.id}",
+            attachments=attach,
         )
         item["message_id"] = message_id
+        if attach:
+            item["attached"] = [p.name for p in attach]
         if tracking is not None:
             tracking.record(
                 outbox_id=row.id,

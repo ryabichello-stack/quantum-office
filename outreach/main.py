@@ -41,6 +41,7 @@ from runtime_settings import RuntimeSettings
 from sender import send_batch, send_one, smtp_configured
 from sync import sync_companies
 from templates import DEFAULT_HTML, DEFAULT_PLAIN, render_cooperation
+from content.packs import list_packs, pack_campaign_templates
 
 load_dotenv()
 
@@ -665,7 +666,64 @@ def api_preview(body: PreviewBody) -> dict[str, Any]:
         if body.html is not None
         else (rt.get("OUTREACH_TEMPLATE_HTML") or None),
     )
-    return {"ok": True, "subject": subject, "plain": plain, "html": html}
+    attach_on = rt.get_bool("OUTREACH_ATTACH_PRESENTATION", False)
+    return {
+        "ok": True,
+        "subject": subject,
+        "plain": plain,
+        "html": html,
+        "attach_presentation": attach_on,
+        "sequence_pack": rt.get("OUTREACH_SEQUENCE_PACK", "") or "",
+    }
+
+
+class ApplyPackBody(BaseModel):
+    pack_id: str
+    attach_presentation: bool | None = None
+
+
+@app.get("/api/packs", dependencies=[Depends(require_ui_auth)])
+def api_packs() -> dict[str, Any]:
+    return {"ok": True, "items": list_packs()}
+
+
+@app.get("/api/packs/{pack_id}", dependencies=[Depends(require_ui_auth)])
+def api_pack_get(pack_id: str) -> dict[str, Any]:
+    tpl = pack_campaign_templates(pack_id)
+    if not tpl:
+        raise HTTPException(status_code=404, detail="unknown pack")
+    return {"ok": True, "pack": tpl}
+
+
+@app.post("/api/packs/apply", dependencies=[Depends(require_ui_auth)])
+def api_packs_apply(body: ApplyPackBody) -> dict[str, Any]:
+    """Load industry pack into active letter + sequence settings."""
+    tpl = pack_campaign_templates(body.pack_id)
+    if not tpl:
+        raise HTTPException(status_code=404, detail="unknown pack")
+    attach = (
+        body.attach_presentation
+        if body.attach_presentation is not None
+        else bool(tpl.get("attach_presentation_default"))
+    )
+    updated = _rt().set_many(
+        {
+            "OUTREACH_SEQUENCE_PACK": tpl["pack_id"],
+            "OUTREACH_SUBJECT": tpl["subject"],
+            "OUTREACH_TEMPLATE_PLAIN": tpl["plain"],
+            "OUTREACH_TEMPLATE_HTML": tpl["html"],
+            "OUTREACH_ATTACH_PRESENTATION": "true" if attach else "false",
+            "OUTREACH_PRESENTATION_PDF": tpl.get("presentation")
+            or "quantum_payouts_presentation_small.pdf",
+            "SEQUENCES_ENABLED": "true",
+        }
+    )
+    return {
+        "ok": True,
+        "updated": sorted(updated.keys()),
+        "pack": tpl,
+        "settings": _rt().snapshot(),
+    }
 
 
 @app.post("/api/auth/login")

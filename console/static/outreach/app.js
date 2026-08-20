@@ -5,8 +5,9 @@
     clients: "Клиенты",
     outbox: "Очередь",
     replies: "Ответы",
-    letter: "Письмо",
-    antiban: "Anti-ban",
+    inbox: "Входящие",
+    letter: "Кампания",
+    antiban: "Защита",
     schedule: "Расписание",
     settings: "Настройки",
   };
@@ -79,9 +80,109 @@
   function setRunStateBadge(state) {
     const el = $("runStateBadge");
     const st = (state || "stopped").toLowerCase();
-    const labels = { playing: "Playing", paused: "Paused", stopped: "Stopped" };
+    const labels = { playing: "Идёт", paused: "Пауза", stopped: "Стоп" };
     el.textContent = labels[st] || st;
     el.className = "badge " + (st in labels ? st : "stopped");
+  }
+
+  let packsCache = [];
+  let selectedPackId = "";
+
+  function requestParentCall(payload) {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(
+          Object.assign({ type: "quantum-console", action: "open-outbound" }, payload || {}),
+          "*"
+        );
+      }
+    } catch (_) {}
+  }
+
+  function renderPackCards(activeId) {
+    const box = $("packCards");
+    if (!box) return;
+    if (!packsCache.length) {
+      box.innerHTML = `<p class="muted">Пакеты не загружены</p>`;
+      return;
+    }
+    box.innerHTML = packsCache
+      .map((p) => {
+        const on = p.id === activeId ? "active" : "";
+        return `<label class="pack-card ${on}">
+          <input type="radio" name="packId" value="${escapeHtml(p.id)}" ${p.id === activeId ? "checked" : ""} />
+          <span>
+            <strong>${escapeHtml(p.title)}</strong>
+            <small>${escapeHtml(p.short || "")}</small>
+            <em>${escapeHtml(p.audience || "")} · ${p.steps || 3} письма</em>
+          </span>
+        </label>`;
+      })
+      .join("");
+    box.querySelectorAll('input[name="packId"]').forEach((inp) => {
+      inp.addEventListener("change", () => {
+        selectedPackId = inp.value;
+        previewPack(selectedPackId);
+        box.querySelectorAll(".pack-card").forEach((c) => c.classList.remove("active"));
+        inp.closest(".pack-card")?.classList.add("active");
+      });
+    });
+  }
+
+  async function loadPacks() {
+    try {
+      const data = await api("/api/packs");
+      packsCache = data.items || [];
+      const active = (settingsCache && settingsCache.OUTREACH_SEQUENCE_PACK) || selectedPackId || "lombards";
+      selectedPackId = active;
+      renderPackCards(active);
+      if (active) await previewPack(active, false);
+    } catch (err) {
+      if ($("packCards")) $("packCards").textContent = String(err.message || err);
+    }
+  }
+
+  async function previewPack(packId, fillEditors = true) {
+    if (!packId) return;
+    const data = await api("/api/packs/" + encodeURIComponent(packId));
+    const pack = data.pack || {};
+    selectedPackId = pack.pack_id || packId;
+    if ($("packActiveMeta")) {
+      $("packActiveMeta").textContent =
+        `Выбрано: ${pack.title || packId} — ${pack.short || ""}`;
+    }
+    if ($("packStepsPreview")) {
+      $("packStepsPreview").innerHTML = (pack.steps || [])
+        .map(
+          (s) =>
+            `<li><strong>День ${s.delay_days}</strong> · ${escapeHtml(s.label || "")}: ${escapeHtml(
+              s.subject || ""
+            )}${s.attach_presentation ? " · PDF" : ""}</li>`
+        )
+        .join("");
+    }
+    if ($("letterPdfMeta")) {
+      $("letterPdfMeta").textContent = pack.presentation
+        ? `Файл презентации: ${pack.presentation}`
+        : "";
+    }
+    if (fillEditors) {
+      if (pack.subject) $("letterSubject").value = pack.subject;
+      if (pack.plain) $("letterPlain").value = pack.plain;
+      if (pack.html) $("letterHtml").value = pack.html;
+      if ($("letterAttachPdf")) {
+        $("letterAttachPdf").checked = !!pack.attach_presentation_default;
+      }
+    }
+    return pack;
+  }
+
+  function escapeHtml(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 
   function setEnabledBadge(on) {
@@ -277,6 +378,15 @@
     $("domainCap").value = s.DOMAIN_DAILY_CAP || 2;
     $("plusReply").checked = String(s.TRACKING_PLUS_REPLY_TO || "false").toLowerCase() === "true" || s.TRACKING_PLUS_REPLY_TO === "1";
     $("openTracking").checked = String(s.OPEN_TRACKING_ENABLED || "true").toLowerCase() !== "false";
+    if ($("letterAttachPdf")) {
+      $("letterAttachPdf").checked =
+        String(s.OUTREACH_ATTACH_PRESENTATION || "false").toLowerCase() === "true" ||
+        s.OUTREACH_ATTACH_PRESENTATION === "1";
+    }
+    if ($("letterPdfMeta") && s.OUTREACH_PRESENTATION_PDF) {
+      $("letterPdfMeta").textContent = `Файл презентации: ${s.OUTREACH_PRESENTATION_PDF}`;
+    }
+    selectedPackId = s.OUTREACH_SEQUENCE_PACK || selectedPackId || "";
     if (!$("oneTo").value && s.MAIL_USERNAME) {
       $("oneTo").value = s.MAIL_USERNAME;
     }
@@ -482,14 +592,6 @@
       .join("");
   }
 
-  function escapeHtml(s) {
-    return String(s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
   function bindTabs() {
     document.querySelectorAll(".tabs button").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -505,8 +607,11 @@
         if (tab === "report") loadReport().catch(logAction);
         if (tab === "antiban") loadAntiban().catch((e) => ($("antibanLog").textContent = String(e)));
         if (tab === "letter" || tab === "schedule" || tab === "settings") {
-          loadSettingsIntoForms().catch(logAction);
+          loadSettingsIntoForms()
+            .then(() => (tab === "letter" ? loadPacks() : null))
+            .catch(logAction);
         }
+        if (tab === "inbox") loadInbox(true).catch(logAction);
       });
     });
   }
@@ -552,14 +657,23 @@
       }
     }
     $("runPlayBtn").addEventListener("click", () => {
-      if (!confirm("Play: начать/продолжить массовую отправку из очереди?")) return;
+      if (!confirm("Старт: начать или продолжить массовую отправку из очереди?")) return;
       runControl("play");
     });
     $("runPauseBtn").addEventListener("click", () => runControl("pause"));
     $("runStopBtn").addEventListener("click", () => {
-      if (!confirm("Stop: полностью остановить рассылку?")) return;
+      if (!confirm("Стоп: полностью остановить рассылку?")) return;
       runControl("stop");
     });
+
+    if ($("gotoCampaignBtn")) {
+      $("gotoCampaignBtn").addEventListener("click", () => {
+        document.querySelector('.tabs button[data-tab="letter"]')?.click();
+      });
+    }
+    if ($("gotoCallBtn")) {
+      $("gotoCallBtn").addEventListener("click", () => requestParentCall({}));
+    }
 
     $("syncBtn").addEventListener("click", async () => {
       try {
@@ -662,7 +776,7 @@
     });
     $("sendBtn").addEventListener("click", async () => {
       const n = Number($("sendN").value || 1);
-      if (!confirm(`Отправить ${n} писем из очереди сейчас? Нужен статус Playing (или будет ошибка).`)) return;
+      if (!confirm(`Отправить ${n} писем из очереди сейчас? Нужен статус «Идёт» (Старт).`)) return;
       try {
         logAction(await api("/send-batch", { method: "POST", body: JSON.stringify({ limit: n, dry_run: false }) }));
         await loadDash();
@@ -756,10 +870,45 @@
         doc.open();
         doc.write(data.html || "");
         doc.close();
+        if ($("letterLog")) {
+          $("letterLog").textContent = data.attach_presentation
+            ? "К письму будет прикреплена презентация PDF."
+            : "Презентация не прикрепляется (флажок выключен).";
+        }
       } catch (e) {
         logAction(String(e));
       }
     });
+
+    if ($("letterApplyPack")) {
+      $("letterApplyPack").addEventListener("click", async () => {
+        try {
+          const packId =
+            selectedPackId ||
+            document.querySelector('input[name="packId"]:checked')?.value ||
+            "lombards";
+          const data = await api("/api/packs/apply", {
+            method: "POST",
+            body: JSON.stringify({
+              pack_id: packId,
+              attach_presentation: $("letterAttachPdf") ? $("letterAttachPdf").checked : true,
+            }),
+          });
+          settingsCache = data.settings || settingsCache;
+          await loadSettingsIntoForms();
+          renderPackCards(packId);
+          await previewPack(packId, true);
+          if ($("letterLog")) {
+            $("letterLog").textContent =
+              `Применена отрасль «${(data.pack && data.pack.title) || packId}». Цепочка follow-up активна.`;
+          }
+          logAction({ ok: true, pack: packId, updated: data.updated });
+        } catch (e) {
+          if ($("letterLog")) $("letterLog").textContent = String(e);
+          logAction(String(e));
+        }
+      });
+    }
 
     $("letterSave").addEventListener("click", async () => {
       try {
@@ -770,8 +919,13 @@
           OUTREACH_CONTACT_PHONE: $("letterPhone").value,
           OUTREACH_TEMPLATE_PLAIN: $("letterPlain").value,
           OUTREACH_TEMPLATE_HTML: $("letterHtml").value,
+          OUTREACH_ATTACH_PRESENTATION: $("letterAttachPdf") && $("letterAttachPdf").checked ? "true" : "false",
+          OUTREACH_SEQUENCE_PACK: selectedPackId || settingsCache?.OUTREACH_SEQUENCE_PACK || "",
+          SEQUENCES_ENABLED: "true",
         };
-        logAction(await api("/api/settings", { method: "PUT", body: JSON.stringify({ settings: payload }) }));
+        const data = await api("/api/settings", { method: "PUT", body: JSON.stringify({ settings: payload }) });
+        if ($("letterLog")) $("letterLog").textContent = "Кампания сохранена.";
+        logAction(data);
       } catch (e) {
         logAction(String(e));
       }
@@ -880,6 +1034,7 @@
         showApp();
         await loadDash();
         await loadSettingsIntoForms();
+        await loadPacks();
         return;
       } catch (e) {
         showLogin();
@@ -894,6 +1049,7 @@
         showApp();
         await loadDash();
         await loadSettingsIntoForms();
+        await loadPacks();
         return;
       } catch (_) {
         showLogin();
