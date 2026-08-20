@@ -19,7 +19,7 @@
     knowledge: { title: "База знаний", hint: "Second Brain · quantum_labs.md" },
     calls: { title: "Звонки", hint: "История и расшифровки" },
     campaign: { title: "Обзвон Sheets", hint: "База номеров из Google Sheet и скрипт кампании" },
-    outbound: { title: "Исходящий", hint: "Один звонок с per-call сценарием" },
+    outbound: { title: "Задание на звонок", hint: "Номер, цель, тема — робот позвонит по заданию" },
     pack: { title: "Пакет / бэкап", hint: "Канонические пути и секреты" },
   };
 
@@ -434,7 +434,7 @@
           }
           <div class="actions">
             <button type="button" class="btn-quiet" data-goto-tab="campaign">Sheets</button>
-            <button type="button" class="btn-quiet" data-goto-tab="outbound">Один звонок</button>
+            <button type="button" class="btn-quiet" data-goto-tab="outbound">Задание на звонок</button>
           </div>
           <div id="campaignGlance"></div>
         </div>
@@ -1287,6 +1287,138 @@
     };
   }
 
+  const TOOL_GROUP_RU = {
+    http: "Офис и знания",
+    business: "Встречи и почта",
+    telephony: "Телефония",
+    other: "Прочее",
+  };
+
+  const TOOL_HINT_RU = {
+    get_company_knowledge: "Подтянуть факт из базы знаний компании",
+    hangup_call: "Завершить разговор",
+    check_calendar: "Проверить свободные слоты в календаре",
+    create_calendar_event: "Создать встречу в календаре",
+    create_conference: "Создать ссылку Телемост",
+    send_email: "Отправить письмо",
+    send_welcome_email: "Отправить welcome / презентацию",
+    leave_voicemail: "Оставить голосовое на автоответчик",
+    live_agent_transfer: "Перевести на живого сотрудника",
+    send_email_summary: "Отправить краткое резюме звонка",
+    request_transcript: "Запросить текст разговора во время звонка",
+  };
+
+  /** Tools shown by default; rest under «ещё». */
+  const TOOL_PRIMARY = new Set([
+    "get_company_knowledge",
+    "hangup_call",
+    "check_calendar",
+    "create_calendar_event",
+    "create_conference",
+    "send_email",
+    "send_welcome_email",
+  ]);
+
+  function dialMode() {
+    const el = document.querySelector('input[name="dialMode"]:checked');
+    return el ? el.value : "custom";
+  }
+
+  function syncDialModeUI() {
+    const mode = dialMode();
+    const kb = $("dialKnowledgeBlock");
+    if (kb) kb.hidden = mode !== "knowledge";
+    const kbTool = document.querySelector('input.dial-tool[value="get_company_knowledge"]');
+    if (kbTool) {
+      kbTool.checked = mode === "knowledge";
+      kbTool.disabled = mode !== "knowledge";
+    }
+  }
+
+  function composeCallTask() {
+    const contact = (($("dialContact") && $("dialContact").value) || "").trim();
+    const behalf = (($("dialBehalf") && $("dialBehalf").value) || "").trim();
+    const company = (($("dialCompany") && $("dialCompany").value) || "").trim();
+    const topic = (($("dialTopic") && $("dialTopic").value) || "").trim();
+    const goal = (($("dialGoal") && $("dialGoal").value) || "").trim();
+    const notes = (($("dialNotes") && $("dialNotes").value) || "").trim();
+    const mode = dialMode();
+    const kbSel = $("dialKbTopic");
+    const kbTitle =
+      kbSel && kbSel.value
+        ? (kbSel.options[kbSel.selectedIndex] || {}).text || kbSel.value
+        : "";
+
+    if (!goal) {
+      throw new Error("Укажите чёткое задание — что должен сделать робот");
+    }
+
+    const who = contact || "собеседник";
+    let greeting = (($("dialGreeting") && $("dialGreeting").value) || "").trim();
+    if (!greeting) {
+      const from = behalf || "Quantum Labs";
+      greeting = contact
+        ? `Алло, ${contact}? Это ${from}. Удобно полминуты?`
+        : `Алло, это ${from}. Удобно полминуты?`;
+    }
+
+    const lines = [];
+    lines.push("Ты — голосовой секретарь Quantum Labs. Говори коротко, по-русски, по делу.");
+    lines.push("");
+    lines.push("КОНТЕКСТ ЗВОНКА:");
+    lines.push(`- Собеседник: ${who}${company ? ` (${company})` : ""}`);
+    if (behalf) lines.push(`- Звонишь от имени: ${behalf}`);
+    if (topic) lines.push(`- Тема: ${topic}`);
+    if (mode === "knowledge") {
+      lines.push(
+        kbTitle && kbTitle.indexOf("выберите") < 0
+          ? `- Источник фактов: база знаний компании (тема «${kbTitle}»).`
+          : "- Источник фактов: база знаний компании — вызывай get_company_knowledge, если не хватает цифр/фактов."
+      );
+      lines.push("- Не уходи в чужие темы базы, если они не нужны для ЭТОГО задания.");
+    } else {
+      lines.push("- Источник фактов: ТОЛЬКО это задание. Базу знаний компании НЕ используй и tool get_company_knowledge НЕ вызывай.");
+    }
+    lines.push("");
+    lines.push("ЗАДАНИЕ (главное):");
+    lines.push(goal);
+    if (notes) {
+      lines.push("");
+      lines.push("ДОП. УКАЗАНИЯ:");
+      lines.push(notes);
+    }
+    lines.push("");
+    lines.push("КАК ВЕСТИ РАЗГОВОР:");
+    lines.push("1) Представься и уточни, удобно ли говорить.");
+    lines.push("2) Выполни задание выше. Не выдумывай факты.");
+    lines.push("3) Если собеседник отказался — вежливо попрощайся.");
+    lines.push("4) В конце кратко подтверди договорённость или ответ.");
+    lines.push("5) hangup_call только после ясного завершения или отказа, не в первые секунды.");
+
+    return { greeting, script: lines.join("\n"), use_knowledge: mode === "knowledge", goal };
+  }
+
+  async function loadKbTopics() {
+    const sel = $("dialKbTopic");
+    if (!sel) return;
+    try {
+      const r = await api("/api/knowledge/topics");
+      const topics = r.topics || [];
+      const cur = sel.value;
+      sel.innerHTML =
+        '<option value="">— любая по заданию —</option>' +
+        topics
+          .map(
+            (t) =>
+              `<option value="${esc(t.id)}">${esc(t.title || t.id)}</option>`
+          )
+          .join("");
+      if (cur) sel.value = cur;
+    } catch {
+      /* topics optional */
+    }
+  }
+
   async function loadDialTools() {
     const box = $("dialTools");
     if (!box) return;
@@ -1294,63 +1426,126 @@
       const r = await api("/api/tools");
       const dialable = new Set(r.dialable || []);
       const tools = (r.tools || []).filter((t) => dialable.has(t.name));
-      const groups = {};
+      const byGroup = {};
       tools.forEach((t) => {
         const g = t.group || "other";
-        (groups[g] = groups[g] || []).push(t);
+        (byGroup[g] = byGroup[g] || []).push(t);
       });
-      const order = ["http", "telephony", "business", "other"];
+      const order = ["http", "business", "telephony", "other"];
       const keys = [
-        ...order.filter((k) => groups[k]),
-        ...Object.keys(groups).filter((k) => !order.includes(k)),
+        ...order.filter((k) => byGroup[k]),
+        ...Object.keys(byGroup).filter((k) => !order.includes(k)),
       ];
-      box.innerHTML = keys
-        .map((g) => {
-          const items = groups[g]
-            .map(
-              (t) =>
-                `<label class="check"><input type="checkbox" class="dial-tool" value="${esc(
-                  t.name
-                )}" data-name="${esc(t.name)}" /> ${esc(t.label || t.name)} <code>${esc(
-                  t.name
-                )}</code></label>`
-            )
-            .join("");
-          return `<div class="full"><strong>${esc(g)}</strong></div>${items}`;
-        })
-        .join("");
-      const kb = box.querySelector('input.dial-tool[value="get_company_knowledge"]');
-      const uk = $("dialUseKnowledge");
-      if (kb && uk) {
-        uk.onchange = () => {
-          kb.checked = uk.checked;
-        };
-        kb.onchange = () => {
-          uk.checked = kb.checked;
-        };
+
+      function toolRow(t, checked) {
+        const hint = TOOL_HINT_RU[t.name] || t.description || "";
+        return `<label class="tool-item" title="${esc(hint)}">
+          <input type="checkbox" class="dial-tool" value="${esc(t.name)}" ${
+            checked ? "checked" : ""
+          } />
+          <span class="tool-item-text">
+            <span class="tool-item-label">${esc(t.label || t.name)}</span>
+            <span class="tool-item-hint">${esc(hint)}</span>
+          </span>
+        </label>`;
       }
+
+      const primary = [];
+      const extra = [];
+      keys.forEach((g) => {
+        byGroup[g].forEach((t) => {
+          if (TOOL_PRIMARY.has(t.name)) primary.push({ g, t });
+          else extra.push({ g, t });
+        });
+      });
+
+      const renderGroup = (items) => {
+        const groups = {};
+        items.forEach(({ g, t }) => {
+          (groups[g] = groups[g] || []).push(t);
+        });
+        return Object.keys(groups)
+          .map((g) => {
+            const title = TOOL_GROUP_RU[g] || g;
+            const rows = groups[g]
+              .map((t) =>
+                toolRow(
+                  t,
+                  t.name === "hangup_call" ||
+                    (t.name === "get_company_knowledge" && dialMode() === "knowledge")
+                )
+              )
+              .join("");
+            return `<div class="tool-group"><div class="tool-group-title">${esc(
+              title
+            )}</div>${rows}</div>`;
+          })
+          .join("");
+      };
+
+      box.innerHTML =
+        renderGroup(primary) +
+        (extra.length
+          ? `<details class="task-advanced"><summary>Ещё возможности</summary>${renderGroup(
+              extra
+            )}</details>`
+          : "");
+
+      syncDialModeUI();
+      document.querySelectorAll('input[name="dialMode"]').forEach((el) => {
+        el.onchange = () => {
+          syncDialModeUI();
+          // rebuild script hint if empty goal already composed
+        };
+      });
     } catch (e) {
-      box.innerHTML = `<span class="muted">tools: ${esc(e.message)}</span>`;
+      box.innerHTML = `<span class="muted">Не удалось загрузить возможности: ${esc(
+        e.message
+      )}</span>`;
     }
+    await loadKbTopics();
   }
 
   function selectedDialTools() {
-    return Array.from(document.querySelectorAll("input.dial-tool:checked")).map((el) => el.value);
+    return Array.from(document.querySelectorAll("input.dial-tool:checked"))
+      .filter((el) => !el.disabled)
+      .map((el) => el.value);
+  }
+
+  function showDialMsg(text, ok) {
+    const el = $("dialMsg");
+    if (!el) return;
+    el.hidden = false;
+    el.textContent = text;
+    el.className = ok === true ? "msg ok codeblock" : ok === false ? "msg bad codeblock" : "msg codeblock";
+  }
+
+  if ($("btnComposeTask")) {
+    $("btnComposeTask").onclick = () => {
+      try {
+        const c = composeCallTask();
+        if ($("dialGreeting")) $("dialGreeting").value = c.greeting;
+        if ($("dialScript")) $("dialScript").value = c.script;
+        const det = $("dialScriptDetails");
+        if (det) det.open = true;
+        showDialMsg("Сценарий собран. Можно править и звонить.", true);
+      } catch (e) {
+        showDialMsg(e.message, false);
+      }
+    };
   }
 
   if ($("btnCallback")) {
     $("btnCallback").onclick = async () => {
       try {
-        $("dialMsg").textContent = "Mango API callback…";
+        showDialMsg("Запрос через Mango…");
         const r = await api("/api/outbound/callback", {
           method: "POST",
           body: JSON.stringify({ phone: $("dialPhone").value }),
         });
-        $("dialMsg").textContent = JSON.stringify(r, null, 2);
-        $("dialMsg").className = r.ok ? "msg ok codeblock" : "msg bad codeblock";
+        showDialMsg(JSON.stringify(r, null, 2), !!r.ok);
       } catch (e) {
-        $("dialMsg").textContent = e.message;
-        $("dialMsg").className = "msg bad codeblock";
+        showDialMsg(e.message, false);
       }
     };
   }
@@ -1358,27 +1553,60 @@
   if ($("btnDial")) {
     $("btnDial").onclick = async () => {
       try {
-        $("dialMsg").textContent = "SIP originate (per-call script)…";
-        const greeting = (($("dialGreeting") && $("dialGreeting").value) || "").trim();
-        const script = (($("dialScript") && $("dialScript").value) || "").trim();
+        const phone = (($("dialPhone") && $("dialPhone").value) || "").trim();
+        if (!phone) throw new Error("Укажите телефон");
+
+        let greeting = (($("dialGreeting") && $("dialGreeting").value) || "").trim();
+        let script = (($("dialScript") && $("dialScript").value) || "").trim();
+        const composed = composeCallTask();
+        if (!greeting) greeting = composed.greeting;
+        if (!script) script = composed.script;
+        if ($("dialGreeting") && !$("dialGreeting").value.trim()) {
+          $("dialGreeting").value = greeting;
+        }
+        if ($("dialScript") && !$("dialScript").value.trim()) {
+          $("dialScript").value = script;
+        }
+
         const tools = selectedDialTools();
+        // Ensure knowledge tool matches mode
+        const useKnowledge = dialMode() === "knowledge";
+        const toolSet = new Set(tools);
+        if (useKnowledge) toolSet.add("get_company_knowledge");
+        else toolSet.delete("get_company_knowledge");
+        if (!toolSet.has("hangup_call")) toolSet.add("hangup_call");
+
+        showDialMsg("Звоним…");
         const payload = {
-          phone: $("dialPhone").value,
-          context: ($("dialContext") && $("dialContext").value) || "outbound",
-          use_knowledge: !!($("dialUseKnowledge") && $("dialUseKnowledge").checked),
+          phone,
+          context: "outbound",
+          greeting,
+          script,
+          use_knowledge: useKnowledge,
+          tools: Array.from(toolSet),
         };
-        if (greeting) payload.greeting = greeting;
-        if (script) payload.script = script;
-        if (tools.length) payload.tools = tools;
         const r = await api("/api/outbound/dial", {
           method: "POST",
           body: JSON.stringify(payload),
         });
-        $("dialMsg").textContent = JSON.stringify(r, null, 2);
-        $("dialMsg").className = r.ok ? "msg ok codeblock" : "msg bad codeblock";
+        showDialMsg(
+          r.ok
+            ? `Звонок запущен на ${r.phone || phone}. Смотрите вкладку «Звонки».\n` +
+                JSON.stringify(
+                  {
+                    channel_id: r.channel_id,
+                    state: r.state,
+                    use_knowledge: useKnowledge,
+                    script_chars: r.script_chars,
+                  },
+                  null,
+                  2
+                )
+            : JSON.stringify(r, null, 2),
+          !!r.ok
+        );
       } catch (e) {
-        $("dialMsg").textContent = e.message;
-        $("dialMsg").className = "msg bad codeblock";
+        showDialMsg(e.message, false);
       }
     };
   }

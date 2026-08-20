@@ -62,7 +62,7 @@
         <button type="button" data-tab="knowledge">База знаний</button>
         <button type="button" data-tab="calls">Звонки</button>
         <button type="button" data-tab="campaign">Обзвон Sheets</button>
-        <button type="button" data-tab="outbound">Исходящий</button>
+        <button type="button" data-tab="outbound">Задание на звонок</button>
         <button type="button" data-tab="pack">Пакет / бэкап</button>
       </nav>
       <div class="sidebar-foot">
@@ -246,32 +246,90 @@
         </section>
 
         <section id="tab-outbound" class="panel">
-          <div class="surface">
-            <p class="muted">SIP → профиль <b>outbound</b>. Сценарий задаётся на этот звонок ниже.</p>
-            <div class="row">
-              <label class="field">Телефон <input id="dialPhone" placeholder="79001234567" /></label>
-              <label class="field">Профиль
-                <select id="dialContext">
-                  <option value="outbound" selected>outbound</option>
+          <div class="surface task-form">
+            <div class="task-intro">
+              <h2 class="section-title">Задание на звонок</h2>
+              <p class="muted tight">Робот позвонит по номеру и выполнит ваше задание. Один звонок — одна задача.</p>
+            </div>
+
+            <div class="task-grid">
+              <label class="field">Телефон *
+                <input id="dialPhone" inputmode="tel" autocomplete="tel" placeholder="79001234567" />
+              </label>
+              <label class="field">Имя собеседника
+                <input id="dialContact" placeholder="Светлана" />
+              </label>
+              <label class="field">От чьего имени
+                <input id="dialBehalf" placeholder="Денис / Quantum Labs" />
+              </label>
+              <label class="field">Компания собеседника
+                <input id="dialCompany" placeholder="необязательно" />
+              </label>
+            </div>
+
+            <fieldset class="task-mode">
+              <legend>Откуда брать факты</legend>
+              <label class="mode-card">
+                <input type="radio" name="dialMode" value="custom" checked />
+                <span>
+                  <strong>Своя тема</strong>
+                  <small>Только ваше задание ниже. База знаний компании не используется.</small>
+                </span>
+              </label>
+              <label class="mode-card">
+                <input type="radio" name="dialMode" value="knowledge" />
+                <span>
+                  <strong>База знаний компании</strong>
+                  <small>Робот может подтянуть факты о продукте Quantum (тарифы, СБП, FAQ…).</small>
+                </span>
+              </label>
+            </fieldset>
+
+            <div id="dialKnowledgeBlock" class="task-kb" hidden>
+              <label class="field full">Тема из базы знаний
+                <select id="dialKbTopic">
+                  <option value="">— выберите или оставьте «любая по заданию» —</option>
                 </select>
               </label>
-              <label class="check"><input type="checkbox" id="dialUseKnowledge" /> Second Brain</label>
             </div>
-            <label class="field full">Приветствие
-              <input id="dialGreeting" placeholder="Алло, это … Удобно 20 секунд?" />
+
+            <label class="field full">Тема разговора
+              <input id="dialTopic" placeholder="Например: уточнить здоровье / презентация выплат / напоминание о встрече" />
             </label>
-            <label class="field full">Сценарий звонка
-              <textarea id="dialScript" rows="8" placeholder="Кто ты, зачем звонишь…"></textarea>
+
+            <label class="field full">Чёткое задание *
+              <textarea id="dialGoal" rows="4" placeholder="Что именно должен сделать робот: спросить, передать, договориться, зафиксировать ответ…"></textarea>
             </label>
-            <div class="full">
-              <p class="muted tight">Tools на этот звонок</p>
-              <div id="dialTools" class="tool-grid"></div>
+
+            <label class="field full">Доп. указания
+              <textarea id="dialNotes" rows="2" placeholder="Тон, ограничения, что нельзя говорить…"></textarea>
+            </label>
+
+            <label class="field full">Первая фраза
+              <input id="dialGreeting" placeholder="Соберится автоматически — можно поправить" />
+            </label>
+
+            <details class="task-advanced" id="dialScriptDetails">
+              <summary>Сценарий для робота (можно править)</summary>
+              <p class="muted tight">Соберётся из полей выше. При необходимости отредактируйте перед звонком.</p>
+              <textarea id="dialScript" rows="10" placeholder="Нажмите «Собрать сценарий» или просто «Позвонить» — соберём сами."></textarea>
+              <div class="actions">
+                <button type="button" class="btn-quiet" id="btnComposeTask">Собрать сценарий</button>
+              </div>
+            </details>
+
+            <div class="task-tools">
+              <h3 class="task-tools-title">Возможности на звонке</h3>
+              <p class="muted tight">Включите только то, что нужно для этого задания.</p>
+              <div id="dialTools" class="tool-groups">Загрузка…</div>
             </div>
-            <div class="row">
-              <button type="button" id="btnDial" class="primary">Позвонить (SIP)</button>
-              <button type="button" id="btnCallback">Callback API</button>
+
+            <div class="task-actions">
+              <button type="button" id="btnDial" class="primary">Позвонить</button>
+              <button type="button" id="btnCallback" class="btn-quiet">Через Mango callback</button>
+              <span class="muted tight">Результат и расшифровка — во вкладке «Звонки»</span>
             </div>
-            <pre id="dialMsg" class="msg codeblock"></pre>
+            <pre id="dialMsg" class="msg codeblock" hidden></pre>
           </div>
         </section>
 

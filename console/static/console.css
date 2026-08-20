@@ -916,6 +916,113 @@ button.linkish {
   color: var(--muted);
 }
 
+/* Call task form */
+.task-form { display: flex; flex-direction: column; gap: 0.85rem; }
+.task-intro .section-title { margin-bottom: 0.25rem; }
+.task-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.55rem 0.65rem;
+}
+.task-mode {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.55);
+  display: grid;
+  gap: 0.45rem;
+}
+.task-mode legend {
+  padding: 0 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.mode-card {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  padding: 0.45rem 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.mode-card:has(input:checked) {
+  background: rgba(232, 90, 26, 0.08);
+}
+.mode-card input { margin-top: 0.2rem; width: auto; }
+.mode-card strong {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.mode-card small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin-top: 0.1rem;
+  line-height: 1.35;
+}
+.task-kb { margin-top: -0.25rem; }
+.task-advanced {
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  background: rgba(255, 255, 255, 0.45);
+}
+.task-advanced summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.84rem;
+  margin-bottom: 0.4rem;
+}
+.task-tools-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.tool-groups { display: grid; gap: 0.65rem; }
+.tool-group {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.5rem 0.6rem;
+  background: rgba(255, 255, 255, 0.7);
+}
+.tool-group-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+.tool-item {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  padding: 0.35rem 0.2rem;
+  cursor: pointer;
+  font-size: 0.84rem;
+}
+.tool-item input { width: auto; margin-top: 0.15rem; }
+.tool-item-text { display: grid; gap: 0.1rem; min-width: 0; }
+.tool-item-label { font-weight: 550; }
+.tool-item-hint {
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.3;
+}
+.task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--line);
+}
+
 .camp-run-banner {
   margin: 0.75rem 0 0.25rem;
   padding: 0.85rem 1rem;

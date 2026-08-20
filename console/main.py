@@ -81,7 +81,9 @@ OUTBOUND_AI_CONTEXT = os.getenv("OUTBOUND_AI_CONTEXT", "outbound")
 # Dedicated Realtime provider block — must NOT share settings with inbound `openai_realtime`.
 OUTBOUND_AI_PROVIDER = os.getenv("OUTBOUND_AI_PROVIDER", "openai_realtime_outbound")
 INBOUND_AI_PROVIDER = os.getenv("INBOUND_AI_PROVIDER", "openai_realtime")
-KNOWLEDGE_RELOAD_URL = os.getenv("KNOWLEDGE_RELOAD_URL", "http://127.0.0.1:8017/api/knowledge/reload")
+KNOWLEDGE_BASE = os.getenv("KNOWLEDGE_BASE", "http://127.0.0.1:8017").rstrip("/")
+KNOWLEDGE_RELOAD_URL = os.getenv("KNOWLEDGE_RELOAD_URL", f"{KNOWLEDGE_BASE}/api/knowledge/reload")
+KNOWLEDGE_TOPICS_URL = os.getenv("KNOWLEDGE_TOPICS_URL", f"{KNOWLEDGE_BASE}/api/knowledge/topics")
 ALLOWED_AI_CONTEXTS = ("default", "outbound")
 CONTEXT_PROVIDER_MAP = {
     "default": INBOUND_AI_PROVIDER,
@@ -1399,7 +1401,7 @@ _TOOL_META: dict[str, dict[str, str]] = {
         "group": "business",
     },
     "get_company_knowledge": {
-        "label": "Second Brain — база знаний",
+        "label": "База знаний компании",
         "description": "Факты о компании через knowledge (:8017 / mailer proxy).",
         "group": "business",
     },
@@ -1651,6 +1653,16 @@ def _compose_outbound_prompt(script: str, *, use_knowledge: bool) -> str:
     if "НЕ РВИ ТРУБКУ" not in body and "ЗАПРЕЩЕНО вызывать hangup_call" not in body:
         body = body + HANGUP_GUARD_FOOTER
     return body
+
+
+@app.get("/api/knowledge/topics")
+def api_knowledge_topics(x_console_token: str | None = Header(default=None)) -> dict[str, Any]:
+    """Proxy topic list from knowledge service for call-task picker."""
+    _require_token(x_console_token)
+    data = _http_json(KNOWLEDGE_TOPICS_URL, timeout=8.0)
+    if not data:
+        raise HTTPException(502, "knowledge topics unreachable")
+    return data
 
 
 @app.get("/api/tools")
