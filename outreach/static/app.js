@@ -692,22 +692,49 @@
     });
   }
 
+  function paintPreviewHtml(box, html) {
+    if (!box) return;
+    const raw = String(html || "");
+    // Full email docs (<!DOCTYPE><html><body>…) cannot be nested via div.innerHTML —
+    // browsers drop the shell and often leave the preview blank.
+    const bodyMatch = raw.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+    box.innerHTML = bodyMatch ? bodyMatch[1] : raw;
+  }
+
   function bindInnerWheelScroll(root) {
-    // Inside Console iframe the parent steals mouse-wheel; scroll boxes ourselves.
+    // Inside Console iframe the parent page often eats wheel; scroll boxes ourselves.
     const scope = root || document;
-    scope.querySelectorAll("textarea.scroll-y, #letterPlain, #letterHtml, pre.log, .preview-html, .scroll-y").forEach((el) => {
-      if (el.dataset.wheelScroll === "1") return;
-      el.dataset.wheelScroll = "1";
-      el.addEventListener(
-        "wheel",
-        (ev) => {
-          // Always handle here so the outer iframe page does not eat the gesture
-          ev.preventDefault();
-          ev.stopPropagation();
-          el.scrollTop += ev.deltaY;
-        },
-        { passive: false }
-      );
+    const sel =
+      "textarea.scroll-y, #letterPlain, #letterHtml, #letterSignature, pre.log, .preview-html, .scroll-y";
+
+    const wheelHandler = (ev) => {
+      const el = ev.target && ev.target.closest ? ev.target.closest(sel) : null;
+      if (!el || !scope.contains(el)) return;
+      const maxScroll = el.scrollHeight - el.clientHeight;
+      if (maxScroll <= 1) return; // nothing to scroll — don't trap the gesture
+      let dy = ev.deltaY;
+      if (ev.deltaMode === 1) dy *= 16; // lines
+      if (ev.deltaMode === 2) dy *= el.clientHeight; // pages
+      const next = el.scrollTop + dy;
+      const clamped = Math.max(0, Math.min(maxScroll, next));
+      // Only claim the event when we actually move (or would move within range)
+      if ((dy < 0 && el.scrollTop <= 0) || (dy > 0 && el.scrollTop >= maxScroll - 0.5)) {
+        return;
+      }
+      ev.preventDefault();
+      ev.stopPropagation();
+      el.scrollTop = clamped;
+    };
+
+    if (!scope.__qlWheelBound) {
+      scope.__qlWheelBound = true;
+      scope.addEventListener("wheel", wheelHandler, { passive: false, capture: true });
+    }
+
+    // Ensure overflow boxes can actually scroll
+    scope.querySelectorAll(sel).forEach((el) => {
+      const cs = window.getComputedStyle(el);
+      if (cs.overflowY === "visible") el.style.overflowY = "auto";
     });
   }
 
@@ -963,11 +990,8 @@
         });
         $("previewSubject").textContent = data.subject || "";
         $("previewPlain").textContent = data.plain || "";
-        const box = $("previewFrame");
-        if (box) {
-          box.innerHTML = data.html || "";
-          bindInnerWheelScroll(box.parentElement || document);
-        }
+        paintPreviewHtml($("previewFrame"), data.html || "");
+        bindInnerWheelScroll(document);
         const adv = $("letterAdvanced");
         if (adv) adv.open = true;
         if ($("letterLog")) {

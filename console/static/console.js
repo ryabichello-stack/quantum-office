@@ -1026,7 +1026,7 @@
             status.textContent = "Не удалось загрузить Outreach UI";
           }
         };
-        frame.src = BASE + "/assets/outreach/index.html?v=scrollfix4";
+        frame.src = BASE + "/assets/outreach/index.html?v=scrollfix5";
       }
     }
   }
