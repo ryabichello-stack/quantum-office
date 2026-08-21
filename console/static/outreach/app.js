@@ -2,7 +2,7 @@
   const titles = {
     letter: "Кампания",
     dash: "Рассылка",
-    outbox: "Очередь",
+    outbox: "Очередь и цепочки",
     replies: "Ответы",
     inbox: "Входящие",
     clients: "Клиенты",
@@ -12,7 +12,7 @@
   const hints = {
     letter: "Отрасль, письмо, цепочка и презентация",
     dash: "Старт рассылки, тест себе и пачка из очереди",
-    outbox: "Кого отправим следующим",
+    outbox: "Due follow-up → затем первые письма; у каждого своя дата цепочки",
     replies: "Ответы на отправленные письма",
     inbox: "Классификация входящих",
     clients: "База Bitrix и обогащение",
@@ -873,33 +873,120 @@
       .join("");
   }
 
-  async function loadOutbox() {
-    const q = $("outboxQ").value.trim();
-    const status = $("outboxStatus").value;
+  async function loadQueueView() {
+    const qEl = $("outboxQ");
+    const statusEl = $("outboxStatus");
+    const q = qEl ? qEl.value.trim() : "";
+    const status = statusEl ? statusEl.value : "pending";
+
+    let queue = { first_touch: [], followups_due: [], followups_upcoming: [], counts: {}, send_order_ru: "" };
+    try {
+      queue = await api("/api/modules/sequences/queue?limit=50");
+    } catch (e) {
+      logAction(e);
+    }
+
+    if ($("queueOrderHint") && queue.send_order_ru) {
+      $("queueOrderHint").textContent = queue.send_order_ru;
+    }
+    const c = queue.counts || {};
+    if ($("queueStats")) {
+      $("queueStats").innerHTML = `
+        <div class="stat"><span>Due цепочка</span><strong>${c.followups_due || 0}</strong></div>
+        <div class="stat"><span>Скоро (цепочка)</span><strong>${c.followups_upcoming || 0}</strong></div>
+        <div class="stat"><span>Первые письма</span><strong>${c.first_touch_pending_total != null ? c.first_touch_pending_total : (c.first_touch_pending || 0)}</strong></div>
+        <div class="stat"><span>Активных цепочек</span><strong>${(c.sequences && c.sequences.active) || 0}</strong></div>`;
+    }
+
+    const fmtTz = (r) => {
+      const city = r.city || "";
+      const tz = r.timezone || "";
+      if (city && tz) return escapeHtml(city) + "<br><span class='muted'>" + escapeHtml(tz) + "</span>";
+      return escapeHtml(city || tz || "—");
+    };
+    const fmtWhen = (iso) => {
+      if (!iso) return "сейчас";
+      try {
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return escapeHtml(String(iso));
+        return escapeHtml(d.toLocaleString("ru-RU", { timeZone: "Europe/Moscow" }));
+      } catch (_) {
+        return escapeHtml(String(iso));
+      }
+    };
+
+    if ($("queueDueBody")) {
+      const due = queue.followups_due || [];
+      $("queueDueBody").innerHTML = due.length
+        ? due
+            .map(
+              (r) => `<tr>
+            <td><strong>${r.next_step || "—"}</strong><br><span class="muted">${escapeHtml(r.next_label || "")}</span></td>
+            <td>${fmtWhen(r.next_action_at)}</td>
+            <td>${escapeHtml(r.contact_name || "—")}<br><span class="muted">${escapeHtml(r.email || "")}</span></td>
+            <td>${fmtTz(r)}</td>
+            <td>${escapeHtml(r.next_subject || "")}</td>
+          </tr>`
+            )
+            .join("")
+        : `<tr><td colspan="5" class="muted">Нет due follow-up — сегодня уйдут только новые первые письма (если Старт).</td></tr>`;
+    }
+
+    if ($("queueUpcomingBody")) {
+      const up = queue.followups_upcoming || [];
+      $("queueUpcomingBody").innerHTML = up.length
+        ? up
+            .map(
+              (r) => `<tr>
+            <td>${r.next_step || "—"}</td>
+            <td>${fmtWhen(r.next_action_at)}</td>
+            <td>${escapeHtml(r.contact_name || "")}<br><span class="muted">${escapeHtml(r.email || "")}</span></td>
+            <td>${escapeHtml(r.timezone || "—")}</td>
+            <td>${escapeHtml(r.next_label || "")}</td>
+          </tr>`
+            )
+            .join("")
+        : `<tr><td colspan="5" class="muted">Пока нет запланированных следующих шагов.</td></tr>`;
+    }
+
+    // First-touch / outbox table (searchable)
     const qs = new URLSearchParams({ limit: "80", offset: "0" });
     if (q) qs.set("q", q);
     if (status) qs.set("status", status);
     const data = await api("/api/outbox?" + qs.toString());
-    $("outboxMeta").textContent = `Показано ${data.items.length} из ${data.total}`;
-    $("outboxBody").innerHTML = data.items
-      .map((r) => {
-        const actions = ["pending", "skipped", "failed"]
-          .map(
-            (st) =>
-              `<button type="button" class="small ghost" data-id="${r.id}" data-st="${st}">${st}</button>`
-          )
-          .join(" ");
-        return `<tr>
+    const geoByEmail = {};
+    (queue.first_touch || []).forEach((r) => {
+      if (r.email) geoByEmail[String(r.email).toLowerCase()] = r;
+    });
+    if ($("outboxMeta")) {
+      $("outboxMeta").textContent = `Показано ${data.items.length} из ${data.total}`;
+    }
+    if ($("outboxBody")) {
+      $("outboxBody").innerHTML = data.items
+        .map((r) => {
+          const g = geoByEmail[String(r.email || "").toLowerCase()] || {};
+          const actions = ["pending", "skipped", "failed"]
+            .map(
+              (st) =>
+                `<button type="button" class="small ghost" data-id="${r.id}" data-st="${st}">${st}</button>`
+            )
+            .join(" ");
+          return `<tr>
           <td>${r.id}</td>
           <td>${escapeHtml(r.email)}</td>
-          <td>${escapeHtml(r.contact_name || "")}</td>
+          <td>${escapeHtml(r.contact_name || g.director_greeting || "")}</td>
+          <td>${fmtTz({ city: g.city, timezone: g.timezone })}</td>
           <td>${escapeHtml(r.status)}</td>
           <td>${escapeHtml(r.sent_at || "")}</td>
-          <td>${escapeHtml(r.deal_id || "")}</td>
           <td>${actions}</td>
         </tr>`;
-      })
-      .join("");
+        })
+        .join("");
+    }
+  }
+
+  async function loadOutbox() {
+    return loadQueueView();
   }
 
   async function loadReplies() {
@@ -1369,6 +1456,19 @@
     }
 
     $("outboxLoad").addEventListener("click", () => loadOutbox().catch(logAction));
+    if ($("queueRebuildNamesBtn")) {
+      $("queueRebuildNamesBtn").addEventListener("click", async () => {
+        try {
+          const data = await api("/api/modules/clients/rebuild-outbox", { method: "POST" });
+          logAction(
+            `Очередь обновлена: новых ${data.inserted_new || 0}, с ФИО ${data.with_director_name || 0}`
+          );
+          await loadOutbox();
+        } catch (e) {
+          logAction(e);
+        }
+      });
+    }
     $("repliesLoad").addEventListener("click", () => loadReplies().catch(logAction));
     if ($("inboxLoad")) {
       $("inboxLoad").addEventListener("click", () => loadInbox(true).catch(logAction));
@@ -1395,19 +1495,21 @@
         }
       });
     }
-    $("outboxBody").addEventListener("click", async (ev) => {
-      const btn = ev.target.closest("button[data-id]");
-      if (!btn) return;
-      try {
-        await api("/api/outbox/" + btn.dataset.id, {
-          method: "PATCH",
-          body: JSON.stringify({ status: btn.dataset.st }),
-        });
-        await loadOutbox();
-      } catch (e) {
-        logAction(String(e));
-      }
-    });
+    if ($("outboxBody")) {
+      $("outboxBody").addEventListener("click", async (ev) => {
+        const btn = ev.target.closest("button[data-id]");
+        if (!btn) return;
+        try {
+          await api("/api/outbox/" + btn.dataset.id, {
+            method: "PATCH",
+            body: JSON.stringify({ status: btn.dataset.st }),
+          });
+          await loadOutbox();
+        } catch (e) {
+          logAction(String(e));
+        }
+      });
+    }
 
     $("letterPreview").addEventListener("click", async () => {
       try {

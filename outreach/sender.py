@@ -534,17 +534,39 @@ def send_batch(
     followups: list[dict[str, Any]] = []
     processed_sends = 0
 
-    if not candidates and window_deferred and not only_email:
-        return {
-            "ok": True,
-            "processed": 0,
-            "sent_today": sent_today,
-            "effective_daily_limit": effective_limit,
-            "results": [],
-            "skipped": skipped,
-            "deferred_window": window_deferred[:20],
-            "deferred_window_count": len(window_deferred),
-        }
+    # 1) Due follow-ups first (each contact on their own chain day), then new step-1.
+    #    one-shot only_email stays first-touch-only.
+    followups_first = _cfg_bool(settings, "SCHEDULE_FOLLOWUPS_FIRST", True)
+    if (
+        followups_first
+        and not dry_run
+        and not only_email
+        and _cfg_bool(settings, "SEQUENCES_ENABLED", True)
+        and processed_sends < limit
+    ):
+        try:
+            followups = _send_due_sequence_steps(
+                store,
+                limit=max(0, min(limit - processed_sends, remaining - processed_sends)),
+                settings=settings,
+                bitrix=bitrix,
+                tracking=tracking,
+                deliverability=deliverability,
+                subject_default=subject,
+                company=company,
+                mailbox=mailbox,
+                unsub=unsub,
+            )
+            for fu in followups:
+                if fu.get("status") == "sent":
+                    processed_sends += 1
+                    results.append(fu)
+                elif fu.get("status") == "skipped":
+                    skipped.append(fu)
+                else:
+                    results.append(fu)
+        except Exception:  # noqa: BLE001
+            logger.exception("sequence follow-ups (priority) failed")
 
     for row in candidates:
         if processed_sends >= limit:
@@ -822,8 +844,14 @@ def send_batch(
             results.append(item)
             logger.exception("send failed for %s", row.email)
 
-    # Follow-up steps (2+) for due sequence leads
-    if not dry_run and _cfg_bool(settings, "SEQUENCES_ENABLED", True) and processed_sends < limit:
+    # Follow-ups already sent at the start when SCHEDULE_FOLLOWUPS_FIRST (default).
+    # Legacy / opt-out: run them after first-touch with leftover budget.
+    if (
+        not followups_first
+        and not dry_run
+        and _cfg_bool(settings, "SEQUENCES_ENABLED", True)
+        and processed_sends < limit
+    ):
         try:
             followups = _send_due_sequence_steps(
                 store,
@@ -861,6 +889,11 @@ def send_batch(
         "plus_reply_to_enabled": plus_reply,
         "only_email": only_email,
         "deferred_window_count": len(window_deferred),
+        "send_order": (
+            "followups_due_then_first_touch"
+            if followups_first
+            else "first_touch_then_followups"
+        ),
         "results": results,
     }
 

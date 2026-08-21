@@ -373,6 +373,91 @@ class SequenceStore:
                 return s
         return None
 
+    def list_upcoming(self, limit: int = 50) -> list[dict[str, Any]]:
+        """Active leads with a future next_action_at (not yet due)."""
+        now = _iso(_utc_now())
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM sequence_leads
+                WHERE status='active'
+                  AND next_action_at IS NOT NULL
+                  AND next_action_at > ?
+                ORDER BY next_action_at ASC
+                LIMIT ?
+                """,
+                (now, max(1, min(limit, 200))),
+            ).fetchall()
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            d = dict(r)
+            pack_id = self._pack_id_of(d)
+            d["pack_id"] = pack_id
+            d["step_def"] = self.next_step_def(d)
+            out.append(d)
+        return out
+
+    def queue_snapshot(
+        self,
+        *,
+        first_touch: list[dict[str, Any]] | None = None,
+        due_limit: int = 40,
+        upcoming_limit: int = 40,
+    ) -> dict[str, Any]:
+        """Unified view: first letters vs chain follow-ups."""
+        due_raw = self.list_due(limit=due_limit)
+        upcoming_raw = self.list_upcoming(limit=upcoming_limit)
+        counts = self.counts()
+
+        def _lead_row(lead: dict[str, Any], *, due: bool) -> dict[str, Any]:
+            step_def = lead.get("step_def") or self.next_step_def(lead) or {}
+            meta: dict[str, Any] = {}
+            try:
+                meta = json.loads(lead.get("meta_json") or "{}")
+                if not isinstance(meta, dict):
+                    meta = {}
+            except Exception:  # noqa: BLE001
+                meta = {}
+            nxt = int(step_def.get("step") or (int(lead.get("current_step") or 0) + 1))
+            return {
+                "kind": "followup",
+                "email": lead.get("email"),
+                "company_id": lead.get("company_id") or "",
+                "contact_name": lead.get("contact_name") or "",
+                "current_step": int(lead.get("current_step") or 0),
+                "next_step": nxt,
+                "next_label": step_def.get("label") or f"step_{nxt}",
+                "next_subject": step_def.get("subject") or lead.get("subject_base") or "",
+                "delay_days": step_def.get("delay_days"),
+                "next_action_at": lead.get("next_action_at"),
+                "due": due,
+                "pack_id": lead.get("pack_id") or meta.get("pack_id") or "",
+                "timezone": meta.get("timezone") or "",
+                "anchor_sent_at": meta.get("anchor_sent_at") or "",
+            }
+
+        followups_due = [_lead_row(x, due=True) for x in due_raw]
+        followups_upcoming = [_lead_row(x, due=False) for x in upcoming_raw]
+        return {
+            "ok": True,
+            "send_order": "followups_due_then_first_touch",
+            "send_order_ru": (
+                "В каждой пачке сначала уходят письма цепочки, у которых подошёл срок "
+                "(шаг 2, 3… по дате первого письма и локальному окну). "
+                "Оставшийся дневной лимит — на новые первые письма из очереди. "
+                "У каждого контакта своя цепочка: сегодня одному шаг 1, другому шаг 2."
+            ),
+            "counts": {
+                "first_touch_pending": len(first_touch or []),
+                "followups_due": len(followups_due),
+                "followups_upcoming": len(followups_upcoming),
+                "sequences": counts,
+            },
+            "first_touch": first_touch or [],
+            "followups_due": followups_due,
+            "followups_upcoming": followups_upcoming,
+        }
+
     def counts(self) -> dict[str, int]:
         with self.connect() as conn:
             rows = conn.execute(
@@ -431,6 +516,59 @@ class SequencesModule:
                 "packs": list_packs(),
                 "due": self.store.list_due(10),
             }
+
+        @router.get("/queue")
+        def queue(limit: int = 40) -> dict[str, Any]:
+            """First-touch pending + due/upcoming follow-ups for the Очередь UI."""
+            from modules.clients import ClientsStore, company_geo_row
+            from outbox import OutboxStore
+            from core.paths import DATA_DIR
+
+            limit_n = max(1, min(int(limit or 40), 100))
+            outbox = OutboxStore(DATA_DIR / "outbox.db")
+            clients = ClientsStore()
+            pending_rows = outbox.list_pending(limit_n)
+            first_touch: list[dict[str, Any]] = []
+            for row in pending_rows:
+                geo = company_geo_row(clients, row.company_id or "")
+                first_touch.append(
+                    {
+                        "kind": "first_touch",
+                        "outbox_id": row.id,
+                        "email": row.email,
+                        "company_id": row.company_id or "",
+                        "contact_name": row.contact_name or "",
+                        "next_step": 1,
+                        "next_label": "intro",
+                        "next_subject": "",
+                        "timezone": geo.get("timezone") or "",
+                        "city": geo.get("city") or "",
+                        "director_greeting": geo.get("director_greeting") or "",
+                        "due": True,
+                    }
+                )
+            snap = self.store.queue_snapshot(
+                first_touch=first_touch,
+                due_limit=limit_n,
+                upcoming_limit=limit_n,
+            )
+            # Enrich follow-ups with geo
+            for bucket in ("followups_due", "followups_upcoming"):
+                for item in snap.get(bucket) or []:
+                    if item.get("timezone"):
+                        continue
+                    geo = company_geo_row(clients, str(item.get("company_id") or ""))
+                    item["timezone"] = geo.get("timezone") or ""
+                    item["city"] = geo.get("city") or ""
+                    if not item.get("contact_name") and geo.get("director_greeting"):
+                        item["contact_name"] = geo["director_greeting"]
+            # pending total (not just page)
+            try:
+                pending_total = int(outbox.counts().get("pending") or 0)
+            except Exception:  # noqa: BLE001
+                pending_total = len(first_touch)
+            snap["counts"]["first_touch_pending_total"] = pending_total
+            return snap
 
         @router.get("/packs")
         def packs() -> dict[str, Any]:

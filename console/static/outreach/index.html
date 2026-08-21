@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=cb-dial1" />
+  <link rel="stylesheet" href="styles.css?v=queue1" />
   <script>
     (function () {
       function parentBase() {
@@ -306,10 +306,37 @@
       <section id="tab-outbox" class="panel">
         <div class="surface task-form">
           <div class="task-intro">
-            <h2 class="section-title">Очередь писем</h2>
-            <p class="muted tight">Кого отправим следующим. Можно пропустить или вернуть в ожидание.</p>
+            <h2 class="section-title">Очередь и цепочки</h2>
+            <p class="muted tight" id="queueOrderHint">
+              У каждого контакта своя цепочка от даты первого письма. В пачке сначала
+              уходят due follow-up (шаг 2+), затем новые первые письма.
+            </p>
           </div>
+          <div id="queueStats" class="stat-grid"></div>
+          <div class="task-actions" style="border-top:0;padding-top:0">
+            <button type="button" id="outboxLoad" class="primary">Обновить очередь</button>
+            <button type="button" class="btn-quiet" id="queueRebuildNamesBtn">Подтянуть ФИО в очередь</button>
+          </div>
+
+          <h3 class="section-title" style="font-size:1.05rem;margin-top:1rem">Сейчас к отправке — цепочка</h3>
+          <p class="muted tight">Письма 2+, у которых подошёл срок (по дате первого письма + локальное окно).</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Шаг</th><th>Когда</th><th>Кому</th><th>Город / TZ</th><th>Тема / label</th>
+                </tr>
+              </thead>
+              <tbody id="queueDueBody"></tbody>
+            </table>
+          </div>
+
+          <h3 class="section-title" style="font-size:1.05rem;margin-top:1.25rem">Новые первые письма</h3>
+          <p class="muted tight">Ещё не писали — шаг 1. Заполняют остаток дневного лимита после follow-up.</p>
           <div class="task-grid">
+            <label class="field">Поиск
+              <input id="outboxQ" type="search" placeholder="email или имя" />
+            </label>
             <label class="field">Статус
               <select id="outboxStatus">
                 <option value="pending">Ожидают</option>
@@ -319,21 +346,32 @@
                 <option value="">Все</option>
               </select>
             </label>
-            <div class="field" style="align-self:end">
-              <button type="button" id="outboxLoad" class="primary">Загрузить</button>
-            </div>
           </div>
           <p class="muted tight" id="outboxMeta"></p>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>ID</th><th>Email</th><th>Компания</th><th>Статус</th><th>Отправлено</th><th>Сделка</th><th></th>
+                  <th>ID</th><th>Email</th><th>Кому</th><th>Город / TZ</th><th>Статус</th><th>Отправлено</th><th></th>
                 </tr>
               </thead>
               <tbody id="outboxBody"></tbody>
             </table>
           </div>
+
+          <details class="task-advanced" style="margin-top:1rem">
+            <summary>Скоро по цепочке (ещё не due)</summary>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Шаг</th><th>План</th><th>Кому</th><th>TZ</th><th>Label</th>
+                  </tr>
+                </thead>
+                <tbody id="queueUpcomingBody"></tbody>
+              </table>
+            </div>
+          </details>
         </div>
       </section>
 
@@ -640,6 +678,6 @@
       </section>
     </main>
   </div>
-  <script src="app.js?v=cb-dial1"></script>
+  <script src="app.js?v=queue1"></script>
 </body>
 </html>
