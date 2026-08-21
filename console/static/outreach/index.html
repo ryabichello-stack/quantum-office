@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=pdffix1" />
+  <link rel="stylesheet" href="styles.css?v=testmail1" />
   <script>
     (function () {
       function parentBase() {
@@ -183,6 +183,25 @@
             <button type="button" id="letterSave" class="btn-quiet">Сохранить</button>
             <span class="muted tight">Юридический блок и «Отписаться» уже в шаблоне</span>
           </div>
+
+          <fieldset class="task-mode" id="letterTestBox">
+            <legend>Тестовое письмо</legend>
+            <p class="muted tight">Разовая отправка на указанный адрес — проверить оформление и PDF. Очередь Bitrix не трогается.</p>
+            <div class="task-grid">
+              <label class="field">Кому
+                <input id="letterTestTo" type="email" placeholder="you@quantumlabs.ru" autocomplete="email" />
+              </label>
+              <label class="field">Имя в письме
+                <input id="letterTestName" type="text" placeholder="коллега" />
+              </label>
+            </div>
+            <div class="actions" style="margin-top:0.35rem">
+              <button type="button" class="btn-quiet" id="letterTestDryBtn">Превью SMTP</button>
+              <button type="button" class="primary" id="letterTestSendBtn">Отправить тест</button>
+            </div>
+            <p class="muted tight">Перед отправкой сохраняются текущие поля кампании. До 5 тестовых писем в сутки.</p>
+          </fieldset>
+
           <pre id="letterLog" class="log" hidden></pre>
         </div>
       </section>
@@ -209,7 +228,7 @@
 
           <fieldset class="task-mode">
             <legend>Тест себе</legend>
-            <p class="muted tight">Одно письмо с текущим шаблоном. Очередь Bitrix не трогается.</p>
+            <p class="muted tight">Одно письмо с текущим шаблоном. Очередь Bitrix не трогается. То же есть во вкладке «Кампания».</p>
             <div class="task-grid">
               <label class="field">Кому
                 <input id="oneTo" type="email" placeholder="you@quantumlabs.ru" />
@@ -587,6 +606,6 @@
       </section>
     </main>
   </div>
-  <script src="app.js?v=pdffix1"></script>
+  <script src="app.js?v=testmail1"></script>
 </body>
 </html>

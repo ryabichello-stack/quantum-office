@@ -1119,32 +1119,115 @@
       }
     });
 
-    async function doSendOne(dry) {
-      const to = ($("oneTo").value || "").trim();
+    function campaignSettingsPayload() {
+      return {
+        OUTREACH_SUBJECT: $("letterSubject").value,
+        OUTREACH_COMPANY_NAME: $("letterCompany").value,
+        OUTREACH_WEBSITE: $("letterWebsite").value,
+        OUTREACH_CONTACT_PHONE: $("letterPhone").value,
+        OUTREACH_CONTACT_EMAIL: $("letterEmail") ? $("letterEmail").value : "",
+        OUTREACH_SIGNATURE: $("letterSignature") ? $("letterSignature").value : "",
+        OUTREACH_LOGO_URL: ($("letterLogoPreview") && $("letterLogoPreview").getAttribute("src")) || "",
+        OUTREACH_LOGO_ENABLED: $("letterLogoEnabled") && $("letterLogoEnabled").checked ? "true" : "false",
+        OUTREACH_TEMPLATE_PLAIN: $("letterPlain").value,
+        OUTREACH_TEMPLATE_HTML: $("letterHtml").value,
+        OUTREACH_ATTACH_PRESENTATION: $("letterAttachPdf") && $("letterAttachPdf").checked ? "true" : "false",
+        OUTREACH_SEQUENCE_PACK: selectedPackId || settingsCache?.OUTREACH_SEQUENCE_PACK || "",
+        SEQUENCES_ENABLED: "true",
+      };
+    }
+
+    async function saveCampaignSettings() {
+      await applyCampaignContacts({ quiet: true });
+      const data = await api("/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({ settings: campaignSettingsPayload() }),
+      });
+      return data;
+    }
+
+    function formatSendOneResult(data, dry) {
+      const attached = data.attached || (data.results && data.results[0] && data.results[0].attached) || [];
+      const to =
+        (data.results && data.results[0] && data.results[0].email) ||
+        ($("letterTestTo") && $("letterTestTo").value) ||
+        ($("oneTo") && $("oneTo").value) ||
+        "";
+      const pdf = attached.length ? `Вложение: ${attached.join(", ")}` : "Без PDF";
+      const used = data.oneshot_today != null ? ` · тестов сегодня: ${data.oneshot_today}/${data.oneshot_daily_limit || 5}` : "";
+      if (dry) {
+        return `Превью SMTP для ${to}: ок. ${pdf}${used}`;
+      }
+      return `Тест отправлен на ${to}. ${pdf}${used}`;
+    }
+
+    async function doSendOne(dry, opts = {}) {
+      const toEl = opts.toId ? $(opts.toId) : $("oneTo");
+      const nameEl = opts.nameId ? $(opts.nameId) : $("oneName");
+      const logEl = opts.logId ? $(opts.logId) : null;
+      const to = ((toEl && toEl.value) || "").trim();
       if (!to) {
-        logAction("Укажите email в поле «Кому»");
+        const msg = "Укажите email в поле «Кому»";
+        if (logEl) {
+          logEl.hidden = false;
+          logEl.textContent = msg;
+        }
+        logAction(msg);
         return;
       }
-      if (!dry && !confirm(`Отправить одно письмо на ${to}?`)) return;
+      if (!dry && !confirm(`Отправить тестовое письмо на ${to}?`)) return;
       try {
-        logAction(
-          await api("/send-one", {
-            method: "POST",
-            body: JSON.stringify({
-              to,
-              contact_name: ($("oneName").value || "").trim() || null,
-              dry_run: !!dry,
-              create_bitrix_deal: false,
-            }),
-          })
-        );
+        if (opts.saveFirst) {
+          await saveCampaignSettings();
+        }
+        const attach =
+          $("letterAttachPdf") != null ? !!$("letterAttachPdf").checked : null;
+        const data = await api("/send-one", {
+          method: "POST",
+          body: JSON.stringify({
+            to,
+            contact_name: ((nameEl && nameEl.value) || "").trim() || null,
+            dry_run: !!dry,
+            create_bitrix_deal: false,
+            attach_presentation: attach,
+          }),
+        });
+        const summary = formatSendOneResult(data, dry);
+        if (logEl) {
+          logEl.hidden = false;
+          logEl.textContent = summary;
+        }
+        logAction(summary);
+        logAction(data);
         if (!dry) await loadDash();
       } catch (e) {
+        if (logEl) {
+          logEl.hidden = false;
+          logEl.textContent = String(e);
+        }
         logAction(String(e));
       }
     }
     $("oneDryBtn").addEventListener("click", () => doSendOne(true));
     $("oneSendBtn").addEventListener("click", () => doSendOne(false));
+    if ($("letterTestSendBtn")) {
+      $("letterTestDryBtn").addEventListener("click", () =>
+        doSendOne(true, {
+          toId: "letterTestTo",
+          nameId: "letterTestName",
+          logId: "letterLog",
+          saveFirst: true,
+        })
+      );
+      $("letterTestSendBtn").addEventListener("click", () =>
+        doSendOne(false, {
+          toId: "letterTestTo",
+          nameId: "letterTestName",
+          logId: "letterLog",
+          saveFirst: true,
+        })
+      );
+    }
 
     $("outboxLoad").addEventListener("click", () => loadOutbox().catch(logAction));
     $("repliesLoad").addEventListener("click", () => loadReplies().catch(logAction));
@@ -1388,28 +1471,17 @@
 
     $("letterSave").addEventListener("click", async () => {
       try {
-        const payload = {
-          OUTREACH_SUBJECT: $("letterSubject").value,
-          OUTREACH_COMPANY_NAME: $("letterCompany").value,
-          OUTREACH_WEBSITE: $("letterWebsite").value,
-          OUTREACH_CONTACT_PHONE: $("letterPhone").value,
-          OUTREACH_CONTACT_EMAIL: $("letterEmail") ? $("letterEmail").value : "",
-          OUTREACH_SIGNATURE: $("letterSignature") ? $("letterSignature").value : "",
-          OUTREACH_LOGO_URL: ($("letterLogoPreview") && $("letterLogoPreview").getAttribute("src")) || "",
-          OUTREACH_LOGO_ENABLED: $("letterLogoEnabled") && $("letterLogoEnabled").checked ? "true" : "false",
-          OUTREACH_TEMPLATE_PLAIN: $("letterPlain").value,
-          OUTREACH_TEMPLATE_HTML: $("letterHtml").value,
-          OUTREACH_ATTACH_PRESENTATION: $("letterAttachPdf") && $("letterAttachPdf").checked ? "true" : "false",
-          OUTREACH_SEQUENCE_PACK: selectedPackId || settingsCache?.OUTREACH_SEQUENCE_PACK || "",
-          SEQUENCES_ENABLED: "true",
-        };
-        const data = await api("/api/settings", { method: "PUT", body: JSON.stringify({ settings: payload }) });
+        const data = await saveCampaignSettings();
         if ($("letterLog")) {
           $("letterLog").hidden = false;
           $("letterLog").textContent = "Кампания сохранена.";
         }
         logAction(data);
       } catch (e) {
+        if ($("letterLog")) {
+          $("letterLog").hidden = false;
+          $("letterLog").textContent = String(e);
+        }
         logAction(String(e));
       }
     });

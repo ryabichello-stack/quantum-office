@@ -81,7 +81,16 @@ def _presentation_path(settings: Any = None, pack_path: str | None = None) -> Pa
     return resolve_presentation(pack_id=pack_id or None, settings_path=settings_path or None)
 
 
-def _should_attach_presentation(settings: Any, *, step_wants: bool = False) -> bool:
+def _should_attach_presentation(
+    settings: Any,
+    *,
+    step_wants: bool = False,
+    force: bool | None = None,
+) -> bool:
+    if force is False:
+        return False
+    if force is True:
+        return True
     if step_wants:
         # still respect explicit off
         if _cfg(settings, "OUTREACH_ATTACH_PRESENTATION", "") in ("0", "false", "no", "off"):
@@ -95,8 +104,9 @@ def _attachments_for_send(
     *,
     step_wants: bool = False,
     pack_presentation: str | None = None,
+    force: bool | None = None,
 ) -> list[Path]:
-    if not _should_attach_presentation(settings, step_wants=step_wants):
+    if not _should_attach_presentation(settings, step_wants=step_wants, force=force):
         return []
     path = _presentation_path(settings, pack_presentation)
     return [path] if path else []
@@ -949,6 +959,7 @@ def send_one(
     deliverability: Any = None,
     create_bitrix_deal: bool = False,
     bitrix: BitrixClient | None = None,
+    attach_presentation: bool | None = None,
 ) -> dict[str, Any]:
     """Send a single letter to an explicit address (test / one-shot).
 
@@ -1028,15 +1039,17 @@ def send_one(
         if hdrs.get("unsubscribe_mailto"):
             unsub_addr = hdrs["unsubscribe_mailto"]
 
-    plain, html = render_cooperation(
+    plain, html = _render_letter(
         contact_name=name,
-        company_name=company,
+        company=company,
         website=website,
         phone=phone,
         unsubscribe_mailto=unsub_addr,
         plain_template=plain_tpl or None,
         html_template=html_tpl or None,
+        settings=settings,
     )
+    attach = _attachments_for_send(settings, step_wants=False, force=attach_presentation)
     open_token = None
     if tracking is not None and not dry_run:
         try:
@@ -1056,11 +1069,12 @@ def send_one(
         "plus_tag": plus_tag,
         "reply_to": reply_to,
         "oneshot": True,
+        "subject": subject,
+        "attached": [p.name for p in attach] if attach else [],
     }
 
     if dry_run:
         item["status"] = "dry_run"
-        item["subject"] = subject
         item["preview_plain"] = plain[:500]
         return {
             "ok": True,
@@ -1068,11 +1082,11 @@ def send_one(
             "processed": 1,
             "oneshot_today": deliverability.oneshot_today() if deliverability else 0,
             "oneshot_daily_limit": oneshot_limit,
+            "attached": item["attached"],
             "results": [item],
         }
 
     try:
-        attach = _attachments_for_send(settings, step_wants=False)
         message_id = send_email(
             to=to_email,
             subject=subject,
@@ -1084,8 +1098,6 @@ def send_one(
             attachments=attach,
         )
         item["message_id"] = message_id
-        if attach:
-            item["attached"] = [p.name for p in attach]
         if tracking is not None:
             tracking.record(
                 outbox_id=row.id,
@@ -1119,13 +1131,14 @@ def send_one(
 
         store.mark(row.id, "sent", deal_id=deal_meta.get("deal_id"))
         item["status"] = "sent"
-        logger.info("oneshot sent to %s mid=%s", to_email, message_id)
+        logger.info("oneshot sent to %s mid=%s attach=%s", to_email, message_id, item["attached"])
         return {
             "ok": True,
             "dry_run": False,
             "processed": 1,
             "oneshot_today": item.get("oneshot_today"),
             "oneshot_daily_limit": oneshot_limit,
+            "attached": item["attached"],
             "results": [item],
         }
     except Exception as exc:  # noqa: BLE001

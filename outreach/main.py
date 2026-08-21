@@ -542,6 +542,7 @@ class SendOneBody(BaseModel):
     contact_name: str | None = None
     dry_run: bool = False
     create_bitrix_deal: bool = False
+    attach_presentation: bool | None = None
 
 
 @app.post("/send-one", dependencies=[Depends(require_ui_auth)])
@@ -559,6 +560,7 @@ def api_send_one(body: SendOneBody) -> dict[str, Any]:
             deliverability=_deliver_mod.store,
             create_bitrix_deal=body.create_bitrix_deal,
             bitrix=bitrix,
+            attach_presentation=body.attach_presentation,
         )
         if not result.get("ok"):
             raise HTTPException(status_code=400, detail=result.get("error") or "send failed")
