@@ -31,16 +31,16 @@ LEGAL_FOOTER_PLAIN = """
 """
 
 LEGAL_FOOTER_HTML = """
-<hr style="border:none;border-top:1px solid #ddd;margin:1.5em 0 0.75em">
-<div style="font-size:12px;line-height:1.45;color:#555">
-  <p>Вы получили это письмо, потому что ваша компания указана в открытых
+<hr style="border:none;border-top:1px solid #ece8e3;margin:1.75em 0 0.85em">
+<div style="font-size:11px;line-height:1.5;color:#6a737b;font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif">
+  <p style="margin:0 0 0.55em">Вы получили это письмо, потому что ваша компания указана в открытых
   источниках как организация, для которой могут быть актуальны сервисы
   платёжной инфраструктуры Quantum Labs (в т.ч. Quantum Payouts).</p>
-  <p>ООО «Квантум Лабс» · <a href="https://quantumlabs.ru">quantumlabs.ru</a>
+  <p style="margin:0 0 0.55em">ООО «Квантум Лабс» · <a href="https://quantumlabs.ru" style="color:#6a737b">quantumlabs.ru</a>
   · office@quantumlabs.ru</p>
-  <p><a href="{unsub_url}" style="color:#c4470f">Отписаться от рассылки</a>
-  · или напишите на <a href="mailto:{unsub}?subject=unsubscribe">{unsub}</a></p>
-  <p>Обработка обращений — в соответствии с применимым законодательством РФ
+  <p style="margin:0 0 0.55em"><a href="{unsub_url}" style="color:#c4470f">Отписаться от рассылки</a>
+  · или напишите на <a href="mailto:{unsub}?subject=unsubscribe" style="color:#6a737b">{unsub}</a></p>
+  <p style="margin:0">Обработка обращений — в соответствии с применимым законодательством РФ
   (в т.ч. 152-ФЗ). Письмо носит информационный характер и не является офертой.</p>
 </div>
 """
@@ -109,12 +109,16 @@ def _html_from_plain(plain: str) -> str:
             blocks.append(f"<p style='margin:0 0 0.85em'>{inner}</p>")
     body = "\n".join(blocks) if blocks else "<p></p>"
     return (
-        '<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"></head>'
-        '<body style="font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
-        "line-height:1.55;color:#1a1a1a;font-size:15px;max-width:640px;"
-        'margin:0;padding:8px 4px">'
+        '<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        "</head>"
+        '<body style="margin:0;padding:0;background:#ffffff">'
+        '<div style="font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
+        "line-height:1.55;color:#0f1b24;font-size:15px;max-width:600px;"
+        'margin:0 auto;padding:20px 16px">'
         "{logo_header}"
-        f"{body}\n{{legal_html}}</body></html>"
+        f"{body}\n{{legal_html}}"
+        "</div></body></html>"
     )
 
 

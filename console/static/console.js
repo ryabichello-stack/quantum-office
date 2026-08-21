@@ -1027,7 +1027,7 @@
             status.textContent = "Не удалось загрузить Outreach UI";
           }
         };
-        frame.src = BASE + "/assets/outreach/index.html?v=callback2";
+        frame.src = BASE + "/assets/outreach/index.html?v=outreach-cta3";
       }
     }
   }
@@ -1314,6 +1314,7 @@
     if ($("cbNotifyEmail")) $("cbNotifyEmail").value = s.CALLBACK_NOTIFY_EMAIL || "";
     if ($("cbButton")) $("cbButton").value = s.CALLBACK_CTA_BUTTON || "";
     if ($("cbTitle")) $("cbTitle").value = s.CALLBACK_CTA_TITLE || "";
+    if ($("cbLead")) $("cbLead").value = s.CALLBACK_CTA_LEAD || "";
     if ($("cbGreeting")) $("cbGreeting").value = s.CALLBACK_SCENARIO_GREETING || "";
     if ($("cbScript")) $("cbScript").value = s.CALLBACK_SCENARIO_SCRIPT || "";
     if ($("cbMeta")) {
@@ -1373,6 +1374,7 @@
               CALLBACK_NOTIFY_EMAIL: ($("cbNotifyEmail") && $("cbNotifyEmail").value) || "",
               CALLBACK_CTA_BUTTON: ($("cbButton") && $("cbButton").value) || "",
               CALLBACK_CTA_TITLE: ($("cbTitle") && $("cbTitle").value) || "",
+              CALLBACK_CTA_LEAD: ($("cbLead") && $("cbLead").value) || "",
               CALLBACK_SCENARIO_GREETING: ($("cbGreeting") && $("cbGreeting").value) || "",
               CALLBACK_SCENARIO_SCRIPT: ($("cbScript") && $("cbScript").value) || "",
             },

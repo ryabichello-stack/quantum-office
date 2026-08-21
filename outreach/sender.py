@@ -64,6 +64,18 @@ def _render_letter(
     )
 
 
+def _tracking_company_slug(
+    *,
+    contact_name: str | None = None,
+    email: str | None = None,
+    company_title: str | None = None,
+) -> str:
+    from modules.tracking import plus_company_slug
+
+    # Prefer human company/contact label; fall back to recipient domain.
+    return plus_company_slug(company_title or contact_name or email or "")
+
+
 def _callback_url_for_row(
     *,
     outbox_id: int,
@@ -542,6 +554,11 @@ def send_batch(
                 outbox_id=row.id,
                 mailbox=mailbox,
                 enable_plus_reply_to=plus_reply,
+                company_slug=_tracking_company_slug(
+                    contact_name=row.contact_name,
+                    email=row.email,
+                    company_title=company,
+                ),
             )
             plus_tag = hdrs.get("plus_tag")
             reply_to = hdrs.get("reply_to")
@@ -866,6 +883,11 @@ def _send_due_sequence_steps(
                 outbox_id=outbox_id,
                 mailbox=mailbox,
                 enable_plus_reply_to=plus_reply,
+                company_slug=_tracking_company_slug(
+                    contact_name=name,
+                    email=email,
+                    company_title=company,
+                ),
             )
             plus_tag = hdrs.get("plus_tag")
             reply_to = hdrs.get("reply_to")
@@ -1067,6 +1089,11 @@ def send_one(
             outbox_id=row.id,
             mailbox=mailbox,
             enable_plus_reply_to=plus_reply,
+            company_slug=_tracking_company_slug(
+                contact_name=name,
+                email=to_email,
+                company_title=company,
+            ),
         )
         plus_tag = hdrs.get("plus_tag")
         reply_to = hdrs.get("reply_to")

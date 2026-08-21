@@ -28,14 +28,18 @@ from modules.tracking import short_hmac, tracking_public_base
 
 logger = logging.getLogger("ava-outreach.callback-cta")
 
-_DEFAULT_TITLE = "Хотите, перезвоним?"
-_DEFAULT_BUTTON = "Заказать звонок"
+_DEFAULT_TITLE = "Если интересно — можем перезвонить"
+_DEFAULT_BUTTON = "Оставить контакт"
 _DEFAULT_GREETING = "Здравствуйте! Это Quantum Labs — вы оставили заявку на звонок с письма."
 _DEFAULT_SCRIPT = (
     "Ты — голосовой ассистент Quantum Labs. Клиент оставил заявку «перезвоните» "
     "из email-рассылки. Представься коротко, уточни удобное время и тему разговора, "
     "кратко расскажи про платёжную инфраструктуру Quantum Payouts и предложи "
     "следующий шаг (созвон с менеджером / демо). Будь вежлив и конкретен."
+)
+_DEFAULT_LEAD = (
+    "Оставьте ФИО и телефон — коротко созвонимся и разберём, "
+    "есть ли эффект именно для вас. Без обязательств."
 )
 
 
@@ -157,6 +161,10 @@ def notify_email(settings: Any = None) -> str:
     ).strip()
 
 
+def cta_lead(settings: Any = None) -> str:
+    return (_cfg(settings, "CALLBACK_CTA_LEAD", _DEFAULT_LEAD) or _DEFAULT_LEAD).strip()
+
+
 def settings_snapshot(settings: Any = None) -> dict[str, Any]:
     return {
         "CALLBACK_CTA_ENABLED": "true" if cta_enabled(settings) else "false",
@@ -164,6 +172,7 @@ def settings_snapshot(settings: Any = None) -> dict[str, Any]:
         "CALLBACK_NOTIFY_ENABLED": "true" if notify_enabled(settings) else "false",
         "CALLBACK_DIAL_MODE": dial_mode(settings),
         "CALLBACK_CTA_TITLE": cta_title(settings),
+        "CALLBACK_CTA_LEAD": cta_lead(settings),
         "CALLBACK_CTA_BUTTON": cta_button(settings),
         "CALLBACK_NOTIFY_EMAIL": notify_email(settings),
         "CALLBACK_SCENARIO_GREETING": scenario_greeting(settings),
@@ -228,57 +237,33 @@ def callback_url_for(token: str, settings: Any = None) -> str:
 
 
 def build_callback_cta_html(*, url: str, settings: Any = None) -> str:
-    """Form-like block at the end of the letter.
+    """Soft ask before signature — button/link only (no inputs in the letter).
 
-    Real interactive forms are stripped by Gmail/Outlook, so we render a
-    visual form + a button/link to the signed landing page (and a GET form
-    for clients that still submit HTML forms).
+    Interactive forms inside cold email hurt deliverability and are stripped by
+    Gmail/Outlook. The real FIO+phone form lives on the signed landing page.
     """
     title = escape(cta_title(settings))
+    lead = escape(cta_lead(settings))
     button = escape(cta_button(settings))
     href = escape(url, quote=True)
     return (
-        '<div style="margin:1.5em 0 0.5em;padding:0;border:0">'
-        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
-        'style="border:1px solid #d9dee3;background:#f7f8f9">'
-        "<tr><td style=\"padding:16px 18px\">"
-        f'<p style="margin:0 0 6px;font:600 16px/1.35 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
+        '<div style="margin:1.35em 0 0.15em;padding:0;border:0">'
+        f'<p style="margin:0 0 0.45em;font:600 15px/1.4 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
         f'color:#0f1b24">{title}</p>'
-        '<p style="margin:0 0 14px;font:13px/1.45 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
-        'color:#4a5560">Оставьте ФИО и телефон — перезвоним в ближайшие минуты.</p>'
-        f'<form action="{href}" method="get">'
-        '<label style="display:block;margin:0 0 10px;font:600 12px/1.3 Manrope,Segoe UI,sans-serif;color:#0f1b24">'
-        "ФИО<br>"
-        '<input name="fio" type="text" placeholder="Иванов Иван Иванович" '
-        'style="margin-top:5px;width:100%;max-width:100%;box-sizing:border-box;padding:10px 12px;'
-        "border:1px solid #c5ccd3;background:#ffffff;font:14px/1.4 Manrope,Segoe UI,sans-serif\" />"
-        "</label>"
-        '<label style="display:block;margin:0 0 14px;font:600 12px/1.3 Manrope,Segoe UI,sans-serif;color:#0f1b24">'
-        "Телефон<br>"
-        '<input name="phone" type="tel" placeholder="+7 …" '
-        'style="margin-top:5px;width:100%;max-width:100%;box-sizing:border-box;padding:10px 12px;'
-        "border:1px solid #c5ccd3;background:#ffffff;font:14px/1.4 Manrope,Segoe UI,sans-serif\" />"
-        "</label>"
-        f'<button type="submit" style="display:inline-block;padding:11px 18px;border:0;cursor:pointer;'
-        f'background:#1a1a1a;color:#ffffff;font:600 13px/1 Manrope,Segoe UI,Helvetica,Arial,sans-serif">'
-        f"{button}</button>"
-        "</form>"
-        f'<p style="margin:12px 0 0;font:12px/1.4 Manrope,Segoe UI,sans-serif;color:#6a737b">'
-        f'Если кнопка не работает в почте — '
-        f'<a href="{href}" style="color:#c4470f;font-weight:600">откройте форму по ссылке</a>.'
-        "</p>"
-        "</td></tr></table></div>"
+        f'<p style="margin:0 0 0.9em;font:14px/1.55 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
+        f'color:#3d4750">{lead}</p>'
+        f'<a href="{href}" style="display:inline-block;padding:11px 18px;background:#1a1a1a;'
+        f'color:#ffffff;text-decoration:none;font:600 13px/1 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
+        f'border-radius:2px">{button}</a>'
+        "</div>"
     )
 
 
 def build_callback_cta_plain(*, url: str, settings: Any = None) -> str:
     title = cta_title(settings)
+    lead = cta_lead(settings)
     button = cta_button(settings)
-    return (
-        f"\n\n---\n{title}\n"
-        f"ФИО и телефон: заполните короткую форму\n"
-        f"{button}: {url}\n"
-    )
+    return f"\n\n{title}\n{lead}\n{button}: {url}\n"
 
 
 def normalize_phone(raw: str) -> str | None:
@@ -522,7 +507,7 @@ def form_page_html(
     else:
         body = f"""
         <h1>{title}</h1>
-        <p class="lead">Оставьте ФИО и номер телефона — робот или менеджер Quantum Labs свяжется с вами.</p>
+        <p class="lead">Оставьте ФИО и номер телефона — коротко созвонимся и разберём, есть ли эффект именно для вас.</p>
         {err}
         <form method="post" action="" novalidate>
           <label>ФИО
