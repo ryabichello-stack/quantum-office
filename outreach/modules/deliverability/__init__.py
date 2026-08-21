@@ -485,7 +485,7 @@ class DeliverabilityStore:
             ).fetchone()["n"]
         oneshot_limit = 5
         if settings is not None:
-            oneshot_limit = settings.get_int("ONESHOT_DAILY_LIMIT", 5)
+            oneshot_limit = settings.get_int("ONESHOT_DAILY_LIMIT", 25)
         paused, pause_reason = self.is_paused()
         return {
             "suppressed": int(supp),

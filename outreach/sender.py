@@ -1041,7 +1041,7 @@ def send_one(
         except Exception:  # noqa: BLE001
             deliverability = None
 
-    oneshot_limit = _cfg_int(settings, "ONESHOT_DAILY_LIMIT", 5)
+    oneshot_limit = _cfg_int(settings, "ONESHOT_DAILY_LIMIT", 25)
     if deliverability is not None and not dry_run:
         used = deliverability.oneshot_today()
         if used >= oneshot_limit:
