@@ -119,6 +119,15 @@ class CampaignRunner(threading.Thread):
         # Respect window only if RUN_RESPECT_WINDOW=true (default true)
         if not self._settings_bool("RUN_RESPECT_WINDOW", True):
             return True
+        # Per-recipient local B2B slots (Tue–Thu preferred, dual daytime windows).
+        # Broad gate: run while any Russian offset is inside a slot; sender filters.
+        if self._settings_bool("SCHEDULE_LOCAL_WINDOWS", True):
+            try:
+                from geo_schedule import any_russian_window_open
+
+                return any_russian_window_open(settings=self._settings_get)
+            except Exception:  # noqa: BLE001
+                logger.exception("local window check failed; fall back to global")
         tz_name = self._settings_get("SCHEDULE_TIMEZONE", "Europe/Moscow") or "Europe/Moscow"
         try:
             tz = ZoneInfo(tz_name)

@@ -22,7 +22,7 @@ from bitrix_client import (
     extract_emails_from_fields,
     normalize_email,
 )
-from core.paths import DATA_DIR
+from core.paths import DATA_DIR, MODULES_DB
 from core.registry import AppContext
 
 logger = logging.getLogger("ava-outreach.clients")
@@ -104,6 +104,28 @@ class ClientsStore:
                 conn.execute(
                     "ALTER TABLE companies ADD COLUMN requisites_json TEXT NOT NULL DEFAULT '[]'"
                 )
+            for col, decl in (
+                ("director_name", "TEXT"),
+                ("dadata_json", "TEXT"),
+                ("dadata_fetched_at", "TEXT"),
+                ("bitrix_pushed_at", "TEXT"),
+                ("city", "TEXT"),
+                ("region", "TEXT"),
+                ("address_line", "TEXT"),
+                ("timezone_raw", "TEXT"),
+                ("timezone", "TEXT"),
+                ("director_first", "TEXT"),
+                ("director_patronymic", "TEXT"),
+                ("director_greeting", "TEXT"),
+            ):
+                if col not in cols:
+                    conn.execute(f"ALTER TABLE companies ADD COLUMN {col} {decl}")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS ix_companies_timezone ON companies(timezone)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS ix_companies_city ON companies(city)"
+            )
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS contacts (
@@ -589,21 +611,250 @@ def sync_from_bitrix(store: ClientsStore, client: BitrixClient) -> dict[str, Any
         return report
 
 
+def company_geo_row(clients: ClientsStore, company_id: str) -> dict[str, Any]:
+    """Lookup persisted geo / director greeting for a Bitrix company id."""
+    cid = str(company_id or "").strip()
+    if not cid:
+        return {}
+    with clients.connect() as conn:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(companies)").fetchall()}
+        want = [
+            "city",
+            "region",
+            "address_line",
+            "timezone_raw",
+            "timezone",
+            "director_name",
+            "director_first",
+            "director_patronymic",
+            "director_greeting",
+        ]
+        sel = [c for c in want if c in cols]
+        if not sel:
+            return {}
+        row = conn.execute(
+            f"SELECT {', '.join(sel)} FROM companies WHERE bitrix_id = ? LIMIT 1",
+            (cid,),
+        ).fetchone()
+    if not row:
+        return {}
+    return {k: (str(row[k]).strip() if row[k] is not None else "") for k in sel}
+
+
+def backfill_company_geo_and_fio(
+    clients: ClientsStore,
+    *,
+    dadata_db: Path | None = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """Fill city/timezone + director first/patronymic from DaData cache / Bitrix raw."""
+    from geo_schedule import (
+        extract_geo_from_bitrix_company,
+        extract_geo_from_dadata_raw,
+        iana_from_utc_offset,
+        split_russian_fio,
+    )
+
+    clients.init_db()
+    dadata_path = Path(dadata_db or MODULES_DB)
+    updated = 0
+    with_tz = 0
+    with_city = 0
+    with_greeting = 0
+    scanned = 0
+
+    dadata_by_inn: dict[str, dict[str, Any]] = {}
+    if dadata_path.exists():
+        dconn = sqlite3.connect(dadata_path)
+        dconn.row_factory = sqlite3.Row
+        try:
+            for r in dconn.execute(
+                "SELECT inn, director_name, address, raw_json FROM dadata_parties"
+            ):
+                try:
+                    raw = json.loads(r["raw_json"] or "{}")
+                except json.JSONDecodeError:
+                    raw = {}
+                dadata_by_inn[str(r["inn"])] = {
+                    "director_name": r["director_name"],
+                    "address": r["address"],
+                    "raw": raw,
+                }
+        finally:
+            dconn.close()
+
+    with clients.connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT bitrix_id, inn, director_name, raw_json, dadata_json
+            FROM companies
+            ORDER BY bitrix_id ASC
+            """
+        ).fetchall()
+        if limit is not None:
+            rows = rows[: max(0, int(limit))]
+
+        for row in rows:
+            scanned += 1
+            cid = str(row["bitrix_id"])
+            inn = str(row["inn"] or "").strip()
+            director = str(row["director_name"] or "").strip()
+            geo: dict[str, str] = {}
+            party = dadata_by_inn.get(inn) if inn else None
+            if party:
+                geo.update(extract_geo_from_dadata_raw(party.get("raw")))
+                if not director:
+                    director = str(party.get("director_name") or "").strip()
+            try:
+                bitrix_raw = json.loads(row["raw_json"] or "{}")
+            except json.JSONDecodeError:
+                bitrix_raw = {}
+            bitrix_geo = extract_geo_from_bitrix_company(bitrix_raw)
+            for k, v in bitrix_geo.items():
+                geo.setdefault(k, v)
+
+            if geo.get("timezone_raw") and not geo.get("timezone"):
+                geo["timezone"] = iana_from_utc_offset(geo["timezone_raw"])
+
+            fio = split_russian_fio(director)
+            greeting = fio.greeting
+            conn.execute(
+                """
+                UPDATE companies SET
+                    city = COALESCE(NULLIF(?, ''), city),
+                    region = COALESCE(NULLIF(?, ''), region),
+                    address_line = COALESCE(NULLIF(?, ''), address_line),
+                    timezone_raw = COALESCE(NULLIF(?, ''), timezone_raw),
+                    timezone = COALESCE(NULLIF(?, ''), timezone),
+                    director_name = COALESCE(NULLIF(?, ''), director_name),
+                    director_first = ?,
+                    director_patronymic = ?,
+                    director_greeting = ?,
+                    updated_at = ?
+                WHERE bitrix_id = ?
+                """,
+                (
+                    geo.get("city") or "",
+                    geo.get("region") or "",
+                    geo.get("address_line") or "",
+                    geo.get("timezone_raw") or "",
+                    geo.get("timezone") or "",
+                    director,
+                    fio.first or None,
+                    fio.patronymic or None,
+                    greeting or None,
+                    _utc_now(),
+                    cid,
+                ),
+            )
+            updated += 1
+            if geo.get("timezone"):
+                with_tz += 1
+            if geo.get("city"):
+                with_city += 1
+            if greeting:
+                with_greeting += 1
+
+    return {
+        "ok": True,
+        "scanned": scanned,
+        "updated": updated,
+        "with_timezone": with_tz,
+        "with_city": with_city,
+        "with_director_greeting": with_greeting,
+        "dadata_cache": len(dadata_by_inn),
+    }
+
+
+def geo_stats(clients: ClientsStore) -> dict[str, Any]:
+    clients.init_db()
+    with clients.connect() as conn:
+        total = conn.execute("SELECT COUNT(*) AS n FROM companies").fetchone()["n"]
+        with_city = conn.execute(
+            "SELECT COUNT(*) AS n FROM companies WHERE city IS NOT NULL AND city != ''"
+        ).fetchone()["n"]
+        with_tz = conn.execute(
+            "SELECT COUNT(*) AS n FROM companies WHERE timezone IS NOT NULL AND timezone != ''"
+        ).fetchone()["n"]
+        with_greet = conn.execute(
+            "SELECT COUNT(*) AS n FROM companies "
+            "WHERE director_greeting IS NOT NULL AND director_greeting != ''"
+        ).fetchone()["n"]
+        tz_rows = conn.execute(
+            """
+            SELECT timezone, COUNT(*) AS n FROM companies
+            WHERE timezone IS NOT NULL AND timezone != ''
+            GROUP BY timezone ORDER BY n DESC
+            """
+        ).fetchall()
+    return {
+        "ok": True,
+        "companies": int(total),
+        "with_city": int(with_city),
+        "with_timezone": int(with_tz),
+        "with_director_greeting": int(with_greet),
+        "timezones": {str(r["timezone"]): int(r["n"]) for r in tz_rows},
+    }
+
+
 def rebuild_outbox_from_clients(clients: ClientsStore, outbox: Any) -> dict[str, Any]:
-    """Push local client emails into outbox (pending), without Bitrix online."""
+    """Push local client emails into outbox (pending), without Bitrix online.
+
+    Prefer director greeting (Имя Отчество) when enriched; else full director FIO.
+    """
     inserted = 0
     known = 0
+    with_director = 0
     for row in clients.iter_outreach_targets():
         email = normalize_email(row.get("email"))
         if not email:
             continue
         company_id = str(row.get("company_bitrix_id") or "")
-        # If source is company, bitrix_id is company; else use company_bitrix_id
         if row.get("source") == "company":
             company_id = str(row.get("bitrix_id") or company_id)
         title = str(row.get("display_name") or email)
+        director = ""
+        director_greeting = ""
+        if company_id:
+            try:
+                with clients.connect() as conn:
+                    cols = {
+                        r[1]
+                        for r in conn.execute("PRAGMA table_info(companies)").fetchall()
+                    }
+                    sel: list[str] = []
+                    for c in (
+                        "director_greeting",
+                        "director_name",
+                        "director",
+                    ):
+                        if c in cols:
+                            sel.append(c)
+                    if sel:
+                        q = (
+                            f"SELECT {', '.join(sel)} FROM companies "
+                            "WHERE bitrix_id = ? LIMIT 1"
+                        )
+                        crow = conn.execute(q, (company_id,)).fetchone()
+                        if crow:
+                            for c in sel:
+                                val = str(crow[c] or "").strip()
+                                if not val:
+                                    continue
+                                if c == "director_greeting":
+                                    director_greeting = val
+                                elif not director:
+                                    director = val
+            except Exception:  # noqa: BLE001
+                director = ""
+        person = director_greeting or director or (
+            title if row.get("source") == "contact" else ""
+        )
+        greeting_name = person or title
+        if director or director_greeting:
+            with_director += 1
         if outbox.upsert_company(
-            email=email, company_id=company_id or "", company_title=title
+            email=email, company_id=company_id or "", company_title=greeting_name
         ):
             inserted += 1
         else:
@@ -612,6 +863,7 @@ def rebuild_outbox_from_clients(clients: ClientsStore, outbox: Any) -> dict[str,
         "ok": True,
         "inserted_new": inserted,
         "already_known": known,
+        "with_director_name": with_director,
         "outbox": outbox.counts(),
         "clients": clients.counts(),
     }

@@ -223,25 +223,58 @@ class SequenceStore:
         step: int,
         outbox_id: int | None,
         subject_base: str | None = None,
+        timezone_name: str | None = None,
+        settings: Any = None,
     ) -> dict[str, Any] | None:
         lead = self.get(lead_id)
         if not lead:
             return None
         now = _utc_now()
         max_s = self.max_step()
+        try:
+            meta = json.loads(lead.get("meta_json") or "{}")
+            if not isinstance(meta, dict):
+                meta = {}
+        except Exception:  # noqa: BLE001
+            meta = {}
+
+        if step == 1 or not meta.get("anchor_sent_at"):
+            meta["anchor_sent_at"] = _iso(now)
+        if timezone_name:
+            meta["timezone"] = str(timezone_name).strip()
+        tz_name = str(meta.get("timezone") or timezone_name or "").strip() or None
+
         if step >= max_s:
             status = "completed"
             next_at = None
             stop_reason = "sequence_completed_no_reply"
         else:
             status = "active"
-            # next step absolute offset from first send: find next step delay_days
             next_step = next(s for s in DEFAULT_STEPS if int(s["step"]) == step + 1)
-            # schedule relative to now for simplicity (delay between steps)
-            prev = next(s for s in DEFAULT_STEPS if int(s["step"]) == step)
-            gap = int(next_step["delay_days"]) - int(prev["delay_days"])
-            next_at = _iso(now + timedelta(days=max(0, gap)))
+            delay_abs = int(next_step.get("delay_days") or 0)
+            try:
+                from geo_schedule import snap_followup_utc
+
+                anchor = datetime.fromisoformat(
+                    str(meta["anchor_sent_at"]).replace("Z", "+00:00")
+                )
+                if anchor.tzinfo is None:
+                    anchor = anchor.replace(tzinfo=timezone.utc)
+                next_dt = snap_followup_utc(
+                    anchor,
+                    delay_days=delay_abs,
+                    tz_name=tz_name,
+                    settings=settings,
+                    now_utc=now,
+                )
+                next_at = _iso(next_dt)
+            except Exception:  # noqa: BLE001
+                logger.exception("snap follow-up failed; fallback gap days")
+                prev = next(s for s in DEFAULT_STEPS if int(s["step"]) == step)
+                gap = int(next_step["delay_days"]) - int(prev["delay_days"])
+                next_at = _iso(now + timedelta(days=max(0, gap)))
             stop_reason = None
+        meta_json = json.dumps(meta, ensure_ascii=False)
         with self.connect() as conn:
             conn.execute(
                 """
@@ -252,6 +285,7 @@ class SequenceStore:
                     next_action_at=?,
                     last_outbox_id=COALESCE(?, last_outbox_id),
                     subject_base=COALESCE(?, subject_base),
+                    meta_json=?,
                     updated_at=?
                 WHERE id=?
                 """,
@@ -262,6 +296,7 @@ class SequenceStore:
                     next_at,
                     outbox_id,
                     subject_base,
+                    meta_json,
                     _iso(now),
                     lead_id,
                 ),

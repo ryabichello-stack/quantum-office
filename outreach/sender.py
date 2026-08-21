@@ -19,6 +19,63 @@ from templates import render_cooperation
 logger = logging.getLogger("ava-outreach.sender")
 
 
+def _recipient_timezone(company_id: str, settings: Any = None) -> str:
+    from geo_schedule import DEFAULT_IANA, iana_from_utc_offset, schedule_config
+
+    cfg = schedule_config(settings)
+    default = cfg.get("default_timezone") or DEFAULT_IANA
+    cid = (company_id or "").strip()
+    if not cid:
+        return default
+    try:
+        from modules.clients import ClientsStore, company_geo_row
+
+        geo = company_geo_row(ClientsStore(), cid)
+        tz = (geo.get("timezone") or "").strip()
+        if tz:
+            return iana_from_utc_offset(tz, default=default)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("recipient tz lookup failed: %s", exc)
+    return default
+
+
+def _rank_pending_by_local_window(
+    candidates: list[Any],
+    *,
+    settings: Any,
+) -> tuple[list[Any], list[dict[str, Any]]]:
+    """Keep only recipients currently in a local B2B slot; rank east/preferred first."""
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    from geo_schedule import in_send_window, schedule_config, window_rank
+
+    cfg = schedule_config(settings)
+    if not cfg["enabled"]:
+        return list(candidates), []
+
+    scored: list[tuple[float, Any]] = []
+    deferred: list[dict[str, Any]] = []
+    now_utc = datetime.now(timezone.utc)
+    for row in candidates:
+        tz_name = _recipient_timezone(getattr(row, "company_id", "") or "", settings)
+        local = now_utc.astimezone(ZoneInfo(tz_name))
+        if not in_send_window(local, settings=settings):
+            deferred.append(
+                {
+                    "id": getattr(row, "id", None),
+                    "email": getattr(row, "email", None),
+                    "reason": "outside_local_window",
+                    "timezone": tz_name,
+                    "local_time": local.isoformat(),
+                }
+            )
+            continue
+        scored.append((window_rank(local, settings=settings), row))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [r for _, r in scored], deferred
+
+
 def _cfg(settings: Any, key: str, default: str = "") -> str:
     if settings is not None:
         val = settings.get(key, default)
@@ -304,8 +361,8 @@ def send_batch(
             "processed": 0,
         }
 
-    # Fetch extra pending so domain/suppression skips can refill within batch
-    fetch_n = min(limit * 3, remaining * 3 if not dry_run else limit * 3, 100)
+    # Fetch extra pending so domain/suppression/timezone skips can refill within batch
+    fetch_n = min(limit * 8, remaining * 8 if not dry_run else limit * 8, 250)
     fetch_n = max(fetch_n, limit)
     candidates = store.list_pending(fetch_n, only_email=only_email)
     if only_email and not candidates:
@@ -315,10 +372,28 @@ def send_batch(
             "processed": 0,
         }
 
+    window_deferred: list[dict[str, Any]] = []
+    if not only_email:
+        candidates, window_deferred = _rank_pending_by_local_window(
+            candidates, settings=settings
+        )
+
     results: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     followups: list[dict[str, Any]] = []
     processed_sends = 0
+
+    if not candidates and window_deferred and not only_email:
+        return {
+            "ok": True,
+            "processed": 0,
+            "sent_today": sent_today,
+            "effective_daily_limit": effective_limit,
+            "results": [],
+            "skipped": skipped,
+            "deferred_window": window_deferred[:20],
+            "deferred_window_count": len(window_deferred),
+        }
 
     for row in candidates:
         if processed_sends >= limit:
@@ -550,8 +625,15 @@ def send_batch(
                                 step=1,
                                 outbox_id=row.id,
                                 subject_base=subject,
+                                timezone_name=_recipient_timezone(
+                                    row.company_id or "", settings
+                                ),
+                                settings=settings,
                             )
                             item["sequence_step"] = 1
+                            item["timezone"] = _recipient_timezone(
+                                row.company_id or "", settings
+                            )
                         if row.company_id:
                             ContactPolicyStore().note_email_sent(
                                 row.company_id, email=row.email
@@ -608,6 +690,7 @@ def send_batch(
         "effective_daily_limit": effective_limit,
         "plus_reply_to_enabled": plus_reply,
         "only_email": only_email,
+        "deferred_window_count": len(window_deferred),
         "results": results,
     }
 
@@ -660,6 +743,45 @@ def _send_due_sequence_steps(
             continue
         email = str(lead["email"])
         company_id = str(lead.get("company_id") or "")
+        try:
+            meta = __import__("json").loads(lead.get("meta_json") or "{}")
+            if not isinstance(meta, dict):
+                meta = {}
+        except Exception:  # noqa: BLE001
+            meta = {}
+        tz_name = str(meta.get("timezone") or "").strip() or _recipient_timezone(
+            company_id, settings
+        )
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+
+        from geo_schedule import in_send_window, next_send_datetime, schedule_config
+
+        if schedule_config(settings)["enabled"]:
+            local = datetime.now(timezone.utc).astimezone(ZoneInfo(tz_name))
+            if not in_send_window(local, settings=settings):
+                nxt = next_send_datetime(
+                    datetime.now(timezone.utc), tz_name, settings=settings
+                )
+                with seq.connect() as conn:
+                    conn.execute(
+                        "UPDATE sequence_leads SET next_action_at=?, updated_at=? WHERE id=?",
+                        (
+                            nxt.replace(microsecond=0).isoformat(),
+                            datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+                            int(lead["id"]),
+                        ),
+                    )
+                out.append(
+                    {
+                        "email": email,
+                        "status": "skipped",
+                        "reason": "outside_local_window",
+                        "timezone": tz_name,
+                        "next_action_at": nxt.isoformat(),
+                    }
+                )
+                continue
         if company_id:
             ok_p, why = pol.allow_email(company_id)
             if not ok_p:
@@ -680,6 +802,13 @@ def _send_due_sequence_steps(
                 break
 
         name = str(lead.get("contact_name") or "коллега")
+        # Prefer Имя Отчество in follow-ups when contact_name is still full FIO
+        try:
+            from templates import resolve_greeting
+
+            _, name = resolve_greeting(name)
+        except Exception:  # noqa: BLE001
+            pass
         base_subj = str(lead.get("subject_base") or subject_default)
         subj_tpl = step_def.get("subject") or base_subj
         subject = str(subj_tpl).replace("{subject}", base_subj).replace("{name}", name)
@@ -783,6 +912,8 @@ def _send_due_sequence_steps(
                 step=int(step_def["step"]),
                 outbox_id=outbox_id,
                 subject_base=base_subj,
+                timezone_name=tz_name,
+                settings=settings,
             )
             if company_id:
                 pol.note_email_sent(company_id, email=email)

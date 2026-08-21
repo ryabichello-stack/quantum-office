@@ -22,6 +22,8 @@ from bitrix_client import BitrixClient
 from core.registry import AppContext, ModuleRegistry
 from modules.clients import (
     ClientsModule,
+    backfill_company_geo_and_fio,
+    geo_stats,
     rebuild_outbox_from_clients,
     sync_from_bitrix,
 )
@@ -224,17 +226,24 @@ def _status_payload() -> dict[str, Any]:
         "warmup_enabled": rt.get_bool("WARMUP_ENABLED", True),
         "primary_mailbox_protection": True,
         "run_respect_window": rt.get_bool("RUN_RESPECT_WINDOW", True),
+        "schedule_local_windows": rt.get_bool("SCHEDULE_LOCAL_WINDOWS", True),
         "schedule_window": {
             "start": rt.get_int("SCHEDULE_WINDOW_START", 10),
             "end": rt.get_int("SCHEDULE_WINDOW_END", 18),
             "timezone": rt.get("SCHEDULE_TIMEZONE", "Europe/Moscow"),
             "batch_size": rt.get_int("SCHEDULE_BATCH_SIZE", 1),
+            "local_windows": rt.get_bool("SCHEDULE_LOCAL_WINDOWS", True),
+            "slots": rt.get("SCHEDULE_SLOTS", "10:00-11:30,14:30-16:30"),
+            "preferred_weekdays": rt.get("SCHEDULE_PREFERRED_WEEKDAYS", "1,2,3"),
+            "allowed_weekdays": rt.get("SCHEDULE_ALLOWED_WEEKDAYS", "0,1,2,3,4"),
+            "default_timezone": rt.get("SCHEDULE_DEFAULT_TIMEZONE", "Europe/Moscow"),
         },
         "runner": _runner_mod.health(),
         "clients": {
             "counts": _clients_mod.store.counts(),
             "db_path": str(_clients_mod.store.db_path),
             "last_sync": _clients_mod.store.last_sync(),
+            "geo": geo_stats(_clients_mod.store),
         },
         "modules": _registry.catalog(),
         "outbox": store.status_report(),
@@ -479,6 +488,19 @@ def api_clients_rebuild_outbox() -> dict[str, Any]:
     return rebuild_outbox_from_clients(_clients_mod.store, _store())
 
 
+@app.get("/api/modules/clients/geo", dependencies=[Depends(require_ui_auth)])
+def api_clients_geo_stats() -> dict[str, Any]:
+    return geo_stats(_clients_mod.store)
+
+
+@app.post("/api/modules/clients/backfill-geo", dependencies=[Depends(require_ui_auth)])
+def api_clients_backfill_geo(limit: int | None = None) -> dict[str, Any]:
+    """Backfill city/timezone + director Имя/Отчество from DaData cache / Bitrix raw."""
+    report = backfill_company_geo_and_fio(_clients_mod.store, limit=limit)
+    report["stats"] = geo_stats(_clients_mod.store)
+    return report
+
+
 @app.post("/check-replies", dependencies=[Depends(require_ui_auth)])
 def api_check_replies() -> dict[str, Any]:
     bitrix = _bitrix_or_none()
@@ -713,6 +735,10 @@ def cli_main(argv: list[str] | None = None) -> int:
     sub.add_parser("status", help="Show outbox / config status")
     sub.add_parser("sync", help="Download Bitrix → local clients.db + refresh outbox")
     sub.add_parser("rebuild-outbox", help="Rebuild outbox from local clients.db (no Bitrix)")
+    sub.add_parser(
+        "backfill-geo",
+        help="Backfill city/timezone + director first/patronymic from DaData cache",
+    )
 
     p_dry = sub.add_parser("dry-run", help="Preview N pending without SMTP")
     p_dry.add_argument("n", nargs="?", type=int, default=5)
@@ -795,6 +821,13 @@ def cli_main(argv: list[str] | None = None) -> int:
     if args.cmd == "rebuild-outbox":
         _clients_mod.store.init_db()
         _print(rebuild_outbox_from_clients(_clients_mod.store, _store()))
+        return 0
+
+    if args.cmd == "backfill-geo":
+        _clients_mod.store.init_db()
+        report = backfill_company_geo_and_fio(_clients_mod.store)
+        report["stats"] = geo_stats(_clients_mod.store)
+        _print(report)
         return 0
 
     if args.cmd == "check-replies":

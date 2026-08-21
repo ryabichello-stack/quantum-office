@@ -63,6 +63,8 @@ def _headers() -> dict[str, str]:
 
 def extract_party_fields(suggestion: dict[str, Any]) -> dict[str, Any]:
     """Flatten useful fields from a DaData party suggestion."""
+    from geo_schedule import extract_geo_from_dadata_raw, split_russian_fio
+
     data = suggestion.get("data") if isinstance(suggestion.get("data"), dict) else {}
     management = data.get("management") if isinstance(data.get("management"), dict) else {}
     name = data.get("name") if isinstance(data.get("name"), dict) else {}
@@ -85,6 +87,11 @@ def extract_party_fields(suggestion: dict[str, Any]) -> dict[str, Any]:
         or None
     )
     director_post = str(management.get("post") or "").strip() or None
+    parts = split_russian_fio(director)
+    # Prefer structured IP fio fields when present
+    first = str(fio.get("name") or "").strip() or parts.first
+    patronymic = str(fio.get("patronymic") or "").strip() or parts.patronymic
+    geo = extract_geo_from_dadata_raw(suggestion)
 
     return {
         "inn": str(data.get("inn") or "").strip() or None,
@@ -100,9 +107,18 @@ def extract_party_fields(suggestion: dict[str, Any]) -> dict[str, Any]:
         "company_full_name": str(name.get("full_with_opf") or name.get("full") or "").strip()
         or None,
         "director_name": director,
+        "director_first": first or None,
+        "director_patronymic": patronymic or None,
+        "director_greeting": (
+            f"{first} {patronymic}".strip() if first else None
+        ),
         "director_post": director_post,
         "address": str(address.get("unrestricted_value") or address.get("value") or "").strip()
         or None,
+        "city": geo.get("city") or None,
+        "region": geo.get("region") or None,
+        "timezone_raw": geo.get("timezone_raw") or None,
+        "timezone": geo.get("timezone") or None,
         "opf_short": str(opf.get("short") or "").strip() or None,
         "status": str(state.get("status") or "").strip() or None,
         "branch_type": str(data.get("branch_type") or "").strip() or None,
@@ -503,32 +519,71 @@ class DaDataEnricher:
         if not cid:
             return
         now = _utc_now()
+        flat: dict[str, Any] = {}
+        raw = party.get("raw")
+        if isinstance(raw, dict):
+            try:
+                flat = extract_party_fields(raw)
+            except Exception:  # noqa: BLE001
+                flat = {}
         enrich = {
-            "inn": party.get("inn"),
-            "ogrn": party.get("ogrn"),
-            "director_name": party.get("director_name"),
-            "director_post": party.get("director_post"),
-            "company_name": party.get("company_name"),
-            "company_full_name": party.get("company_full_name"),
-            "address": party.get("address"),
-            "okved": party.get("okved"),
-            "status": party.get("status"),
+            "inn": flat.get("inn") or party.get("inn"),
+            "ogrn": flat.get("ogrn") or party.get("ogrn"),
+            "director_name": flat.get("director_name") or party.get("director_name"),
+            "director_first": flat.get("director_first"),
+            "director_patronymic": flat.get("director_patronymic"),
+            "director_greeting": flat.get("director_greeting"),
+            "director_post": flat.get("director_post") or party.get("director_post"),
+            "company_name": flat.get("company_name") or party.get("company_name"),
+            "company_full_name": flat.get("company_full_name")
+            or party.get("company_full_name"),
+            "address": flat.get("address") or party.get("address"),
+            "city": flat.get("city"),
+            "region": flat.get("region"),
+            "timezone_raw": flat.get("timezone_raw"),
+            "timezone": flat.get("timezone"),
+            "okved": flat.get("okved") or party.get("okved"),
+            "status": flat.get("status") or party.get("status"),
             "fetched_at": party.get("fetched_at"),
         }
+        if not enrich.get("director_first") and enrich.get("director_name"):
+            from geo_schedule import split_russian_fio
+
+            fio = split_russian_fio(str(enrich.get("director_name") or ""))
+            enrich["director_first"] = fio.first or None
+            enrich["director_patronymic"] = fio.patronymic or None
+            enrich["director_greeting"] = fio.greeting or None
         with self.clients.connect() as conn:
             cols = {r[1] for r in conn.execute("PRAGMA table_info(companies)").fetchall()}
-            if "dadata_json" not in cols:
-                conn.execute("ALTER TABLE companies ADD COLUMN dadata_json TEXT")
-            if "director_name" not in cols:
-                conn.execute("ALTER TABLE companies ADD COLUMN director_name TEXT")
-            if "dadata_fetched_at" not in cols:
-                conn.execute("ALTER TABLE companies ADD COLUMN dadata_fetched_at TEXT")
+            for col in (
+                "dadata_json",
+                "director_name",
+                "dadata_fetched_at",
+                "city",
+                "region",
+                "address_line",
+                "timezone_raw",
+                "timezone",
+                "director_first",
+                "director_patronymic",
+                "director_greeting",
+            ):
+                if col not in cols:
+                    conn.execute(f"ALTER TABLE companies ADD COLUMN {col} TEXT")
             conn.execute(
                 """
                 UPDATE companies
                 SET inn = COALESCE(?, inn),
                     ogrn = COALESCE(?, ogrn),
                     director_name = ?,
+                    director_first = COALESCE(?, director_first),
+                    director_patronymic = COALESCE(?, director_patronymic),
+                    director_greeting = COALESCE(?, director_greeting),
+                    city = COALESCE(?, city),
+                    region = COALESCE(?, region),
+                    address_line = COALESCE(?, address_line),
+                    timezone_raw = COALESCE(?, timezone_raw),
+                    timezone = COALESCE(?, timezone),
                     dadata_json = ?,
                     dadata_fetched_at = ?,
                     updated_at = ?
@@ -538,6 +593,14 @@ class DaDataEnricher:
                     enrich.get("inn"),
                     enrich.get("ogrn"),
                     enrich.get("director_name"),
+                    enrich.get("director_first"),
+                    enrich.get("director_patronymic"),
+                    enrich.get("director_greeting"),
+                    enrich.get("city"),
+                    enrich.get("region"),
+                    enrich.get("address"),
+                    enrich.get("timezone_raw"),
+                    enrich.get("timezone"),
                     json.dumps(enrich, ensure_ascii=False),
                     now,
                     now,

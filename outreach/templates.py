@@ -4,8 +4,74 @@ from __future__ import annotations
 
 from html import escape
 
+_WEAK_NAMES = frozenset(
+    {
+        "",
+        "коллега",
+        "тест",
+        "test",
+        "you",
+        "unknown",
+        "клиент",
+        "contact",
+        "name",
+        "user",
+        "руководитель",
+    }
+)
+_COMPANY_MARKERS = (
+    "ооо",
+    "оао",
+    "зао",
+    "пао",
+    "ао ",
+    " ао",
+    "ип ",
+    "общество с ограничен",
+    "ломбард ",
+    " ltd",
+    "llc",
+    "inc.",
+)
 
-DEFAULT_PLAIN = """Здравствуйте, {name}!
+
+def _looks_like_company(name: str) -> bool:
+    low = f" {name.lower()} "
+    if any(m in low for m in _COMPANY_MARKERS):
+        return True
+    letters = [c for c in name if c.isalpha()]
+    if len(letters) >= 8 and sum(1 for c in letters if c.isupper()) / len(letters) > 0.85:
+        return True
+    return False
+
+
+def resolve_greeting(contact_name: str | None) -> tuple[str, str]:
+    """Return (greeting_line, display_name). Prefer Имя + Отчество."""
+    from geo_schedule import _looks_like_patronymic, split_russian_fio
+
+    raw = (contact_name or "").strip()
+    if (
+        not raw
+        or raw.lower() in _WEAK_NAMES
+        or "@" in raw
+        or len(raw) < 2
+        or _looks_like_company(raw)
+    ):
+        return "Уважаемый руководитель, добрый день!", "руководитель"
+
+    parts = raw.replace(",", " ").split()
+    if len(parts) == 2 and all(p[:1].isupper() for p in parts if p):
+        if _looks_like_patronymic(parts[1]):
+            greet = f"{parts[0]} {parts[1]}"
+            return f"{greet}, добрый день!", greet
+
+    fio = split_russian_fio(raw)
+    if fio.greeting:
+        return f"{fio.greeting}, добрый день!", fio.greeting
+    return f"{raw}, добрый день!", raw
+
+
+DEFAULT_PLAIN = """{greeting}
 
 Меня зовут команда {company}. Пишем по поводу возможного сотрудничества:
 AI-секретарь для телефонии, автоматизация записи и follow-up по заявкам.
@@ -25,7 +91,7 @@ AI-секретарь для телефонии, автоматизация за
 DEFAULT_HTML = """<!DOCTYPE html>
 <html lang="ru">
 <body style="font-family: Georgia, 'Times New Roman', serif; line-height: 1.5; color: #1a1a1a;">
-  <p>Здравствуйте, {name}!</p>
+  <p>{greeting}</p>
   <p>Меня зовут команда <strong>{company}</strong>. Пишем по поводу возможного
   сотрудничества: AI-секретарь для телефонии, автоматизация записи и follow-up по заявкам.</p>
   <p>Если тема актуальна — ответьте на это письмо, подберём короткое знакомство.</p>
@@ -61,7 +127,7 @@ def render_cooperation(
     plain_template: str | None = None,
     html_template: str | None = None,
 ) -> tuple[str, str]:
-    name = (contact_name or "коллега").strip() or "коллега"
+    greeting, name = resolve_greeting(contact_name)
     company = company_name.strip() or "Quantum Labs"
     site = website.strip() or "https://quantumlabs.ru"
     unsub = unsubscribe_mailto.strip() or "office@quantumlabs.ru"
@@ -73,23 +139,24 @@ def render_cooperation(
     plain_src = (plain_template or "").strip() or DEFAULT_PLAIN
     html_src = (html_template or "").strip() or DEFAULT_HTML
 
-    plain = _safe_format(
-        plain_src,
-        {
-            "name": name,
-            "company": company,
-            "website": site,
-            "unsub": unsub,
-            "unsub_url": unsub_url,
-            "phone": phone_s,
-            "phone_line": phone_line,
-            "phone_html": phone_html,
-        },
-    )
+    mapping = {
+        "name": name,
+        "greeting": greeting,
+        "company": company,
+        "website": site,
+        "unsub": unsub,
+        "unsub_url": unsub_url,
+        "phone": phone_s,
+        "phone_line": phone_line,
+        "phone_html": phone_html,
+    }
+    plain = _safe_format(plain_src, mapping)
     html = _safe_format(
         html_src,
         {
+            **mapping,
             "name": escape(name),
+            "greeting": escape(greeting),
             "company": escape(company),
             "website": escape(site),
             "unsub": escape(unsub),
