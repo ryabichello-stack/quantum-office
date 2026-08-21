@@ -117,7 +117,14 @@ class SequenceStore:
             )
 
     def steps(self, pack_id: str | None = None) -> list[dict[str, Any]]:
-        pack = get_pack(pack_id or "") if pack_id else None
+        from content.pack_drafts import PackDraftStore, resolve_pack
+        from core.paths import SETTINGS_DB
+
+        pack = (
+            resolve_pack(pack_id or "", PackDraftStore(SETTINGS_DB))
+            if pack_id
+            else None
+        )
         if pack and pack.get("steps"):
             return list(pack["steps"])
         return list(DEFAULT_STEPS)

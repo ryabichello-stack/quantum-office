@@ -85,14 +85,42 @@
             <div id="packCards" class="pack-cards">Загрузка…</div>
           </fieldset>
 
-          <div class="stack">
-            <p id="packActiveMeta" class="muted tight">Активный пакет не выбран</p>
-            <ol id="packStepsPreview" class="pack-steps"></ol>
+          <div class="stack letter-chain">
+            <div class="letter-chain-head">
+              <p id="packActiveMeta" class="muted tight">Активный пакет не выбран</p>
+              <p id="packDraftBadge" class="muted tight" hidden>Есть сохранённый черновик цепочки</p>
+            </div>
+            <div class="letter-tabs-row">
+              <div id="letterTabs" class="letter-tabs" role="tablist" aria-label="Письма цепочки"></div>
+              <button type="button" id="letterAddBtn" class="btn-quiet">+ Письмо</button>
+            </div>
+            <div class="letter-order-actions">
+              <button type="button" id="letterMoveUp" class="btn-quiet" title="Раньше в цепочке">↑</button>
+              <button type="button" id="letterMoveDown" class="btn-quiet" title="Позже в цепочке">↓</button>
+              <button type="button" id="letterDupBtn" class="btn-quiet">Дублировать</button>
+              <button type="button" id="letterDelBtn" class="btn-quiet">Удалить</button>
+              <button type="button" id="letterResetChain" class="btn-quiet">Сбросить к базовым</button>
+            </div>
+            <p class="muted tight">Переключайте письма цепочки, меняйте текст и день отправки, добавляйте черновики. Порядок = порядок follow-up.</p>
           </div>
 
-          <label class="field full">Тема письма
-            <input id="letterSubject" type="text" placeholder="Тема первого письма" />
-          </label>
+          <div class="letter-editor" id="letterEditor">
+            <div class="task-grid">
+              <label class="field full">Тема письма
+                <input id="letterSubject" type="text" placeholder="Тема этого письма" />
+              </label>
+              <label class="field">День отправки
+                <input id="letterDelayDays" type="number" min="0" max="120" step="1" value="0" />
+              </label>
+              <label class="field">Метка
+                <input id="letterLabel" type="text" placeholder="intro / scenarios / …" />
+              </label>
+            </div>
+            <label class="field check">
+              <input id="letterAttachPdf" type="checkbox" />
+              Прикреплять презентацию PDF к этому письму
+            </label>
+          </div>
 
           <label class="field">Компания в подписи
             <input id="letterCompany" type="text" placeholder="Quantum Labs" />
@@ -144,10 +172,6 @@
           </div>
 
           <div class="presentation-box">
-            <label class="field check">
-              <input id="letterAttachPdf" type="checkbox" />
-              Прикреплять презентацию PDF к первому письму
-            </label>
             <p class="muted tight" id="letterPdfMeta">Презентация отрасли не выбрана</p>
             <div class="brand-actions">
               <label class="btn-quiet file-btn">Загрузить / обновить PDF
@@ -155,7 +179,7 @@
               </label>
               <button type="button" id="letterPdfReset" class="btn-quiet">Сбросить к базовой</button>
             </div>
-            <p class="muted tight">Для выбранной отрасли. Новая загрузка заменяет предыдущую версию.</p>
+            <p class="muted tight">PDF отрасли. Галочка «прикреплять» — у каждого письма отдельно (обычно только у первого).</p>
           </div>
 
           <div class="presentation-box">
@@ -167,8 +191,9 @@
           </div>
 
           <label class="field full">Текст письма
-            <textarea id="letterPlain" class="scroll-y" rows="12" placeholder="Текст первого письма…"></textarea>
+            <textarea id="letterPlain" class="scroll-y" rows="14" placeholder="Текст письма…&#10;&#10;**Заголовок**&#10;&#10;Абзац&#10;&#10;Что получает ваша команда&#10;&#10;- пункт&#10;- пункт"></textarea>
           </label>
+          <p class="muted tight">Разметка: **жирный**, список с «- ». Отдельная строка **…** после приветствия = крупный заголовок; после списка = акцент перед кнопкой звонка.</p>
 
           <details class="task-advanced" id="letterAdvanced">
             <summary>HTML-версия и превью</summary>
@@ -188,8 +213,8 @@
           <div class="task-actions">
             <button type="button" id="letterApplyPack" class="primary">Применить отрасль</button>
             <button type="button" id="letterPreview" class="btn-quiet">Превью</button>
-            <button type="button" id="letterSave" class="btn-quiet">Сохранить</button>
-            <span class="muted tight">Юридический блок и «Отписаться» уже в шаблоне</span>
+            <button type="button" id="letterSave" class="btn-quiet">Сохранить цепочку</button>
+            <span class="muted tight">Сохраняются все письма отрасли. Юрблок уже в шаблоне</span>
           </div>
 
           <fieldset class="task-mode" id="letterTestBox">

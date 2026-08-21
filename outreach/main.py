@@ -49,6 +49,12 @@ from templates import (
     render_cooperation,
 )
 from content.packs import get_pack, list_packs, pack_campaign_templates
+from content.pack_drafts import (
+    PackDraftStore,
+    normalize_steps,
+    pack_letters_payload,
+    resolve_pack,
+)
 from presentations import (
     presentation_meta,
     reset_presentation,
@@ -186,6 +192,16 @@ app = FastAPI(title="AVA Outreach", version="0.10.0", lifespan=lifespan)
 
 def _store() -> OutboxStore:
     return OutboxStore(DB_PATH)
+
+
+_pack_drafts: PackDraftStore | None = None
+
+
+def _drafts() -> PackDraftStore:
+    global _pack_drafts
+    if _pack_drafts is None:
+        _pack_drafts = PackDraftStore(SETTINGS_DB)
+    return _pack_drafts
 
 
 def _rt() -> RuntimeSettings:
@@ -1013,23 +1029,114 @@ def api_brand_logo_reset() -> dict[str, Any]:
 class ApplyPackBody(BaseModel):
     pack_id: str
     attach_presentation: bool | None = None
+    reset_draft: bool = False
+
+
+class PackLetterStepBody(BaseModel):
+    step: int | None = None
+    delay_days: int = 0
+    label: str = ""
+    subject: str = ""
+    plain: str = ""
+    html: str = ""
+    attach_presentation: bool = False
+
+
+class PackLettersBody(BaseModel):
+    steps: list[PackLetterStepBody] = Field(..., min_length=1)
+
+
+def _sync_step1_settings(pack: dict[str, Any], *, attach: bool | None = None) -> dict[str, str]:
+    """Mirror letter 1 into campaign settings used by batch send."""
+    steps = list(pack.get("steps") or [])
+    step1 = steps[0] if steps else {}
+    attach_flag = (
+        attach
+        if attach is not None
+        else bool(step1.get("attach_presentation") or pack.get("attach_presentation_default"))
+    )
+    return {
+        "OUTREACH_SEQUENCE_PACK": pack["id"],
+        "OUTREACH_SUBJECT": str(step1.get("subject") or ""),
+        "OUTREACH_TEMPLATE_PLAIN": str(step1.get("plain") or ""),
+        "OUTREACH_TEMPLATE_HTML": str(step1.get("html") or ""),
+        "OUTREACH_ATTACH_PRESENTATION": "true" if attach_flag else "false",
+        "OUTREACH_PRESENTATION_PDF": pack.get("presentation")
+        or "quantum_payouts_presentation_small.pdf",
+        "SEQUENCES_ENABLED": "true",
+    }
 
 
 @app.get("/api/packs", dependencies=[Depends(require_ui_auth)])
 def api_packs() -> dict[str, Any]:
     items = list_packs()
+    drafts = _drafts()
     for it in items:
         it["presentation_meta"] = presentation_meta(it.get("id"))
+        it["has_draft"] = drafts.has_draft(it.get("id") or "")
     return {"ok": True, "items": items}
 
 
 @app.get("/api/packs/{pack_id}", dependencies=[Depends(require_ui_auth)])
 def api_pack_get(pack_id: str) -> dict[str, Any]:
-    tpl = pack_campaign_templates(pack_id)
-    if not tpl:
+    pack = resolve_pack(pack_id, _drafts())
+    if not pack:
         raise HTTPException(status_code=404, detail="unknown pack")
+    tpl = pack_letters_payload(pack)
     tpl["presentation_meta"] = presentation_meta(tpl.get("pack_id"))
     return {"ok": True, "pack": tpl}
+
+
+@app.put("/api/packs/{pack_id}/letters", dependencies=[Depends(require_ui_auth)])
+def api_pack_letters_save(pack_id: str, body: PackLettersBody) -> dict[str, Any]:
+    base = get_pack(pack_id)
+    if not base:
+        raise HTTPException(status_code=404, detail="unknown pack")
+    try:
+        steps = normalize_steps([s.model_dump() for s in body.steps])
+        saved = _drafts().save_steps(base["id"], steps)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    pack = dict(base)
+    pack["steps"] = saved
+    pack["has_draft"] = True
+    tpl = pack_letters_payload(pack)
+    tpl["presentation_meta"] = presentation_meta(tpl.get("pack_id"))
+    # If this pack is active (or none set), sync letter 1 into campaign settings
+    rt = _rt()
+    active = (rt.get("OUTREACH_SEQUENCE_PACK", "") or "").strip()
+    updated: dict[str, str] = {}
+    if not active or active == base["id"]:
+        updated = rt.set_many(_sync_step1_settings(pack))
+    return {
+        "ok": True,
+        "pack": tpl,
+        "updated": sorted(updated.keys()),
+        "settings": rt.snapshot() if updated else None,
+    }
+
+
+@app.post("/api/packs/{pack_id}/letters/reset", dependencies=[Depends(require_ui_auth)])
+def api_pack_letters_reset(pack_id: str) -> dict[str, Any]:
+    base = get_pack(pack_id)
+    if not base:
+        raise HTTPException(status_code=404, detail="unknown pack")
+    cleared = _drafts().clear(base["id"])
+    pack = resolve_pack(base["id"], _drafts()) or base
+    tpl = pack_letters_payload(pack)
+    tpl["presentation_meta"] = presentation_meta(tpl.get("pack_id"))
+    rt = _rt()
+    active = (rt.get("OUTREACH_SEQUENCE_PACK", "") or "").strip()
+    updated: dict[str, str] = {}
+    if active == base["id"]:
+        updated = rt.set_many(_sync_step1_settings(pack))
+    return {
+        "ok": True,
+        "cleared": cleared,
+        "pack": tpl,
+        "updated": sorted(updated.keys()),
+        "settings": rt.snapshot() if updated else None,
+    }
 
 
 @app.get("/api/packs/{pack_id}/presentation", dependencies=[Depends(require_ui_auth)])
@@ -1074,27 +1181,23 @@ def api_pack_presentation_reset(pack_id: str) -> dict[str, Any]:
 
 @app.post("/api/packs/apply", dependencies=[Depends(require_ui_auth)])
 def api_packs_apply(body: ApplyPackBody) -> dict[str, Any]:
-    """Load industry pack into active letter + sequence settings."""
-    tpl = pack_campaign_templates(body.pack_id)
-    if not tpl:
+    """Activate industry pack: sync letter 1 + keep/restore draft chain."""
+    base = get_pack(body.pack_id)
+    if not base:
         raise HTTPException(status_code=404, detail="unknown pack")
+    if body.reset_draft:
+        _drafts().clear(base["id"])
+    pack = resolve_pack(base["id"], _drafts()) or base
     attach = (
         body.attach_presentation
         if body.attach_presentation is not None
-        else bool(tpl.get("attach_presentation_default"))
+        else bool(
+            (pack["steps"][0].get("attach_presentation") if pack.get("steps") else False)
+            or pack.get("attach_presentation_default")
+        )
     )
-    updated = _rt().set_many(
-        {
-            "OUTREACH_SEQUENCE_PACK": tpl["pack_id"],
-            "OUTREACH_SUBJECT": tpl["subject"],
-            "OUTREACH_TEMPLATE_PLAIN": tpl["plain"],
-            "OUTREACH_TEMPLATE_HTML": tpl["html"],
-            "OUTREACH_ATTACH_PRESENTATION": "true" if attach else "false",
-            "OUTREACH_PRESENTATION_PDF": tpl.get("presentation")
-            or "quantum_payouts_presentation_small.pdf",
-            "SEQUENCES_ENABLED": "true",
-        }
-    )
+    updated = _rt().set_many(_sync_step1_settings(pack, attach=attach))
+    tpl = pack_letters_payload(pack)
     tpl["presentation_meta"] = presentation_meta(tpl.get("pack_id"))
     return {
         "ok": True,

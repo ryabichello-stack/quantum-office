@@ -76,74 +76,143 @@ def _inline_md_to_html(text: str) -> str:
     return "".join(parts)
 
 
+_ALL_BOLD = re.compile(r"^\*\*(.+)\*\*$", re.DOTALL)
+
+
+def _all_bold_text(block: str) -> str | None:
+    m = _ALL_BOLD.match((block or "").strip())
+    return m.group(1).strip() if m else None
+
+
 def _html_from_plain(plain: str) -> str:
     """Build letter body in canonical layout.
 
     Structure (matches quantum-labs-outreach.html):
-    1. Greeting stays on the white card.
-    2. Main text sits on the soft ``#f4f7fb`` substrate (same tone as the
-       contact band) — either a benefits list or wrapped paragraphs.
-    3. CTA is injected later into ``{callback_cta}``.
+    1. Greeting on the white card.
+    2. Optional ``**headline**`` → H1 on the white card.
+    3. Lead paragraphs on the white card.
+    4. Optional title line + ``-`` bullets → soft benefits panel.
+    5. Optional ``**CTA title**`` + muted lead on the white card.
+    6. Button CTA is injected later into ``{callback_cta}``.
     """
     from content.email_chrome import (
         FONT,
         INK_BODY,
+        INK_HEAD,
+        INK_MUTED,
         benefits_box_html,
         soft_panel_html,
         wrap_letter_html,
     )
 
-    def _para(text: str, *, last: bool = False) -> str:
+    def _para(text: str, *, last: bool = False, size: int = 16, color: str = INK_BODY) -> str:
         inner = _inline_md_to_html(text).replace("\n", "<br>\n")
         margin = "0" if last else "0 0 18px"
         return (
-            f'<p style="margin:{margin};font-size:16px;line-height:24px;'
-            f'color:{INK_BODY};font-family:{FONT};">{inner}</p>'
+            f'<p style="margin:{margin};font-size:{size}px;line-height:{size + 8}px;'
+            f'color:{color};font-family:{FONT};">{inner}</p>'
         )
 
-    def _flush_prose(buf: list[str]) -> str:
+    def _h1(text: str) -> str:
+        return (
+            f'<h1 style="margin:0 0 16px;font-size:25px;line-height:32px;'
+            f'letter-spacing:-.4px;color:{INK_HEAD};font-family:{FONT};font-weight:700;">'
+            f"{_inline_md_to_html(text)}</h1>"
+        )
+
+    def _cta_title(text: str) -> str:
+        return (
+            f'<p style="margin:24px 0 8px;font-size:17px;line-height:25px;font-weight:700;'
+            f'color:{INK_HEAD};font-family:{FONT};">{_inline_md_to_html(text)}</p>'
+        )
+
+    def _flush_prose(buf: list[str], *, soft: bool = False) -> str:
         if not buf:
             return ""
         parts = [_para(t, last=(i == len(buf) - 1)) for i, t in enumerate(buf)]
-        return soft_panel_html("\n".join(parts))
+        joined = "\n".join(parts)
+        return soft_panel_html(joined) if soft else joined
 
     greeting_html = ""
     out: list[str] = []
-    prose_buf: list[str] = []
+    lead_buf: list[str] = []
+    after_benefits = False
     saw_greeting = False
+    saw_headline = False
+    pending_benefits_title: str | None = None
 
-    for block in (plain or "").strip().split("\n\n"):
-        block = block.strip()
-        if not block:
-            continue
+    blocks = [b.strip() for b in (plain or "").strip().split("\n\n") if b.strip()]
+
+    for bi, block in enumerate(blocks):
         if block in ("{signature}", "{logo_header}", "{callback_cta}", "{legal_html}"):
             continue
         lines = [ln.rstrip() for ln in block.split("\n")]
+        non_empty = [ln for ln in lines if ln.strip()]
         bullet_lines = [ln for ln in lines if ln.startswith("- ")]
-        is_bullets = bullet_lines and len(bullet_lines) == len(
-            [ln for ln in lines if ln.strip()]
-        )
+        is_bullets = bool(bullet_lines) and len(bullet_lines) == len(non_empty)
+        bold_only = _all_bold_text(block)
+
+        # Title line immediately before a bullet block
+        if (
+            not is_bullets
+            and pending_benefits_title is None
+            and bi + 1 < len(blocks)
+        ):
+            nxt = blocks[bi + 1]
+            nxt_lines = [ln.rstrip() for ln in nxt.split("\n") if ln.strip()]
+            nxt_bullets = [ln for ln in nxt_lines if ln.startswith("- ")]
+            if nxt_bullets and len(nxt_bullets) == len(nxt_lines) and not bold_only:
+                pending_benefits_title = block
+                continue
 
         if is_bullets:
-            flushed = _flush_prose(prose_buf)
+            flushed = _flush_prose(lead_buf, soft=False)
             if flushed:
                 out.append(flushed)
-            prose_buf = []
+            lead_buf = []
+            title = pending_benefits_title or "Что получает ваша команда"
+            pending_benefits_title = None
             out.append(
                 benefits_box_html(
-                    title="Что получает ваша команда",
+                    title=title,
                     items=[ln[2:].strip() for ln in bullet_lines],
                 )
             )
+            after_benefits = True
             continue
 
         if not saw_greeting:
             greeting_html = _para(block)
             saw_greeting = True
-        else:
-            prose_buf.append(block)
+            continue
 
-    flushed = _flush_prose(prose_buf)
+        if bold_only and not saw_headline and not after_benefits:
+            flushed = _flush_prose(lead_buf, soft=False)
+            if flushed:
+                out.append(flushed)
+            lead_buf = []
+            out.append(_h1(bold_only))
+            saw_headline = True
+            continue
+
+        if bold_only and after_benefits:
+            flushed = _flush_prose(lead_buf, soft=False)
+            if flushed:
+                out.append(flushed)
+            lead_buf = []
+            out.append(_cta_title(bold_only))
+            continue
+
+        if after_benefits and not bold_only and not lead_buf and out and "font-size:17px" in out[-1]:
+            # First paragraph after CTA title → muted lead (canonical)
+            out.append(
+                _para(block, size=15, color=INK_MUTED)
+            )
+            continue
+
+        lead_buf.append(block)
+
+    flushed = _flush_prose(lead_buf, soft=False)
     if flushed:
         out.append(flushed)
 
@@ -243,20 +312,15 @@ PACKS: dict[str, dict[str, Any]] = {
                 attach_presentation=True,
                 plain=(
                     "{greeting}\n\n"
-                    "Мы — команда Quantum Labs.\n\n"
-                    "Вопрос короткий: как у вас сейчас устроены выплаты клиентам — "
-                    "наличные, ручные переводы, банк «как получится»?\n\n"
-                    "Мы строим платёжную инфраструктуру для бизнеса. Для ломбардов "
-                    "флагманский сценарий — выплаты на карты и по СБП через Quantum Payouts: "
-                    "личный кабинет, реестры, API, 1С / ваша учётная система.\n\n"
-                    "Важно: клиент заключает прямые договоры с банками. "
-                    "Мы не посредник, а технологический партнёр: помогаем "
-                    "согласовать сильные ставки по рынку, подключить технологию "
-                    "и сопровождаем дальше в работе.\n\n"
-                    "Плюс при необходимости — приём платежей, эквайринг, "
-                    "индивидуальные расчётные сценарии.\n\n"
-                    "15 минут — сравним вашу схему с доступными вариантами "
-                    "и скажем честно, есть ли эффект.\n\n"
+                    "**Выплаты клиентам ломбарда на карты и СБП — без лишней ручной работы**\n\n"
+                    "Quantum Labs помогает выстроить платёжную инфраструктуру для выплат клиентам: "
+                    "карты, СБП, реестры, API, статусы операций и сверка по сети.\n\n"
+                    "Что получает ваша команда\n\n"
+                    "- Выплаты на карты и через СБП\n"
+                    "- Реестры, API и связка с 1С / вашей учётной системой\n"
+                    "- Прямые договоры с банками; Quantum Labs — технологический партнёр\n\n"
+                    "**За 15 минут сравним вашу текущую схему с вариантами под ваши объёмы.**\n\n"
+                    "Покажем, где можно убрать ручные операции и ускорить выдачу клиенту.\n\n"
                     "{signature}"
                 ),
             ),
@@ -359,13 +423,15 @@ PACKS: dict[str, dict[str, Any]] = {
                 attach_presentation=True,
                 plain=(
                     "{greeting}\n\n"
-                    "Мы — команда Quantum Labs.\n\n"
-                    "Как у вас устроена выдача займа клиенту — реестры, касса, банк-партнёр?\n\n"
-                    "Мы строим платёжную инфраструктуру: выдача на карты и СБП, "
-                    "API, статусы, сверка. Клиент заключает прямые договоры с банками — "
-                    "мы не посредник, а технологический партнёр: "
-                    "ставки по рынку, подключение, сопровождение.\n\n"
-                    "15 минут — сравним вашу схему с вариантами под объёмы {company}.\n\n"
+                    "**Выдача займов на карты и СБП — без лишней ручной работы**\n\n"
+                    "Quantum Labs помогает выстроить платёжную инфраструктуру для выдач: "
+                    "карты, СБП, API, статусы операций и сверка.\n\n"
+                    "Что получает ваша команда\n\n"
+                    "- Выдачи на карты и через СБП\n"
+                    "- Единый API: статусы и сверка операций\n"
+                    "- Прямые договоры с банками; Quantum Labs — технологический партнёр\n\n"
+                    "**За 15 минут сравним вашу текущую схему с вариантами под ваши объёмы.**\n\n"
+                    "Покажем, где можно сократить ручные операции и ускорить выдачу.\n\n"
                     "{signature}"
                 ),
             ),
@@ -444,14 +510,15 @@ PACKS: dict[str, dict[str, Any]] = {
                 attach_presentation=True,
                 plain=(
                     "{greeting}\n\n"
-                    "Мы — **команда Quantum Labs**.\n\n"
-                    "При выкупе у физлиц узкое место часто одно: "
-                    "**быстро и прозрачно выплатить продавцу**.\n\n"
-                    "Quantum Payouts — **карты и СБП**, привязка к сделке, API, статусы. "
-                    "Клиент работает по **прямому договору с банком**; мы — "
-                    "**технологический партнёр**: помогаем со **ставками по рынку**, "
-                    "подключением и сопровождением.\n\n"
-                    "**15 минут** — сравним, как это ляжет на процесс {company}.\n\n"
+                    "**Выплата продавцу при выкупе — быстро, на карту и СБП**\n\n"
+                    "Quantum Labs помогает выстроить платёжную инфраструктуру для выплат "
+                    "физлицам при trade-in и выкупе: карты, СБП, привязка к сделке, API и статусы.\n\n"
+                    "Что получает ваша команда\n\n"
+                    "- Выплаты продавцу на карты и через СБП\n"
+                    "- Привязка к сделке, статусы и сверка операций\n"
+                    "- Прямые договоры с банками; Quantum Labs — технологический партнёр\n\n"
+                    "**За 15 минут сравним, как это ляжет на процесс {company}.**\n\n"
+                    "Покажем, где ускорить выплату продавцу и убрать ручные операции.\n\n"
                     "{signature}"
                 ),
             ),
@@ -527,13 +594,15 @@ PACKS: dict[str, dict[str, Any]] = {
                 attach_presentation=True,
                 plain=(
                     "{greeting}\n\n"
-                    "Мы — **команда Quantum Labs**.\n\n"
-                    "У гиг-сервисов боль обычно одна: **масштаб выплат** курьерам/водителям "
-                    "без ручных реестров и сюрпризов по статусам.\n\n"
-                    "Делаем **платёжную инфраструктуру**: СБП/карты, API, сверка. "
-                    "Вы — в **прямом договоре с банком**; мы помогаем "
-                    "**согласовать сильные ставки**, подключить tech и сопровождаем.\n\n"
-                    "**15 минут** — сравним схему {company} с вариантами.\n\n"
+                    "**Выплаты исполнителям на карты и СБП — без ручных реестров**\n\n"
+                    "Quantum Labs помогает выстроить платёжную инфраструктуру для гиг-сервисов: "
+                    "масштаб выплат курьерам и водителям, СБП/карты, API, статусы и сверка.\n\n"
+                    "Что получает ваша команда\n\n"
+                    "- Регулярные выплаты на карты и через СБП\n"
+                    "- Фонд выплат, API и статусы для поддержки и финансов\n"
+                    "- Прямые договоры с банками; Quantum Labs — технологический партнёр\n\n"
+                    "**За 15 минут сравним схему {company} с вариантами под ваши объёмы.**\n\n"
+                    "Покажем, где снять ручные операции и ускорить выплаты исполнителям.\n\n"
                     "{signature}"
                 ),
             ),
@@ -609,13 +678,15 @@ PACKS: dict[str, dict[str, Any]] = {
                 attach_presentation=True,
                 plain=(
                     "{greeting}\n\n"
-                    "Мы — **команда Quantum Labs**.\n\n"
-                    "В пунктах приёма критично: **быстро отдать деньги физлицу** "
-                    "и не потерять сверку по сети.\n\n"
-                    "**Карты и СБП**, лимиты точек, статусы, API. "
-                    "Договор с банком — **ваш прямой**; мы — tech-партнёр: "
-                    "**ставки по рынку**, подключение, сопровождение.\n\n"
-                    "**15 минут** — сравним схему {company}.\n\n"
+                    "**Выплата сдатчику на карту и СБП — быстро, по точкам**\n\n"
+                    "Quantum Labs помогает выстроить платёжную инфраструктуру для пунктов приёма: "
+                    "быстро отдать деньги физлицу, лимиты точек, статусы, API и сверка по сети.\n\n"
+                    "Что получает ваша команда\n\n"
+                    "- Выплаты сдатчику на карты и через СБП\n"
+                    "- Лимиты точек, статусы и единый контур сети\n"
+                    "- Прямые договоры с банками; Quantum Labs — технологический партнёр\n\n"
+                    "**За 15 минут сравним схему {company} с вариантами под ваши объёмы.**\n\n"
+                    "Покажем, где ускорить расчёт со сдатчиком и не потерять сверку.\n\n"
                     "{signature}"
                 ),
             ),
@@ -709,28 +780,10 @@ def get_pack(pack_id: str) -> dict[str, Any] | None:
 
 
 def pack_campaign_templates(pack_id: str) -> dict[str, Any] | None:
+    """Backward-compatible step-1 campaign payload (no draft overlay)."""
+    from content.pack_drafts import pack_letters_payload
+
     pack = get_pack(pack_id)
     if not pack:
         return None
-    step1 = pack["steps"][0]
-    return {
-        "pack_id": pack["id"],
-        "title": pack["title"],
-        "short": pack.get("short") or "",
-        "audience": pack.get("audience") or "",
-        "subject": step1["subject"],
-        "plain": step1["plain"],
-        "html": step1["html"],
-        "attach_presentation_default": bool(pack.get("attach_presentation_default")),
-        "presentation": pack.get("presentation") or "quantum_payouts_presentation_small.pdf",
-        "steps": [
-            {
-                "step": s["step"],
-                "delay_days": s["delay_days"],
-                "label": s["label"],
-                "subject": s["subject"],
-                "attach_presentation": bool(s.get("attach_presentation")),
-            }
-            for s in pack["steps"]
-        ],
-    }
+    return pack_letters_payload(pack)

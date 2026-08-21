@@ -581,6 +581,62 @@ button.small { height: 26px; font-size: 0.72rem; padding: 0 0.45rem; }
 }
 .pack-steps li { margin: 0.2rem 0; }
 
+.letter-chain { gap: 0.45rem; }
+.letter-chain-head { display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; align-items: baseline; }
+.letter-tabs-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+.letter-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex: 1 1 auto;
+}
+.letter-tab {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.7);
+  border-radius: 10px;
+  padding: 0.45rem 0.65rem;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+  min-width: 7.5rem;
+  line-height: 1.25;
+}
+.letter-tab small {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--muted, #667085);
+  font-weight: 500;
+}
+.letter-tab-sub {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--muted, #667085);
+  margin-top: 0.1rem;
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.letter-tab.active {
+  border-color: #2457e6;
+  box-shadow: 0 0 0 1px rgba(36,87,230,0.25);
+  background: #fff;
+}
+.letter-order-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+.letter-editor { margin-top: 0.25rem; }
+
 .task-advanced {
   border: 1px dashed var(--line);
   border-radius: 10px;

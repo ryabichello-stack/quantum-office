@@ -238,6 +238,124 @@
 
   let packsCache = [];
   let selectedPackId = "";
+  /** @type {Array<{step:number,delay_days:number,label:string,subject:string,plain:string,html:string,attach_presentation:boolean}>} */
+  let letterChain = [];
+  let activeLetterIdx = 0;
+  let letterDirty = false;
+
+  function blankLetter(partial = {}) {
+    const n = (letterChain.length || 0) + 1;
+    const prevDelay =
+      letterChain.length > 0 ? Number(letterChain[letterChain.length - 1].delay_days) || 0 : -3;
+    return {
+      step: n,
+      delay_days: partial.delay_days != null ? Number(partial.delay_days) : prevDelay + 3,
+      label: partial.label || `letter_${n}`,
+      subject: partial.subject || "",
+      plain: partial.plain || "{greeting}\n\n\n{signature}",
+      html: partial.html || "",
+      attach_presentation: !!partial.attach_presentation,
+    };
+  }
+
+  function readLetterFormIntoChain() {
+    if (!letterChain.length) return;
+    const i = Math.max(0, Math.min(activeLetterIdx, letterChain.length - 1));
+    const cur = letterChain[i];
+    cur.subject = ($("letterSubject") && $("letterSubject").value) || "";
+    cur.plain = ($("letterPlain") && $("letterPlain").value) || "";
+    cur.html = ($("letterHtml") && $("letterHtml").value) || "";
+    cur.delay_days = Math.max(0, Number(($("letterDelayDays") && $("letterDelayDays").value) || 0));
+    cur.label = (($("letterLabel") && $("letterLabel").value) || "").trim() || `letter_${i + 1}`;
+    cur.attach_presentation = !!($("letterAttachPdf") && $("letterAttachPdf").checked);
+    cur.step = i + 1;
+  }
+
+  function writeLetterFormFromChain() {
+    if (!letterChain.length) {
+      letterChain = [blankLetter({ delay_days: 0, label: "intro", attach_presentation: true })];
+      activeLetterIdx = 0;
+    }
+    activeLetterIdx = Math.max(0, Math.min(activeLetterIdx, letterChain.length - 1));
+    const cur = letterChain[activeLetterIdx];
+    if ($("letterSubject")) $("letterSubject").value = cur.subject || "";
+    if ($("letterPlain")) $("letterPlain").value = cur.plain || "";
+    if ($("letterHtml")) $("letterHtml").value = cur.html || "";
+    if ($("letterDelayDays")) $("letterDelayDays").value = String(cur.delay_days ?? 0);
+    if ($("letterLabel")) $("letterLabel").value = cur.label || "";
+    if ($("letterAttachPdf")) $("letterAttachPdf").checked = !!cur.attach_presentation;
+    ["letterPlain", "letterHtml", "letterSignature"].forEach((id) => {
+      if ($(id)) autoGrowField($(id));
+    });
+    renderLetterTabs();
+  }
+
+  function renderLetterTabs() {
+    const box = $("letterTabs");
+    if (!box) return;
+    box.innerHTML = letterChain
+      .map((s, idx) => {
+        const day = s.delay_days != null ? s.delay_days : 0;
+        const label = escapeHtml(s.label || `letter_${idx + 1}`);
+        const active = idx === activeLetterIdx ? " active" : "";
+        const pdf = s.attach_presentation ? " · PDF" : "";
+        return `<button type="button" class="letter-tab${active}" data-letter-idx="${idx}" role="tab" aria-selected="${
+          idx === activeLetterIdx ? "true" : "false"
+        }">Письмо ${idx + 1}<small>день ${day}${pdf}</small><span class="letter-tab-sub">${label}</span></button>`;
+      })
+      .join("");
+    box.querySelectorAll("[data-letter-idx]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const next = Number(btn.getAttribute("data-letter-idx"));
+        if (Number.isNaN(next) || next === activeLetterIdx) return;
+        readLetterFormIntoChain();
+        activeLetterIdx = next;
+        writeLetterFormFromChain();
+      });
+    });
+    if ($("packDraftBadge")) {
+      const pack = packsCache.find((p) => p.id === selectedPackId);
+      const show = !!(pack && pack.has_draft) || letterDirty;
+      $("packDraftBadge").hidden = !show;
+      $("packDraftBadge").textContent = letterDirty
+        ? "Есть несохранённые правки цепочки"
+        : "Есть сохранённый черновик цепочки";
+    }
+    if ($("letterDelBtn")) $("letterDelBtn").disabled = letterChain.length <= 1;
+    if ($("letterMoveUp")) $("letterMoveUp").disabled = activeLetterIdx <= 0;
+    if ($("letterMoveDown"))
+      $("letterMoveDown").disabled = activeLetterIdx >= letterChain.length - 1;
+  }
+
+  function setLetterChainFromPack(pack, { fill = true, keepIndex = false } = {}) {
+    const steps = (pack && pack.steps) || [];
+    letterChain = steps.map((s, i) => ({
+      step: Number(s.step) || i + 1,
+      delay_days: Number(s.delay_days) || 0,
+      label: s.label || `letter_${i + 1}`,
+      subject: s.subject || "",
+      plain: s.plain || "",
+      html: s.html || "",
+      attach_presentation: !!s.attach_presentation,
+    }));
+    if (!letterChain.length) {
+      letterChain = [
+        blankLetter({
+          delay_days: 0,
+          label: "intro",
+          subject: (pack && pack.subject) || "",
+          plain: (pack && pack.plain) || "",
+          html: (pack && pack.html) || "",
+          attach_presentation: !!(pack && pack.attach_presentation_default),
+        }),
+      ];
+    }
+    if (!keepIndex) activeLetterIdx = 0;
+    else activeLetterIdx = Math.max(0, Math.min(activeLetterIdx, letterChain.length - 1));
+    letterDirty = false;
+    if (fill) writeLetterFormFromChain();
+    else renderLetterTabs();
+  }
 
   function requestParentCall(payload) {
     try {
@@ -260,11 +378,12 @@
     box.innerHTML = packsCache
       .map((p) => {
         const on = p.id === activeId ? "active" : "";
+        const draft = p.has_draft ? " · черновик" : "";
         return `<label class="pack-card ${on}">
           <input type="radio" name="packId" value="${escapeHtml(p.id)}" ${p.id === activeId ? "checked" : ""} />
           <span>
             <strong>${escapeHtml(p.title)}</strong>
-            <small>${escapeHtml(p.short || "")}</small>
+            <small>${escapeHtml(p.short || "")}${draft}</small>
             <em>${escapeHtml(p.audience || "")} · ${p.steps || 3} письма</em>
           </span>
         </label>`;
@@ -287,7 +406,13 @@
       const active = (settingsCache && settingsCache.OUTREACH_SEQUENCE_PACK) || selectedPackId || "lombards";
       selectedPackId = active;
       renderPackCards(active);
-      if (active) await previewPack(active, false);
+      if (active) {
+        if (letterChain.length && letterDirty && selectedPackId === active) {
+          renderLetterTabs();
+        } else {
+          await previewPack(active, true);
+        }
+      }
     } catch (err) {
       if ($("packCards")) $("packCards").textContent = String(err.message || err);
     }
@@ -343,19 +468,11 @@
     const data = await api("/api/packs/" + encodeURIComponent(packId));
     const pack = data.pack || {};
     selectedPackId = pack.pack_id || packId;
+    const idx = packsCache.findIndex((p) => p.id === selectedPackId);
+    if (idx >= 0) packsCache[idx].has_draft = !!pack.has_draft;
     if ($("packActiveMeta")) {
       $("packActiveMeta").textContent =
-        `Выбрано: ${pack.title || packId} — ${pack.short || ""}`;
-    }
-    if ($("packStepsPreview")) {
-      $("packStepsPreview").innerHTML = (pack.steps || [])
-        .map(
-          (s) =>
-            `<li><strong>День ${s.delay_days}</strong> · ${escapeHtml(s.label || "")}: ${escapeHtml(
-              s.subject || ""
-            )}${s.attach_presentation ? " · PDF" : ""}</li>`
-        )
-        .join("");
+        `Выбрано: ${pack.title || packId} — ${pack.short || ""} · ${(pack.steps || []).length} писем`;
     }
     if ($("letterPdfMeta")) {
       $("letterPdfMeta").textContent = formatPresentationMeta(
@@ -366,17 +483,31 @@
         $("letterPdfReset").disabled = !(pack.presentation_meta && pack.presentation_meta.can_reset);
       }
     }
-    if (fillEditors) {
-      if (pack.subject) $("letterSubject").value = pack.subject;
-      if (pack.plain) $("letterPlain").value = pack.plain;
-      if (pack.html) $("letterHtml").value = pack.html;
-      if ($("letterAttachPdf")) {
-        $("letterAttachPdf").checked = !!pack.attach_presentation_default;
-      }
-      ["letterPlain", "letterHtml", "letterSignature"].forEach((id) => autoGrowField($(id)));
-    }
+    setLetterChainFromPack(pack, { fill: fillEditors, keepIndex: !fillEditors });
     await refreshPresentationMeta(selectedPackId);
     return pack;
+  }
+
+  async function saveLetterChain() {
+    readLetterFormIntoChain();
+    const packId =
+      selectedPackId ||
+      document.querySelector('input[name="packId"]:checked')?.value ||
+      "";
+    if (!packId) throw new Error("Сначала выберите отрасль");
+    const data = await api("/api/packs/" + encodeURIComponent(packId) + "/letters", {
+      method: "PUT",
+      body: JSON.stringify({ steps: letterChain }),
+    });
+    if (data.settings) settingsCache = data.settings;
+    if (data.pack) {
+      const idx = packsCache.findIndex((p) => p.id === packId);
+      if (idx >= 0) packsCache[idx].has_draft = !!data.pack.has_draft;
+      setLetterChainFromPack(data.pack, { fill: true, keepIndex: true });
+    }
+    letterDirty = false;
+    renderLetterTabs();
+    return data;
   }
 
   function setEnabledBadge(on) {
@@ -560,9 +691,8 @@
       $("letterLogoEnabled").checked = String(s.OUTREACH_LOGO_ENABLED || "true").toLowerCase() !== "false";
     }
     setLogoPreview(s.OUTREACH_LOGO_URL || "");
-    $("letterPlain").value = s.OUTREACH_TEMPLATE_PLAIN || "";
-    $("letterHtml").value = s.OUTREACH_TEMPLATE_HTML || "";
-    ["letterPlain", "letterHtml", "letterSignature"].forEach((id) => autoGrowField($(id)));
+    // Letter subject/plain/html owned by letter-chain editor (loaded via /api/packs).
+    if ($("letterSignature")) autoGrowField($("letterSignature"));
 
     $("schedEnabled").checked = String(s.SCHEDULE_ENABLED).toLowerCase() === "true" || s.SCHEDULE_ENABLED === "1";
     $("runRespectWindow").checked = String(s.RUN_RESPECT_WINDOW || "true").toLowerCase() !== "false";
@@ -1124,8 +1254,10 @@
     });
 
     function campaignSettingsPayload() {
+      readLetterFormIntoChain();
+      const step1 = letterChain[0] || {};
       return {
-        OUTREACH_SUBJECT: $("letterSubject").value,
+        OUTREACH_SUBJECT: step1.subject || ($("letterSubject") && $("letterSubject").value) || "",
         OUTREACH_COMPANY_NAME: $("letterCompany").value,
         OUTREACH_WEBSITE: $("letterWebsite").value,
         OUTREACH_CONTACT_PHONE: $("letterPhone").value,
@@ -1133,9 +1265,9 @@
         OUTREACH_SIGNATURE: $("letterSignature") ? $("letterSignature").value : "",
         OUTREACH_LOGO_URL: ($("letterLogoPreview") && $("letterLogoPreview").getAttribute("src")) || "",
         OUTREACH_LOGO_ENABLED: $("letterLogoEnabled") && $("letterLogoEnabled").checked ? "true" : "false",
-        OUTREACH_TEMPLATE_PLAIN: $("letterPlain").value,
-        OUTREACH_TEMPLATE_HTML: $("letterHtml").value,
-        OUTREACH_ATTACH_PRESENTATION: $("letterAttachPdf") && $("letterAttachPdf").checked ? "true" : "false",
+        OUTREACH_TEMPLATE_PLAIN: step1.plain || ($("letterPlain") && $("letterPlain").value) || "",
+        OUTREACH_TEMPLATE_HTML: step1.html || ($("letterHtml") && $("letterHtml").value) || "",
+        OUTREACH_ATTACH_PRESENTATION: step1.attach_presentation ? "true" : "false",
         CALLBACK_CTA_ENABLED: $("letterCallbackCta") && $("letterCallbackCta").checked ? "true" : "false",
         OUTREACH_SEQUENCE_PACK: selectedPackId || settingsCache?.OUTREACH_SEQUENCE_PACK || "",
         SEQUENCES_ENABLED: "true",
@@ -1144,11 +1276,13 @@
 
     async function saveCampaignSettings() {
       await applyCampaignContacts({ quiet: true });
+      const chain = await saveLetterChain();
       const data = await api("/api/settings", {
         method: "PUT",
         body: JSON.stringify({ settings: campaignSettingsPayload() }),
       });
-      return data;
+      if (data.settings) settingsCache = data.settings;
+      return { ...(data || {}), pack: chain && chain.pack };
     }
 
     function formatSendOneResult(data, dry) {
@@ -1449,21 +1583,30 @@
             selectedPackId ||
             document.querySelector('input[name="packId"]:checked')?.value ||
             "lombards";
+          const hasLocalDraft =
+            letterDirty || !!(packsCache.find((p) => p.id === packId) || {}).has_draft;
+          let resetDraft = false;
+          if (hasLocalDraft) {
+            resetDraft = confirm(
+              "Сбросить цепочку к базовым письмам отрасли?\n\nОК — базовые тексты.\nОтмена — оставить черновик и просто активировать отрасль."
+            );
+          }
           const data = await api("/api/packs/apply", {
             method: "POST",
             body: JSON.stringify({
               pack_id: packId,
-              attach_presentation: $("letterAttachPdf") ? $("letterAttachPdf").checked : true,
+              reset_draft: !!resetDraft,
             }),
           });
           settingsCache = data.settings || settingsCache;
           await loadSettingsIntoForms();
           renderPackCards(packId);
-          await previewPack(packId, true);
+          if (data.pack) setLetterChainFromPack(data.pack, { fill: true });
+          else await previewPack(packId, true);
           if ($("letterLog")) {
             $("letterLog").hidden = false;
             $("letterLog").textContent =
-              `Применена отрасль «${(data.pack && data.pack.title) || packId}». Цепочка follow-up активна.`;
+              `Применена отрасль «${(data.pack && data.pack.title) || packId}». Цепочка: ${(data.pack && data.pack.steps && data.pack.steps.length) || letterChain.length} писем.`;
           }
           logAction({ ok: true, pack: packId, updated: data.updated });
         } catch (e) {
@@ -1477,9 +1620,10 @@
     $("letterSave").addEventListener("click", async () => {
       try {
         const data = await saveCampaignSettings();
+        renderPackCards(selectedPackId);
         if ($("letterLog")) {
           $("letterLog").hidden = false;
-          $("letterLog").textContent = "Кампания сохранена.";
+          $("letterLog").textContent = `Цепочка сохранена (${letterChain.length} писем).`;
         }
         logAction(data);
       } catch (e) {
@@ -1490,6 +1634,93 @@
         logAction(String(e));
       }
     });
+
+    function markLetterDirty() {
+      letterDirty = true;
+      renderLetterTabs();
+    }
+    ["letterSubject", "letterPlain", "letterHtml", "letterDelayDays", "letterLabel", "letterAttachPdf"].forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.addEventListener("input", markLetterDirty);
+      el.addEventListener("change", markLetterDirty);
+    });
+
+    if ($("letterAddBtn")) {
+      $("letterAddBtn").addEventListener("click", () => {
+        readLetterFormIntoChain();
+        letterChain.push(blankLetter());
+        activeLetterIdx = letterChain.length - 1;
+        letterDirty = true;
+        writeLetterFormFromChain();
+      });
+    }
+    if ($("letterDupBtn")) {
+      $("letterDupBtn").addEventListener("click", () => {
+        readLetterFormIntoChain();
+        const src = letterChain[activeLetterIdx] || blankLetter();
+        const copy = blankLetter({
+          ...src,
+          label: (src.label || "letter") + "_copy",
+          delay_days: Number(src.delay_days || 0) + 1,
+        });
+        letterChain.splice(activeLetterIdx + 1, 0, copy);
+        activeLetterIdx += 1;
+        letterDirty = true;
+        writeLetterFormFromChain();
+      });
+    }
+    if ($("letterDelBtn")) {
+      $("letterDelBtn").addEventListener("click", () => {
+        if (letterChain.length <= 1) return;
+        if (!confirm("Удалить текущее письмо из цепочки?")) return;
+        readLetterFormIntoChain();
+        letterChain.splice(activeLetterIdx, 1);
+        if (activeLetterIdx >= letterChain.length) activeLetterIdx = letterChain.length - 1;
+        letterDirty = true;
+        writeLetterFormFromChain();
+      });
+    }
+    function moveLetter(delta) {
+      readLetterFormIntoChain();
+      const j = activeLetterIdx + delta;
+      if (j < 0 || j >= letterChain.length) return;
+      const tmp = letterChain[activeLetterIdx];
+      letterChain[activeLetterIdx] = letterChain[j];
+      letterChain[j] = tmp;
+      activeLetterIdx = j;
+      letterDirty = true;
+      writeLetterFormFromChain();
+    }
+    if ($("letterMoveUp")) $("letterMoveUp").addEventListener("click", () => moveLetter(-1));
+    if ($("letterMoveDown")) $("letterMoveDown").addEventListener("click", () => moveLetter(1));
+    if ($("letterResetChain")) {
+      $("letterResetChain").addEventListener("click", async () => {
+        const packId = selectedPackId;
+        if (!packId) return;
+        if (!confirm("Сбросить все письма отрасли к базовым текстам?")) return;
+        try {
+          const data = await api("/api/packs/" + encodeURIComponent(packId) + "/letters/reset", {
+            method: "POST",
+            body: "{}",
+          });
+          if (data.settings) settingsCache = data.settings;
+          const idx = packsCache.findIndex((p) => p.id === packId);
+          if (idx >= 0) packsCache[idx].has_draft = false;
+          if (data.pack) setLetterChainFromPack(data.pack, { fill: true });
+          renderPackCards(packId);
+          if ($("letterLog")) {
+            $("letterLog").hidden = false;
+            $("letterLog").textContent = "Цепочка сброшена к базовым письмам отрасли.";
+          }
+        } catch (e) {
+          if ($("letterLog")) {
+            $("letterLog").hidden = false;
+            $("letterLog").textContent = String(e);
+          }
+        }
+      });
+    }
 
     $("schedSave").addEventListener("click", async () => {
       try {
