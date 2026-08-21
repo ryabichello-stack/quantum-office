@@ -8,7 +8,11 @@
 **/yandex_oauth_tokens.json
 **/secrets/
 **/*credentials*
+**/*credential*
 **/*secret*
+**/*token*.json
+**/service-account*.json
+**/.env.bak*
 
 # Python
 __pycache__/
@@ -18,7 +22,9 @@ __pycache__/
 .Python
 venv/
 .venv/
+**/.venv/
 env/
+**/dist/
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
@@ -45,3 +51,7 @@ Thumbs.db
 *.bak
 *.bak.*
 deploy/bak-*/
+
+# Vault noise
+**/vault/**/*.bak*/
+**/*.bak-*/

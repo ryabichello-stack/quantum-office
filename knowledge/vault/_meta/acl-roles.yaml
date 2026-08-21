@@ -1,0 +1,20 @@
+# Human/group role → ACL hints (Phase 0 stub).
+# Does NOT grant blanket company to voice/text bots.
+
+roles:
+  employee:
+    visibilities: [public, company]
+  sales:
+    groups: [group:sales]
+    visibilities: [public, company, "team:sales"]
+  legal:
+    groups: [group:legal]
+    visibilities: [public, company, "team:legal", restricted]
+  admin:
+    groups: [group:admin]
+    notes: "secret only with explicit ACL + admin auth"
+
+import_defaults:
+  max_visibility: company
+  sensitive_default: restricted
+  public: manual_approval_only

@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "quantum-brain": {
+      "command": "/opt/ava-knowledge/scripts/run_cursor_mcp.sh",
+      "env": {
+        "AVA_KNOWLEDGE_BASE": "http://127.0.0.1:8017",
+        "BRAIN_MCP_PRINCIPAL": "service:cursor-admin",
+        "BRAIN_MCP_ADMIN": "true",
+        "BRAIN_MCP_USER_ID": "cursor-mcp",
+        "BRAIN_TENANT_ID": "quantum-labs"
+      }
+    }
+  }
+}
