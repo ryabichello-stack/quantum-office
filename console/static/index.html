@@ -104,6 +104,12 @@
         </section>
 
         <section id="tab-scenario" class="panel">
+          <div class="seg" id="scenarioSubTabs" role="tablist" aria-label="Разделы сценария" style="margin-bottom:0.85rem">
+            <button type="button" data-sc-sub="profile" class="seg-on" id="scSubTabProfile">Сценарий звонков</button>
+            <button type="button" data-sc-sub="email-cb" id="scSubTabEmailCb">Заявка из письма</button>
+          </div>
+
+          <div id="scSubProfile">
           <div class="surface grid2">
             <div class="full row">
               <label class="field grow">Профиль
@@ -138,12 +144,14 @@
             </div>
             <p class="full muted">Сохранение одного профиля не меняет greeting / prompt / tools другого.</p>
           </div>
+          </div>
 
-          <div class="surface" style="margin-top:1rem" id="emailCallbackBox">
+          <div id="scSubEmailCb" hidden>
+          <div class="surface" id="emailCallbackBox">
             <h2 class="section-title" style="margin-top:0">Заявка на звонок из письма</h2>
-            <p class="muted tight">Внизу outreach-письма — кнопка «Заказать звонок». Клиент оставляет ФИО и телефон. Вам приходит уведомление; при включении — робот перезванивает по сценарию ниже.</p>
+            <p class="muted tight">В конце каждого outreach-письма — форма ФИО + телефон и кнопка. Уведомление на почту; при включении — робот перезванивает.</p>
             <div class="grid2">
-              <label class="check"><input type="checkbox" id="cbCtaEnabled" /> Показывать блок в письмах</label>
+              <label class="check"><input type="checkbox" id="cbCtaEnabled" checked /> Блок в каждом письме</label>
               <label class="check"><input type="checkbox" id="cbNotifyEnabled" checked /> Уведомление на почту</label>
               <label class="check"><input type="checkbox" id="cbDialEnabled" /> Сразу звонить ботом</label>
               <label class="field">Режим звонка
@@ -176,6 +184,7 @@
             </div>
             <p class="muted tight" id="cbMeta"></p>
             <div id="cbRequests" class="muted tight" style="margin-top:0.5rem"></div>
+          </div>
           </div>
         </section>
 

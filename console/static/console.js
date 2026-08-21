@@ -1027,7 +1027,7 @@
             status.textContent = "Не удалось загрузить Outreach UI";
           }
         };
-        frame.src = BASE + "/assets/outreach/index.html?v=callback1";
+        frame.src = BASE + "/assets/outreach/index.html?v=callback2";
       }
     }
   }
@@ -1269,6 +1269,27 @@
     };
   }
 
+  if ($("scenarioSubTabs")) {
+    $("scenarioSubTabs").addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button[data-sc-sub]");
+      if (!btn) return;
+      const sub = btn.getAttribute("data-sc-sub");
+      $("scenarioSubTabs").querySelectorAll("button[data-sc-sub]").forEach((b) => {
+        b.classList.toggle("seg-on", b === btn);
+      });
+      if ($("scSubProfile")) $("scSubProfile").hidden = sub !== "profile";
+      if ($("scSubEmailCb")) $("scSubEmailCb").hidden = sub !== "email-cb";
+      if (sub === "email-cb") {
+        loadEmailCallback().catch((e) => {
+          if ($("cbMsg")) {
+            $("cbMsg").textContent = e.message;
+            $("cbMsg").className = "msg bad";
+          }
+        });
+      }
+    });
+  }
+
   if ($("btnRestartEngine")) {
     $("btnRestartEngine").onclick = async () => {
       try {
@@ -1284,7 +1305,8 @@
     if (!$("emailCallbackBox")) return;
     const data = await api("/api/outreach/api/callback-cta/settings");
     const s = (data && data.settings) || {};
-    if ($("cbCtaEnabled")) $("cbCtaEnabled").checked = String(s.CALLBACK_CTA_ENABLED || "").toLowerCase() === "true";
+    if ($("cbCtaEnabled"))
+      $("cbCtaEnabled").checked = String(s.CALLBACK_CTA_ENABLED || "true").toLowerCase() !== "false";
     if ($("cbNotifyEnabled"))
       $("cbNotifyEnabled").checked = String(s.CALLBACK_NOTIFY_ENABLED || "true").toLowerCase() !== "false";
     if ($("cbDialEnabled")) $("cbDialEnabled").checked = String(s.CALLBACK_DIAL_ENABLED || "").toLowerCase() === "true";

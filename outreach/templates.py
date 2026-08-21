@@ -468,16 +468,44 @@ def render_cooperation(
             if gt >= 0:
                 html = html[: gt + 1] + "\n" + logo_header + html[gt + 1 :]
     # Inject CTA after signature / before legal footer when placeholder absent.
-    if cb_plain and "{callback_cta}" not in (plain_template or "") and cb_plain.strip() not in plain:
+    if cb_plain and "{callback_cta}" not in (plain_template or "") and "Заказать звонок" not in plain and cb_url not in plain:
         marker = "\n---\nВы получили это письмо"
         if marker in plain:
             plain = plain.replace(marker, cb_plain + marker, 1)
+        elif "Отписаться" in plain:
+            idx = plain.find("Отписаться")
+            # insert before legal block start
+            cut = plain.rfind("\n---\n", 0, idx)
+            if cut >= 0:
+                plain = plain[:cut] + cb_plain + plain[cut:]
+            else:
+                plain = plain.rstrip() + cb_plain
         else:
             plain = plain.rstrip() + cb_plain
-    if cb_html and "{callback_cta}" not in (html_template or "") and cb_html not in html:
+    if cb_html and "{callback_cta}" not in (html_template or "") and href_marker_missing(html, cb_url):
         hr = '<hr style="border:none;border-top:1px solid #ddd;margin:1.5em 0 0.75em">'
         if hr in html:
             html = html.replace(hr, cb_html + "\n" + hr, 1)
+        elif "Отписаться" in html:
+            # Insert before legal footer paragraph block
+            idx = html.find("Отписаться")
+            cut = html.rfind("<hr", 0, idx)
+            if cut < 0:
+                cut = html.rfind("<div style=\"font-size:12px", 0, idx)
+            if cut >= 0:
+                html = html[:cut] + cb_html + "\n" + html[cut:]
+            else:
+                html = html.rstrip() + "\n" + cb_html
         else:
             html = html.rstrip() + "\n" + cb_html
     return plain, html
+
+
+def href_marker_missing(html: str, url: str) -> bool:
+    if not url:
+        return True
+    if url in html:
+        return False
+    if "name=\"fio\"" in html and "Заказать звонок" in html:
+        return False
+    return True

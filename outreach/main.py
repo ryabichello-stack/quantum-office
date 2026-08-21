@@ -486,7 +486,44 @@ async def callback_request_page(token: str, request: Request):
         )
 
     if request.method == "GET":
-        return HTMLResponse(form_page_html(token=token, settings=rt))
+        q_fio = (request.query_params.get("fio") or "").strip()
+        q_phone = (request.query_params.get("phone") or "").strip()
+        if q_fio and q_phone:
+            result = process_callback_request(
+                token=token,
+                fio=q_fio,
+                phone=q_phone,
+                settings=rt,
+                source_email=source_email,
+                user_agent=request.headers.get("user-agent"),
+                ip=request.client.host if request.client else None,
+            )
+            if result.get("ok"):
+                return HTMLResponse(form_page_html(token=token, settings=rt, done=True))
+            err_map = {
+                "fio_required": "Укажите ФИО",
+                "phone_invalid": "Укажите корректный телефон",
+                "rate_limited": "Заявка с этого номера уже принята. Подождите немного.",
+                "bad_signature": "Ссылка недействительна",
+            }
+            return HTMLResponse(
+                form_page_html(
+                    token=token,
+                    settings=rt,
+                    prefill_fio=q_fio,
+                    prefill_phone=q_phone,
+                    error=err_map.get(str(result.get("error")), "Не удалось отправить заявку"),
+                ),
+                status_code=400,
+            )
+        return HTMLResponse(
+            form_page_html(
+                token=token,
+                settings=rt,
+                prefill_fio=q_fio,
+                prefill_phone=q_phone,
+            )
+        )
 
     fio = ""
     phone = ""

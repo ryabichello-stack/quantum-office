@@ -112,7 +112,8 @@ def _cfg_bool(settings: Any, key: str, default: bool = False) -> bool:
 
 
 def cta_enabled(settings: Any = None) -> bool:
-    return _cfg_bool(settings, "CALLBACK_CTA_ENABLED", False)
+    # On by default: CTA is part of every letter unless explicitly disabled.
+    return _cfg_bool(settings, "CALLBACK_CTA_ENABLED", True)
 
 
 def dial_enabled(settings: Any = None) -> bool:
@@ -227,27 +228,57 @@ def callback_url_for(token: str, settings: Any = None) -> str:
 
 
 def build_callback_cta_html(*, url: str, settings: Any = None) -> str:
+    """Form-like block at the end of the letter.
+
+    Real interactive forms are stripped by Gmail/Outlook, so we render a
+    visual form + a button/link to the signed landing page (and a GET form
+    for clients that still submit HTML forms).
+    """
     title = escape(cta_title(settings))
     button = escape(cta_button(settings))
     href = escape(url, quote=True)
     return (
-        '<div style="margin:1.4em 0 0.4em;padding:1.05em 1.15em;border:1px solid #e5e8eb;'
-        'background:#f6f7f8;border-radius:2px">'
-        f'<p style="margin:0 0 0.45em;font:600 15px/1.35 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
+        '<div style="margin:1.5em 0 0.5em;padding:0;border:0">'
+        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
+        'style="border:1px solid #d9dee3;background:#f7f8f9">'
+        "<tr><td style=\"padding:16px 18px\">"
+        f'<p style="margin:0 0 6px;font:600 16px/1.35 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
         f'color:#0f1b24">{title}</p>'
-        '<p style="margin:0 0 0.85em;font:13px/1.45 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
-        'color:#4a5560">Оставьте ФИО и телефон — свяжемся в ближайшие минуты.</p>'
-        f'<a href="{href}" style="display:inline-block;padding:10px 16px;background:#1a1a1a;'
-        f'color:#ffffff;text-decoration:none;font:600 13px/1 Manrope,Segoe UI,Helvetica,Arial,sans-serif">'
-        f"{button}</a>"
-        "</div>"
+        '<p style="margin:0 0 14px;font:13px/1.45 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
+        'color:#4a5560">Оставьте ФИО и телефон — перезвоним в ближайшие минуты.</p>'
+        f'<form action="{href}" method="get">'
+        '<label style="display:block;margin:0 0 10px;font:600 12px/1.3 Manrope,Segoe UI,sans-serif;color:#0f1b24">'
+        "ФИО<br>"
+        '<input name="fio" type="text" placeholder="Иванов Иван Иванович" '
+        'style="margin-top:5px;width:100%;max-width:100%;box-sizing:border-box;padding:10px 12px;'
+        "border:1px solid #c5ccd3;background:#ffffff;font:14px/1.4 Manrope,Segoe UI,sans-serif\" />"
+        "</label>"
+        '<label style="display:block;margin:0 0 14px;font:600 12px/1.3 Manrope,Segoe UI,sans-serif;color:#0f1b24">'
+        "Телефон<br>"
+        '<input name="phone" type="tel" placeholder="+7 …" '
+        'style="margin-top:5px;width:100%;max-width:100%;box-sizing:border-box;padding:10px 12px;'
+        "border:1px solid #c5ccd3;background:#ffffff;font:14px/1.4 Manrope,Segoe UI,sans-serif\" />"
+        "</label>"
+        f'<button type="submit" style="display:inline-block;padding:11px 18px;border:0;cursor:pointer;'
+        f'background:#1a1a1a;color:#ffffff;font:600 13px/1 Manrope,Segoe UI,Helvetica,Arial,sans-serif">'
+        f"{button}</button>"
+        "</form>"
+        f'<p style="margin:12px 0 0;font:12px/1.4 Manrope,Segoe UI,sans-serif;color:#6a737b">'
+        f'Если кнопка не работает в почте — '
+        f'<a href="{href}" style="color:#c4470f;font-weight:600">откройте форму по ссылке</a>.'
+        "</p>"
+        "</td></tr></table></div>"
     )
 
 
 def build_callback_cta_plain(*, url: str, settings: Any = None) -> str:
     title = cta_title(settings)
     button = cta_button(settings)
-    return f"\n\n---\n{title}\n{button}: {url}\n"
+    return (
+        f"\n\n---\n{title}\n"
+        f"ФИО и телефон: заполните короткую форму\n"
+        f"{button}: {url}\n"
+    )
 
 
 def normalize_phone(raw: str) -> str | None:

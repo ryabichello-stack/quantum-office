@@ -597,8 +597,7 @@
     }
     if ($("letterCallbackCta")) {
       $("letterCallbackCta").checked =
-        String(s.CALLBACK_CTA_ENABLED || "false").toLowerCase() === "true" ||
-        s.CALLBACK_CTA_ENABLED === "1";
+        String(s.CALLBACK_CTA_ENABLED || "true").toLowerCase() !== "false";
     }
     selectedPackId = s.OUTREACH_SEQUENCE_PACK || selectedPackId || "";
     if (selectedPackId) {
