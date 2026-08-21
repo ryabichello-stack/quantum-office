@@ -228,6 +228,7 @@
       if ($("letterAttachPdf")) {
         $("letterAttachPdf").checked = !!pack.attach_presentation_default;
       }
+      ["letterPlain", "letterHtml", "letterSignature"].forEach((id) => autoGrowField($(id)));
     }
     return pack;
   }
@@ -419,6 +420,7 @@
     setLogoPreview(s.OUTREACH_LOGO_URL || "");
     $("letterPlain").value = s.OUTREACH_TEMPLATE_PLAIN || "";
     $("letterHtml").value = s.OUTREACH_TEMPLATE_HTML || "";
+    ["letterPlain", "letterHtml", "letterSignature"].forEach((id) => autoGrowField($(id)));
 
     $("schedEnabled").checked = String(s.SCHEDULE_ENABLED).toLowerCase() === "true" || s.SCHEDULE_ENABLED === "1";
     $("runRespectWindow").checked = String(s.RUN_RESPECT_WINDOW || "true").toLowerCase() !== "false";
@@ -695,16 +697,86 @@
   function paintPreviewHtml(box, html) {
     if (!box) return;
     const raw = String(html || "");
-    // Full email docs (<!DOCTYPE><html><body>…) cannot be nested via div.innerHTML —
-    // browsers drop the shell and often leave the preview blank.
+    if (box.tagName === "IFRAME") {
+      // srcdoc renders a full email document reliably (div.innerHTML often blanks it)
+      const doc =
+        raw.trim() ||
+        "<!DOCTYPE html><html><body style='font-family:Manrope,Segoe UI,sans-serif;color:#1a1a1a;padding:12px'><p class='muted'>Нет HTML</p></body></html>";
+      box.srcdoc = doc;
+      return;
+    }
     const bodyMatch = raw.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
     box.innerHTML = bodyMatch ? bodyMatch[1] : raw;
   }
 
+  function autoGrowField(el) {
+    if (!el || el.tagName !== "TEXTAREA") return;
+    const maxPx = Math.min(window.innerHeight * 0.7, 560);
+    el.style.height = "auto";
+    const next = Math.min(Math.max(el.scrollHeight + 2, 120), maxPx);
+    el.style.height = next + "px";
+    el.style.overflowY = el.scrollHeight + 2 > maxPx ? "auto" : "hidden";
+  }
+
+  function bindCampaignFieldScroll() {
+    const fields = ["letterPlain", "letterHtml", "letterSignature"]
+      .map((id) => $(id))
+      .filter(Boolean);
+    fields.forEach((el) => {
+      autoGrowField(el);
+      el.addEventListener("input", () => autoGrowField(el));
+    });
+
+    // Wheel inside capped textareas / preview: scroll the element under the cursor.
+    // Capture + preventDefault only when we actually move scrollTop — otherwise the
+    // Console parent page eats the gesture and the field looks "stuck".
+    if (document.documentElement.dataset.qlWheel === "1") return;
+    document.documentElement.dataset.qlWheel = "1";
+    document.addEventListener(
+      "wheel",
+      (ev) => {
+        const t = ev.target;
+        if (!t || !t.closest) return;
+        const el = t.closest("textarea, pre.log, .preview-html");
+        if (!el) return;
+        // Preview is an iframe — let its document handle wheel natively
+        if (el.tagName === "IFRAME") return;
+        if (Math.abs(ev.deltaY) < Math.abs(ev.deltaX)) return;
+
+        const max = el.scrollHeight - el.clientHeight;
+        if (max <= 1) {
+          // Field fully grown / short — scroll the iframe page instead
+          const root = document.scrollingElement || document.documentElement;
+          const rootMax = root.scrollHeight - root.clientHeight;
+          if (rootMax <= 1) return;
+          let dy = ev.deltaY;
+          if (ev.deltaMode === 1) dy *= 20;
+          else if (ev.deltaMode === 2) dy *= root.clientHeight;
+          const before = root.scrollTop;
+          root.scrollTop = Math.max(0, Math.min(rootMax, before + dy));
+          if (root.scrollTop !== before) {
+            ev.preventDefault();
+            ev.stopPropagation();
+          }
+          return;
+        }
+
+        let dy = ev.deltaY;
+        if (ev.deltaMode === 1) dy *= 20;
+        else if (ev.deltaMode === 2) dy *= el.clientHeight;
+        const before = el.scrollTop;
+        const next = Math.max(0, Math.min(max, before + dy));
+        if (next === before) return;
+        el.scrollTop = next;
+        ev.preventDefault();
+        ev.stopPropagation();
+      },
+      { passive: false, capture: true }
+    );
+  }
+
   function bindInnerWheelScroll() {
-    // Prefer native scrolling. A previous preventDefault+scrollTop hack blocked
-    // the wheel entirely in the Console iframe. Contain overscroll so the parent
-    // page does not steal the gesture when a box hits its edge.
+    bindCampaignFieldScroll();
     try {
       document.documentElement.style.overscrollBehaviorY = "contain";
       document.body.style.overscrollBehaviorY = "contain";

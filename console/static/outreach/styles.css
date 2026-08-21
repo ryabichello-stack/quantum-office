@@ -26,7 +26,7 @@
 * { box-sizing: border-box; }
 
 html {
-  height: 100%;
+  min-height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior-y: contain;
@@ -300,24 +300,26 @@ textarea {
   min-height: 8rem;
   overflow: auto;
 }
-/* Fixed-height editors — mouse wheel scrolls inside (iframe parent steals otherwise) */
-textarea.scroll-y.editor-tall,
+/* Campaign editors: grow with text; cap height then native overflow scroll */
 #letterPlain,
-#letterHtml {
-  height: 280px;
-  max-height: 280px;
-  min-height: 280px;
+#letterHtml,
+textarea.scroll-y {
+  min-height: 12rem;
+  height: auto;
+  max-height: min(70vh, 560px);
   resize: vertical;
   overflow-y: auto;
   overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 #letterSignature {
-  height: 120px;
-  max-height: 180px;
-  min-height: 96px;
+  min-height: 6rem;
+  height: auto;
+  max-height: 220px;
   resize: vertical;
   overflow-y: auto;
   overscroll-behavior: contain;
+  touch-action: pan-y;
   font-family: var(--font);
 }
 
@@ -347,28 +349,23 @@ textarea.scroll-y.editor-tall,
 .preview-html,
 #previewFrame {
   width: 100%;
-  height: 280px;
-  max-height: 280px;
+  height: 320px;
+  max-height: 320px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #fff !important;
-  overflow-y: auto;
+  overflow: auto;
   overscroll-behavior: contain;
-  padding: 0.75rem 0.9rem;
+  padding: 0;
   box-sizing: border-box;
-  font-family: Manrope, Segoe UI, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
+  display: block;
   color: #1a1a1a !important;
 }
-.preview-html p,
-.preview-html li,
-.preview-html div,
-.preview-html span,
-.preview-html td {
-  color: #1a1a1a;
+iframe.preview-html,
+iframe#previewFrame {
+  padding: 0;
+  border: 1px solid var(--line);
 }
-.preview-html img { max-width: 100%; height: auto; }
 
 button {
   cursor: pointer;
