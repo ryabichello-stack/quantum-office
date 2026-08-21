@@ -374,6 +374,9 @@ def render_cooperation(
         html_src = ensure_letter_chrome(html_src)
 
     plain_src, html_src = ensure_legal_footer(plain_src, html_src)
+    from content.packs import strip_duplicate_legal_html
+
+    html_src = strip_duplicate_legal_html(html_src)
 
     # Legacy templates without {signature} still use {website}{phone_line} at the end.
     if "{signature}" not in plain_src and "{phone_line}" not in plain_src and phone_s:
@@ -416,6 +419,9 @@ def render_cooperation(
     }
     plain = strip_md_bold(_safe_format(plain_src, mapping_plain))
     html = _safe_format(html_src, mapping_html)
+    from content.packs import strip_duplicate_legal_html
+
+    html = strip_duplicate_legal_html(html)
     # Logo is a card <tr>; only inject if the shell never got a header.
     if logo_header and logo_header not in html and "{logo_header}" not in html:
         needle = 'style="max-width:640px;'

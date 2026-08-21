@@ -248,7 +248,7 @@ LEGAL_FOOTER_HTML = f"""
   <p style="margin:0 0 10px;font-size:11px;line-height:16px;color:{INK_LEGAL};font-family:{FONT};">Вы получили это письмо, потому что ваша компания указана в открытых источниках как организация, для которой могут быть актуальны сервисы платёжной инфраструктуры Quantum Labs, в том числе Quantum Payouts.</p>
   <p style="margin:0 0 10px;font-size:11px;line-height:16px;color:{INK_LEGAL};font-family:{FONT};">ООО «Квантум Лабс» · quantumlabs.ru · office@quantumlabs.ru</p>
   <p style="margin:0 0 10px;font-size:11px;line-height:16px;font-family:{FONT};"><a href="{{unsub_url}}" style="color:#6d7789;text-decoration:underline;">Отписаться от рассылки</a><span style="color:#a0a8b5;"> · </span><a href="mailto:{{unsub}}?subject=unsubscribe" style="color:#6d7789;text-decoration:underline;">написать для отписки</a></p>
-  <p style="margin:0;font-size:11px;line-height:16px;color:{INK_LEGAL};font-family:{FONT};">Обработка обращений — в соответствии с применимым законодательством РФ, в том числе 152‑ФЗ. Письмо носит информационный характер и не является офертой.</p>
+  <p style="margin:0;font-size:11px;line-height:16px;color:{INK_LEGAL};font-family:{FONT};">Обработка обращений — в соответствии с применимым законодательством РФ, в том числе 152-ФЗ. Письмо носит информационный характер и не является офертой.</p>
 </td></tr>
 """
 

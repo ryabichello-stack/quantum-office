@@ -36,23 +36,57 @@ from content.email_chrome import LEGAL_FOOTER_HTML as LEGAL_FOOTER_HTML  # noqa:
 # Packs end with {signature}; text comes from OUTREACH_SIGNATURE in Campaign UI.
 
 _MD_BOLD = re.compile(r"\*\*(.+?)\*\*")
+_LEGAL_MARKERS = (
+    "получили это письмо",
+    "152-ФЗ",
+    "152‑ФЗ",  # U+2011 non-breaking hyphen used in HTML footer copy
+    "{legal_html}",
+)
 
 
 def strip_md_bold(text: str) -> str:
     return _MD_BOLD.sub(r"\1", text or "")
 
 
-def ensure_legal_footer(plain: str, html: str) -> tuple[str, str]:
-    p = plain or ""
+def has_legal_footer(text: str) -> bool:
+    t = text or ""
+    return any(m in t for m in _LEGAL_MARKERS)
+
+
+def strip_duplicate_legal_html(html: str) -> str:
+    """Drop a second legal block accidentally appended after ``</html>``."""
     h = html or ""
-    if "{unsub_url}" not in p and "Отписаться" not in p:
+    lower = h.lower()
+    end = lower.rfind("</html>")
+    if end < 0:
+        return h
+    close_at = end + len("</html>")
+    after = h[close_at:]
+    if "получили это письмо" in after or "152-ФЗ" in after or "152‑ФЗ" in after:
+        return h[:close_at].rstrip() + "\n"
+    # Also collapse two legal rows inside the card (keep the last before </table> close)
+    first = h.find("получили это письмо")
+    second = h.find("получили это письмо", first + 1) if first >= 0 else -1
+    if first >= 0 and second >= 0 and second < end:
+        # Remove the later duplicate <tr>…legal…</tr>
+        tr_start = h.rfind("<tr>", 0, second)
+        tr_end = h.find("</tr>", second)
+        if tr_start >= 0 and tr_end > tr_start:
+            h = h[:tr_start] + h[tr_end + len("</tr>") :]
+    return h
+
+
+def ensure_legal_footer(plain: str, html: str) -> tuple[str, str]:
+    """Append legal footer only when missing (ASCII/NB hyphen safe)."""
+    p = plain or ""
+    h = strip_duplicate_legal_html(html or "")
+    if not has_legal_footer(p):
         p = p.rstrip() + "\n" + LEGAL_FOOTER_PLAIN
-    elif "152-ФЗ" not in p and "ООО" not in p:
-        p = p.rstrip() + "\n" + LEGAL_FOOTER_PLAIN
-    if "{unsub_url}" not in h and "Отписаться" not in h:
-        h = h.rstrip() + "\n" + LEGAL_FOOTER_HTML
-    elif "152-ФЗ" not in h:
-        h = h.rstrip() + "\n" + LEGAL_FOOTER_HTML
+    if not has_legal_footer(h):
+        if "{legal_html}" in h:
+            h = h.replace("{legal_html}", LEGAL_FOOTER_HTML)
+        else:
+            h = h.rstrip() + "\n" + LEGAL_FOOTER_HTML
     return p, h
 
 
