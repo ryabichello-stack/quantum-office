@@ -29,7 +29,7 @@ from modules.tracking import short_hmac, tracking_public_base
 logger = logging.getLogger("ava-outreach.callback-cta")
 
 _DEFAULT_TITLE = "Если интересно — можем перезвонить"
-_DEFAULT_BUTTON = "Оставить контакт"
+_DEFAULT_BUTTON = "Перезвонить"
 _DEFAULT_GREETING = "Здравствуйте! Это Quantum Labs — вы оставили заявку на звонок с письма."
 _DEFAULT_SCRIPT = (
     "Ты — голосовой ассистент Quantum Labs. Клиент оставил заявку «перезвоните» "
@@ -37,10 +37,7 @@ _DEFAULT_SCRIPT = (
     "кратко расскажи про платёжную инфраструктуру Quantum Payouts и предложи "
     "следующий шаг (созвон с менеджером / демо). Будь вежлив и конкретен."
 )
-_DEFAULT_LEAD = (
-    "Оставьте ФИО и телефон — коротко созвонимся и разберём, "
-    "есть ли эффект именно для вас. Без обязательств."
-)
+_DEFAULT_LEAD = "Оставьте ФИО и телефон — перезвоним в ближайшие минуты."
 
 
 def _utc_now() -> str:
@@ -237,24 +234,52 @@ def callback_url_for(token: str, settings: Any = None) -> str:
 
 
 def build_callback_cta_html(*, url: str, settings: Any = None) -> str:
-    """Soft ask before signature — button/link only (no inputs in the letter).
+    """Inline FIO + phone form in the letter body (before signature).
 
-    Interactive forms inside cold email hurt deliverability and are stripped by
-    Gmail/Outlook. The real FIO+phone form lives on the signed landing page.
+    Uses GET so the request works from clients that still submit HTML forms
+    (Apple Mail, Thunderbird, some desktop Outlook). Landing page remains the
+    same endpoint if a client opens the action URL without fields.
     """
     title = escape(cta_title(settings))
     lead = escape(cta_lead(settings))
     button = escape(cta_button(settings))
     href = escape(url, quote=True)
+    # Table-based layout survives more clients than flex/div-only.
     return (
-        '<div style="margin:1.35em 0 0.15em;padding:0;border:0">'
-        f'<p style="margin:0 0 0.45em;font:600 15px/1.4 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
+        '<div style="margin:1.5em 0 0.35em;padding:0;border:0">'
+        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
+        'style="border-collapse:separate;border:1px solid #e6e1da;background:#faf8f5">'
+        '<tr><td style="padding:18px 18px 16px">'
+        f'<p style="margin:0 0 6px;font:600 16px/1.35 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
         f'color:#0f1b24">{title}</p>'
-        f'<p style="margin:0 0 0.9em;font:14px/1.55 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
-        f'color:#3d4750">{lead}</p>'
-        f'<a href="{href}" style="display:inline-block;padding:11px 18px;background:#1a1a1a;'
-        f'color:#ffffff;text-decoration:none;font:600 13px/1 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
-        f'border-radius:2px">{button}</a>'
+        f'<p style="margin:0 0 14px;font:13px/1.5 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
+        f'color:#5a6570">{lead}</p>'
+        f'<form action="{href}" method="get">'
+        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">'
+        "<tr><td style=\"padding:0 0 10px\">"
+        '<label style="display:block;font:600 11px/1.3 Manrope,Segoe UI,sans-serif;'
+        'letter-spacing:0.04em;text-transform:uppercase;color:#6a737b">ФИО</label>'
+        '<input name="fio" type="text" placeholder="Иванов Иван Иванович" required '
+        'style="margin-top:6px;width:100%;max-width:100%;box-sizing:border-box;padding:11px 12px;'
+        "border:1px solid #d0d5da;background:#ffffff;border-radius:2px;"
+        'font:14px/1.4 Manrope,Segoe UI,Helvetica,Arial,sans-serif;color:#0f1b24" />'
+        "</td></tr>"
+        "<tr><td style=\"padding:0 0 14px\">"
+        '<label style="display:block;font:600 11px/1.3 Manrope,Segoe UI,sans-serif;'
+        'letter-spacing:0.04em;text-transform:uppercase;color:#6a737b">Телефон</label>'
+        '<input name="phone" type="tel" placeholder="+7 …" required '
+        'style="margin-top:6px;width:100%;max-width:100%;box-sizing:border-box;padding:11px 12px;'
+        "border:1px solid #d0d5da;background:#ffffff;border-radius:2px;"
+        'font:14px/1.4 Manrope,Segoe UI,Helvetica,Arial,sans-serif;color:#0f1b24" />'
+        "</td></tr>"
+        "<tr><td>"
+        f'<button type="submit" style="display:inline-block;padding:12px 20px;border:0;cursor:pointer;'
+        f'background:#c4470f;color:#ffffff;font:600 13px/1 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
+        f'border-radius:2px">{button}</button>'
+        "</td></tr>"
+        "</table>"
+        "</form>"
+        "</td></tr></table>"
         "</div>"
     )
 
@@ -263,7 +288,10 @@ def build_callback_cta_plain(*, url: str, settings: Any = None) -> str:
     title = cta_title(settings)
     lead = cta_lead(settings)
     button = cta_button(settings)
-    return f"\n\n{title}\n{lead}\n{button}: {url}\n"
+    return (
+        f"\n\n{title}\n{lead}\n"
+        f"ФИО / телефон → {button}: {url}\n"
+    )
 
 
 def normalize_phone(raw: str) -> str | None:

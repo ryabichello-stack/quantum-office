@@ -320,28 +320,31 @@ def build_signature_html(
     if not parts:
         return ""
     return (
-        "<div style='margin:1.35em 0 0.25em;padding:14px 0 0;border:none;"
+        "<div style='margin:1.5em 0 0.2em;padding:16px 0 0;border:none;"
         "border-top:1px solid #ece8e3'>"
         + "".join(parts)
         + "</div>"
     )
 
 def build_logo_header(*, logo_url: str, company: str) -> str:
+    """Brand mark only — no loud wordmark beside the logo.
+
+    A thin accent bar + mark reads cleaner in cold outreach than
+    «logo + Quantum Labs» chrome.
+    """
     url = (logo_url or "").strip()
     if not url:
         return ""
-    label = escape((company or "").strip() or "Quantum Labs")
     return (
-        '<div style="margin:0 0 18px;padding:0 0 14px;border-bottom:1px solid #e8e4df">'
-        '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
-        '<td style="vertical-align:middle;padding-right:10px">'
-        f'<img src="{escape(url, quote=True)}" width="32" height="32" alt="" '
-        'style="display:block;border:0;border-radius:7px"/>'
-        "</td>"
-        '<td style="vertical-align:middle;font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
-        'font-size:13px;letter-spacing:0.06em;color:#c4470f;font-weight:600">'
-        f"{label}</td>"
-        "</tr></table></div>\n"
+        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
+        'style="border-collapse:collapse;margin:0 0 22px">'
+        '<tr><td style="height:3px;line-height:3px;font-size:0;background:#c4470f">'
+        "&nbsp;</td></tr>"
+        '<tr><td style="padding:18px 0 16px;border-bottom:1px solid #ece8e3">'
+        f'<img src="{escape(url, quote=True)}" width="40" height="40" alt="Quantum Labs" '
+        'style="display:block;border:0;border-radius:8px"/>'
+        "</td></tr>"
+        "</table>\n"
     )
 
 
@@ -494,5 +497,7 @@ def href_marker_missing(html: str, url: str) -> bool:
     if not url:
         return True
     if url in html:
+        return False
+    if 'name="fio"' in html and 'name="phone"' in html:
         return False
     return True

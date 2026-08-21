@@ -112,13 +112,19 @@ def _html_from_plain(plain: str) -> str:
         '<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         "</head>"
-        '<body style="margin:0;padding:0;background:#ffffff">'
-        '<div style="font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
-        "line-height:1.55;color:#0f1b24;font-size:15px;max-width:600px;"
-        'margin:0 auto;padding:20px 16px">'
+        '<body style="margin:0;padding:0;background:#f3f1ec">'
+        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
+        'style="background:#f3f1ec"><tr><td style="padding:24px 12px">'
+        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
+        'style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #e8e4df">'
+        '<tr><td style="padding:0 28px 28px;'
+        "font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif;"
+        'line-height:1.58;color:#0f1b24;font-size:15px">'
         "{logo_header}"
         f"{body}\n{{legal_html}}"
-        "</div></body></html>"
+        "</td></tr></table>"
+        "</td></tr></table>"
+        "</body></html>"
     )
 
 
