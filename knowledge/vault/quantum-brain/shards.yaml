@@ -1,0 +1,62 @@
+source: /workspace/knowledge/content/quantum_labs.md
+shards:
+  - id: part-a-quantum-payouts
+    path: products/part-a-quantum-payouts.md
+    chars: 17171
+  - id: appendix-a-short-faq
+    path: products/appendix-a-short-faq.md
+    chars: 1046
+  - id: appendix-b-ava-ops
+    path: ops/appendix-b-ava-ops.md
+    chars: 12169
+  - id: lombards-playbook
+    path: lombards/part-b-playbook.md
+    chars: 59566
+  - id: second-brain-overview
+    path: platform/second-brain-overview.md
+  - id: second-brain-architecture
+    path: platform/second-brain-architecture.md
+  - id: second-brain-access-modes
+    path: platform/second-brain-access-modes.md
+  - id: second-brain-status
+    path: platform/second-brain-status.md
+  - id: second-brain-faq
+    path: platform/second-brain-faq.md
+  - id: second-brain-ops-runbook
+    path: platform/second-brain-ops-runbook.md
+  - id: second-brain-plan-stages
+    path: platform/second-brain-plan-stages.md
+  - id: office-stack-catalog
+    path: tools/office-stack-catalog.md
+  - id: tools-faq
+    path: tools/tools-faq.md
+  - id: tool-ava-mailer
+    path: tools/tool-ava-mailer.md
+  - id: tool-ava-text-bot
+    path: tools/tool-ava-text-bot.md
+  - id: tool-ava-outreach
+    path: tools/tool-ava-outreach.md
+  - id: tool-ava-calendar
+    path: tools/tool-ava-calendar.md
+  - id: tool-ava-conference
+    path: tools/tool-ava-conference.md
+  - id: tool-ava-files
+    path: tools/tool-ava-files.md
+  - id: tool-ava-knowledge
+    path: tools/tool-ava-knowledge.md
+  - id: tool-quantum-console
+    path: tools/tool-quantum-console.md
+  - id: tool-ava-voice-tools
+    path: tools/tool-ava-voice-tools.md
+  - id: verticals-catalog
+    path: verticals/catalog.md
+  - id: insurance-mass-payouts
+    path: verticals/insurance-mass-payouts.md
+  - id: trade-in-mass-payouts
+    path: verticals/trade-in-mass-payouts.md
+  - id: agro-buyback-payouts
+    path: verticals/agro-buyback-payouts.md
+  - id: lombards-mass-payouts-kb-2026
+    path: lombards/mass-payouts-kb-2026.md
+  - id: canonical-knowledge-2026
+    path: products/canonical-knowledge-2026.md

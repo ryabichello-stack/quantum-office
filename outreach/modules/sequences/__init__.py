@@ -12,17 +12,20 @@ from typing import Any, Iterator
 
 from core.paths import MODULES_DB
 from core.registry import AppContext
+from content.packs import get_pack, list_packs
 
 logger = logging.getLogger("ava-outreach.sequences")
 
-# Absolute offsets from first send (day 0)
+# Absolute offsets from first send (day 0) — used when no industry pack selected
 DEFAULT_STEPS: list[dict[str, Any]] = [
     {
         "step": 1,
         "delay_days": 0,
         "subject": None,  # use campaign subject
         "plain": None,  # use campaign template
+        "html": None,
         "label": "intro",
+        "attach_presentation": False,
     },
     {
         "step": 2,
@@ -31,11 +34,13 @@ DEFAULT_STEPS: list[dict[str, Any]] = [
         "plain": (
             "Добрый день, {name}!\n\n"
             "Подскажите, пожалуйста, успели посмотреть моё письмо ниже?\n\n"
-            "Если тема автоматизации выплат / AI-секретаря не актуальна — "
+            "Если тема массовых выплат / платёжных сценариев не актуальна — "
             "просто ответьте «неинтересно», больше писать не буду.\n\n"
             "С уважением,\n{company}\n"
         ),
+        "html": None,
         "label": "bump",
+        "attach_presentation": False,
     },
     {
         "step": 3,
@@ -48,7 +53,9 @@ DEFAULT_STEPS: list[dict[str, Any]] = [
             "Если не актуально — напишите, и я закрою тему.\n\n"
             "С уважением,\n{company}\n"
         ),
+        "html": None,
         "label": "route",
+        "attach_presentation": False,
     },
 ]
 
@@ -109,11 +116,22 @@ class SequenceStore:
                 "CREATE INDEX IF NOT EXISTS ix_seq_company ON sequence_leads(company_id)"
             )
 
-    def steps(self) -> list[dict[str, Any]]:
+    def steps(self, pack_id: str | None = None) -> list[dict[str, Any]]:
+        from content.pack_drafts import PackDraftStore, resolve_pack
+        from core.paths import SETTINGS_DB
+
+        pack = (
+            resolve_pack(pack_id or "", PackDraftStore(SETTINGS_DB))
+            if pack_id
+            else None
+        )
+        if pack and pack.get("steps"):
+            return list(pack["steps"])
         return list(DEFAULT_STEPS)
 
-    def max_step(self) -> int:
-        return max(int(s["step"]) for s in DEFAULT_STEPS)
+    def max_step(self, pack_id: str | None = None) -> int:
+        steps = self.steps(pack_id)
+        return max(int(s["step"]) for s in steps)
 
     def get_by_email(self, email: str) -> dict[str, Any] | None:
         with self.connect() as conn:
@@ -138,6 +156,8 @@ class SequenceStore:
         contact_name: str = "",
         subject_base: str = "",
         outbox_id: int | None = None,
+        pack_id: str = "",
+        meta: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         em = (email or "").strip().lower()
         now = _iso(_utc_now())
@@ -153,6 +173,11 @@ class SequenceStore:
                 "call_refused",
             ):
                 return existing
+        meta_obj: dict[str, Any] = dict(meta or {})
+        pid = (pack_id or "").strip() or str(meta_obj.get("pack_id") or "")
+        if pid:
+            meta_obj["pack_id"] = pid
+        meta_json = json.dumps(meta_obj, ensure_ascii=False)
         with self.connect() as conn:
             conn.execute(
                 """
@@ -160,7 +185,7 @@ class SequenceStore:
                     email, company_id, contact_name, current_step, status,
                     next_action_at, last_outbox_id, subject_base, meta_json,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, 0, 'active', ?, ?, ?, '{}', ?, ?)
+                ) VALUES (?, ?, ?, 0, 'active', ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(email) DO UPDATE SET
                     company_id=excluded.company_id,
                     contact_name=excluded.contact_name,
@@ -170,6 +195,7 @@ class SequenceStore:
                     next_action_at=excluded.next_action_at,
                     last_outbox_id=COALESCE(excluded.last_outbox_id, sequence_leads.last_outbox_id),
                     subject_base=COALESCE(excluded.subject_base, sequence_leads.subject_base),
+                    meta_json=excluded.meta_json,
                     updated_at=excluded.updated_at
                 """,
                 (
@@ -179,6 +205,7 @@ class SequenceStore:
                     now,  # due immediately for step 1
                     outbox_id,
                     subject_base or "",
+                    meta_json,
                     now,
                     now,
                 ),
@@ -216,6 +243,15 @@ class SequenceStore:
                 return int(cur.rowcount)
         return 0
 
+    def _pack_id_of(self, lead: dict[str, Any]) -> str:
+        try:
+            meta = json.loads(lead.get("meta_json") or "{}")
+        except Exception:
+            meta = {}
+        if isinstance(meta, dict):
+            return str(meta.get("pack_id") or "").strip()
+        return ""
+
     def mark_step_sent(
         self,
         lead_id: int,
@@ -230,7 +266,9 @@ class SequenceStore:
         if not lead:
             return None
         now = _utc_now()
-        max_s = self.max_step()
+        pack_id = self._pack_id_of(lead)
+        steps = self.steps(pack_id)
+        max_s = self.max_step(pack_id)
         try:
             meta = json.loads(lead.get("meta_json") or "{}")
             if not isinstance(meta, dict):
@@ -250,7 +288,7 @@ class SequenceStore:
             stop_reason = "sequence_completed_no_reply"
         else:
             status = "active"
-            next_step = next(s for s in DEFAULT_STEPS if int(s["step"]) == step + 1)
+            next_step = next(s for s in steps if int(s["step"]) == step + 1)
             delay_abs = int(next_step.get("delay_days") or 0)
             try:
                 from geo_schedule import snap_followup_utc
@@ -270,7 +308,7 @@ class SequenceStore:
                 next_at = _iso(next_dt)
             except Exception:  # noqa: BLE001
                 logger.exception("snap follow-up failed; fallback gap days")
-                prev = next(s for s in DEFAULT_STEPS if int(s["step"]) == step)
+                prev = next(s for s in steps if int(s["step"]) == step)
                 gap = int(next_step["delay_days"]) - int(prev["delay_days"])
                 next_at = _iso(now + timedelta(days=max(0, gap)))
             stop_reason = None
@@ -312,17 +350,25 @@ class SequenceStore:
                 WHERE status='active'
                   AND next_action_at IS NOT NULL
                   AND next_action_at <= ?
-                  AND current_step < ?
                 ORDER BY next_action_at ASC
                 LIMIT ?
                 """,
-                (now, self.max_step(), max(1, limit)),
+                (now, max(1, limit)),
             ).fetchall()
-        return [dict(r) for r in rows]
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            d = dict(r)
+            pack_id = self._pack_id_of(d)
+            if int(d.get("current_step") or 0) >= self.max_step(pack_id):
+                continue
+            d["pack_id"] = pack_id
+            d["step_def"] = self.next_step_def(d)
+            out.append(d)
+        return out
 
     def next_step_def(self, lead: dict[str, Any]) -> dict[str, Any] | None:
         nxt = int(lead.get("current_step") or 0) + 1
-        for s in DEFAULT_STEPS:
+        for s in self.steps(self._pack_id_of(lead)):
             if int(s["step"]) == nxt:
                 return s
         return None
@@ -350,7 +396,7 @@ class SequenceStore:
 
 class SequencesModule:
     name = "sequences"
-    version = "1.0.0"
+    version = "1.1.0"
 
     def __init__(self) -> None:
         self.store = SequenceStore()
@@ -366,7 +412,12 @@ class SequencesModule:
         return None
 
     def health(self) -> dict[str, Any]:
-        return {"ok": True, "counts": self.store.counts(), "steps": len(DEFAULT_STEPS)}
+        return {
+            "ok": True,
+            "counts": self.store.counts(),
+            "steps": len(DEFAULT_STEPS),
+            "packs": [p["id"] for p in list_packs()],
+        }
 
     def register_routes(self, router: Any) -> None:
         from pydantic import BaseModel
@@ -377,8 +428,13 @@ class SequencesModule:
                 "ok": True,
                 "counts": self.store.counts(),
                 "steps": DEFAULT_STEPS,
+                "packs": list_packs(),
                 "due": self.store.list_due(10),
             }
+
+        @router.get("/packs")
+        def packs() -> dict[str, Any]:
+            return {"ok": True, "items": list_packs()}
 
         @router.get("/leads")
         def leads(limit: int = 50) -> dict[str, Any]:
