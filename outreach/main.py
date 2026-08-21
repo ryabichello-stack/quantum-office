@@ -264,6 +264,7 @@ def _status_payload() -> dict[str, Any]:
         "primary_mailbox_protection": True,
         "run_respect_window": rt.get_bool("RUN_RESPECT_WINDOW", True),
         "schedule_local_windows": rt.get_bool("SCHEDULE_LOCAL_WINDOWS", True),
+        "schedule_followups_first": rt.get_bool("SCHEDULE_FOLLOWUPS_FIRST", True),
         "schedule_window": {
             "start": rt.get_int("SCHEDULE_WINDOW_START", 10),
             "end": rt.get_int("SCHEDULE_WINDOW_END", 18),
@@ -274,6 +275,17 @@ def _status_payload() -> dict[str, Any]:
             "preferred_weekdays": rt.get("SCHEDULE_PREFERRED_WEEKDAYS", "1,2,3"),
             "allowed_weekdays": rt.get("SCHEDULE_ALLOWED_WEEKDAYS", "0,1,2,3,4"),
             "default_timezone": rt.get("SCHEDULE_DEFAULT_TIMEZONE", "Europe/Moscow"),
+            "followups_first": rt.get_bool("SCHEDULE_FOLLOWUPS_FIRST", True),
+        },
+        "queue": {
+            "send_order": (
+                "followups_due_then_first_touch"
+                if rt.get_bool("SCHEDULE_FOLLOWUPS_FIRST", True)
+                else "first_touch_then_followups"
+            ),
+            "due": len(_sequences_mod.store.list_due(50)),
+            "upcoming": len(_sequences_mod.store.list_upcoming(50)),
+            "pending_first": int((_store().counts() or {}).get("pending") or 0),
         },
         "runner": _runner_mod.health(),
         "clients": {
