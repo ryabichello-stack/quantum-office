@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=iconsfix3" />
+  <link rel="stylesheet" href="styles.css?v=iconsfix4" />
   <script>
     (function () {
       function parentBase() {
@@ -94,32 +94,33 @@
             <input id="letterSubject" type="text" placeholder="Тема первого письма" />
           </label>
 
-          <div class="task-grid">
-            <label class="field">Компания в подписи
-              <input id="letterCompany" type="text" placeholder="Quantum Labs" />
-            </label>
-            <label class="field">Сайт
-              <input id="letterWebsite" type="text" placeholder="https://quantumlabs.ru" />
-            </label>
-            <label class="field">Почта
-              <input id="letterEmail" type="email" placeholder="office@quantumlabs.ru" />
-            </label>
-            <label class="field">Телефон
-              <input id="letterPhone" type="text" placeholder="+7 …" />
-            </label>
-          </div>
-          <div class="task-actions" style="margin-top:-0.25rem">
-            <button type="button" id="letterApplyContacts" class="primary">Применить контакты</button>
-            <span class="muted tight">Меняете поля выше — в письме и превью меняются значения со значками, без линий между ними</span>
-          </div>
+          <label class="field">Компания в подписи
+            <input id="letterCompany" type="text" placeholder="Quantum Labs" />
+          </label>
 
           <label class="field full">Текст подписи
             <textarea id="letterSignature" class="scroll-y" rows="4" placeholder="С уважением,&#10;команда Quantum Labs&#10;{company}"></textarea>
           </label>
-          <p class="muted tight">Только формулировка («С уважением…»). Контакты — из полей выше, не дублируйте их здесь. Можно {company}.</p>
-          <div class="sig-live">
-            <p class="sig-live-label">Как будет в письме</p>
-            <div id="letterSignatureLive" class="sig-live-body"></div>
+          <p class="muted tight">Только «С уважением…». Можно {company}. Сайт, почта и телефон — ниже, один раз.</p>
+
+          <div class="contact-icon-fields">
+            <p class="sig-live-label">Контакты в письме</p>
+            <label class="contact-icon-row">
+              <img class="contact-icon" data-icon="web" width="16" height="16" alt="" />
+              <input id="letterWebsite" type="text" placeholder="https://quantumlabs.ru" autocomplete="url" />
+            </label>
+            <label class="contact-icon-row">
+              <img class="contact-icon" data-icon="mail" width="16" height="16" alt="" />
+              <input id="letterEmail" type="email" placeholder="office@quantumlabs.ru" autocomplete="email" />
+            </label>
+            <label class="contact-icon-row">
+              <img class="contact-icon" data-icon="phone" width="16" height="16" alt="" />
+              <input id="letterPhone" type="text" placeholder="+7 …" autocomplete="tel" />
+            </label>
+            <div class="task-actions" style="margin:0.35rem 0 0">
+              <button type="button" id="letterApplyContacts" class="primary">Применить контакты</button>
+              <span class="muted tight">Эти же значения со значками попадут в HTML-письмо</span>
+            </div>
           </div>
 
           <div class="brand-row">

@@ -128,6 +128,13 @@
     return "https://a.47z.ru/_ava_outreach/assets/brand/icons/" + name + ".png";
   }
 
+  function bindContactIcons() {
+    document.querySelectorAll(".contact-icon[data-icon]").forEach((img) => {
+      const name = img.getAttribute("data-icon");
+      if (name) img.src = contactIconUrl(name);
+    });
+  }
+
   function normalizeSignatureTemplate(tpl) {
     const drop = new Set([
       "{website}",
@@ -153,63 +160,9 @@
     return cleaned || "С уважением,\nкоманда Quantum Labs\n{company}";
   }
 
-  function resolveSignatureParts() {
-    const tpl = normalizeSignatureTemplate(
-      ($("letterSignature") && $("letterSignature").value) ||
-        "С уважением,\nкоманда Quantum Labs\n{company}"
-    );
-    const company = (($("letterCompany") && $("letterCompany").value) || "").trim() || "Quantum Labs";
-    const website =
-      (($("letterWebsite") && $("letterWebsite").value) || "").trim() || "https://quantumlabs.ru";
-    const phone = (($("letterPhone") && $("letterPhone").value) || "").trim();
-    const email =
-      (($("letterEmail") && $("letterEmail").value) || "").trim() || "office@quantumlabs.ru";
-    // Text only — contacts always from fields (never from template placeholders)
-    const text = cleanSigLines(
-      tpl
-        .split("{company}").join(company)
-        .split("{website}").join("")
-        .split("{email_line}").join("")
-        .split("{email}").join("")
-        .split("{phone_line}").join("")
-        .split("{phone}").join("")
-    );
-    return { text, company, website, phone, email };
-  }
-
   function refreshSignatureLive() {
-    const box = $("letterSignatureLive");
-    if (!box) return;
-    const { text, website, phone, email } = resolveSignatureParts();
-    const siteHost = website.replace(/^https?:\/\//, "").replace(/\/$/, "");
-    const rows = [];
-    if (website) {
-      const href = website.indexOf("://") >= 0 ? website : "https://" + website;
-      rows.push(
-        `<div class="sig-contact"><img src="${contactIconUrl("web")}" width="16" height="16" alt=""/><a href="${escapeHtml(
-          href
-        )}" target="_blank" rel="noopener">${escapeHtml(siteHost || website)}</a></div>`
-      );
-    }
-    if (email) {
-      rows.push(
-        `<div class="sig-contact"><img src="${contactIconUrl("mail")}" width="16" height="16" alt=""/><a href="mailto:${escapeHtml(
-          email
-        )}">${escapeHtml(email)}</a></div>`
-      );
-    }
-    if (phone) {
-      rows.push(
-        `<div class="sig-contact"><img src="${contactIconUrl("phone")}" width="16" height="16" alt=""/><span>${escapeHtml(
-          phone
-        )}</span></div>`
-      );
-    }
-    box.innerHTML =
-      (text ? `<div class="sig-text">${escapeHtml(text).replace(/\n/g, "<br>")}</div>` : "") +
-      (rows.length ? `<div class="sig-contacts">${rows.join("")}</div>` : "") ||
-      "<span class='muted'>(пустая подпись)</span>";
-    box.classList.toggle("sig-missing-phone", Boolean(phone) && !box.textContent.includes(phone));
+    // Contacts are edited in the icon fields themselves — no duplicate read-only block.
+    bindContactIcons();
   }
 
   function campaignContactPayload() {
@@ -939,6 +892,7 @@
 
   async function boot() {
     bindTabs();
+    bindContactIcons();
     bindInnerWheelScroll();
     const adv = $("letterAdvanced");
     if (adv) {
