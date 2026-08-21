@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=scrollfix8" />
+  <link rel="stylesheet" href="styles.css?v=sigfix1" />
   <script>
     (function () {
       function parentBase() {
@@ -105,11 +105,19 @@
               <input id="letterPhone" type="text" placeholder="+7 …" />
             </label>
           </div>
+          <div class="task-actions" style="margin-top:-0.25rem">
+            <button type="button" id="letterApplyContacts" class="primary">Применить контакты в подпись</button>
+            <span class="muted tight">Телефон, компания и сайт подставятся в превью подписи сразу</span>
+          </div>
 
-          <label class="field full">Подпись письма
+          <label class="field full">Шаблон подписи
             <textarea id="letterSignature" class="scroll-y" rows="5" placeholder="С уважением,&#10;команда Quantum Labs&#10;{company}&#10;{website}&#10;{phone_line}"></textarea>
           </label>
-          <p class="muted tight">В подписи: {company} {website} {phone} {phone_line}. В тексте письма вставьте {signature}.</p>
+          <p class="muted tight">Плейсхолдеры: {company} {website} {phone} {phone_line}. В тексте письма — {signature}.</p>
+          <div class="sig-live">
+            <p class="sig-live-label">Как будет в письме</p>
+            <pre id="letterSignatureLive" class="sig-live-body"></pre>
+          </div>
 
           <div class="brand-row">
             <div class="brand-preview-wrap">
@@ -566,6 +574,6 @@
       </section>
     </main>
   </div>
-  <script src="app.js?v=scrollfix8"></script>
+  <script src="app.js?v=sigfix1"></script>
 </body>
 </html>

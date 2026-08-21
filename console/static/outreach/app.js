@@ -101,6 +101,75 @@
     };
   }
 
+  function cleanSigLines(text) {
+    const lines = String(text || "").split("\n").map((ln) => ln.replace(/\s+$/g, ""));
+    const out = [];
+    for (const ln of lines) {
+      if (!ln.trim() && out.length && !out[out.length - 1].trim()) continue;
+      out.push(ln);
+    }
+    while (out.length && !out[0].trim()) out.shift();
+    while (out.length && !out[out.length - 1].trim()) out.pop();
+    return out.join("\n");
+  }
+
+  function resolveSignatureLive() {
+    const tpl =
+      ($("letterSignature") && $("letterSignature").value) ||
+      "С уважением,\nкоманда Quantum Labs\n{company}\n{website}\n{phone_line}";
+    const company = (($("letterCompany") && $("letterCompany").value) || "").trim() || "Quantum Labs";
+    const website =
+      (($("letterWebsite") && $("letterWebsite").value) || "").trim() || "https://quantumlabs.ru";
+    const phone = (($("letterPhone") && $("letterPhone").value) || "").trim();
+    const phoneLine = phone ? "Телефон: " + phone : "";
+    const resolved = cleanSigLines(
+      tpl
+        .split("{company}").join(company)
+        .split("{website}").join(website)
+        .split("{phone_line}").join(phoneLine)
+        .split("{phone}").join(phone)
+    );
+    return resolved;
+  }
+
+  function refreshSignatureLive() {
+    const box = $("letterSignatureLive");
+    if (!box) return;
+    const text = resolveSignatureLive();
+    box.textContent = text || "(пустая подпись)";
+    const phone = (($("letterPhone") && $("letterPhone").value) || "").trim();
+    box.classList.toggle("sig-missing-phone", Boolean(phone) && !text.includes(phone));
+  }
+
+  function campaignContactPayload() {
+    return {
+      OUTREACH_COMPANY_NAME: ($("letterCompany") && $("letterCompany").value) || "",
+      OUTREACH_WEBSITE: ($("letterWebsite") && $("letterWebsite").value) || "",
+      OUTREACH_CONTACT_PHONE: ($("letterPhone") && $("letterPhone").value) || "",
+      OUTREACH_SIGNATURE: ($("letterSignature") && $("letterSignature").value) || "",
+      OUTREACH_LOGO_URL: ($("letterLogoPreview") && $("letterLogoPreview").getAttribute("src")) || "",
+      OUTREACH_LOGO_ENABLED: $("letterLogoEnabled") && $("letterLogoEnabled").checked ? "true" : "false",
+    };
+  }
+
+  async function applyCampaignContacts(opts = {}) {
+    const quiet = !!opts.quiet;
+    refreshSignatureLive();
+    const data = await api("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify({ settings: campaignContactPayload() }),
+    });
+    settingsCache = data.settings || settingsCache;
+    if (!quiet && $("letterLog")) {
+      $("letterLog").hidden = false;
+      const phone = (($("letterPhone") && $("letterPhone").value) || "").trim();
+      $("letterLog").textContent = phone
+        ? `Контакты применены. В подписи: ${phone}`
+        : "Контакты применены (телефон пустой — строка Телефон не попадёт в письмо).";
+    }
+    return data;
+  }
+
   function showLogin() {
     $("login").classList.remove("hidden");
     $("app").classList.add("hidden");
@@ -460,6 +529,7 @@
     if (!$("oneTo").value && s.MAIL_USERNAME) {
       $("oneTo").value = s.MAIL_USERNAME;
     }
+    refreshSignatureLive();
   }
 
   async function loadAntiban() {
@@ -1043,6 +1113,7 @@
 
     $("letterPreview").addEventListener("click", async () => {
       try {
+        await applyCampaignContacts({ quiet: true });
         const data = await api("/api/preview", {
           method: "POST",
           body: JSON.stringify(campaignPreviewPayload()),
@@ -1053,20 +1124,43 @@
         const adv = $("letterAdvanced");
         if (adv) adv.open = true;
         paintPreviewHtml($("previewFrame"), data.html || "");
+        refreshSignatureLive();
         if ($("letterLog")) {
           $("letterLog").hidden = false;
-          const phoneOk = ($("letterPhone").value || "").trim()
-            ? (data.plain || "").includes(($("letterPhone").value || "").trim())
-            : true;
+          const phone = ($("letterPhone").value || "").trim();
+          const phoneOk = !phone || (data.plain || "").includes(phone);
           $("letterLog").textContent =
             (data.attach_presentation
               ? "К письму будет прикреплена презентация PDF. "
               : "Презентация не прикрепляется. ") +
-            (phoneOk ? "Телефон в письме: ок." : "Телефон не попал в текст — проверьте {signature}/{phone_line} и Сохранить.");
+            (phoneOk
+              ? phone
+                ? `Телефон в письме: ${phone}`
+                : "Телефон не указан."
+              : "Телефон не попал в текст — проверьте шаблон подписи ({phone_line}) и «Применить контакты».");
         }
       } catch (e) {
         logAction(String(e));
       }
+    });
+
+    if ($("letterApplyContacts")) {
+      $("letterApplyContacts").addEventListener("click", async () => {
+        try {
+          await applyCampaignContacts();
+        } catch (e) {
+          if ($("letterLog")) {
+            $("letterLog").hidden = false;
+            $("letterLog").textContent = String(e);
+          }
+        }
+      });
+    }
+    ["letterCompany", "letterWebsite", "letterPhone", "letterSignature"].forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.addEventListener("input", refreshSignatureLive);
+      el.addEventListener("change", refreshSignatureLive);
     });
 
     if ($("letterLogoFile")) {
