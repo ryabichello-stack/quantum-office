@@ -696,17 +696,31 @@
 
   function paintPreviewHtml(box, html) {
     if (!box) return;
-    const raw = String(html || "");
-    if (box.tagName === "IFRAME") {
-      // srcdoc renders a full email document reliably (div.innerHTML often blanks it)
-      const doc =
-        raw.trim() ||
-        "<!DOCTYPE html><html><body style='font-family:Manrope,Segoe UI,sans-serif;color:#1a1a1a;padding:12px'><p class='muted'>Нет HTML</p></body></html>";
-      box.srcdoc = doc;
+    const raw = String(html || "").trim();
+    if (!raw) {
+      box.innerHTML =
+        "<p style='margin:0;color:#5a6b78;font:14px/1.45 Manrope,Segoe UI,sans-serif'>Нет HTML-версии — нажмите «Превью» ещё раз или примените отрасль.</p>";
       return;
     }
+    // Never assign a full <html> document via innerHTML — browsers drop it and the
+    // white preview looks empty while the dark plain pane still works.
+    let inner = raw;
     const bodyMatch = raw.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-    box.innerHTML = bodyMatch ? bodyMatch[1] : raw;
+    if (bodyMatch) inner = bodyMatch[1];
+    inner = inner
+      .replace(/<!DOCTYPE[^>]*>/gi, "")
+      .replace(/<\/?(html|head)[^>]*>/gi, "")
+      .replace(/<meta[^>]*>/gi, "")
+      .trim();
+    if (!inner) {
+      box.innerHTML =
+        "<p style='margin:0;color:#5a6b78;font:14px/1.45 Manrope,Segoe UI,sans-serif'>HTML пустой после разбора шаблона.</p>";
+      return;
+    }
+    box.innerHTML =
+      "<div class='email-preview-root' style='color:#1a1a1a;font:14px/1.5 Manrope,Segoe UI,Helvetica,Arial,sans-serif;background:#fff'>" +
+      inner +
+      "</div>";
   }
 
   function autoGrowField(el) {
@@ -1035,9 +1049,10 @@
         });
         $("previewSubject").textContent = data.subject || "";
         $("previewPlain").textContent = data.plain || "";
-        paintPreviewHtml($("previewFrame"), data.html || "");
+        // Open <details> first — painting into a closed panel leaves the white preview blank.
         const adv = $("letterAdvanced");
         if (adv) adv.open = true;
+        paintPreviewHtml($("previewFrame"), data.html || "");
         if ($("letterLog")) {
           $("letterLog").hidden = false;
           const phoneOk = ($("letterPhone").value || "").trim()

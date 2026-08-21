@@ -356,16 +356,23 @@ textarea.scroll-y {
   background: #fff !important;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 0;
+  padding: 0.75rem 0.9rem;
   box-sizing: border-box;
   display: block;
   color: #1a1a1a !important;
+  font-family: Manrope, Segoe UI, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
 }
-iframe.preview-html,
-iframe#previewFrame {
-  padding: 0;
-  border: 1px solid var(--line);
+.preview-html .email-preview-root,
+.preview-html .email-preview-root p,
+.preview-html .email-preview-root li,
+.preview-html .email-preview-root td,
+.preview-html .email-preview-root span,
+.preview-html .email-preview-root div {
+  color: #1a1a1a;
 }
+.preview-html img { max-width: 100%; height: auto; }
 
 button {
   cursor: pointer;
