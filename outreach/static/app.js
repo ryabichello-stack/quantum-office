@@ -701,41 +701,14 @@
     box.innerHTML = bodyMatch ? bodyMatch[1] : raw;
   }
 
-  function bindInnerWheelScroll(root) {
-    // Inside Console iframe the parent page often eats wheel; scroll boxes ourselves.
-    const scope = root || document;
-    const sel =
-      "textarea.scroll-y, #letterPlain, #letterHtml, #letterSignature, pre.log, .preview-html, .scroll-y";
-
-    const wheelHandler = (ev) => {
-      const el = ev.target && ev.target.closest ? ev.target.closest(sel) : null;
-      if (!el || !scope.contains(el)) return;
-      const maxScroll = el.scrollHeight - el.clientHeight;
-      if (maxScroll <= 1) return; // nothing to scroll — don't trap the gesture
-      let dy = ev.deltaY;
-      if (ev.deltaMode === 1) dy *= 16; // lines
-      if (ev.deltaMode === 2) dy *= el.clientHeight; // pages
-      const next = el.scrollTop + dy;
-      const clamped = Math.max(0, Math.min(maxScroll, next));
-      // Only claim the event when we actually move (or would move within range)
-      if ((dy < 0 && el.scrollTop <= 0) || (dy > 0 && el.scrollTop >= maxScroll - 0.5)) {
-        return;
-      }
-      ev.preventDefault();
-      ev.stopPropagation();
-      el.scrollTop = clamped;
-    };
-
-    if (!scope.__qlWheelBound) {
-      scope.__qlWheelBound = true;
-      scope.addEventListener("wheel", wheelHandler, { passive: false, capture: true });
-    }
-
-    // Ensure overflow boxes can actually scroll
-    scope.querySelectorAll(sel).forEach((el) => {
-      const cs = window.getComputedStyle(el);
-      if (cs.overflowY === "visible") el.style.overflowY = "auto";
-    });
+  function bindInnerWheelScroll() {
+    // Prefer native scrolling. A previous preventDefault+scrollTop hack blocked
+    // the wheel entirely in the Console iframe. Contain overscroll so the parent
+    // page does not steal the gesture when a box hits its edge.
+    try {
+      document.documentElement.style.overscrollBehaviorY = "contain";
+      document.body.style.overscrollBehaviorY = "contain";
+    } catch (_) {}
   }
 
   async function boot() {
@@ -991,7 +964,6 @@
         $("previewSubject").textContent = data.subject || "";
         $("previewPlain").textContent = data.plain || "";
         paintPreviewHtml($("previewFrame"), data.html || "");
-        bindInnerWheelScroll(document);
         const adv = $("letterAdvanced");
         if (adv) adv.open = true;
         if ($("letterLog")) {
