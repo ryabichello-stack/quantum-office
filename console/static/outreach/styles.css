@@ -302,7 +302,6 @@ body.embedded .app { padding-top: 0.35rem; }
 .sig-live-body .sig-contact a {
   color: var(--ink);
   text-decoration: none;
-  border-bottom: 1px solid rgba(196, 71, 15, 0.35);
 }
 .sig-live-body.sig-missing-phone {
   outline: 1px solid rgba(180, 35, 24, 0.35);

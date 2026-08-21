@@ -638,6 +638,10 @@ def api_settings_get() -> dict[str, Any]:
         snap["OUTREACH_TEMPLATE_HTML"] = DEFAULT_HTML
     if not (snap.get("OUTREACH_SIGNATURE") or "").strip():
         snap["OUTREACH_SIGNATURE"] = DEFAULT_SIGNATURE
+    else:
+        from templates import normalize_signature_template
+
+        snap["OUTREACH_SIGNATURE"] = normalize_signature_template(snap.get("OUTREACH_SIGNATURE"))
     if not (snap.get("OUTREACH_LOGO_URL") or "").strip():
         snap["OUTREACH_LOGO_URL"] = default_logo_url(lambda k: snap.get(k) or "")
     if snap.get("OUTREACH_LOGO_ENABLED") in (None, ""):

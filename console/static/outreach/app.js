@@ -114,35 +114,6 @@
     return out.join("\n");
   }
 
-  function contactIconUrl(name) {
-    // Through Console proxy when embedded; absolute outreach path otherwise.
-    if (BASE) return BASE.replace(/\/$/, "") + "/assets/brand/icons/" + name + ".png";
-    return "https://a.47z.ru/_ava_outreach/assets/brand/icons/" + name + ".png";
-  }
-
-  function resolveSignatureParts() {
-    const tpl =
-      ($("letterSignature") && $("letterSignature").value) ||
-      "С уважением,\nкоманда Quantum Labs\n{company}\n{website}\n{email_line}\n{phone_line}";
-    const company = (($("letterCompany") && $("letterCompany").value) || "").trim() || "Quantum Labs";
-    const website =
-      (($("letterWebsite") && $("letterWebsite").value) || "").trim() || "https://quantumlabs.ru";
-    const phone = (($("letterPhone") && $("letterPhone").value) || "").trim();
-    const email =
-      (($("letterEmail") && $("letterEmail").value) || "").trim() || "office@quantumlabs.ru";
-    const phoneLine = phone ? "Телефон: " + phone : "";
-    const resolved = cleanSigLines(
-      tpl
-        .split("{company}").join(company)
-        .split("{website}").join(website)
-        .split("{email_line}").join(email)
-        .split("{email}").join(email)
-        .split("{phone_line}").join(phoneLine)
-        .split("{phone}").join(phone)
-    );
-    return { text: resolved, company, website, phone, email };
-  }
-
   function escapeHtml(s) {
     return String(s || "")
       .replace(/&/g, "&amp;")
@@ -151,21 +122,66 @@
       .replace(/"/g, "&quot;");
   }
 
+  function contactIconUrl(name) {
+    // Through Console proxy when embedded; absolute outreach path otherwise.
+    if (BASE) return BASE.replace(/\/$/, "") + "/assets/brand/icons/" + name + ".png";
+    return "https://a.47z.ru/_ava_outreach/assets/brand/icons/" + name + ".png";
+  }
+
+  function normalizeSignatureTemplate(tpl) {
+    const drop = new Set([
+      "{website}",
+      "{email}",
+      "{email_line}",
+      "{phone}",
+      "{phone_line}",
+      "{website}{phone_line}",
+      "{website}{email_line}",
+      "{website}{email_line}{phone_line}",
+    ]);
+    const lines = String(tpl || "")
+      .replace(/\r\n/g, "\n")
+      .split("\n")
+      .filter((ln) => {
+        const s = ln.trim();
+        if (!s) return true;
+        if (drop.has(s)) return false;
+        if (s.startsWith("{") && s.endsWith("}") && /(website|email|phone)/.test(s)) return false;
+        return true;
+      });
+    const cleaned = cleanSigLines(lines.join("\n"));
+    return cleaned || "С уважением,\nкоманда Quantum Labs\n{company}";
+  }
+
+  function resolveSignatureParts() {
+    const tpl = normalizeSignatureTemplate(
+      ($("letterSignature") && $("letterSignature").value) ||
+        "С уважением,\nкоманда Quantum Labs\n{company}"
+    );
+    const company = (($("letterCompany") && $("letterCompany").value) || "").trim() || "Quantum Labs";
+    const website =
+      (($("letterWebsite") && $("letterWebsite").value) || "").trim() || "https://quantumlabs.ru";
+    const phone = (($("letterPhone") && $("letterPhone").value) || "").trim();
+    const email =
+      (($("letterEmail") && $("letterEmail").value) || "").trim() || "office@quantumlabs.ru";
+    // Text only — contacts always from fields (never from template placeholders)
+    const text = cleanSigLines(
+      tpl
+        .split("{company}").join(company)
+        .split("{website}").join("")
+        .split("{email_line}").join("")
+        .split("{email}").join("")
+        .split("{phone_line}").join("")
+        .split("{phone}").join("")
+    );
+    return { text, company, website, phone, email };
+  }
+
   function refreshSignatureLive() {
     const box = $("letterSignatureLive");
     if (!box) return;
     const { text, website, phone, email } = resolveSignatureParts();
     const siteHost = website.replace(/^https?:\/\//, "").replace(/\/$/, "");
-    const skip = new Set(
-      [website, siteHost, "https://" + siteHost, email, phone, phone ? "Телефон: " + phone : ""]
-        .filter(Boolean)
-        .map((x) => x.toLowerCase())
-    );
-    const textLines = text
-      .split("\n")
-      .filter((ln) => !skip.has(ln.trim().toLowerCase()))
-      .join("\n")
-      .trim();
     const rows = [];
     if (website) {
       const href = website.indexOf("://") >= 0 ? website : "https://" + website;
@@ -190,21 +206,21 @@
       );
     }
     box.innerHTML =
-      (textLines
-        ? `<div class="sig-text">${escapeHtml(textLines).replace(/\n/g, "<br>")}</div>`
-        : "") +
+      (text ? `<div class="sig-text">${escapeHtml(text).replace(/\n/g, "<br>")}</div>` : "") +
       (rows.length ? `<div class="sig-contacts">${rows.join("")}</div>` : "") ||
       "<span class='muted'>(пустая подпись)</span>";
     box.classList.toggle("sig-missing-phone", Boolean(phone) && !box.textContent.includes(phone));
   }
 
   function campaignContactPayload() {
+    const sigEl = $("letterSignature");
+    if (sigEl) sigEl.value = normalizeSignatureTemplate(sigEl.value);
     return {
       OUTREACH_COMPANY_NAME: ($("letterCompany") && $("letterCompany").value) || "",
       OUTREACH_WEBSITE: ($("letterWebsite") && $("letterWebsite").value) || "",
       OUTREACH_CONTACT_PHONE: ($("letterPhone") && $("letterPhone").value) || "",
       OUTREACH_CONTACT_EMAIL: ($("letterEmail") && $("letterEmail").value) || "",
-      OUTREACH_SIGNATURE: ($("letterSignature") && $("letterSignature").value) || "",
+      OUTREACH_SIGNATURE: (sigEl && sigEl.value) || "",
       OUTREACH_LOGO_URL: ($("letterLogoPreview") && $("letterLogoPreview").getAttribute("src")) || "",
       OUTREACH_LOGO_ENABLED: $("letterLogoEnabled") && $("letterLogoEnabled").checked ? "true" : "false",
     };
@@ -533,9 +549,9 @@
         s.OUTREACH_CONTACT_EMAIL || s.OUTREACH_UNSUBSCRIBE_MAILTO || s.MAIL_USERNAME || "office@quantumlabs.ru";
     }
     if ($("letterSignature")) {
-      $("letterSignature").value =
-        s.OUTREACH_SIGNATURE ||
-        "С уважением,\nкоманда Quantum Labs\n{company}\n{website}\n{email_line}\n{phone_line}";
+      $("letterSignature").value = normalizeSignatureTemplate(
+        s.OUTREACH_SIGNATURE || "С уважением,\nкоманда Quantum Labs\n{company}"
+      );
     }
     if ($("letterLogoEnabled")) {
       $("letterLogoEnabled").checked = String(s.OUTREACH_LOGO_ENABLED || "true").toLowerCase() !== "false";

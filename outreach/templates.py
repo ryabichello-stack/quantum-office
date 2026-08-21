@@ -75,10 +75,10 @@ def resolve_greeting(contact_name: str | None) -> tuple[str, str]:
 
 DEFAULT_SIGNATURE = """С уважением,
 команда Quantum Labs
-{company}
-{website}
-{email_line}
-{phone_line}"""
+{company}"""
+
+# Contact lines (website / email / phone) always come from Campaign fields,
+# not from the signature textarea — so the user edits them once.
 
 
 def public_base_url(settings_get=None) -> str:
@@ -151,6 +151,33 @@ def clean_blank_lines(text: str) -> str:
     return "\n".join(out)
 
 
+def normalize_signature_template(template: str | None) -> str:
+    """Keep closing text only; strip contact placeholders / duplicated contact lines."""
+    raw = (template or "").replace("\r\n", "\n")
+    drop_exact = {
+        "{website}",
+        "{email}",
+        "{email_line}",
+        "{phone}",
+        "{phone_line}",
+        "{website}{phone_line}",
+        "{website}{email_line}",
+        "{website}{email_line}{phone_line}",
+    }
+    out: list[str] = []
+    for ln in raw.split("\n"):
+        s = ln.strip()
+        if s.lower() in {x.lower() for x in drop_exact}:
+            continue
+        if s.startswith("{") and s.endswith("}") and any(
+            k in s for k in ("website", "email", "phone")
+        ):
+            continue
+        out.append(ln.rstrip())
+    cleaned = clean_blank_lines("\n".join(out))
+    return cleaned or DEFAULT_SIGNATURE
+
+
 def build_signature(
     *,
     signature_template: str | None,
@@ -159,41 +186,52 @@ def build_signature(
     phone: str,
     email: str = "",
 ) -> str:
-    """Render editable signature; empty phone/company/email lines are dropped."""
+    """Closing text from template + contacts from dedicated fields (single source)."""
     phone_s = (phone or "").strip()
     email_s = (email or "").strip()
-    phone_line = f"Телефон: {phone_s}" if phone_s else ""
-    email_line = email_s
-    tpl = (signature_template or "").strip() or DEFAULT_SIGNATURE
-    raw = _safe_format(
-        tpl,
-        {
-            "company": (company or "").strip(),
-            "website": (website or "").strip(),
-            "phone": phone_s,
-            "phone_line": phone_line,
-            "email": email_s,
-            "email_line": email_line,
-        },
+    site = (website or "").strip()
+    company_s = (company or "").strip()
+    tpl = normalize_signature_template(signature_template)
+    text = clean_blank_lines(
+        _safe_format(
+            tpl,
+            {
+                "company": company_s,
+                # legacy placeholders → empty (contacts appended below from fields)
+                "website": "",
+                "phone": "",
+                "phone_line": "",
+                "email": "",
+                "email_line": "",
+            },
+        )
     )
-    return clean_blank_lines(raw)
+    contacts: list[str] = []
+    if site:
+        contacts.append(site)
+    if email_s:
+        contacts.append(email_s)
+    if phone_s:
+        contacts.append(f"Телефон: {phone_s}")
+    if contacts:
+        text = clean_blank_lines(text + "\n" + "\n".join(contacts))
+    return text
 
 
 def _icon_row(*, icon_src: str, label: str, href: str | None = None) -> str:
     safe_label = escape(label)
     content = (
-        f'<a href="{escape(href, quote=True)}" style="color:#0f1b24;text-decoration:none;'
-        f'border-bottom:1px solid #e8d5c8">{safe_label}</a>'
+        f'<a href="{escape(href, quote=True)}" style="color:#0f1b24;text-decoration:none">{safe_label}</a>'
         if href
         else f'<span style="color:#0f1b24">{safe_label}</span>'
     )
     return (
         '<tr>'
-        '<td style="width:22px;padding:3px 8px 3px 0;vertical-align:middle">'
+        '<td style="width:22px;padding:2px 8px 2px 0;vertical-align:middle">'
         f'<img src="{escape(icon_src, quote=True)}" width="16" height="16" alt="" '
         'style="display:block;border:0;outline:none"/>'
         "</td>"
-        f'<td style="padding:3px 0;vertical-align:middle;font-size:13px;line-height:1.35;'
+        f'<td style="padding:2px 0;vertical-align:middle;font-size:13px;line-height:1.35;'
         f'font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif">{content}</td>'
         "</tr>"
     )
@@ -208,7 +246,7 @@ def build_signature_html(
     icon_base: str | None = None,
     settings_get=None,
 ) -> str:
-    """HTML signature with micro-icons for website / email / phone."""
+    """HTML signature: text block + icon contacts from fields (no divider lines)."""
     site = (website or "").strip()
     phone_s = (phone or "").strip()
     email_s = (email or "").strip()
@@ -255,7 +293,7 @@ def build_signature_html(
     parts: list[str] = []
     if text_block:
         parts.append(
-            "<div style='margin:0 0 8px;line-height:1.5;color:#0f1b24;"
+            "<div style='margin:0 0 10px;line-height:1.5;color:#0f1b24;"
             "font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px'>"
             + escape(text_block).replace("\n", "<br>\n")
             + "</div>"
@@ -276,19 +314,14 @@ def build_signature_html(
     if rows:
         parts.append(
             '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
-            'style="border-collapse:collapse;margin:4px 0 0">'
+            'style="border-collapse:collapse;margin:0">'
             + "".join(rows)
             + "</table>"
         )
 
     if not parts:
         return ""
-    return (
-        "<div style='margin:1.15em 0 0.35em;padding-top:10px;"
-        "border-top:1px solid #eee8e2'>"
-        + "".join(parts)
-        + "</div>"
-    )
+    return "<div style='margin:1.15em 0 0.35em'>" + "".join(parts) + "</div>"
 
 
 def build_logo_header(*, logo_url: str, company: str) -> str:
