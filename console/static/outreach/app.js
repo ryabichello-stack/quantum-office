@@ -293,6 +293,51 @@
     }
   }
 
+  function formatBytes(n) {
+    const x = Number(n) || 0;
+    if (x < 1024) return x + " B";
+    if (x < 1024 * 1024) return (x / 1024).toFixed(1) + " KB";
+    return (x / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  function formatPresentationMeta(meta, packTitle) {
+    if (!meta || !meta.exists) {
+      return packTitle
+        ? `Презентация для «${packTitle}»: файл ещё не загружен`
+        : "Презентация отрасли: файл ещё не загружен";
+    }
+    const srcLabel =
+      meta.source === "custom"
+        ? "загружена вами"
+        : meta.source === "pack"
+          ? "базовая отраслевая"
+          : meta.source === "default"
+            ? "общая Quantum Payouts"
+            : meta.source || "";
+    const when = meta.mtime ? new Date(meta.mtime * 1000).toLocaleString("ru-RU") : "";
+    return (
+      `PDF: ${meta.filename || "presentation.pdf"} · ${formatBytes(meta.bytes)}` +
+      (srcLabel ? ` · ${srcLabel}` : "") +
+      (when ? ` · ${when}` : "")
+    );
+  }
+
+  async function refreshPresentationMeta(packId) {
+    const pid = packId || selectedPackId;
+    if (!pid || !$("letterPdfMeta")) return null;
+    try {
+      const data = await api("/api/packs/" + encodeURIComponent(pid) + "/presentation");
+      const meta = data.presentation || {};
+      const pack = packsCache.find((p) => p.id === pid);
+      $("letterPdfMeta").textContent = formatPresentationMeta(meta, pack && pack.title);
+      if ($("letterPdfReset")) $("letterPdfReset").disabled = !meta.can_reset;
+      return meta;
+    } catch (e) {
+      $("letterPdfMeta").textContent = String(e.message || e);
+      return null;
+    }
+  }
+
   async function previewPack(packId, fillEditors = true) {
     if (!packId) return;
     const data = await api("/api/packs/" + encodeURIComponent(packId));
@@ -313,9 +358,13 @@
         .join("");
     }
     if ($("letterPdfMeta")) {
-      $("letterPdfMeta").textContent = pack.presentation
-        ? `Файл презентации: ${pack.presentation}`
-        : "";
+      $("letterPdfMeta").textContent = formatPresentationMeta(
+        pack.presentation_meta,
+        pack.title || packId
+      );
+      if ($("letterPdfReset")) {
+        $("letterPdfReset").disabled = !(pack.presentation_meta && pack.presentation_meta.can_reset);
+      }
     }
     if (fillEditors) {
       if (pack.subject) $("letterSubject").value = pack.subject;
@@ -326,6 +375,7 @@
       }
       ["letterPlain", "letterHtml", "letterSignature"].forEach((id) => autoGrowField($(id)));
     }
+    await refreshPresentationMeta(selectedPackId);
     return pack;
   }
 
@@ -545,10 +595,12 @@
         String(s.OUTREACH_ATTACH_PRESENTATION || "false").toLowerCase() === "true" ||
         s.OUTREACH_ATTACH_PRESENTATION === "1";
     }
-    if ($("letterPdfMeta") && s.OUTREACH_PRESENTATION_PDF) {
+    selectedPackId = s.OUTREACH_SEQUENCE_PACK || selectedPackId || "";
+    if (selectedPackId) {
+      refreshPresentationMeta(selectedPackId).catch(() => {});
+    } else if ($("letterPdfMeta") && s.OUTREACH_PRESENTATION_PDF) {
       $("letterPdfMeta").textContent = `Файл презентации: ${s.OUTREACH_PRESENTATION_PDF}`;
     }
-    selectedPackId = s.OUTREACH_SEQUENCE_PACK || selectedPackId || "";
     if (!$("oneTo").value && s.MAIL_USERNAME) {
       $("oneTo").value = s.MAIL_USERNAME;
     }
@@ -1222,6 +1274,82 @@
           }
         } catch (e) {
           logAction(String(e));
+        }
+      });
+    }
+
+    if ($("letterPdfFile")) {
+      $("letterPdfFile").addEventListener("change", async () => {
+        const file = $("letterPdfFile").files && $("letterPdfFile").files[0];
+        const packId =
+          selectedPackId ||
+          document.querySelector('input[name="packId"]:checked')?.value ||
+          "";
+        if (!file) return;
+        if (!packId) {
+          if ($("letterLog")) {
+            $("letterLog").hidden = false;
+            $("letterLog").textContent = "Сначала выберите отрасль.";
+          }
+          $("letterPdfFile").value = "";
+          return;
+        }
+        try {
+          const fd = new FormData();
+          fd.append("file", file);
+          const data = await api("/api/packs/" + encodeURIComponent(packId) + "/presentation", {
+            method: "POST",
+            body: fd,
+          });
+          const meta = data.presentation || {};
+          if ($("letterPdfMeta")) {
+            $("letterPdfMeta").textContent = formatPresentationMeta(meta, packId);
+          }
+          if ($("letterPdfReset")) $("letterPdfReset").disabled = !meta.can_reset;
+          if ($("letterAttachPdf")) $("letterAttachPdf").checked = true;
+          if ($("letterLog")) {
+            $("letterLog").hidden = false;
+            $("letterLog").textContent =
+              `Презентация для «${packId}» загружена (${formatBytes(meta.bytes || file.size)}).`;
+          }
+          // refresh pack cache meta
+          const pack = packsCache.find((p) => p.id === packId);
+          if (pack) pack.presentation_meta = meta;
+        } catch (e) {
+          if ($("letterLog")) {
+            $("letterLog").hidden = false;
+            $("letterLog").textContent = String(e);
+          }
+        } finally {
+          $("letterPdfFile").value = "";
+        }
+      });
+    }
+    if ($("letterPdfReset")) {
+      $("letterPdfReset").addEventListener("click", async () => {
+        const packId =
+          selectedPackId ||
+          document.querySelector('input[name="packId"]:checked')?.value ||
+          "";
+        if (!packId) return;
+        try {
+          const data = await api("/api/packs/" + encodeURIComponent(packId) + "/presentation", {
+            method: "DELETE",
+          });
+          const meta = data.presentation || {};
+          if ($("letterPdfMeta")) {
+            $("letterPdfMeta").textContent = formatPresentationMeta(meta, packId);
+          }
+          if ($("letterPdfReset")) $("letterPdfReset").disabled = !meta.can_reset;
+          if ($("letterLog")) {
+            $("letterLog").hidden = false;
+            $("letterLog").textContent = `Презентация «${packId}» сброшена к базовой.`;
+          }
+        } catch (e) {
+          if ($("letterLog")) {
+            $("letterLog").hidden = false;
+            $("letterLog").textContent = String(e);
+          }
         }
       });
     }

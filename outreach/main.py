@@ -48,7 +48,12 @@ from templates import (
     public_base_url,
     render_cooperation,
 )
-from content.packs import list_packs, pack_campaign_templates
+from content.packs import get_pack, list_packs, pack_campaign_templates
+from presentations import (
+    presentation_meta,
+    reset_presentation,
+    save_presentation,
+)
 
 load_dotenv()
 
@@ -810,7 +815,10 @@ class ApplyPackBody(BaseModel):
 
 @app.get("/api/packs", dependencies=[Depends(require_ui_auth)])
 def api_packs() -> dict[str, Any]:
-    return {"ok": True, "items": list_packs()}
+    items = list_packs()
+    for it in items:
+        it["presentation_meta"] = presentation_meta(it.get("id"))
+    return {"ok": True, "items": items}
 
 
 @app.get("/api/packs/{pack_id}", dependencies=[Depends(require_ui_auth)])
@@ -818,7 +826,48 @@ def api_pack_get(pack_id: str) -> dict[str, Any]:
     tpl = pack_campaign_templates(pack_id)
     if not tpl:
         raise HTTPException(status_code=404, detail="unknown pack")
+    tpl["presentation_meta"] = presentation_meta(tpl.get("pack_id"))
     return {"ok": True, "pack": tpl}
+
+
+@app.get("/api/packs/{pack_id}/presentation", dependencies=[Depends(require_ui_auth)])
+def api_pack_presentation_meta(pack_id: str) -> dict[str, Any]:
+    if not get_pack(pack_id):
+        raise HTTPException(status_code=404, detail="unknown pack")
+    return {"ok": True, "presentation": presentation_meta(pack_id)}
+
+
+@app.post("/api/packs/{pack_id}/presentation", dependencies=[Depends(require_ui_auth)])
+async def api_pack_presentation_upload(
+    pack_id: str,
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
+    pack = get_pack(pack_id)
+    if not pack:
+        raise HTTPException(status_code=404, detail="unknown pack")
+    raw = await file.read()
+    try:
+        meta = save_presentation(pack["id"], raw, original_name=file.filename or "")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # Point active campaign at this pack slot if it is the selected industry
+    rt = _rt()
+    active = (rt.get("OUTREACH_SEQUENCE_PACK", "") or "").strip()
+    if active == pack["id"]:
+        rt.set_many({"OUTREACH_PRESENTATION_PDF": f"presentations/{pack['id']}.pdf"})
+    return {"ok": True, "presentation": meta, "pack_id": pack["id"]}
+
+
+@app.delete("/api/packs/{pack_id}/presentation", dependencies=[Depends(require_ui_auth)])
+def api_pack_presentation_reset(pack_id: str) -> dict[str, Any]:
+    pack = get_pack(pack_id)
+    if not pack:
+        raise HTTPException(status_code=404, detail="unknown pack")
+    try:
+        meta = reset_presentation(pack["id"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "presentation": meta, "pack_id": pack["id"]}
 
 
 @app.post("/api/packs/apply", dependencies=[Depends(require_ui_auth)])
@@ -844,6 +893,7 @@ def api_packs_apply(body: ApplyPackBody) -> dict[str, Any]:
             "SEQUENCES_ENABLED": "true",
         }
     )
+    tpl["presentation_meta"] = presentation_meta(tpl.get("pack_id"))
     return {
         "ok": True,
         "updated": sorted(updated.keys()),

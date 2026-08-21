@@ -310,6 +310,15 @@ body.embedded .app { padding-top: 0.35rem; }
   box-shadow: 0 0 0 3px var(--glow);
 }
 
+.presentation-box {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.65rem 0.75rem 0.75rem;
+  border: 1px solid rgba(201, 213, 224, 0.95);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.85), rgba(248,244,239,0.92));
+}
+
 .field {
   display: grid;
   gap: 0.28rem;

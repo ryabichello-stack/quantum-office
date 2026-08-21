@@ -67,26 +67,18 @@ _ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 _DEFAULT_PRESENTATION = _ASSETS_DIR / "quantum_payouts_presentation_small.pdf"
 
 
+from presentations import resolve_presentation
+
+
 def _presentation_path(settings: Any = None, pack_path: str | None = None) -> Path | None:
-    """Resolve PDF presentation path from settings / pack / default asset."""
-    candidates: list[Path] = []
-    for raw in (pack_path, _cfg(settings, "OUTREACH_PRESENTATION_PDF", "")):
-        if not raw:
-            continue
-        p = Path(str(raw)).expanduser()
-        checks = [
-            p,
-            _ASSETS_DIR / p,
-            _ASSETS_DIR / p.name,
-            Path(__file__).resolve().parent / p,
-        ]
-        for c in checks:
-            if c.is_file():
-                candidates.append(c)
-                break
-    if _DEFAULT_PRESENTATION.is_file():
-        candidates.append(_DEFAULT_PRESENTATION)
-    return candidates[0] if candidates else None
+    """Resolve PDF: custom upload → pack asset → settings path → shared default."""
+    pack_id = (_cfg(settings, "OUTREACH_SEQUENCE_PACK", "") or "").strip()
+    settings_path = (pack_path or _cfg(settings, "OUTREACH_PRESENTATION_PDF", "") or "").strip()
+    if not pack_id and settings_path:
+        stem = Path(settings_path).stem
+        if stem and stem != "quantum_payouts_presentation_small":
+            pack_id = stem
+    return resolve_presentation(pack_id=pack_id or None, settings_path=settings_path or None)
 
 
 def _should_attach_presentation(settings: Any, *, step_wants: bool = False) -> bool:

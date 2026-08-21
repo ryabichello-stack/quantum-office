@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=iconsfix4" />
+  <link rel="stylesheet" href="styles.css?v=pdffix1" />
   <script>
     (function () {
       function parentBase() {
@@ -143,11 +143,20 @@
             </div>
           </div>
 
-          <label class="field check">
-            <input id="letterAttachPdf" type="checkbox" />
-            Прикреплять презентацию PDF к первому письму
-          </label>
-          <p class="muted tight" id="letterPdfMeta"></p>
+          <div class="presentation-box">
+            <label class="field check">
+              <input id="letterAttachPdf" type="checkbox" />
+              Прикреплять презентацию PDF к первому письму
+            </label>
+            <p class="muted tight" id="letterPdfMeta">Презентация отрасли не выбрана</p>
+            <div class="brand-actions">
+              <label class="btn-quiet file-btn">Загрузить / обновить PDF
+                <input id="letterPdfFile" type="file" accept="application/pdf,.pdf" hidden />
+              </label>
+              <button type="button" id="letterPdfReset" class="btn-quiet">Сбросить к базовой</button>
+            </div>
+            <p class="muted tight">Для выбранной отрасли. Новая загрузка заменяет предыдущую версию.</p>
+          </div>
 
           <label class="field full">Текст письма
             <textarea id="letterPlain" class="scroll-y" rows="12" placeholder="Текст первого письма…"></textarea>
@@ -578,6 +587,6 @@
       </section>
     </main>
   </div>
-  <script src="app.js?v=iconsfix3"></script>
+  <script src="app.js?v=pdffix1"></script>
 </body>
 </html>
