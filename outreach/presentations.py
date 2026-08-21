@@ -52,7 +52,7 @@ def assert_pack_id(pack_id: str | None) -> str:
 
 
 def custom_path(pack_id: str) -> Path:
-    return CUSTOM_DIR / f"{assert_pack_id(pack_id)}.pdf"
+    return _custom_dir() / f"{assert_pack_id(pack_id)}.pdf"
 
 
 def pack_asset_path(pack_id: str) -> Path:
@@ -142,7 +142,7 @@ def save_presentation(pack_id: str, raw: bytes, *, original_name: str = "") -> d
     if not raw.lstrip().startswith(b"%PDF"):
         raise ValueError("file is not a PDF")
     pid = assert_pack_id(pack_id)
-    CUSTOM_DIR.mkdir(parents=True, exist_ok=True)
+    _custom_dir().mkdir(parents=True, exist_ok=True)
     dest = custom_path(pid)
     tmp = dest.with_suffix(".pdf.tmp")
     tmp.write_bytes(raw)
