@@ -139,9 +139,25 @@ def _html_from_plain(plain: str) -> str:
         is_bullets = bool(bullet_lines) and len(bullet_lines) == len(non_empty)
         bold_only = _all_bold_text(block)
 
+        # Same block: one title line + only ``- `` bullets (no blank line between).
+        inline_title: str | None = None
+        inline_bullet_items: list[str] | None = None
+        if not is_bullets and bullet_lines and not bold_only:
+            first_bi = next(i for i, ln in enumerate(lines) if ln.startswith("- "))
+            before = [ln.strip() for ln in lines[:first_bi] if ln.strip()]
+            after_ok = all(
+                (not ln.strip()) or ln.startswith("- ") for ln in lines[first_bi:]
+            )
+            if len(before) == 1 and after_ok:
+                inline_title = before[0]
+                inline_bullet_items = [
+                    ln[2:].strip() for ln in lines[first_bi:] if ln.startswith("- ")
+                ]
+
         # Title line immediately before a bullet block
         if (
             not is_bullets
+            and inline_bullet_items is None
             and pending_benefits_title is None
             and bi + 1 < len(blocks)
         ):
@@ -152,19 +168,19 @@ def _html_from_plain(plain: str) -> str:
                 pending_benefits_title = block
                 continue
 
-        if is_bullets:
+        if is_bullets or inline_bullet_items is not None:
             flushed = _flush_prose(lead_buf, soft=False)
             if flushed:
                 out.append(flushed)
             lead_buf = []
-            title = pending_benefits_title or "Что получает ваша команда"
+            if inline_bullet_items is not None:
+                title = inline_title or "Что получает ваша команда"
+                items = inline_bullet_items
+            else:
+                title = pending_benefits_title or "Что получает ваша команда"
+                items = [ln[2:].strip() for ln in bullet_lines]
             pending_benefits_title = None
-            out.append(
-                benefits_box_html(
-                    title=title,
-                    items=[ln[2:].strip() for ln in bullet_lines],
-                )
-            )
+            out.append(benefits_box_html(title=title, items=items))
             after_benefits = True
             continue
 

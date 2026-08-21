@@ -115,7 +115,8 @@ def benefits_box_html(*, title: str, items: list[str]) -> str:
     """Soft light-blue advantages block (canonical mid-letter panel)."""
     if not items:
         return ""
-    title_s = escape(title or "Что получает ваша команда")
+    # Title may contain mid-line **bold** (e.g. lombards step 2 scenario lead).
+    title_s = inline_md_to_html(title or "Что получает ваша команда")
     rows = []
     for i, item in enumerate(items):
         margin = "0" if i == len(items) - 1 else "0 0 7px"
