@@ -517,21 +517,19 @@ def process_callback_request(
         src_email = (source_email or verified.get("email") or "").strip()
         if src_email:
             SequenceStore().stop(email=src_email, reason="callback_request")
-        # Best-effort company link via outbox id
-        oid = int(verified.get("outbox_id") or 0)
-        if oid:
+            # Policy cooldown if we can resolve company from outbox
             try:
                 from outbox import OutboxStore
                 from core.paths import DATA_DIR
 
-                row = OutboxStore(DATA_DIR / "outbox.db").get(oid)
-                if row and getattr(row, "company_id", None):
+                row = OutboxStore(DATA_DIR / "outbox.db").find_by_email(src_email)
+                if row and row.company_id:
                     SequenceStore().stop(
                         company_id=str(row.company_id), reason="callback_request"
                     )
-                    ContactPolicyStore().note_reply(str(row.company_id), email=src_email or None)
+                    ContactPolicyStore().note_reply(str(row.company_id))
             except Exception:  # noqa: BLE001
-                logger.debug("callback sequence company stop skipped", exc_info=True)
+                logger.debug("callback policy note skipped", exc_info=True)
     except Exception:  # noqa: BLE001
         logger.debug("callback sequence stop failed", exc_info=True)
 
