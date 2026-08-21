@@ -1027,7 +1027,7 @@
             status.textContent = "Не удалось загрузить Outreach UI";
           }
         };
-        frame.src = BASE + "/assets/outreach/index.html?v=letter-form1";
+        frame.src = BASE + "/assets/outreach/index.html?v=cb-dial1";
       }
     }
   }
@@ -1309,7 +1309,8 @@
       $("cbCtaEnabled").checked = String(s.CALLBACK_CTA_ENABLED || "true").toLowerCase() !== "false";
     if ($("cbNotifyEnabled"))
       $("cbNotifyEnabled").checked = String(s.CALLBACK_NOTIFY_ENABLED || "true").toLowerCase() !== "false";
-    if ($("cbDialEnabled")) $("cbDialEnabled").checked = String(s.CALLBACK_DIAL_ENABLED || "").toLowerCase() === "true";
+    if ($("cbDialEnabled"))
+      $("cbDialEnabled").checked = String(s.CALLBACK_DIAL_ENABLED || "true").toLowerCase() !== "false";
     if ($("cbDialMode")) $("cbDialMode").value = s.CALLBACK_DIAL_MODE || "mango_callback";
     if ($("cbNotifyEmail")) $("cbNotifyEmail").value = s.CALLBACK_NOTIFY_EMAIL || "";
     if ($("cbButton")) $("cbButton").value = s.CALLBACK_CTA_BUTTON || "";

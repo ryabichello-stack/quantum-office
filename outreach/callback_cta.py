@@ -118,7 +118,8 @@ def cta_enabled(settings: Any = None) -> bool:
 
 
 def dial_enabled(settings: Any = None) -> bool:
-    return _cfg_bool(settings, "CALLBACK_DIAL_ENABLED", False)
+    # On by default: form submit should trigger AVA/Mango callback unless explicitly off.
+    return _cfg_bool(settings, "CALLBACK_DIAL_ENABLED", True)
 
 
 def notify_enabled(settings: Any = None) -> bool:
@@ -264,11 +265,12 @@ def build_callback_cta_html(
     )
     mailto_href = escape(mailto, quote=True)
 
-    btn_a = (
-        f'<a href="{href}" style="display:inline-block;padding:12px 22px;'
-        f'background:#c4470f;color:#ffffff;text-decoration:none;'
-        f'font:600 13px/1 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
-        f'border-radius:2px">{button}</a>'
+    # One orange CTA only: the form submit.
+    # Gmail strips <form> — then a quiet text link remains (not a second identical button,
+    # which made people fill fields and click the wrong control).
+    open_link = (
+        f'<a href="{href}" style="color:#c4470f;font-weight:600;text-decoration:underline">'
+        "Открыть форму заказа звонка</a>"
     )
 
     return (
@@ -306,11 +308,11 @@ def build_callback_cta_html(
         "</table>"
         "</form>"
         '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
-        'style="margin-top:10px">'
-        f"<tr><td>{btn_a}</td></tr>"
-        '<tr><td style="padding-top:10px;'
+        'style="margin-top:12px">'
+        '<tr><td style="'
         "font:12px/1.45 Manrope,Segoe UI,Helvetica,Arial,sans-serif;color:#6a737b\">"
-        "Если поля не видны в вашей почте — нажмите кнопку: откроется та же форма на один экран."
+        f"Если поля выше не видны в вашей почте — {open_link}, "
+        "заполните ФИО и телефон там и нажмите «Перезвонить»."
         "</td></tr>"
         "<tr><td style=\"padding-top:6px;"
         "font:12px/1.45 Manrope,Segoe UI,Helvetica,Arial,sans-serif;color:#6a737b\">"
