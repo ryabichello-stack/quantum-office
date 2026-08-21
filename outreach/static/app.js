@@ -1159,7 +1159,7 @@
         ($("oneTo") && $("oneTo").value) ||
         "";
       const pdf = attached.length ? `Вложение: ${attached.join(", ")}` : "Без PDF";
-      const used = data.oneshot_today != null ? ` · тестов сегодня: ${data.oneshot_today}/${data.oneshot_daily_limit || 5}` : "";
+      const used = data.oneshot_today != null ? ` · тестов сегодня: ${data.oneshot_today}/${data.oneshot_daily_limit || 25}` : "";
       if (dry) {
         return `Превью SMTP для ${to}: ок. ${pdf}${used}`;
       }
