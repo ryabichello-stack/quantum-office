@@ -221,19 +221,20 @@ def build_signature(
 def _icon_row(*, icon_src: str, label: str, href: str | None = None) -> str:
     safe_label = escape(label)
     content = (
-        f'<a href="{escape(href, quote=True)}" style="color:#0f1b24;text-decoration:none">{safe_label}</a>'
+        f'<a href="{escape(href, quote=True)}" '
+        'style="color:#0f1b24;text-decoration:none;border:none;outline:none">'
+        f"{safe_label}</a>"
         if href
         else f'<span style="color:#0f1b24">{safe_label}</span>'
     )
     return (
-        '<tr>'
-        '<td style="width:22px;padding:2px 8px 2px 0;vertical-align:middle">'
+        '<div style="margin:0 0 5px;padding:0;border:none;line-height:1.35;'
+        "font-size:13px;font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif\">"
         f'<img src="{escape(icon_src, quote=True)}" width="16" height="16" alt="" '
-        'style="display:block;border:0;outline:none"/>'
-        "</td>"
-        f'<td style="padding:2px 0;vertical-align:middle;font-size:13px;line-height:1.35;'
-        f'font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif">{content}</td>'
-        "</tr>"
+        'style="display:inline-block;vertical-align:middle;border:0;outline:none;'
+        'margin:0 8px 0 0"/>'
+        f'<span style="vertical-align:middle;border:none">{content}</span>'
+        "</div>"
     )
 
 
@@ -246,7 +247,7 @@ def build_signature_html(
     icon_base: str | None = None,
     settings_get=None,
 ) -> str:
-    """HTML signature: text block + icon contacts from fields (no divider lines)."""
+    """HTML signature: text + icon contacts from fields (no divider lines)."""
     site = (website or "").strip()
     phone_s = (phone or "").strip()
     email_s = (email or "").strip()
@@ -293,7 +294,7 @@ def build_signature_html(
     parts: list[str] = []
     if text_block:
         parts.append(
-            "<div style='margin:0 0 10px;line-height:1.5;color:#0f1b24;"
+            "<div style='margin:0 0 10px;padding:0;border:none;line-height:1.5;color:#0f1b24;"
             "font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px'>"
             + escape(text_block).replace("\n", "<br>\n")
             + "</div>"
@@ -313,16 +314,16 @@ def build_signature_html(
 
     if rows:
         parts.append(
-            '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
-            'style="border-collapse:collapse;margin:0">'
-            + "".join(rows)
-            + "</table>"
+            '<div style="margin:0;padding:0;border:none">' + "".join(rows) + "</div>"
         )
 
     if not parts:
         return ""
-    return "<div style='margin:1.15em 0 0.35em'>" + "".join(parts) + "</div>"
-
+    return (
+        "<div style='margin:1.15em 0 0.35em;padding:0;border:none'>"
+        + "".join(parts)
+        + "</div>"
+    )
 
 def build_logo_header(*, logo_url: str, company: str) -> str:
     url = (logo_url or "").strip()

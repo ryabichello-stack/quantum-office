@@ -425,6 +425,20 @@ textarea.scroll-y {
   color: #1a1a1a;
 }
 .preview-html img { max-width: 100%; height: auto; }
+.preview-html a {
+  color: #0f1b24 !important;
+  text-decoration: none !important;
+  border: none !important;
+  border-bottom: none !important;
+}
+.preview-html table,
+.preview-html td,
+.preview-html th,
+.preview-html tr {
+  border: none !important;
+  border-bottom: none !important;
+  background: transparent !important;
+}
 
 button {
   cursor: pointer;
@@ -643,18 +657,19 @@ button.small { height: 26px; font-size: 0.72rem; padding: 0 0.45rem; }
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.7);
 }
-table {
+.table-wrap table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.8rem;
 }
-th, td {
+.table-wrap th,
+.table-wrap td {
   text-align: left;
   padding: 0.45rem 0.6rem;
   border-bottom: 1px solid var(--line);
   vertical-align: top;
 }
-th {
+.table-wrap th {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -662,7 +677,7 @@ th {
   font-weight: 600;
   background: rgba(244, 247, 250, 0.8);
 }
-tr:last-child td { border-bottom: 0; }
+.table-wrap tr:last-child td { border-bottom: 0; }
 
 .bars { display: grid; gap: 0.35rem; }
 .bar-row {
