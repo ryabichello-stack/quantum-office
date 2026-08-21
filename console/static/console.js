@@ -719,6 +719,7 @@
     }
     const jobs = [
       ["scenario", loadScenario],
+      ["emailCallback", loadEmailCallback],
       ["knowledge", loadKnowledge],
       ["calls", loadCalls],
       ["secrets", loadSecrets],
@@ -1026,7 +1027,7 @@
             status.textContent = "Не удалось загрузить Outreach UI";
           }
         };
-        frame.src = BASE + "/assets/outreach/index.html?v=testmail1";
+        frame.src = BASE + "/assets/outreach/index.html?v=callback1";
       }
     }
   }
@@ -1275,6 +1276,96 @@
         $("scMsg").textContent = r.ok ? "ai_engine restarted" : r.output || "fail";
       } catch (e) {
         $("scMsg").textContent = e.message;
+      }
+    };
+  }
+
+  async function loadEmailCallback() {
+    if (!$("emailCallbackBox")) return;
+    const data = await api("/api/outreach/api/callback-cta/settings");
+    const s = (data && data.settings) || {};
+    if ($("cbCtaEnabled")) $("cbCtaEnabled").checked = String(s.CALLBACK_CTA_ENABLED || "").toLowerCase() === "true";
+    if ($("cbNotifyEnabled"))
+      $("cbNotifyEnabled").checked = String(s.CALLBACK_NOTIFY_ENABLED || "true").toLowerCase() !== "false";
+    if ($("cbDialEnabled")) $("cbDialEnabled").checked = String(s.CALLBACK_DIAL_ENABLED || "").toLowerCase() === "true";
+    if ($("cbDialMode")) $("cbDialMode").value = s.CALLBACK_DIAL_MODE || "mango_callback";
+    if ($("cbNotifyEmail")) $("cbNotifyEmail").value = s.CALLBACK_NOTIFY_EMAIL || "";
+    if ($("cbButton")) $("cbButton").value = s.CALLBACK_CTA_BUTTON || "";
+    if ($("cbTitle")) $("cbTitle").value = s.CALLBACK_CTA_TITLE || "";
+    if ($("cbGreeting")) $("cbGreeting").value = s.CALLBACK_SCENARIO_GREETING || "";
+    if ($("cbScript")) $("cbScript").value = s.CALLBACK_SCENARIO_SCRIPT || "";
+    if ($("cbMeta")) {
+      $("cbMeta").textContent =
+        (s.CONSOLE_TOKEN_CONFIGURED ? "Console token: есть" : "Console token: нет — автозвонок не сработает") +
+        " · " +
+        (s.CONSOLE_BASE || "");
+    }
+    try {
+      const reqs = await api("/api/outreach/api/callback-cta/requests?limit=8");
+      const items = (reqs && reqs.items) || [];
+      if ($("cbRequests")) {
+        $("cbRequests").innerHTML = items.length
+          ? "<strong>Последние заявки</strong><br>" +
+            items
+              .map(
+                (it) =>
+                  `${esc(it.created_at || "")} · ${esc(it.fio)} · +${esc(it.phone)} · notify=${
+                    it.notify_ok ? "ok" : "—"
+                  } · dial=${esc(it.dial_mode || "—")}`
+              )
+              .join("<br>")
+          : "Заявок пока нет.";
+      }
+    } catch (e) {
+      if ($("cbRequests")) $("cbRequests").textContent = String(e.message || e);
+    }
+  }
+
+  if ($("btnReloadEmailCallback")) {
+    $("btnReloadEmailCallback").onclick = () =>
+      loadEmailCallback()
+        .then(() => {
+          if ($("cbMsg")) {
+            $("cbMsg").textContent = "обновлено";
+            $("cbMsg").className = "msg ok";
+          }
+        })
+        .catch((e) => {
+          if ($("cbMsg")) {
+            $("cbMsg").textContent = e.message;
+            $("cbMsg").className = "msg bad";
+          }
+        });
+  }
+  if ($("btnSaveEmailCallback")) {
+    $("btnSaveEmailCallback").onclick = async () => {
+      try {
+        await api("/api/outreach/api/callback-cta/settings", {
+          method: "PUT",
+          body: JSON.stringify({
+            settings: {
+              CALLBACK_CTA_ENABLED: $("cbCtaEnabled") && $("cbCtaEnabled").checked ? "true" : "false",
+              CALLBACK_NOTIFY_ENABLED: $("cbNotifyEnabled") && $("cbNotifyEnabled").checked ? "true" : "false",
+              CALLBACK_DIAL_ENABLED: $("cbDialEnabled") && $("cbDialEnabled").checked ? "true" : "false",
+              CALLBACK_DIAL_MODE: ($("cbDialMode") && $("cbDialMode").value) || "mango_callback",
+              CALLBACK_NOTIFY_EMAIL: ($("cbNotifyEmail") && $("cbNotifyEmail").value) || "",
+              CALLBACK_CTA_BUTTON: ($("cbButton") && $("cbButton").value) || "",
+              CALLBACK_CTA_TITLE: ($("cbTitle") && $("cbTitle").value) || "",
+              CALLBACK_SCENARIO_GREETING: ($("cbGreeting") && $("cbGreeting").value) || "",
+              CALLBACK_SCENARIO_SCRIPT: ($("cbScript") && $("cbScript").value) || "",
+            },
+          }),
+        });
+        if ($("cbMsg")) {
+          $("cbMsg").textContent = "сохранено";
+          $("cbMsg").className = "msg ok";
+        }
+        await loadEmailCallback();
+      } catch (e) {
+        if ($("cbMsg")) {
+          $("cbMsg").textContent = e.message;
+          $("cbMsg").className = "msg bad";
+        }
       }
     };
   }

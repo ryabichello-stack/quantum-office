@@ -359,6 +359,9 @@ def render_cooperation(
     logo_enabled: bool = True,
     contact_email: str | None = None,
     icon_base_url: str | None = None,
+    callback_url: str | None = None,
+    callback_cta_html: str | None = None,
+    callback_cta_plain: str | None = None,
 ) -> tuple[str, str]:
     from content.packs import strip_md_bold
 
@@ -372,6 +375,17 @@ def render_cooperation(
     phone_line = f"\nТелефон: {phone_s}" if phone_s else ""
     phone_html = f"<br>Телефон: {escape(phone_s)}" if phone_s else ""
     email_line = email_s
+    cb_url = (callback_url or "").strip()
+    cb_html = (callback_cta_html or "").strip()
+    cb_plain = (callback_cta_plain or "").strip()
+    if cb_url and not cb_html:
+        from callback_cta import build_callback_cta_html
+
+        cb_html = build_callback_cta_html(url=cb_url)
+    if cb_url and not cb_plain:
+        from callback_cta import build_callback_cta_plain
+
+        cb_plain = build_callback_cta_plain(url=cb_url)
 
     signature = build_signature(
         signature_template=signature_template,
@@ -423,6 +437,8 @@ def render_cooperation(
         "email_line": email_line,
         "signature": signature,
         "logo_header": "",
+        "callback_url": cb_url,
+        "callback_cta": cb_plain,
     }
     mapping_html = {
         "greeting": escape(greeting),
@@ -438,6 +454,8 @@ def render_cooperation(
         "email_line": escape(email_line),
         "signature": signature_html,
         "logo_header": logo_header,
+        "callback_url": escape(cb_url),
+        "callback_cta": cb_html,
     }
     plain = strip_md_bold(_safe_format(plain_src, mapping_plain))
     html = _safe_format(html_src, mapping_html)
@@ -449,4 +467,17 @@ def render_cooperation(
             gt = html.find(">", idx)
             if gt >= 0:
                 html = html[: gt + 1] + "\n" + logo_header + html[gt + 1 :]
+    # Inject CTA after signature / before legal footer when placeholder absent.
+    if cb_plain and "{callback_cta}" not in (plain_template or "") and cb_plain.strip() not in plain:
+        marker = "\n---\nВы получили это письмо"
+        if marker in plain:
+            plain = plain.replace(marker, cb_plain + marker, 1)
+        else:
+            plain = plain.rstrip() + cb_plain
+    if cb_html and "{callback_cta}" not in (html_template or "") and cb_html not in html:
+        hr = '<hr style="border:none;border-top:1px solid #ddd;margin:1.5em 0 0.75em">'
+        if hr in html:
+            html = html.replace(hr, cb_html + "\n" + hr, 1)
+        else:
+            html = html.rstrip() + "\n" + cb_html
     return plain, html

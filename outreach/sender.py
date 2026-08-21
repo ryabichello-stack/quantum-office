@@ -31,6 +31,7 @@ def _render_letter(
     plain_template: str | None = None,
     html_template: str | None = None,
     settings: Any = None,
+    callback_url: str | None = None,
 ) -> tuple[str, str]:
     from templates import public_base_url
 
@@ -59,7 +60,30 @@ def _render_letter(
         logo_enabled=logo_on,
         contact_email=contact_email,
         icon_base_url=public_base_url(lambda k: _cfg(settings, k, "")),
+        callback_url=callback_url,
     )
+
+
+def _callback_url_for_row(
+    *,
+    outbox_id: int,
+    email: str,
+    settings: Any = None,
+) -> str | None:
+    try:
+        from callback_cta import (
+            callback_url_for,
+            cta_enabled,
+            make_callback_token,
+        )
+
+        if not cta_enabled(settings):
+            return None
+        token = make_callback_token(outbox_id=int(outbox_id or 0), email=email or "campaign")
+        return callback_url_for(token, settings)
+    except Exception:  # noqa: BLE001
+        logger.debug("callback url build failed", exc_info=True)
+        return None
 
 logger = logging.getLogger("ava-outreach.sender")
 
@@ -526,15 +550,18 @@ def send_batch(
             unsub_token = make_unsubscribe_token(outbox_id=row.id, email=row.email)
             unsub_url = unsubscribe_url_for(unsub_token, settings)
 
-        plain, html = render_cooperation(
+        cb_url = _callback_url_for_row(outbox_id=row.id, email=row.email, settings=settings)
+        plain, html = _render_letter(
             contact_name=row.contact_name,
-            company_name=company,
+            company=company,
             website=website,
             phone=phone,
             unsubscribe_mailto=unsub_addr,
             unsubscribe_url=unsub_url,
             plain_template=plain_tpl or None,
             html_template=html_tpl or None,
+            settings=settings,
+            callback_url=cb_url,
         )
         open_token = None
         if tracking is not None and not dry_run:
@@ -847,15 +874,22 @@ def _send_due_sequence_steps(
             unsub_token = make_unsubscribe_token(outbox_id=outbox_id, email=email)
             unsub_url = unsubscribe_url_for(unsub_token, settings)
 
-        plain, html = render_cooperation(
+        cb_url = _callback_url_for_row(
+            outbox_id=int(outbox_id or 0),
+            email=email,
+            settings=settings,
+        )
+        plain, html = _render_letter(
             contact_name=name,
-            company_name=company,
+            company=company,
             website=website,
             phone=phone,
             unsubscribe_mailto=unsub_addr,
             unsubscribe_url=unsub_url,
             plain_template=str(plain_tpl),
             html_template=str(html_tpl) if html_tpl else None,
+            settings=settings,
+            callback_url=cb_url,
         )
         if tracking is not None and outbox_id and open_tracking_enabled(settings):
             open_token = new_open_token()
@@ -1039,6 +1073,7 @@ def send_one(
         if hdrs.get("unsubscribe_mailto"):
             unsub_addr = hdrs["unsubscribe_mailto"]
 
+    cb_url = _callback_url_for_row(outbox_id=row.id, email=to_email, settings=settings)
     plain, html = _render_letter(
         contact_name=name,
         company=company,
@@ -1048,6 +1083,7 @@ def send_one(
         plain_template=plain_tpl or None,
         html_template=html_tpl or None,
         settings=settings,
+        callback_url=cb_url,
     )
     attach = _attachments_for_send(settings, step_wants=False, force=attach_presentation)
     open_token = None

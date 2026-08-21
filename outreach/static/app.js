@@ -595,6 +595,11 @@
         String(s.OUTREACH_ATTACH_PRESENTATION || "false").toLowerCase() === "true" ||
         s.OUTREACH_ATTACH_PRESENTATION === "1";
     }
+    if ($("letterCallbackCta")) {
+      $("letterCallbackCta").checked =
+        String(s.CALLBACK_CTA_ENABLED || "false").toLowerCase() === "true" ||
+        s.CALLBACK_CTA_ENABLED === "1";
+    }
     selectedPackId = s.OUTREACH_SEQUENCE_PACK || selectedPackId || "";
     if (selectedPackId) {
       refreshPresentationMeta(selectedPackId).catch(() => {});
@@ -1132,6 +1137,7 @@
         OUTREACH_TEMPLATE_PLAIN: $("letterPlain").value,
         OUTREACH_TEMPLATE_HTML: $("letterHtml").value,
         OUTREACH_ATTACH_PRESENTATION: $("letterAttachPdf") && $("letterAttachPdf").checked ? "true" : "false",
+        CALLBACK_CTA_ENABLED: $("letterCallbackCta") && $("letterCallbackCta").checked ? "true" : "false",
         OUTREACH_SEQUENCE_PACK: selectedPackId || settingsCache?.OUTREACH_SEQUENCE_PACK || "",
         SEQUENCES_ENABLED: "true",
       };

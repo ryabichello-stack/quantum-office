@@ -138,6 +138,45 @@
             </div>
             <p class="full muted">Сохранение одного профиля не меняет greeting / prompt / tools другого.</p>
           </div>
+
+          <div class="surface" style="margin-top:1rem" id="emailCallbackBox">
+            <h2 class="section-title" style="margin-top:0">Заявка на звонок из письма</h2>
+            <p class="muted tight">Внизу outreach-письма — кнопка «Заказать звонок». Клиент оставляет ФИО и телефон. Вам приходит уведомление; при включении — робот перезванивает по сценарию ниже.</p>
+            <div class="grid2">
+              <label class="check"><input type="checkbox" id="cbCtaEnabled" /> Показывать блок в письмах</label>
+              <label class="check"><input type="checkbox" id="cbNotifyEnabled" checked /> Уведомление на почту</label>
+              <label class="check"><input type="checkbox" id="cbDialEnabled" /> Сразу звонить ботом</label>
+              <label class="field">Режим звонка
+                <select id="cbDialMode">
+                  <option value="mango_callback">Mango callback (рекомендуется)</option>
+                  <option value="dial">ARI dial + сценарий ниже</option>
+                  <option value="notify_only">Только уведомление</option>
+                </select>
+              </label>
+              <label class="field">Куда слать уведомление
+                <input id="cbNotifyEmail" type="email" placeholder="office@quantumlabs.ru" />
+              </label>
+              <label class="field">Текст кнопки
+                <input id="cbButton" type="text" placeholder="Заказать звонок" />
+              </label>
+              <label class="field full">Заголовок блока
+                <input id="cbTitle" type="text" placeholder="Хотите, перезвоним?" />
+              </label>
+              <label class="field full">Первая фраза (для ARI dial)
+                <input id="cbGreeting" type="text" />
+              </label>
+              <label class="field full">Сценарий автозвонка (для ARI dial)
+                <textarea id="cbScript" rows="8" placeholder="Что говорит робот, когда перезванивает по заявке из письма…"></textarea>
+              </label>
+            </div>
+            <div class="actions" style="margin-top:0.65rem">
+              <button type="button" id="btnSaveEmailCallback" class="primary">Сохранить автоматизацию</button>
+              <button type="button" id="btnReloadEmailCallback" class="btn-quiet">Обновить</button>
+              <span id="cbMsg" class="msg"></span>
+            </div>
+            <p class="muted tight" id="cbMeta"></p>
+            <div id="cbRequests" class="muted tight" style="margin-top:0.5rem"></div>
+          </div>
         </section>
 
         <section id="tab-knowledge" class="panel">

@@ -131,6 +131,12 @@ async def lifespan(_app: FastAPI):
     store = OutboxStore(DB_PATH)
     store.init_db()
     _settings = RuntimeSettings(SETTINGS_DB)
+    try:
+        from callback_cta import init_db as _cb_init
+
+        _cb_init()
+    except Exception:  # noqa: BLE001
+        logger.exception("callback_cta init failed")
     _ensure_ui_token()
     _registry.init_all()
 
@@ -445,6 +451,137 @@ async def unsubscribe_one_click(token: str, request: Request):
     )
 
 
+def _callback_source_email(token: str) -> str | None:
+    from callback_cta import parse_callback_token
+
+    parsed = parse_callback_token(token)
+    if not parsed:
+        return None
+    oid = int(parsed["outbox_id"] or 0)
+    if oid <= 0:
+        return "campaign"
+    row = _store().get_row(oid)
+    return row.email if row else None
+
+
+@app.api_route("/callback/{token}", methods=["GET", "POST"])
+async def callback_request_page(token: str, request: Request):
+    """Public landing: FIO + phone form → notify + optional AVA dial."""
+    from fastapi.responses import HTMLResponse
+
+    from callback_cta import (
+        form_page_html,
+        parse_callback_token,
+        process_callback_request,
+        verify_callback_token,
+    )
+
+    rt = _rt()
+    source_email = _callback_source_email(token)
+    verified = verify_callback_token(token, email=source_email or "campaign")
+    if not verified:
+        return HTMLResponse(
+            form_page_html(token=token, settings=rt, error="Ссылка недействительна или устарела."),
+            status_code=400,
+        )
+
+    if request.method == "GET":
+        return HTMLResponse(form_page_html(token=token, settings=rt))
+
+    fio = ""
+    phone = ""
+    ctype = (request.headers.get("content-type") or "").lower()
+    if "application/json" in ctype:
+        try:
+            payload = await request.json()
+        except Exception:  # noqa: BLE001
+            payload = {}
+        fio = str((payload or {}).get("fio") or "")
+        phone = str((payload or {}).get("phone") or "")
+    else:
+        form = await request.form()
+        fio = str(form.get("fio") or "")
+        phone = str(form.get("phone") or "")
+
+    result = process_callback_request(
+        token=token,
+        fio=fio,
+        phone=phone,
+        settings=rt,
+        source_email=source_email,
+        user_agent=request.headers.get("user-agent"),
+        ip=request.client.host if request.client else None,
+    )
+    if "application/json" in ctype:
+        code = 200 if result.get("ok") else 400
+        return JSONResponse(result, status_code=code)
+
+    if not result.get("ok"):
+        err_map = {
+            "fio_required": "Укажите ФИО",
+            "phone_invalid": "Укажите корректный телефон",
+            "rate_limited": "Заявка с этого номера уже принята. Подождите немного.",
+            "bad_signature": "Ссылка недействительна",
+        }
+        return HTMLResponse(
+            form_page_html(
+                token=token,
+                settings=rt,
+                prefill_fio=fio,
+                prefill_phone=phone,
+                error=err_map.get(str(result.get("error")), "Не удалось отправить заявку"),
+            ),
+            status_code=400,
+        )
+    # Bitrix note (best-effort)
+    try:
+        parsed = parse_callback_token(token)
+        oid = int((parsed or {}).get("outbox_id") or 0)
+        row = _store().get_row(oid) if oid else None
+        bitrix = _bitrix_or_none()
+        if bitrix and row and row.company_id:
+            bitrix.add_timeline_comment(
+                row.company_id,
+                (
+                    f"📞 Заявка на звонок из письма: {result.get('fio')} "
+                    f"+{result.get('phone')} (notify={result.get('notify_ok')}, "
+                    f"dial={((result.get('dial') or {}).get('mode'))})"
+                ),
+                entity_type="company",
+            )
+            bitrix.close()
+    except Exception:  # noqa: BLE001
+        logger.debug("callback bitrix note failed", exc_info=True)
+
+    return HTMLResponse(form_page_html(token=token, settings=rt, done=True))
+
+
+class CallbackCtaSettingsBody(BaseModel):
+    settings: dict[str, Any] = Field(default_factory=dict)
+
+
+@app.get("/api/callback-cta/settings", dependencies=[Depends(require_ui_auth)])
+def api_callback_cta_settings() -> dict[str, Any]:
+    from callback_cta import settings_snapshot
+
+    return {"ok": True, "settings": settings_snapshot(_rt())}
+
+
+@app.put("/api/callback-cta/settings", dependencies=[Depends(require_ui_auth)])
+def api_callback_cta_settings_put(body: CallbackCtaSettingsBody) -> dict[str, Any]:
+    from callback_cta import settings_snapshot
+
+    updated = _rt().set_many(body.settings or {})
+    return {"ok": True, "updated": sorted(updated.keys()), "settings": settings_snapshot(_rt())}
+
+
+@app.get("/api/callback-cta/requests", dependencies=[Depends(require_ui_auth)])
+def api_callback_cta_requests(limit: int = 30) -> dict[str, Any]:
+    from callback_cta import recent_requests
+
+    return {"ok": True, "items": recent_requests(limit=limit)}
+
+
 @app.get("/")
 def root() -> RedirectResponse:
     return RedirectResponse(url="/ui/")
@@ -723,6 +860,17 @@ def api_preview(body: PreviewBody) -> dict[str, Any]:
         if body.logo_enabled is not None
         else rt.get_bool("OUTREACH_LOGO_ENABLED", True)
     )
+    cb_url = None
+    try:
+        from callback_cta import callback_url_for, cta_enabled, make_callback_token
+
+        if cta_enabled(rt):
+            cb_url = callback_url_for(
+                make_callback_token(outbox_id=0, email="preview"),
+                rt,
+            )
+    except Exception:  # noqa: BLE001
+        cb_url = None
     plain, html = render_cooperation(
         contact_name=body.contact_name,
         company_name=company or "Quantum Labs",
@@ -742,6 +890,7 @@ def api_preview(body: PreviewBody) -> dict[str, Any]:
         logo_enabled=bool(logo_on),
         contact_email=contact_email or "",
         icon_base_url=public_base_url(lambda k: rt.get(k, "") or ""),
+        callback_url=cb_url,
     )
     attach_on = rt.get_bool("OUTREACH_ATTACH_PRESENTATION", False)
     return {
