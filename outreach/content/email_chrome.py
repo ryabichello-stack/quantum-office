@@ -79,8 +79,20 @@ def logo_header_html(*, logo_url: str, company: str = "Quantum Labs") -> str:
     )
 
 
+def soft_panel_html(inner_html: str) -> str:
+    """Canonical mid-letter substrate — same #f4f7fb as the contact band."""
+    body = (inner_html or "").strip()
+    if not body:
+        return ""
+    return (
+        f'<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" '
+        f'style="background:{BENEFITS_BG};border-radius:12px;margin:0 0 24px;">'
+        f'<tr><td style="padding:20px 22px;">{body}</td></tr></table>'
+    )
+
+
 def benefits_box_html(*, title: str, items: list[str]) -> str:
-    """Soft light-blue advantages block."""
+    """Soft light-blue advantages block (canonical mid-letter panel)."""
     if not items:
         return ""
     title_s = escape(title or "Что получает ваша команда")
@@ -91,15 +103,12 @@ def benefits_box_html(*, title: str, items: list[str]) -> str:
             f'<p style="margin:{margin};font-size:15px;line-height:21px;color:#35445d;'
             f'font-family:{FONT};">• {escape(item)}</p>'
         )
-    return (
-        f'<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" '
-        f'style="background:{BENEFITS_BG};border-radius:12px;margin:0 0 24px;">'
-        f'<tr><td style="padding:20px 22px;">'
+    inner = (
         f'<p style="margin:0 0 11px;font-size:15px;line-height:20px;font-weight:700;'
         f'color:{INK_HEAD};font-family:{FONT};">{title_s}</p>'
         + "".join(rows)
-        + "</td></tr></table>"
     )
+    return soft_panel_html(inner)
 
 
 def cta_block_html(

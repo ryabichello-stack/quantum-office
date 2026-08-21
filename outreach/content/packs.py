@@ -77,36 +77,77 @@ def _inline_md_to_html(text: str) -> str:
 
 
 def _html_from_plain(plain: str) -> str:
-    from content.email_chrome import FONT, INK_BODY, INK_HEAD, benefits_box_html, wrap_letter_html
+    """Build letter body in canonical layout.
 
-    blocks: list[str] = []
+    Structure (matches quantum-labs-outreach.html):
+    1. Greeting stays on the white card.
+    2. Main text sits on the soft ``#f4f7fb`` substrate (same tone as the
+       contact band) — either a benefits list or wrapped paragraphs.
+    3. CTA is injected later into ``{callback_cta}``.
+    """
+    from content.email_chrome import (
+        FONT,
+        INK_BODY,
+        benefits_box_html,
+        soft_panel_html,
+        wrap_letter_html,
+    )
+
+    def _para(text: str, *, last: bool = False) -> str:
+        inner = _inline_md_to_html(text).replace("\n", "<br>\n")
+        margin = "0" if last else "0 0 18px"
+        return (
+            f'<p style="margin:{margin};font-size:16px;line-height:24px;'
+            f'color:{INK_BODY};font-family:{FONT};">{inner}</p>'
+        )
+
+    def _flush_prose(buf: list[str]) -> str:
+        if not buf:
+            return ""
+        parts = [_para(t, last=(i == len(buf) - 1)) for i, t in enumerate(buf)]
+        return soft_panel_html("\n".join(parts))
+
+    greeting_html = ""
+    out: list[str] = []
+    prose_buf: list[str] = []
+    saw_greeting = False
+
     for block in (plain or "").strip().split("\n\n"):
         block = block.strip()
         if not block:
             continue
-        # Signature / logo / CTA are card rows or injected by render — skip body wrap.
         if block in ("{signature}", "{logo_header}", "{callback_cta}", "{legal_html}"):
             continue
         lines = [ln.rstrip() for ln in block.split("\n")]
         bullet_lines = [ln for ln in lines if ln.startswith("- ")]
-        if bullet_lines and len(bullet_lines) == len([ln for ln in lines if ln.strip()]):
-            items = [_inline_md_to_html(ln[2:].strip()) for ln in bullet_lines]
-            # benefits_box expects plain items; pass already-escaped HTML carefully —
-            # use strip tags by feeding raw without md first
-            raw_items = [ln[2:].strip() for ln in bullet_lines]
-            # Title: first non-bullet line above, else default
-            blocks.append(
-                benefits_box_html(title="Что получает ваша команда", items=raw_items)
+        is_bullets = bullet_lines and len(bullet_lines) == len(
+            [ln for ln in lines if ln.strip()]
+        )
+
+        if is_bullets:
+            flushed = _flush_prose(prose_buf)
+            if flushed:
+                out.append(flushed)
+            prose_buf = []
+            out.append(
+                benefits_box_html(
+                    title="Что получает ваша команда",
+                    items=[ln[2:].strip() for ln in bullet_lines],
+                )
             )
+            continue
+
+        if not saw_greeting:
+            greeting_html = _para(block)
+            saw_greeting = True
         else:
-            # Greeting / short pitch: slightly tighter; long blocks as body
-            inner = _inline_md_to_html(block).replace("\n", "<br>\n")
-            # First-line hero if block is a single short bold-only line — keep as p
-            blocks.append(
-                f'<p style="margin:0 0 18px;font-size:16px;line-height:24px;'
-                f'color:{INK_BODY};font-family:{FONT};">{inner}</p>'
-            )
-    body = "\n".join(blocks) if blocks else "<p></p>"
+            prose_buf.append(block)
+
+    flushed = _flush_prose(prose_buf)
+    if flushed:
+        out.append(flushed)
+
+    body = (greeting_html + "\n" + "\n".join(out)).strip() if (greeting_html or out) else "<p></p>"
     return wrap_letter_html(body)
 
 
