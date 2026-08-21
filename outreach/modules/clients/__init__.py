@@ -590,20 +590,56 @@ def sync_from_bitrix(store: ClientsStore, client: BitrixClient) -> dict[str, Any
 
 
 def rebuild_outbox_from_clients(clients: ClientsStore, outbox: Any) -> dict[str, Any]:
-    """Push local client emails into outbox (pending), without Bitrix online."""
+    """Push local client emails into outbox (pending), without Bitrix online.
+
+    Prefer director FIO for greeting when DaData/Bitrix enriched it.
+    """
     inserted = 0
     known = 0
+    with_director = 0
     for row in clients.iter_outreach_targets():
         email = normalize_email(row.get("email"))
         if not email:
             continue
         company_id = str(row.get("company_bitrix_id") or "")
-        # If source is company, bitrix_id is company; else use company_bitrix_id
         if row.get("source") == "company":
             company_id = str(row.get("bitrix_id") or company_id)
         title = str(row.get("display_name") or email)
+        director = ""
+        if company_id:
+            try:
+                with clients.connect() as conn:
+                    # companies.director from Bitrix requisites; director_name from DaData enrich
+                    cols = {
+                        r[1]
+                        for r in conn.execute("PRAGMA table_info(companies)").fetchall()
+                    }
+                    if "director_name" in cols or "director" in cols:
+                        sel = []
+                        if "director_name" in cols:
+                            sel.append("director_name")
+                        if "director" in cols:
+                            sel.append("director")
+                        q = f"SELECT {', '.join(sel)} FROM companies WHERE bitrix_id = ? LIMIT 1"
+                        crow = conn.execute(q, (company_id,)).fetchone()
+                        if crow:
+                            for i in range(len(sel)):
+                                val = str(crow[i] or "").strip()
+                                if val:
+                                    director = val
+                                    break
+            except Exception:  # noqa: BLE001
+                director = ""
+        person = director or (
+            title
+            if row.get("source") == "contact"
+            else ""
+        )
+        greeting_name = person or title
+        if director:
+            with_director += 1
         if outbox.upsert_company(
-            email=email, company_id=company_id or "", company_title=title
+            email=email, company_id=company_id or "", company_title=greeting_name
         ):
             inserted += 1
         else:
@@ -612,6 +648,7 @@ def rebuild_outbox_from_clients(clients: ClientsStore, outbox: Any) -> dict[str,
         "ok": True,
         "inserted_new": inserted,
         "already_known": known,
+        "with_director_name": with_director,
         "outbox": outbox.counts(),
         "clients": clients.counts(),
     }

@@ -1,0 +1,353 @@
+"""Classify call outcome into a sheet note for «Пометки Клиента»."""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import urllib.request
+from typing import Any
+
+
+# «ИНТЕРЕСНО» — только если так высказался клиент (не AVA).
+INTEREST_RE = re.compile(
+    r"(?i)(?:^|[^\w])("
+    r"интересн\w*"
+    r"|актуальн\w*"
+    r"|хочу\s+(?:узнать|послушать|разобрать|обсудить|подробн\w*)"
+    r"|давайте\s+(?:обсуд\w*|созвон\w*|созвонимся|продолж\w*|запиш\w*|поговор\w*)"
+    r"|готов\w*\s+(?:обсуд\w*|созвон\w*|встрет\w*|посмотр\w*)"
+    r"|согласен\w*"
+    r"|запишите?\s+меня"
+    r"|можно\s+запис\w*"
+    r")"
+)
+BOOKED_RE = re.compile(
+    r"(?i)(?:^|[^\w])("
+    r"встречу?\s+зафиксир"
+    r"|приглашение\s+отправлен"
+    r"|создал\w*\s+встреч"
+    r"|записан\w*\s+на"
+    r"|create_calendar_event"
+    r"|telemost"
+    r"|телемост"
+    r")"
+)
+NEGATIVE_RE = re.compile(
+    r"(?i)(?:^|[^\w])(не\s*интерес\w*|не\s*актуаль\w*|не\s*надо|отказа\w*|не\s*нужн\w*)"
+)
+NOANSWER_RE = re.compile(
+    r"(?i)(?:^|[^\w])(автоответчик|голосовая\s+почта|не\s*бер\w*\s*труб\w*|недозвон|не\s*отвеча\w*|молчан\w*)"
+)
+# IVR / electronic secretary / voicemail — not a live decision-maker.
+MACHINE_RE = re.compile(
+    r"(?i)("
+    r"электронн\w*\s+помощник"
+    r"|голосовой\s+помощник"
+    r"|виртуальн\w*\s+(?:секретар\w*|помощник|ассистент)"
+    r"|автосекретар\w*"
+    r"|я\s+(?:робот|бот|автоответчик)"
+    r"|озвучьте,?\s+что\s+передать"
+    r"|оставьте\s+(?:сообщение|голосовое)"
+    r"|после\s+сигнала"
+    r"|абонент\s+(?:недоступен|занят)"
+    r"|сейчас\s+не\s+может\s+ответить"
+    r"|перезвоните\s+позднее"
+    r")"
+)
+CALLBACK_RE = re.compile(
+    r"(?i)(?:^|[^\w])(перезвон\w*|свяжит\w*|позже|через\s+\d+|завтра|вечером)"
+)
+
+
+def _turn_role(t: dict[str, Any]) -> str:
+    role = str(t.get("role") or t.get("who") or "").strip().lower()
+    if role in ("клиент", "client", "caller"):
+        return "user"
+    if role in ("ava", "assistant", "bot"):
+        return "assistant"
+    return role
+
+
+def _turns_text(conversation: list[Any] | str) -> str:
+    if isinstance(conversation, str):
+        return conversation
+    parts: list[str] = []
+    for t in conversation or []:
+        if not isinstance(t, dict):
+            continue
+        role = _turn_role(t) or str(t.get("role") or "")
+        content = str(t.get("content") or t.get("text") or "").strip()
+        if content:
+            parts.append(f"{role}: {content}")
+    return "\n".join(parts)
+
+
+def _user_text(conversation: list[Any] | str) -> str:
+    """Only caller/ASR turns — never classify interest from AVA greeting/script."""
+    if isinstance(conversation, str):
+        lines = []
+        for line in conversation.splitlines():
+            low = line.strip().lower()
+            if low.startswith(("user:", "клиент:", "client:", "caller:")):
+                lines.append(line)
+        return "\n".join(lines) if lines else ""
+    parts: list[str] = []
+    for t in conversation or []:
+        if not isinstance(t, dict):
+            continue
+        if _turn_role(t) != "user":
+            continue
+        content = str(t.get("content") or t.get("text") or "").strip()
+        if content:
+            parts.append(content)
+    return "\n".join(parts)
+
+
+def has_user_speech(conversation: list[Any] | str) -> bool:
+    return bool(_user_text(conversation).strip())
+
+
+def is_machine_or_assistant(conversation: list[Any] | str) -> bool:
+    """True if callee side is IVR / electronic assistant / voicemail."""
+    user = _user_text(conversation)
+    text = _turns_text(conversation)
+    return bool(MACHINE_RE.search(user) or MACHINE_RE.search(text))
+
+
+def client_expressed_interest(conversation: list[Any] | str) -> bool:
+    user = _user_text(conversation)
+    if not user.strip():
+        return False
+    if is_machine_or_assistant(conversation):
+        return False
+    if NEGATIVE_RE.search(user):
+        return False
+    return bool(INTEREST_RE.search(user))
+
+
+def status_for(*, note: str, interest: str, status: str = "") -> str:
+    """Always produce a concrete status label for our local DB / Sheet."""
+    s = (status or "").strip()
+    if s:
+        return s
+    n = (note or "").strip().upper()
+    interest = (interest or "").strip().lower()
+    if n.startswith("ИНТЕРЕСНО") or interest == "yes":
+        return "Положительный"
+    if "НЕ ИНТЕРЕСНО" in n:
+        return "Отрицательный"
+    if (
+        "НЕ ДОЗВОН" in n
+        or "АВТООТВЕТЧИК" in n
+        or "ЭЛЕКТРОННЫЙ ПОМОЩНИК" in n
+        or "ГОЛОСОВОЙ ПОМОЩНИК" in n
+    ):
+        return "Недозвон"
+    if n.startswith("ПЕРЕЗВОНИТЬ"):
+        return "Перезвонить"
+    if n.startswith("DRY_RUN"):
+        return "Тест"
+    if n.startswith("СОСТОЯЛСЯ"):
+        return "Состоялся"
+    return "Состоялся" if note else "Неизвестно"
+
+
+def classify_rules(conversation: list[Any] | str, *, outcome: str = "", duration: int = 0) -> dict[str, str]:
+    text = _turns_text(conversation)
+    user = _user_text(conversation)
+    out = (outcome or "").lower()
+
+    if not user.strip():
+        if duration and duration < 20:
+            return {
+                "note": "НЕ ДОЗВОН",
+                "status": "Недозвон",
+                "interest": "no",
+                "method": "rules_no_user_short",
+            }
+        return {
+            "note": "СОСТОЯЛСЯ — клиент не говорил / ASR пусто",
+            "status": "Состоялся",
+            "interest": "maybe",
+            "method": "rules_no_user",
+        }
+    # Electronic assistant / IVR first — never treat as live interest.
+    if is_machine_or_assistant(conversation):
+        return {
+            "note": "НЕ ДОЗВОН / электронный помощник",
+            "status": "Недозвон",
+            "interest": "no",
+            "method": "rules_machine",
+        }
+    if NOANSWER_RE.search(user) or NOANSWER_RE.search(text) or "no-answer" in out or "busy" in out:
+        return {
+            "note": "НЕ ДОЗВОН / автоответчик",
+            "status": "Недозвон",
+            "interest": "no",
+            "method": "rules_noanswer",
+        }
+    # Запись на консультацию — интерес подтверждён действием (календарь/Телемост).
+    if BOOKED_RE.search(text):
+        return {
+            "note": "ИНТЕРЕСНО — записан на консультацию (календарь+Телемост+почта)",
+            "status": "Положительный",
+            "interest": "yes",
+            "method": "rules_booked",
+        }
+    if client_expressed_interest(conversation):
+        note = "ИНТЕРЕСНО — перезвонить лично"
+        if CALLBACK_RE.search(user):
+            note = "ИНТЕРЕСНО — перезвонить лично (просил перезвонить)"
+        return {
+            "note": note,
+            "status": "Положительный",
+            "interest": "yes",
+            "method": "rules_interest",
+        }
+    if NEGATIVE_RE.search(user):
+        return {
+            "note": "НЕ ИНТЕРЕСНО",
+            "status": "Отрицательный",
+            "interest": "no",
+            "method": "rules_negative",
+        }
+    if CALLBACK_RE.search(user):
+        return {
+            "note": "ПЕРЕЗВОНИТЬ позже",
+            "status": "Перезвонить",
+            "interest": "maybe",
+            "method": "rules_callback",
+        }
+    if not text.strip():
+        return {
+            "note": "НЕ ДОЗВОН",
+            "status": "Недозвон",
+            "interest": "no",
+            "method": "rules_empty",
+        }
+    return {
+        "note": "СОСТОЯЛСЯ — уточнить итог",
+        "status": "Состоялся",
+        "interest": "maybe",
+        "method": "rules_unclear",
+    }
+
+
+def _sanitize_llm_result(
+    data: dict[str, str],
+    conversation: list[Any] | str,
+) -> dict[str, str]:
+    """Drop invented «ИНТЕРЕСНО» unless client said so or booking tools fired."""
+    if is_machine_or_assistant(conversation):
+        out = classify_rules(conversation)
+        out["method"] = "llm_sanitized_" + out["method"]
+        return out
+
+    note = str(data.get("note") or "").strip() or "СОСТОЯЛСЯ — уточнить итог"
+    interest = str(data.get("interest") or "maybe").strip().lower()
+    status = str(data.get("status") or "").strip()
+    text = _turns_text(conversation)
+    booked = bool(BOOKED_RE.search(text))
+    client_yes = client_expressed_interest(conversation)
+
+    wants_interest = interest == "yes" or note.upper().startswith("ИНТЕРЕСНО")
+    if wants_interest and not booked and not client_yes:
+        fallback = classify_rules(conversation)
+        fallback["method"] = "llm_sanitized_" + fallback["method"]
+        return fallback
+
+    if booked and not note.upper().startswith("ИНТЕРЕСНО"):
+        note = "ИНТЕРЕСНО — записан на консультацию (календарь+Телемост+почта)"
+        interest = "yes"
+        status = "Положительный"
+
+    return {
+        "note": note,
+        "status": status_for(note=note, interest=interest, status=status),
+        "interest": interest,
+        "method": "llm",
+    }
+
+
+def classify_llm(conversation: list[Any] | str, *, outcome: str = "", duration: int = 0) -> dict[str, str] | None:
+    api_key = (os.getenv("OPENAI_API_KEY") or "").strip()
+    if not api_key:
+        return None
+    model = (os.getenv("OPENAI_MODEL") or "gpt-4.1-mini").strip()
+    text = _turns_text(conversation)[:6000]
+    user = _user_text(conversation)[:3000]
+    prompt = (
+        "По расшифровке исходящего звонка Quantum Labs про массовые выплаты "
+        "верни JSON с полями note, status, interest.\n"
+        "КРИТИЧНО: «ИНТЕРЕСНО» и interest=yes ставь ТОЛЬКО если клиент сам "
+        "явно сказал об интересе (интересно/актуально/давайте обсудим/запишите меня) "
+        "ИЛИ реально создана запись на консультацию (календарь/Телемост).\n"
+        "Реплики ассистента (AVA) сами по себе НЕ считаются интересом.\n"
+        "Если на линии электронный/голосовой помощник, автоответчик, «озвучьте что передать» "
+        "— это НЕ ДОЗВОН / электронный помощник, interest=no, даже если бот сказал «заинтересовали».\n"
+        "Короткие «да/алло/удобно» без интереса → не ИНТЕРЕСНО.\n"
+        "note — короткая пометка для колонки «Пометки Клиента» на русском.\n"
+        "Если запись на консультацию — note начинай с "
+        "«ИНТЕРЕСНО — записан на консультацию».\n"
+        "Если клиент явно заинтересован без записи — «ИНТЕРЕСНО — перезвонить лично».\n"
+        "status — всегда заполняй: Положительный | Отрицательный | Недозвон | Перезвонить | Состоялся.\n"
+        "interest — yes|no|maybe.\n"
+        f"outcome={outcome} duration={duration}\n"
+        f"client_only:\n{user}\n"
+        f"full_transcript:\n{text}"
+    )
+    body = {
+        "model": model,
+        "temperature": 0,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Ты классификатор итогов звонков. Отвечай только JSON. "
+                    "ИНТЕРЕСНО только по словам клиента или факту записи."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ],
+    }
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/chat/completions",
+        data=json.dumps(body).encode(),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            payload = json.loads(resp.read().decode())
+        content = payload["choices"][0]["message"]["content"]
+        data = json.loads(content)
+        return _sanitize_llm_result(
+            {
+                "note": str(data.get("note") or "").strip(),
+                "status": str(data.get("status") or "").strip(),
+                "interest": str(data.get("interest") or "maybe").strip().lower(),
+            },
+            conversation,
+        )
+    except Exception:
+        return None
+
+
+def classify(conversation: list[Any] | str, *, outcome: str = "", duration: int = 0) -> dict[str, str]:
+    # Machine / no real caller ASR — do not let LLM invent «ИНТЕРЕСНО».
+    if is_machine_or_assistant(conversation) or not has_user_speech(conversation):
+        out = classify_rules(conversation, outcome=outcome, duration=duration)
+    else:
+        llm = classify_llm(conversation, outcome=outcome, duration=duration)
+        out = llm or classify_rules(conversation, outcome=outcome, duration=duration)
+    out["status"] = status_for(
+        note=out.get("note") or "",
+        interest=out.get("interest") or "",
+        status=out.get("status") or "",
+    )
+    return out

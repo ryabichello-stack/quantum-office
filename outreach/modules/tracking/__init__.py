@@ -149,48 +149,121 @@ def inject_open_pixel(html_body: str, token: str, settings: Any = None) -> str:
     return html_body + pixel
 
 
-def build_plus_address(*, mailbox: str, kind: str, outbox_id: int) -> str:
-    """Build ``office+au.<id>.<hmac>@domain`` style address."""
+def build_plus_address(
+    *,
+    mailbox: str,
+    kind: str,
+    outbox_id: int,
+    company_slug: str | None = None,
+) -> str:
+    """Build ``office+au.<slug>.<id>.<hmac>@domain`` (slug optional).
+
+    Example: ``office+lombard-sever.42.a1b2c3d4@quantumlabs.ru``
+    Legacy without slug still supported by ``parse_plus_address``.
+    """
     mailbox = mailbox.strip()
     if "@" not in mailbox:
         raise ValueError("mailbox must be a full email")
     local, domain = mailbox.split("@", 1)
     local = local.split("+", 1)[0]
     sig = short_hmac(f"{kind}:{outbox_id}")
+    slug = plus_company_slug(company_slug)
+    if slug:
+        return f"{local}+{kind}.{slug}.{outbox_id}.{sig}@{domain}"
     return f"{local}+{kind}.{outbox_id}.{sig}@{domain}"
 
 
+_TRANSLIT = str.maketrans(
+    {
+        "а": "a",
+        "б": "b",
+        "в": "v",
+        "г": "g",
+        "д": "d",
+        "е": "e",
+        "ё": "e",
+        "ж": "zh",
+        "з": "z",
+        "и": "i",
+        "й": "y",
+        "к": "k",
+        "л": "l",
+        "м": "m",
+        "н": "n",
+        "о": "o",
+        "п": "p",
+        "р": "r",
+        "с": "s",
+        "т": "t",
+        "у": "u",
+        "ф": "f",
+        "х": "h",
+        "ц": "c",
+        "ч": "ch",
+        "ш": "sh",
+        "щ": "sch",
+        "ъ": "",
+        "ы": "y",
+        "ь": "",
+        "э": "e",
+        "ю": "yu",
+        "я": "ya",
+    }
+)
+
+
+def plus_company_slug(raw: str | None, *, max_len: int = 28) -> str:
+    """ASCII slug for plus-address readability (company / contact / domain)."""
+    s = (raw or "").strip().lower()
+    if not s:
+        return ""
+    if "@" in s:
+        # recipient email → domain label
+        domain = s.split("@", 1)[1]
+        s = domain.split(".")[0]
+    s = s.translate(_TRANSLIT)
+    out = []
+    prev_dash = False
+    for ch in s:
+        if ch.isalnum():
+            out.append(ch)
+            prev_dash = False
+        elif ch in (" ", "-", "_", ".", "/"):
+            if out and not prev_dash:
+                out.append("-")
+                prev_dash = True
+    slug = "".join(out).strip("-")
+    return slug[:max_len].strip("-")
+
+
 def parse_plus_address(addr: str) -> dict[str, Any] | None:
+    """Parse ``local+au[.slug].<id>.<sig>@domain`` (slug optional)."""
     addr = (addr or "").strip().lower()
-    m = _PLUS_TAG_RE.search(addr)
-    if not m:
-        if "@" in addr and "+" in addr.split("@", 1)[0]:
-            local, domain = addr.split("@", 1)
-            base, _, rest = local.partition("+")
-            parts = rest.split(".")
-            if len(parts) >= 3 and parts[0] in ("au", "unsub"):
-                kind, oid, sig = parts[0], parts[1], parts[2]
-                if oid.isdigit():
-                    return {
-                        "mailbox": f"{base}@{domain}",
-                        "kind": kind,
-                        "outbox_id": int(oid),
-                        "sig": sig,
-                        "valid_sig": hmac.compare_digest(
-                            sig, short_hmac(f"{kind}:{oid}")
-                        ),
-                    }
+    if "@" not in addr or "+" not in addr.split("@", 1)[0]:
         return None
-    base_local, kind, oid, sig = m.group(1), m.group(2).lower(), m.group(3), m.group(4)
-    domain = addr.split("@", 1)[1]
+    local, domain = addr.split("@", 1)
+    base, _, rest = local.partition("+")
+    parts = rest.split(".")
+    if len(parts) < 3 or parts[0] not in ("au", "unsub"):
+        return None
+    kind = parts[0]
+    if len(parts) >= 4 and parts[-2].isdigit():
+        oid_s, sig = parts[-2], parts[-1]
+        slug = ".".join(parts[1:-2]) or None
+    elif parts[1].isdigit():
+        oid_s, sig = parts[1], parts[2]
+        slug = None
+    else:
+        return None
     try:
-        outbox_id = int(oid)
+        outbox_id = int(oid_s)
     except ValueError:
         return None
     return {
-        "mailbox": f"{base_local}@{domain}",
+        "mailbox": f"{base}@{domain}",
         "kind": kind,
         "outbox_id": outbox_id,
+        "company_slug": slug,
         "sig": sig,
         "valid_sig": hmac.compare_digest(sig, short_hmac(f"{kind}:{outbox_id}")),
     }
@@ -605,13 +678,29 @@ def build_tracking_headers(
     outbox_id: int,
     mailbox: str,
     enable_plus_reply_to: bool,
+    company_slug: str | None = None,
 ) -> dict[str, str]:
     """Return reply_to / list_unsub / plus_tag for one send."""
-    plus_tag = f"au.{outbox_id}.{short_hmac(f'au:{outbox_id}')}"
+    slug = plus_company_slug(company_slug)
+    plus_tag = (
+        f"au.{slug}.{outbox_id}.{short_hmac(f'au:{outbox_id}')}"
+        if slug
+        else f"au.{outbox_id}.{short_hmac(f'au:{outbox_id}')}"
+    )
     out: dict[str, str] = {"plus_tag": plus_tag}
     if enable_plus_reply_to:
-        reply = build_plus_address(mailbox=mailbox, kind="au", outbox_id=outbox_id)
-        unsub = build_plus_address(mailbox=mailbox, kind="unsub", outbox_id=outbox_id)
+        reply = build_plus_address(
+            mailbox=mailbox,
+            kind="au",
+            outbox_id=outbox_id,
+            company_slug=slug or None,
+        )
+        unsub = build_plus_address(
+            mailbox=mailbox,
+            kind="unsub",
+            outbox_id=outbox_id,
+            company_slug=slug or None,
+        )
         out["reply_to"] = reply
         out["unsubscribe_mailto"] = unsub
     return out
@@ -619,16 +708,21 @@ def build_tracking_headers(
 
 def preview_plus_payload(*, outbox_id: int, mailbox: str | None = None) -> dict[str, Any]:
     box = (mailbox or os.getenv("MAIL_USERNAME") or "office@quantumlabs.ru").strip()
-    reply = build_plus_address(mailbox=box, kind="au", outbox_id=outbox_id)
-    unsub = build_plus_address(mailbox=box, kind="unsub", outbox_id=outbox_id)
+    reply = build_plus_address(
+        mailbox=box, kind="au", outbox_id=outbox_id, company_slug="example-co"
+    )
+    unsub = build_plus_address(
+        mailbox=box, kind="unsub", outbox_id=outbox_id, company_slug="example-co"
+    )
     return {
         "ok": True,
         "reply_to": reply,
         "unsubscribe_mailto": f"mailto:{unsub}?subject={quote('unsubscribe')}",
         "wrong_example": "au1+office@quantumlabs.ru  ← не использовать",
         "right_example": reply,
+        "format": "office+au.<company-slug>.<outbox_id>.<sig>@quantumlabs.ru",
         "mailru_note": (
             "Mail.ru Business may not deliver plus aliases to the base inbox. "
-            "We always store Message-ID; enable TRACKING_PLUS_REPLY_TO only after a smoke test."
+            "We always store Message-ID as primary match; plus Reply-To is a secondary signal."
         ),
     }
