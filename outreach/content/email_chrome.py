@@ -150,14 +150,23 @@ def cta_block_html(
     )
 
 
+def _icon_img(src: str) -> str:
+    """Hosted PNG — Gmail/Outlook strip inline SVG."""
+    return (
+        f'<img src="{escape(src, quote=True)}" width="20" height="20" alt="" '
+        'style="display:block;border:0;outline:none;width:20px;height:20px;">'
+    )
+
+
 def contact_block_html(
     *,
     website: str,
     phone: str,
     email: str,
     closing: str = "Команда Quantum Labs",
+    icon_base: str | None = None,
 ) -> str:
-    """Light contact band with darker top edge + SVG icons."""
+    """Light contact band with darker top edge + hosted PNG icons (email-safe)."""
     site = (website or "").strip()
     phone_s = (phone or "").strip()
     email_s = (email or "").strip()
@@ -168,20 +177,24 @@ def contact_block_html(
         site_host = site_host[7:]
     site_host = site_host.rstrip("/")
     site_href = site if "://" in site else (f"https://{site}" if site else "")
+    base = (icon_base or "").rstrip("/") or "https://a.47z.ru/_ava_outreach"
+    mail_icon = f"{base}/assets/brand/icons/mail.png"
+    web_icon = f"{base}/assets/brand/icons/web.png"
+    phone_icon = f"{base}/assets/brand/icons/phone.png"
 
     rows: list[str] = []
     if email_s:
         rows.append(
-            '<tr><td width="29" valign="top" style="padding:0 9px 10px 0;">'
-            f"{_SVG_MAIL}</td>"
+            '<tr><td width="29" valign="middle" style="padding:0 9px 10px 0;">'
+            f"{_icon_img(mail_icon)}</td>"
             f'<td style="padding:0 0 10px;font-size:14px;line-height:20px;font-family:{FONT};">'
             f'<a href="mailto:{escape(email_s, quote=True)}" style="color:{INK_CONTACT};'
             f'text-decoration:none;">{escape(email_s)}</a></td></tr>'
         )
     if site:
         rows.append(
-            '<tr><td width="29" valign="top" style="padding:0 9px 10px 0;">'
-            f"{_SVG_WEB}</td>"
+            '<tr><td width="29" valign="middle" style="padding:0 9px 10px 0;">'
+            f"{_icon_img(web_icon)}</td>"
             f'<td style="padding:0 0 10px;font-size:14px;line-height:20px;font-family:{FONT};">'
             f'<a href="{escape(site_href, quote=True)}" style="color:{INK_CONTACT};'
             f'text-decoration:none;">{escape(site_host or site)}</a></td></tr>'
@@ -189,8 +202,8 @@ def contact_block_html(
     if phone_s:
         tel = "tel:" + "".join(ch for ch in phone_s if ch.isdigit() or ch == "+")
         rows.append(
-            '<tr><td width="29" valign="top" style="padding:0 9px 0 0;">'
-            f"{_SVG_PHONE}</td>"
+            '<tr><td width="29" valign="middle" style="padding:0 9px 0 0;">'
+            f"{_icon_img(phone_icon)}</td>"
             f'<td style="font-size:14px;line-height:20px;font-family:{FONT};">'
             f'<a href="{escape(tel, quote=True)}" style="color:{INK_CONTACT};'
             f'text-decoration:none;">{escape(phone_s)}</a></td></tr>'

@@ -260,13 +260,11 @@ def build_signature_html(
     icon_base: str | None = None,
     settings_get=None,
 ) -> str:
-    """Canonical contact band (SVG icons). Closing text from signature_plain."""
+    """Canonical contact band with hosted PNG icons (email-safe)."""
     from content.email_chrome import contact_block_html
 
-    # Use first non-empty lines of signature as closing label; contacts come from fields.
     closing = "Команда Quantum Labs"
     lines = [ln.strip() for ln in (signature_plain or "").splitlines() if ln.strip()]
-    # Prefer "С уважением," block → last meaningful org line
     for ln in reversed(lines):
         low = ln.lower()
         if low.startswith("с уважением"):
@@ -277,11 +275,13 @@ def build_signature_html(
             continue
         closing = ln
         break
+    base = (icon_base or "").rstrip("/") or public_base_url(settings_get)
     return contact_block_html(
         website=website,
         phone=phone,
         email=email,
         closing=closing,
+        icon_base=base,
     )
 
 
