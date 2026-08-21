@@ -241,37 +241,15 @@ def build_callback_cta_html(
     settings: Any = None,
     reply_mailto: str | None = None,
 ) -> str:
-    """Callback block: title + one line + big button → landing form.
+    """Callback block styled like the canonical red-orange CTA."""
+    from content.email_chrome import cta_block_html
 
-    No inline form in the letter — most clients strip or fake ``<input>``,
-    which confuses people. The landing page owns FIO + phone.
-    """
-    title = escape(cta_title(settings))
-    lead = escape(cta_lead(settings))
-    button = escape(cta_button(settings))
-    href = escape(url, quote=True)
-
-    # Bulletproof button (Outlook-friendly table + full <a> hit area).
-    return (
-        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
-        'style="border-collapse:collapse;margin:28px 0 8px">'
-        '<tr><td style="padding:0 0 18px">'
-        '<div style="height:1px;line-height:1px;font-size:0;background:#e8e2d8">&nbsp;</div>'
-        "</td></tr>"
-        '<tr><td style="padding:4px 0 0">'
-        f'<p style="margin:0 0 8px;font:600 17px/1.35 Georgia,\'Times New Roman\',serif;'
-        f'color:#1a2229;letter-spacing:-0.01em">{title}</p>'
-        f'<p style="margin:0 0 18px;font:14px/1.55 \'Segoe UI\',Helvetica,Arial,sans-serif;'
-        f'color:#5c6670">{lead}</p>'
-        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
-        'style="border-collapse:collapse">'
-        '<tr><td align="center" bgcolor="#c4470f" style="background:#c4470f;border-radius:4px">'
-        f'<a href="{href}" target="_blank" '
-        'style="display:inline-block;padding:15px 34px;background:#c4470f;color:#ffffff;'
-        "font:600 15px/1.2 'Segoe UI',Helvetica,Arial,sans-serif;"
-        f'text-decoration:none;border-radius:4px;letter-spacing:0.01em">{button}</a>'
-        "</td></tr></table>"
-        "</td></tr></table>"
+    return cta_block_html(
+        url=url,
+        title=cta_title(settings),
+        lead=cta_lead(settings),
+        button=cta_button(settings),
+        reply_mailto=reply_mailto or notify_email(settings),
     )
 
 
@@ -588,7 +566,7 @@ def form_page_html(
           </label>
           <button type="submit">{button}</button>
         </form>
-        <p class="note">Один экран — отправили, и мы перезваниваем.</p>
+        <p class="note">Заполнили — и мы сразу набираем номер.</p>
         """
     return f"""<!doctype html>
 <html lang="ru">
@@ -600,23 +578,24 @@ def form_page_html(
   <style>
     :root {{ color-scheme: light; }}
     * {{ box-sizing: border-box; }}
-    body {{ margin:0; font:15px/1.5 Manrope,Segoe UI,Helvetica,Arial,sans-serif; color:#0f1b24;
-           background:#f3f1ec; min-height:100vh; }}
+    body {{ margin:0; font:16px/1.55 "Segoe UI",Helvetica,Arial,sans-serif; color:#1a2229;
+           background:#ebe6de; min-height:100vh; }}
     .bar {{ height:3px; background:#c4470f; }}
-    .wrap {{ max-width:420px; margin:0 auto; padding:1.5rem 1.1rem 2.5rem; }}
-    .card {{ background:#faf8f5; border:1px solid #e6e1da; padding:1.15rem 1.1rem 1.25rem; }}
-    h1 {{ font-size:1.2rem; margin:0 0 0.45rem; letter-spacing:-0.02em; line-height:1.3; }}
-    .lead {{ color:#5a6570; margin:0 0 1rem; font-size:0.92rem; }}
-    label {{ display:block; margin:0 0 0.85rem; font-weight:600; font-size:0.72rem;
-             letter-spacing:0.04em; text-transform:uppercase; color:#6a737b; }}
-    input {{ display:block; width:100%; margin-top:0.4rem; padding:0.85rem 0.8rem; border:1px solid #d0d5da;
-             background:#fff; font:15px/1.4 Manrope,Segoe UI,sans-serif; color:#0f1b24; border-radius:2px; }}
-    button {{ margin-top:0.35rem; width:100%; padding:0.95rem 1rem; border:0; background:#c4470f; color:#fff;
-              font:600 0.95rem Manrope,Segoe UI,sans-serif; cursor:pointer; border-radius:2px; }}
-    .note {{ margin-top:0.85rem; font-size:0.78rem; color:#6a737b; }}
-    .err {{ background:#fde8e4; color:#8a2a12; padding:0.65rem 0.75rem; margin:0 0 0.9rem; }}
-    .ok {{ background:#e7f5ea; color:#1d5c2e; padding:0.75rem 0.85rem; margin:0; }}
-    .brand {{ font-size:0.7rem; letter-spacing:0.1em; text-transform:uppercase; color:#6a737b; margin:0.85rem 0 1rem; }}
+    .wrap {{ max-width:420px; margin:0 auto; padding:1.75rem 1.15rem 2.75rem; }}
+    .card {{ background:#ffffff; border:1px solid #ddd6cb; padding:1.35rem 1.25rem 1.4rem; }}
+    h1 {{ font:600 1.35rem/1.3 Georgia,"Times New Roman",serif; margin:0 0 0.5rem;
+          letter-spacing:-0.015em; color:#1a2229; }}
+    .lead {{ color:#5c6670; margin:0 0 1.15rem; font-size:0.95rem; line-height:1.5; }}
+    label {{ display:block; margin:0 0 0.95rem; font-weight:600; font-size:0.72rem;
+             letter-spacing:0.05em; text-transform:uppercase; color:#6a737b; }}
+    input {{ display:block; width:100%; margin-top:0.45rem; padding:0.9rem 0.85rem; border:1px solid #d0d5da;
+             background:#fff; font:16px/1.4 "Segoe UI",Helvetica,Arial,sans-serif; color:#1a2229; border-radius:4px; }}
+    button {{ margin-top:0.45rem; width:100%; padding:1rem 1rem; border:0; background:#c4470f; color:#fff;
+              font:600 1rem/1.2 "Segoe UI",Helvetica,Arial,sans-serif; cursor:pointer; border-radius:4px; }}
+    .note {{ margin-top:0.95rem; font-size:0.8rem; color:#6a737b; }}
+    .err {{ background:#fde8e4; color:#8a2a12; padding:0.7rem 0.8rem; margin:0 0 0.95rem; border-radius:4px; }}
+    .ok {{ background:#e7f5ea; color:#1d5c2e; padding:0.85rem 0.9rem; margin:0; border-radius:4px; }}
+    .brand {{ font-size:0.72rem; letter-spacing:0.14em; text-transform:uppercase; color:#6a737b; margin:0 0 1.1rem; font-weight:600; }}
   </style>
 </head>
 <body>

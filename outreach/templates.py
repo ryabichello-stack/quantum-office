@@ -244,6 +244,13 @@ def _icon_row(*, icon_src: str, label: str, href: str | None = None) -> str:
     )
 
 
+def build_logo_header(*, logo_url: str, company: str) -> str:
+    """Canonical header row: logo mark + Quantum Labs wordmark."""
+    from content.email_chrome import logo_header_html
+
+    return logo_header_html(logo_url=logo_url or "", company=company)
+
+
 def build_signature_html(
     *,
     signature_plain: str,
@@ -253,108 +260,28 @@ def build_signature_html(
     icon_base: str | None = None,
     settings_get=None,
 ) -> str:
-    """HTML signature: text + icon contacts from fields (no divider lines)."""
-    site = (website or "").strip()
-    phone_s = (phone or "").strip()
-    email_s = (email or "").strip()
-    base = (icon_base or "").rstrip("/") or public_base_url(settings_get)
-    web_icon = f"{base}/assets/brand/icons/web.png"
-    mail_icon = f"{base}/assets/brand/icons/mail.png"
-    phone_icon = f"{base}/assets/brand/icons/phone.png"
+    """Canonical contact band (SVG icons). Closing text from signature_plain."""
+    from content.email_chrome import contact_block_html
 
-    site_host = site
-    if site_host.startswith("https://"):
-        site_host = site_host[8:]
-    elif site_host.startswith("http://"):
-        site_host = site_host[7:]
-    site_host = site_host.rstrip("/")
-
-    contact_keys = {
-        site.lower(),
-        site_host.lower(),
-        f"https://{site_host}".lower(),
-        f"http://{site_host}".lower(),
-        phone_s.lower(),
-        f"телефон: {phone_s}".lower() if phone_s else "",
-        email_s.lower(),
-        f"email: {email_s}".lower() if email_s else "",
-        f"e-mail: {email_s}".lower() if email_s else "",
-        f"почта: {email_s}".lower() if email_s else "",
-    }
-    contact_keys.discard("")
-
-    text_lines: list[str] = []
-    for ln in (signature_plain or "").splitlines():
-        key = ln.strip().lower()
-        if key in contact_keys:
+    # Use first non-empty lines of signature as closing label; contacts come from fields.
+    closing = "Команда Quantum Labs"
+    lines = [ln.strip() for ln in (signature_plain or "").splitlines() if ln.strip()]
+    # Prefer "С уважением," block → last meaningful org line
+    for ln in reversed(lines):
+        low = ln.lower()
+        if low.startswith("с уважением"):
             continue
-        if phone_s and key.startswith("телефон:") and phone_s.lower() in key:
+        if "@" in ln or ln.startswith("http") or "телефон" in low:
             continue
-        if email_s and email_s.lower() in key and ("@" in key):
+        if set(ln) <= {"_", "-", "—", "–"}:
             continue
-        if site_host and key in {site_host.lower(), site.lower()}:
-            continue
-        text_lines.append(ln)
-
-    text_block = clean_blank_lines("\n".join(text_lines))
-    parts: list[str] = []
-    if text_block:
-        parts.append(
-            "<div style='margin:0 0 12px;padding:0;border:none;line-height:1.55;color:#1a2229;"
-            "font-family:Georgia,\"Times New Roman\",serif;font-size:15px'>"
-            + escape(text_block).replace("\n", "<br>\n")
-            + "</div>"
-        )
-
-    rows: list[str] = []
-    if site:
-        href = site if "://" in site else f"https://{site}"
-        rows.append(_icon_row(icon_src=web_icon, label=site_host or site, href=href))
-    if email_s:
-        rows.append(
-            _icon_row(icon_src=mail_icon, label=email_s, href=f"mailto:{email_s}")
-        )
-    if phone_s:
-        tel = "tel:" + "".join(ch for ch in phone_s if ch.isdigit() or ch == "+")
-        rows.append(_icon_row(icon_src=phone_icon, label=phone_s, href=tel or None))
-
-    if rows:
-        parts.append(
-            '<div style="margin:0;padding:0;border:none">' + "".join(rows) + "</div>"
-        )
-
-    if not parts:
-        return ""
-    return (
-        "<div style='margin:8px 0 0.2em;padding:22px 0 0;border:none;"
-        "border-top:1px solid #e8e2d8'>"
-        + "".join(parts)
-        + "</div>"
-    )
-
-def build_logo_header(*, logo_url: str, company: str) -> str:
-    """Quiet brand header: accent strip + mark + company name."""
-    url = (logo_url or "").strip()
-    name = escape((company or "Quantum Labs").strip() or "Quantum Labs")
-    mark = ""
-    if url:
-        mark = (
-            f'<img src="{escape(url, quote=True)}" width="36" height="36" alt="" '
-            'style="display:block;border:0;border-radius:7px;margin:0 12px 0 0"/>'
-        )
-    return (
-        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
-        'style="border-collapse:collapse;margin:0 0 28px">'
-        '<tr><td colspan="2" style="height:3px;line-height:3px;font-size:0;background:#c4470f">'
-        "&nbsp;</td></tr>"
-        '<tr><td style="padding:20px 0 0;vertical-align:middle;width:48px">'
-        f"{mark}"
-        "</td>"
-        '<td style="padding:20px 0 0;vertical-align:middle">'
-        f'<div style="font:600 13px/1.2 \'Segoe UI\',Helvetica,Arial,sans-serif;'
-        f'letter-spacing:0.12em;text-transform:uppercase;color:#6a737b">{name}</div>'
-        "</td></tr>"
-        "</table>\n"
+        closing = ln
+        break
+    return contact_block_html(
+        website=website,
+        phone=phone,
+        email=email,
+        closing=closing,
     )
 
 
@@ -483,15 +410,18 @@ def render_cooperation(
     }
     plain = strip_md_bold(_safe_format(plain_src, mapping_plain))
     html = _safe_format(html_src, mapping_html)
-    if logo_header and "{logo_header}" not in (html_template or "") and logo_header not in html:
-        # Inject micro-logo near the top of <body> when template predates the placeholder.
-        lower = html.lower()
-        idx = lower.find("<body")
+    # Logo is a card <tr>; only inject if the shell never got a header.
+    if logo_header and logo_header not in html and "{logo_header}" not in html:
+        needle = 'style="max-width:640px;'
+        idx = html.find(needle)
         if idx >= 0:
+            # Insert as first row inside the card table — after opening <table ...>
             gt = html.find(">", idx)
-            if gt >= 0:
-                html = html[: gt + 1] + "\n" + logo_header + html[gt + 1 :]
-    # Soft CTA sits BEFORE the signature — signature is the letter close.
+            # find end of opening table tag more carefully
+            table_open_end = html.find(">", html.find("<table", idx))
+            if table_open_end >= 0:
+                html = html[: table_open_end + 1] + "\n" + logo_header + html[table_open_end + 1 :]
+    # Soft CTA: plain-text insert before signature; HTML uses {callback_cta} in shell.
     if cb_plain and "{callback_cta}" not in (plain_template or "") and cb_url and cb_url not in plain:
         if signature and signature in plain:
             plain = plain.replace(signature, cb_plain.strip() + "\n\n" + signature, 1)
@@ -501,15 +431,24 @@ def render_cooperation(
                 plain = plain.replace(marker, cb_plain + marker, 1)
             else:
                 plain = plain.rstrip() + cb_plain
-    if cb_html and "{callback_cta}" not in (html_template or "") and href_marker_missing(html, cb_url):
-        if signature_html and signature_html in html:
-            html = html.replace(signature_html, cb_html + "\n" + signature_html, 1)
+    if (
+        cb_html
+        and cb_url
+        and cb_url not in html
+        and signature_html
+        and signature_html in html
+    ):
+        # Insert inside body cell, immediately before the contact band row.
+        close_body = "</div></td></tr>"
+        anchor = close_body + "\n" + signature_html
+        if anchor in html:
+            html = html.replace(
+                anchor, cb_html + "\n" + close_body + "\n" + signature_html, 1
+            )
         else:
-            hr = '<hr style="border:none;border-top:1px solid #ddd;margin:1.5em 0 0.75em">'
-            if hr in html:
-                html = html.replace(hr, cb_html + "\n" + hr, 1)
-            else:
-                html = html.rstrip() + "\n" + cb_html
+            html = html.replace(
+                signature_html, close_body + "\n" + cb_html + "\n" + signature_html, 1
+            )
     return plain, html
 
 

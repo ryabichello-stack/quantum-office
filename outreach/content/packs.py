@@ -30,20 +30,8 @@ LEGAL_FOOTER_PLAIN = """
 (в т.ч. 152-ФЗ). Это коммерческое предложение, не оферта.
 """
 
-LEGAL_FOOTER_HTML = """
-<hr style="border:none;border-top:1px solid #e8e2d8;margin:1.75em 0 0.9em">
-<div style="font-size:11px;line-height:1.55;color:#7a828a;font-family:'Segoe UI',Helvetica,Arial,sans-serif">
-  <p style="margin:0 0 0.55em">Вы получили это письмо, потому что ваша компания указана в открытых
-  источниках как организация, для которой могут быть актуальны сервисы
-  платёжной инфраструктуры Quantum Labs (в т.ч. Quantum Payouts).</p>
-  <p style="margin:0 0 0.55em">ООО «Квантум Лабс» · <a href="https://quantumlabs.ru" style="color:#7a828a">quantumlabs.ru</a>
-  · office@quantumlabs.ru</p>
-  <p style="margin:0 0 0.55em"><a href="{unsub_url}" style="color:#c4470f">Отписаться от рассылки</a>
-  · или напишите на <a href="mailto:{unsub}?subject=unsubscribe" style="color:#7a828a">{unsub}</a></p>
-  <p style="margin:0">Обработка обращений — в соответствии с применимым законодательством РФ
-  (в т.ч. 152-ФЗ). Письмо носит информационный характер и не является офертой.</p>
-</div>
-"""
+# HTML legal row — canonical card footer (from email_chrome)
+from content.email_chrome import LEGAL_FOOTER_HTML as LEGAL_FOOTER_HTML  # noqa: E402
 
 # Packs end with {signature}; text comes from OUTREACH_SIGNATURE in Campaign UI.
 
@@ -69,15 +57,19 @@ def ensure_legal_footer(plain: str, html: str) -> tuple[str, str]:
 
 
 def _inline_md_to_html(text: str) -> str:
-    """Escape HTML, then apply **bold** → soft <strong> (not shouting)."""
+    """Escape HTML, then apply **bold** → canonical strong."""
     from html import escape
+
+    from content.email_chrome import FONT, INK_HEAD
 
     parts: list[str] = []
     last = 0
     for m in _MD_BOLD.finditer(text or ""):
         parts.append(escape(text[last : m.start()]))
         parts.append(
-            "<strong style='font-weight:600;color:inherit'>" + escape(m.group(1)) + "</strong>"
+            f"<strong style='font-weight:700;color:{INK_HEAD};font-family:{FONT}'>"
+            + escape(m.group(1))
+            + "</strong>"
         )
         last = m.end()
     parts.append(escape(text[last:]))
@@ -85,72 +77,58 @@ def _inline_md_to_html(text: str) -> str:
 
 
 def _html_from_plain(plain: str) -> str:
+    from content.email_chrome import FONT, INK_BODY, INK_HEAD, benefits_box_html, wrap_letter_html
+
     blocks: list[str] = []
     for block in (plain or "").strip().split("\n\n"):
         block = block.strip()
         if not block:
             continue
-        # Keep signature / logo placeholders as raw tokens (not wrapped in <p>).
-        if block in ("{signature}", "{logo_header}", "{callback_cta}"):
-            blocks.append(block)
+        # Signature / logo / CTA are card rows or injected by render — skip body wrap.
+        if block in ("{signature}", "{logo_header}", "{callback_cta}", "{legal_html}"):
             continue
         lines = [ln.rstrip() for ln in block.split("\n")]
         bullet_lines = [ln for ln in lines if ln.startswith("- ")]
         if bullet_lines and len(bullet_lines) == len([ln for ln in lines if ln.strip()]):
-            items = "".join(
-                f"<li style='margin:0.35em 0'>{_inline_md_to_html(ln[2:].strip())}</li>"
-                for ln in bullet_lines
-            )
+            items = [_inline_md_to_html(ln[2:].strip()) for ln in bullet_lines]
+            # benefits_box expects plain items; pass already-escaped HTML carefully —
+            # use strip tags by feeding raw without md first
+            raw_items = [ln[2:].strip() for ln in bullet_lines]
+            # Title: first non-bullet line above, else default
             blocks.append(
-                "<ul style='margin:0.75em 0 1em 1.2em;padding:0;"
-                "font:16px/1.65 Georgia,\"Times New Roman\",serif;color:#1a2229'>"
-                + items
-                + "</ul>"
+                benefits_box_html(title="Что получает ваша команда", items=raw_items)
             )
         else:
+            # Greeting / short pitch: slightly tighter; long blocks as body
             inner = _inline_md_to_html(block).replace("\n", "<br>\n")
+            # First-line hero if block is a single short bold-only line — keep as p
             blocks.append(
-                "<p style='margin:0 0 1.05em;font:16px/1.7 Georgia,\"Times New Roman\",serif;"
-                f"color:#1a2229'>{inner}</p>"
+                f'<p style="margin:0 0 18px;font-size:16px;line-height:24px;'
+                f'color:{INK_BODY};font-family:{FONT};">{inner}</p>'
             )
     body = "\n".join(blocks) if blocks else "<p></p>"
     return wrap_letter_html(body)
 
 
 def wrap_letter_html(inner: str) -> str:
-    """Readable email shell: warm page, white card, calm type."""
-    return (
-        '<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">'
-        '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        '<meta name="color-scheme" content="light">'
-        "</head>"
-        '<body style="margin:0;padding:0;background:#ebe6de;-webkit-text-size-adjust:100%">'
-        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
-        'style="background:#ebe6de"><tr><td style="padding:28px 14px">'
-        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
-        'style="max-width:560px;margin:0 auto;background:#ffffff;'
-        'border:1px solid #ddd6cb;border-collapse:separate">'
-        '<tr><td style="padding:8px 36px 36px;'
-        "font-family:Georgia,'Times New Roman',serif;"
-        'line-height:1.7;color:#1a2229;font-size:16px">'
-        "{logo_header}"
-        f"{inner}\n{{legal_html}}"
-        "</td></tr></table>"
-        "</td></tr></table>"
-        "</body></html>"
-    )
+    from content.email_chrome import wrap_letter_html as _wrap
+
+    return _wrap(inner)
 
 
 def ensure_letter_chrome(html: str) -> str:
-    """If a saved Campaign template is a flat body, wrap it in the readable shell."""
+    """If a saved Campaign template is a flat body, wrap it in the canonical shell."""
+    from content.email_chrome import PAGE_BG, has_canonical_chrome, wrap_letter_html
+
     raw = (html or "").strip()
     if not raw:
         return raw
-    # Already using a full-page card shell
+    if has_canonical_chrome(raw) or PAGE_BG in raw:
+        return raw
+    # legacy warm shells
     if "background:#ebe6de" in raw or "background:#f3f1ec" in raw:
-        return raw
-    if "max-width:560px" in raw and "Georgia" in raw:
-        return raw
+        # Re-extract body and re-wrap into canonical
+        pass
 
     lower = raw.lower()
     start = lower.find("<body")
@@ -164,18 +142,21 @@ def ensure_letter_chrome(html: str) -> str:
     elif raw.lstrip().lower().startswith("<!doctype") or raw.lstrip().lower().startswith(
         "<html"
     ):
-        return raw
+        # Full document without our tokens — extract main content if possible
+        # Fall through to body-less extract of everything between first/last meaningful tags
+        return raw if "{logo_header}" in raw and "{signature}" in raw else raw
     else:
         inner = raw
 
-    # Shell injects logo + legal placeholders once
-    inner = inner.replace("{logo_header}", "").replace("{legal_html}", "").strip()
-    # Soften shouting <strong style='color:#0f1b24'> from older templates
-    inner = inner.replace("style='color:#0f1b24'", "style='font-weight:600;color:inherit'")
-    inner = inner.replace('style="color:#0f1b24"', 'style="font-weight:600;color:inherit"')
-    # Bump cramped paragraph margins in legacy HTML a bit
-    inner = inner.replace("margin:0 0 0.85em", "margin:0 0 1.05em")
-    return wrap_letter_html(inner)
+    # Strip old chrome fragments / placeholders that the new shell provides as rows
+    for tok in ("{logo_header}", "{signature}", "{legal_html}", "{callback_cta}"):
+        inner = inner.replace(tok, "")
+    # Soften old strong colors
+    inner = inner.replace("style='color:#0f1b24'", "style='font-weight:700;color:#142a4a'")
+    inner = inner.replace('style="color:#0f1b24"', 'style="font-weight:700;color:#142a4a"')
+    inner = inner.replace("margin:0 0 0.85em", "margin:0 0 18px")
+    inner = inner.replace("margin:0 0 1.05em", "margin:0 0 18px")
+    return wrap_letter_html(inner.strip())
 
 def _step(
     *,
