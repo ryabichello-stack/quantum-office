@@ -6,6 +6,7 @@ Source of truth: ``content/email/quantum-labs-outreach.html``
 
 from __future__ import annotations
 
+import re
 from html import escape
 from pathlib import Path
 
@@ -31,6 +32,25 @@ CTA_BG = "#ed5b3f"
 FONT = "Arial,Helvetica,sans-serif"
 
 CANONICAL_PATH = Path(__file__).resolve().parent / "email" / "quantum-labs-outreach.html"
+
+_MD_BOLD = re.compile(r"\*\*(.+?)\*\*")
+
+
+def inline_md_to_html(text: str) -> str:
+    """Escape HTML, then ``**bold**`` → ``<strong>`` (email-safe)."""
+    parts: list[str] = []
+    last = 0
+    src = text or ""
+    for m in _MD_BOLD.finditer(src):
+        parts.append(escape(src[last : m.start()]))
+        parts.append(
+            f'<strong style="font-weight:700;color:{INK_HEAD};font-family:{FONT};">'
+            + escape(m.group(1))
+            + "</strong>"
+        )
+        last = m.end()
+    parts.append(escape(src[last:]))
+    return "".join(parts)
 
 # Thin 20×20 stroke icons (canonical paths)
 _SVG_MAIL = (
@@ -101,7 +121,7 @@ def benefits_box_html(*, title: str, items: list[str]) -> str:
         margin = "0" if i == len(items) - 1 else "0 0 7px"
         rows.append(
             f'<p style="margin:{margin};font-size:15px;line-height:21px;color:#35445d;'
-            f'font-family:{FONT};">• {escape(item)}</p>'
+            f'font-family:{FONT};">• {inline_md_to_html(item)}</p>'
         )
     inner = (
         f'<p style="margin:0 0 11px;font-size:15px;line-height:20px;font-weight:700;'

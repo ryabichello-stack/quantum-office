@@ -58,22 +58,9 @@ def ensure_legal_footer(plain: str, html: str) -> tuple[str, str]:
 
 def _inline_md_to_html(text: str) -> str:
     """Escape HTML, then apply **bold** → canonical strong."""
-    from html import escape
+    from content.email_chrome import inline_md_to_html
 
-    from content.email_chrome import FONT, INK_HEAD
-
-    parts: list[str] = []
-    last = 0
-    for m in _MD_BOLD.finditer(text or ""):
-        parts.append(escape(text[last : m.start()]))
-        parts.append(
-            f"<strong style='font-weight:700;color:{INK_HEAD};font-family:{FONT}'>"
-            + escape(m.group(1))
-            + "</strong>"
-        )
-        last = m.end()
-    parts.append(escape(text[last:]))
-    return "".join(parts)
+    return inline_md_to_html(text)
 
 
 _ALL_BOLD = re.compile(r"^\*\*(.+)\*\*$", re.DOTALL)
