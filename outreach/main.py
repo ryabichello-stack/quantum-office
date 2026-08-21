@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -40,7 +40,14 @@ from reply_watcher import ReplyWatchThread, check_replies, imap_configured
 from runtime_settings import RuntimeSettings
 from sender import send_batch, send_one, smtp_configured
 from sync import sync_companies
-from templates import DEFAULT_HTML, DEFAULT_PLAIN, render_cooperation
+from templates import (
+    DEFAULT_HTML,
+    DEFAULT_PLAIN,
+    DEFAULT_SIGNATURE,
+    default_logo_url,
+    public_base_url,
+    render_cooperation,
+)
 from content.packs import list_packs, pack_campaign_templates
 
 load_dotenv()
@@ -52,6 +59,8 @@ DATA_DIR = Path(os.getenv("DATA_DIR", "/opt/ava-outreach/data"))
 DB_PATH = DATA_DIR / "outbox.db"
 SETTINGS_DB = DATA_DIR / "settings.db"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+BRAND_DATA_DIR = DATA_DIR / "brand"
 
 _reply_thread: ReplyWatchThread | None = None
 _settings: RuntimeSettings | None = None
@@ -627,6 +636,12 @@ def api_settings_get() -> dict[str, Any]:
         snap["OUTREACH_TEMPLATE_PLAIN"] = DEFAULT_PLAIN
     if not (snap.get("OUTREACH_TEMPLATE_HTML") or "").strip():
         snap["OUTREACH_TEMPLATE_HTML"] = DEFAULT_HTML
+    if not (snap.get("OUTREACH_SIGNATURE") or "").strip():
+        snap["OUTREACH_SIGNATURE"] = DEFAULT_SIGNATURE
+    if not (snap.get("OUTREACH_LOGO_URL") or "").strip():
+        snap["OUTREACH_LOGO_URL"] = default_logo_url(lambda k: snap.get(k) or "")
+    if snap.get("OUTREACH_LOGO_ENABLED") in (None, ""):
+        snap["OUTREACH_LOGO_ENABLED"] = "true"
     return {"ok": True, "settings": snap}
 
 
@@ -645,17 +660,52 @@ class PreviewBody(BaseModel):
     subject: str | None = None
     plain: str | None = None
     html: str | None = None
+    company_name: str | None = None
+    website: str | None = None
+    phone: str | None = None
+    signature: str | None = None
+    logo_url: str | None = None
+    logo_enabled: bool | None = None
 
 
 @app.post("/api/preview", dependencies=[Depends(require_ui_auth)])
 def api_preview(body: PreviewBody) -> dict[str, Any]:
     rt = _rt()
     subject = body.subject or rt.get("OUTREACH_SUBJECT", "Сотрудничество — Quantum Labs")
+    company = (
+        body.company_name
+        if body.company_name is not None
+        else (rt.get("OUTREACH_COMPANY_NAME", "Quantum Labs") or "Quantum Labs")
+    )
+    website = (
+        body.website
+        if body.website is not None
+        else (rt.get("OUTREACH_WEBSITE", "https://quantumlabs.ru") or "https://quantumlabs.ru")
+    )
+    phone = body.phone if body.phone is not None else (rt.get("OUTREACH_CONTACT_PHONE", "") or "")
+    signature = (
+        body.signature
+        if body.signature is not None
+        else (rt.get("OUTREACH_SIGNATURE", "") or DEFAULT_SIGNATURE)
+    )
+    logo_url = (
+        body.logo_url
+        if body.logo_url is not None
+        else (
+            (rt.get("OUTREACH_LOGO_URL", "") or "").strip()
+            or default_logo_url(lambda k: rt.get(k, "") or "")
+        )
+    )
+    logo_on = (
+        body.logo_enabled
+        if body.logo_enabled is not None
+        else rt.get_bool("OUTREACH_LOGO_ENABLED", True)
+    )
     plain, html = render_cooperation(
         contact_name=body.contact_name,
-        company_name=rt.get("OUTREACH_COMPANY_NAME", "Quantum Labs") or "Quantum Labs",
-        website=rt.get("OUTREACH_WEBSITE", "https://quantumlabs.ru") or "https://quantumlabs.ru",
-        phone=rt.get("OUTREACH_CONTACT_PHONE", "") or "",
+        company_name=company or "Quantum Labs",
+        website=website or "https://quantumlabs.ru",
+        phone=phone or "",
         unsubscribe_mailto=rt.get("OUTREACH_UNSUBSCRIBE_MAILTO", "")
         or os.getenv("MAIL_USERNAME")
         or "office@quantumlabs.ru",
@@ -665,6 +715,9 @@ def api_preview(body: PreviewBody) -> dict[str, Any]:
         html_template=body.html
         if body.html is not None
         else (rt.get("OUTREACH_TEMPLATE_HTML") or None),
+        signature_template=signature or DEFAULT_SIGNATURE,
+        logo_url=logo_url,
+        logo_enabled=bool(logo_on),
     )
     attach_on = rt.get_bool("OUTREACH_ATTACH_PRESENTATION", False)
     return {
@@ -674,7 +727,63 @@ def api_preview(body: PreviewBody) -> dict[str, Any]:
         "html": html,
         "attach_presentation": attach_on,
         "sequence_pack": rt.get("OUTREACH_SEQUENCE_PACK", "") or "",
+        "logo_url": logo_url,
     }
+
+
+@app.get("/assets/brand/custom.png")
+def brand_custom_logo() -> FileResponse:
+    path = BRAND_DATA_DIR / "logo.png"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="no custom logo")
+    return FileResponse(path, media_type="image/png")
+
+
+@app.get("/api/brand/logo", dependencies=[Depends(require_ui_auth)])
+def api_brand_logo_meta() -> dict[str, Any]:
+    rt = _rt()
+    custom = BRAND_DATA_DIR / "logo.png"
+    url = (rt.get("OUTREACH_LOGO_URL", "") or "").strip() or default_logo_url(
+        lambda k: rt.get(k, "") or ""
+    )
+    return {
+        "ok": True,
+        "logo_url": url,
+        "default_url": default_logo_url(lambda k: rt.get(k, "") or ""),
+        "has_custom": custom.is_file(),
+        "enabled": rt.get_bool("OUTREACH_LOGO_ENABLED", True),
+    }
+
+
+@app.post("/api/brand/logo", dependencies=[Depends(require_ui_auth)])
+async def api_brand_logo_upload(file: UploadFile = File(...)) -> dict[str, Any]:
+    raw = await file.read()
+    if not raw or len(raw) > 512_000:
+        raise HTTPException(status_code=400, detail="logo must be PNG/SVG/JPEG under 512KB")
+    content_type = (file.content_type or "").lower()
+    name = (file.filename or "").lower()
+    if not (
+        content_type in ("image/png", "image/jpeg", "image/jpg", "image/webp", "image/svg+xml")
+        or name.endswith((".png", ".jpg", ".jpeg", ".webp", ".svg"))
+    ):
+        raise HTTPException(status_code=400, detail="unsupported image type")
+    BRAND_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    dest = BRAND_DATA_DIR / "logo.png"
+    dest.write_bytes(raw)
+    base = public_base_url(lambda k: _rt().get(k, "") or "")
+    logo_url = f"{base}/assets/brand/custom.png?v={int(dest.stat().st_mtime)}"
+    _rt().set_many({"OUTREACH_LOGO_URL": logo_url, "OUTREACH_LOGO_ENABLED": "true"})
+    return {"ok": True, "logo_url": logo_url, "bytes": len(raw)}
+
+
+@app.delete("/api/brand/logo", dependencies=[Depends(require_ui_auth)])
+def api_brand_logo_reset() -> dict[str, Any]:
+    custom = BRAND_DATA_DIR / "logo.png"
+    if custom.is_file():
+        custom.unlink()
+    url = default_logo_url(lambda k: _rt().get(k, "") or "")
+    _rt().set_many({"OUTREACH_LOGO_URL": url, "OUTREACH_LOGO_ENABLED": "true"})
+    return {"ok": True, "logo_url": url}
 
 
 class ApplyPackBody(BaseModel):
@@ -749,7 +858,11 @@ async def api_login(request: Request) -> JSONResponse:
     return resp
 
 
-# --- static UI ---
+# --- static UI + brand assets ---
+# custom.png route is registered above; packaged assets follow.
+
+if ASSETS_DIR.is_dir():
+    app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 
 if STATIC_DIR.is_dir():
     app.mount("/ui", StaticFiles(directory=str(STATIC_DIR), html=True), name="ui")

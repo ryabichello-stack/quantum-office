@@ -220,6 +220,40 @@ body.embedded .app { padding-top: 0.35rem; }
   gap: 0.55rem 0.65rem;
 }
 
+.brand-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(201, 213, 224, 0.9);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.72), rgba(248,244,239,0.9));
+}
+.brand-preview-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+}
+.brand-mark {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid rgba(201, 213, 224, 0.95);
+  flex: 0 0 auto;
+}
+.brand-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.55rem;
+}
+.file-btn { cursor: pointer; margin: 0; }
+
 .field {
   display: grid;
   gap: 0.28rem;

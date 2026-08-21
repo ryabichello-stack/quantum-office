@@ -17,7 +17,39 @@ from typing import Any
 
 from bitrix_client import BitrixClient  # noqa: I001
 from outbox import OutboxStore
-from templates import render_cooperation
+from templates import DEFAULT_SIGNATURE, default_logo_url, render_cooperation
+
+
+def _render_letter(
+    *,
+    contact_name: str,
+    company: str,
+    website: str,
+    phone: str,
+    unsubscribe_mailto: str,
+    unsubscribe_url: str | None = None,
+    plain_template: str | None = None,
+    html_template: str | None = None,
+    settings: Any = None,
+) -> tuple[str, str]:
+    sig = (_cfg(settings, "OUTREACH_SIGNATURE", "") or "").strip() or DEFAULT_SIGNATURE
+    logo_url = (_cfg(settings, "OUTREACH_LOGO_URL", "") or "").strip() or default_logo_url(
+        lambda k: _cfg(settings, k, "")
+    )
+    logo_on = _cfg_bool(settings, "OUTREACH_LOGO_ENABLED", True)
+    return render_cooperation(
+        contact_name=contact_name,
+        company_name=company,
+        website=website,
+        phone=phone,
+        unsubscribe_mailto=unsubscribe_mailto,
+        unsubscribe_url=unsubscribe_url,
+        plain_template=plain_template,
+        html_template=html_template,
+        signature_template=sig,
+        logo_url=logo_url,
+        logo_enabled=logo_on,
+    )
 
 logger = logging.getLogger("ava-outreach.sender")
 

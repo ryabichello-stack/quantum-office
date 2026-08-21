@@ -38,8 +38,9 @@
   const $ = (id) => document.getElementById(id);
 
   async function api(path, opts = {}) {
+    const isForm = typeof FormData !== "undefined" && opts.body instanceof FormData;
     const headers = Object.assign(
-      { "Content-Type": "application/json" },
+      isForm ? {} : { "Content-Type": "application/json" },
       opts.headers || {},
       !EMBEDDED && token ? { "X-Outreach-Token": token } : {}
     );
@@ -68,6 +69,36 @@
       throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail || data));
     }
     return data;
+  }
+
+  function setLogoPreview(url) {
+    const img = $("letterLogoPreview");
+    const meta = $("letterLogoMeta");
+    if (!img) return;
+    const src = (url || "").trim();
+    if (src) {
+      img.src = src;
+      img.hidden = false;
+    } else {
+      img.removeAttribute("src");
+      img.hidden = true;
+    }
+    if (meta) meta.textContent = src ? src.replace(/^https?:\/\//, "").slice(0, 64) : "нет логотипа";
+  }
+
+  function campaignPreviewPayload() {
+    return {
+      contact_name: "Иван",
+      subject: $("letterSubject").value,
+      plain: $("letterPlain").value,
+      html: $("letterHtml").value,
+      company_name: $("letterCompany").value,
+      website: $("letterWebsite").value,
+      phone: $("letterPhone").value,
+      signature: $("letterSignature") ? $("letterSignature").value : "",
+      logo_url: ($("letterLogoPreview") && $("letterLogoPreview").getAttribute("src")) || "",
+      logo_enabled: $("letterLogoEnabled") ? $("letterLogoEnabled").checked : true,
+    };
   }
 
   function showLogin() {
@@ -377,6 +408,15 @@
     $("letterCompany").value = s.OUTREACH_COMPANY_NAME || "";
     $("letterWebsite").value = s.OUTREACH_WEBSITE || "";
     $("letterPhone").value = s.OUTREACH_CONTACT_PHONE || "";
+    if ($("letterSignature")) {
+      $("letterSignature").value =
+        s.OUTREACH_SIGNATURE ||
+        "С уважением,\nкоманда Quantum Labs\n{company}\n{website}\n{phone_line}";
+    }
+    if ($("letterLogoEnabled")) {
+      $("letterLogoEnabled").checked = String(s.OUTREACH_LOGO_ENABLED || "true").toLowerCase() !== "false";
+    }
+    setLogoPreview(s.OUTREACH_LOGO_URL || "");
     $("letterPlain").value = s.OUTREACH_TEMPLATE_PLAIN || "";
     $("letterHtml").value = s.OUTREACH_TEMPLATE_HTML || "";
 
@@ -919,12 +959,7 @@
       try {
         const data = await api("/api/preview", {
           method: "POST",
-          body: JSON.stringify({
-            contact_name: "Иван",
-            subject: $("letterSubject").value,
-            plain: $("letterPlain").value,
-            html: $("letterHtml").value,
-          }),
+          body: JSON.stringify(campaignPreviewPayload()),
         });
         $("previewSubject").textContent = data.subject || "";
         $("previewPlain").textContent = data.plain || "";
@@ -933,16 +968,62 @@
           box.innerHTML = data.html || "";
           bindInnerWheelScroll(box.parentElement || document);
         }
-          if ($("letterLog")) {
-            $("letterLog").hidden = false;
-            $("letterLog").textContent = data.attach_presentation
-              ? "К письму будет прикреплена презентация PDF."
-              : "Презентация не прикрепляется (флажок выключен).";
-          }
+        const adv = $("letterAdvanced");
+        if (adv) adv.open = true;
+        if ($("letterLog")) {
+          $("letterLog").hidden = false;
+          const phoneOk = ($("letterPhone").value || "").trim()
+            ? (data.plain || "").includes(($("letterPhone").value || "").trim())
+            : true;
+          $("letterLog").textContent =
+            (data.attach_presentation
+              ? "К письму будет прикреплена презентация PDF. "
+              : "Презентация не прикрепляется. ") +
+            (phoneOk ? "Телефон в письме: ок." : "Телефон не попал в текст — проверьте {signature}/{phone_line} и Сохранить.");
+        }
       } catch (e) {
         logAction(String(e));
       }
     });
+
+    if ($("letterLogoFile")) {
+      $("letterLogoFile").addEventListener("change", async () => {
+        const file = $("letterLogoFile").files && $("letterLogoFile").files[0];
+        if (!file) return;
+        try {
+          const fd = new FormData();
+          fd.append("file", file);
+          const data = await api("/api/brand/logo", { method: "POST", body: fd });
+          setLogoPreview(data.logo_url || "");
+          if ($("letterLogoEnabled")) $("letterLogoEnabled").checked = true;
+          if ($("letterLog")) {
+            $("letterLog").hidden = false;
+            $("letterLog").textContent = "Микрологотип загружен.";
+          }
+        } catch (e) {
+          if ($("letterLog")) {
+            $("letterLog").hidden = false;
+            $("letterLog").textContent = String(e);
+          }
+        } finally {
+          $("letterLogoFile").value = "";
+        }
+      });
+    }
+    if ($("letterLogoReset")) {
+      $("letterLogoReset").addEventListener("click", async () => {
+        try {
+          const data = await api("/api/brand/logo", { method: "DELETE" });
+          setLogoPreview(data.logo_url || "");
+          if ($("letterLog")) {
+            $("letterLog").hidden = false;
+            $("letterLog").textContent = "Логотип сброшен на стандартный Quantum Labs.";
+          }
+        } catch (e) {
+          logAction(String(e));
+        }
+      });
+    }
 
     if ($("letterApplyPack")) {
       $("letterApplyPack").addEventListener("click", async () => {
@@ -983,6 +1064,9 @@
           OUTREACH_COMPANY_NAME: $("letterCompany").value,
           OUTREACH_WEBSITE: $("letterWebsite").value,
           OUTREACH_CONTACT_PHONE: $("letterPhone").value,
+          OUTREACH_SIGNATURE: $("letterSignature") ? $("letterSignature").value : "",
+          OUTREACH_LOGO_URL: ($("letterLogoPreview") && $("letterLogoPreview").getAttribute("src")) || "",
+          OUTREACH_LOGO_ENABLED: $("letterLogoEnabled") && $("letterLogoEnabled").checked ? "true" : "false",
           OUTREACH_TEMPLATE_PLAIN: $("letterPlain").value,
           OUTREACH_TEMPLATE_HTML: $("letterHtml").value,
           OUTREACH_ATTACH_PRESENTATION: $("letterAttachPdf") && $("letterAttachPdf").checked ? "true" : "false",
