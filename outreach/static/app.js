@@ -124,8 +124,8 @@
 
   function contactIconUrl(name) {
     // Through Console proxy when embedded; absolute outreach path otherwise.
-    if (BASE) return BASE.replace(/\/$/, "") + "/assets/brand/icons/" + name + ".png";
-    return "https://a.47z.ru/_ava_outreach/assets/brand/icons/" + name + ".png";
+    if (BASE) return BASE.replace(/\/$/, "") + "/assets/brand/icons/v2/" + name + ".png";
+    return "https://a.47z.ru/_ava_outreach/assets/brand/icons/v2/" + name + ".png";
   }
 
   function bindContactIcons() {

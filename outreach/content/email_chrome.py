@@ -178,9 +178,10 @@ def contact_block_html(
     site_host = site_host.rstrip("/")
     site_href = site if "://" in site else (f"https://{site}" if site else "")
     base = (icon_base or "").rstrip("/") or "https://a.47z.ru/_ava_outreach"
-    mail_icon = f"{base}/assets/brand/icons/mail.png"
-    web_icon = f"{base}/assets/brand/icons/web.png"
-    phone_icon = f"{base}/assets/brand/icons/phone.png"
+    # /v2/ path busts Gmail image proxy cache of earlier PIL icons
+    mail_icon = f"{base}/assets/brand/icons/v2/mail.png"
+    web_icon = f"{base}/assets/brand/icons/v2/web.png"
+    phone_icon = f"{base}/assets/brand/icons/v2/phone.png"
 
     rows: list[str] = []
     if email_s:

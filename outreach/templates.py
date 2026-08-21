@@ -97,7 +97,7 @@ def default_logo_url(settings_get=None) -> str:
 
 
 def icon_url(name: str, settings_get=None) -> str:
-    return f"{public_base_url(settings_get)}/assets/brand/icons/{name}.png"
+    return f"{public_base_url(settings_get)}/assets/brand/icons/v2/{name}.png"
 
 
 DEFAULT_PLAIN = """{greeting}
