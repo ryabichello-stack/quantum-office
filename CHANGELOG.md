@@ -28,7 +28,7 @@
 - HTML-подпись: микрозначки сайт / почта / телефон (`assets/brand/icons/*.png`)
 - Кампания: загрузка/замена PDF-презентации по отрасли (`/api/packs/{id}/presentation`, хранение в `data/presentations/`)
 - Кампания: разовое тестовое письмо на указанный адрес (сохраняет поля → `/send-one`, с PDF по флажку)
-- Письма: inline-форма ФИО+телефон+«Перезвонить» до подписи; письмо как презентация (акцент-бар, лого без wordmark, белая карточка)
+- Письма: universal callback CTA — inline form + bulletproof кнопка (Gmail) + mailto fallback; one-screen landing
 
 ### Changed
 

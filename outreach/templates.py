@@ -385,11 +385,17 @@ def render_cooperation(
     if cb_url and not cb_html:
         from callback_cta import build_callback_cta_html
 
-        cb_html = build_callback_cta_html(url=cb_url)
+        cb_html = build_callback_cta_html(
+            url=cb_url,
+            reply_mailto=email_s or unsub,
+        )
     if cb_url and not cb_plain:
         from callback_cta import build_callback_cta_plain
 
-        cb_plain = build_callback_cta_plain(url=cb_url)
+        cb_plain = build_callback_cta_plain(
+            url=cb_url,
+            reply_mailto=email_s or unsub,
+        )
 
     signature = build_signature(
         signature_template=signature_template,

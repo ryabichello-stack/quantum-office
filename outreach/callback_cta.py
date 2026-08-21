@@ -233,18 +233,44 @@ def callback_url_for(token: str, settings: Any = None) -> str:
     return f"{base}/callback/{token}"
 
 
-def build_callback_cta_html(*, url: str, settings: Any = None) -> str:
-    """Inline FIO + phone form in the letter body (before signature).
+def build_callback_cta_html(
+    *,
+    url: str,
+    settings: Any = None,
+    reply_mailto: str | None = None,
+) -> str:
+    """Callback block that works across as many clients as possible.
 
-    Uses GET so the request works from clients that still submit HTML forms
-    (Apple Mail, Thunderbird, some desktop Outlook). Landing page remains the
-    same endpoint if a client opens the action URL without fields.
+    Reality check:
+    - Gmail / Outlook.com / many mobile apps **strip** ``<form>`` and ``<input>``.
+    - Apple Mail / Thunderbird still submit HTML forms.
+
+    Progressive enhancement:
+    1. Real inline form (Apple Mail / Thunderbird)
+    2. Bulletproof ``<a>`` button outside the form (survives Gmail) → same one-screen page
+    3. ``mailto:`` fallback — reply with FIO/phone in the body
     """
+    from urllib.parse import quote
+
     title = escape(cta_title(settings))
     lead = escape(cta_lead(settings))
     button = escape(cta_button(settings))
     href = escape(url, quote=True)
-    # Table-based layout survives more clients than flex/div-only.
+    mail = (reply_mailto or "").strip() or notify_email(settings) or "office@quantumlabs.ru"
+    mailto = (
+        f"mailto:{mail}"
+        f"?subject={quote('Перезвоните мне')}"
+        f"&body={quote('Прошу перезвонить.\\n\\nФИО: \\nТелефон: \\n')}"
+    )
+    mailto_href = escape(mailto, quote=True)
+
+    btn_a = (
+        f'<a href="{href}" style="display:inline-block;padding:12px 22px;'
+        f'background:#c4470f;color:#ffffff;text-decoration:none;'
+        f'font:600 13px/1 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
+        f'border-radius:2px">{button}</a>'
+    )
+
     return (
         '<div style="margin:1.5em 0 0.35em;padding:0;border:0">'
         '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
@@ -254,43 +280,63 @@ def build_callback_cta_html(*, url: str, settings: Any = None) -> str:
         f'color:#0f1b24">{title}</p>'
         f'<p style="margin:0 0 14px;font:13px/1.5 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
         f'color:#5a6570">{lead}</p>'
-        f'<form action="{href}" method="get">'
+        f'<form action="{href}" method="get" style="margin:0;padding:0">'
         '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">'
         "<tr><td style=\"padding:0 0 10px\">"
-        '<label style="display:block;font:600 11px/1.3 Manrope,Segoe UI,sans-serif;'
-        'letter-spacing:0.04em;text-transform:uppercase;color:#6a737b">ФИО</label>'
-        '<input name="fio" type="text" placeholder="Иванов Иван Иванович" required '
+        '<div style="font:600 11px/1.3 Manrope,Segoe UI,sans-serif;'
+        'letter-spacing:0.04em;text-transform:uppercase;color:#6a737b">ФИО</div>'
+        '<input name="fio" type="text" placeholder="Иванов Иван Иванович" '
         'style="margin-top:6px;width:100%;max-width:100%;box-sizing:border-box;padding:11px 12px;'
         "border:1px solid #d0d5da;background:#ffffff;border-radius:2px;"
         'font:14px/1.4 Manrope,Segoe UI,Helvetica,Arial,sans-serif;color:#0f1b24" />'
         "</td></tr>"
-        "<tr><td style=\"padding:0 0 14px\">"
-        '<label style="display:block;font:600 11px/1.3 Manrope,Segoe UI,sans-serif;'
-        'letter-spacing:0.04em;text-transform:uppercase;color:#6a737b">Телефон</label>'
-        '<input name="phone" type="tel" placeholder="+7 …" required '
+        "<tr><td style=\"padding:0 0 12px\">"
+        '<div style="font:600 11px/1.3 Manrope,Segoe UI,sans-serif;'
+        'letter-spacing:0.04em;text-transform:uppercase;color:#6a737b">Телефон</div>'
+        '<input name="phone" type="tel" placeholder="+7 …" '
         'style="margin-top:6px;width:100%;max-width:100%;box-sizing:border-box;padding:11px 12px;'
         "border:1px solid #d0d5da;background:#ffffff;border-radius:2px;"
         'font:14px/1.4 Manrope,Segoe UI,Helvetica,Arial,sans-serif;color:#0f1b24" />'
         "</td></tr>"
-        "<tr><td>"
-        f'<button type="submit" style="display:inline-block;padding:12px 20px;border:0;cursor:pointer;'
+        "<tr><td style=\"padding:0 0 4px\">"
+        f'<button type="submit" style="display:inline-block;padding:12px 22px;border:0;cursor:pointer;'
         f'background:#c4470f;color:#ffffff;font:600 13px/1 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
         f'border-radius:2px">{button}</button>'
         "</td></tr>"
         "</table>"
         "</form>"
+        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
+        'style="margin-top:10px">'
+        f"<tr><td>{btn_a}</td></tr>"
+        '<tr><td style="padding-top:10px;'
+        "font:12px/1.45 Manrope,Segoe UI,Helvetica,Arial,sans-serif;color:#6a737b\">"
+        "Если поля не видны в вашей почте — нажмите кнопку: откроется та же форма на один экран."
+        "</td></tr>"
+        "<tr><td style=\"padding-top:6px;"
+        "font:12px/1.45 Manrope,Segoe UI,Helvetica,Arial,sans-serif;color:#6a737b\">"
+        f'Или <a href="{mailto_href}" style="color:#c4470f;font-weight:600;text-decoration:underline">'
+        "ответьте на письмо</a> с ФИО и телефоном."
+        "</td></tr>"
+        "</table>"
         "</td></tr></table>"
         "</div>"
     )
 
 
-def build_callback_cta_plain(*, url: str, settings: Any = None) -> str:
+def build_callback_cta_plain(
+    *,
+    url: str,
+    settings: Any = None,
+    reply_mailto: str | None = None,
+) -> str:
     title = cta_title(settings)
     lead = cta_lead(settings)
     button = cta_button(settings)
+    mail = (reply_mailto or "").strip() or "office@quantumlabs.ru"
     return (
         f"\n\n{title}\n{lead}\n"
-        f"ФИО / телефон → {button}: {url}\n"
+        f"{button}: {url}\n"
+        f"Или ответьте на {mail} с ФИО и телефоном.\n"
     )
 
 
@@ -524,7 +570,9 @@ def form_page_html(
     error: str = "",
     done: bool = False,
 ) -> str:
+    """One-screen form — same look as the email card, autofocus, instant submit."""
     title = escape(cta_title(settings))
+    lead = escape(cta_lead(settings))
     button = escape(cta_button(settings))
     err = f'<p class="err">{escape(error)}</p>' if error else ""
     if done:
@@ -535,49 +583,55 @@ def form_page_html(
     else:
         body = f"""
         <h1>{title}</h1>
-        <p class="lead">Оставьте ФИО и номер телефона — коротко созвонимся и разберём, есть ли эффект именно для вас.</p>
+        <p class="lead">{lead}</p>
         {err}
         <form method="post" action="" novalidate>
           <label>ФИО
             <input name="fio" type="text" required maxlength="200" autocomplete="name"
-                   value="{escape(prefill_fio)}" placeholder="Иванов Иван Иванович" />
+                   autofocus value="{escape(prefill_fio)}" placeholder="Иванов Иван Иванович" />
           </label>
           <label>Телефон
             <input name="phone" type="tel" required maxlength="32" autocomplete="tel"
-                   value="{escape(prefill_phone)}" placeholder="+7 …" />
+                   inputmode="tel" value="{escape(prefill_phone)}" placeholder="+7 …" />
           </label>
           <button type="submit">{button}</button>
         </form>
-        <p class="note">Нажимая кнопку, вы соглашаетесь на обратный звонок по указанному номеру.</p>
+        <p class="note">Один экран — отправили, и мы перезваниваем.</p>
         """
     return f"""<!doctype html>
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#c4470f" />
   <title>{title} — Quantum Labs</title>
   <style>
     :root {{ color-scheme: light; }}
+    * {{ box-sizing: border-box; }}
     body {{ margin:0; font:15px/1.5 Manrope,Segoe UI,Helvetica,Arial,sans-serif; color:#0f1b24;
-           background:linear-gradient(165deg,#f3f1ec 0%,#e8ecef 55%,#f7f5f1 100%); min-height:100vh; }}
-    .wrap {{ max-width:420px; margin:0 auto; padding:2.5rem 1.25rem; }}
-    h1 {{ font-size:1.35rem; margin:0 0 0.6rem; letter-spacing:-0.02em; }}
-    .lead {{ color:#44525c; margin:0 0 1.2rem; }}
-    label {{ display:block; margin:0 0 0.85rem; font-weight:600; font-size:0.86rem; }}
-    input {{ display:block; width:100%; margin-top:0.35rem; padding:0.7rem 0.75rem; border:1px solid #cfd5da;
-             background:#fff; font:inherit; box-sizing:border-box; }}
-    button {{ margin-top:0.4rem; width:100%; padding:0.85rem 1rem; border:0; background:#1a1a1a; color:#fff;
-              font:600 0.95rem Manrope,Segoe UI,sans-serif; cursor:pointer; }}
-    .note {{ margin-top:1rem; font-size:0.78rem; color:#6a737b; }}
+           background:#f3f1ec; min-height:100vh; }}
+    .bar {{ height:3px; background:#c4470f; }}
+    .wrap {{ max-width:420px; margin:0 auto; padding:1.5rem 1.1rem 2.5rem; }}
+    .card {{ background:#faf8f5; border:1px solid #e6e1da; padding:1.15rem 1.1rem 1.25rem; }}
+    h1 {{ font-size:1.2rem; margin:0 0 0.45rem; letter-spacing:-0.02em; line-height:1.3; }}
+    .lead {{ color:#5a6570; margin:0 0 1rem; font-size:0.92rem; }}
+    label {{ display:block; margin:0 0 0.85rem; font-weight:600; font-size:0.72rem;
+             letter-spacing:0.04em; text-transform:uppercase; color:#6a737b; }}
+    input {{ display:block; width:100%; margin-top:0.4rem; padding:0.85rem 0.8rem; border:1px solid #d0d5da;
+             background:#fff; font:15px/1.4 Manrope,Segoe UI,sans-serif; color:#0f1b24; border-radius:2px; }}
+    button {{ margin-top:0.35rem; width:100%; padding:0.95rem 1rem; border:0; background:#c4470f; color:#fff;
+              font:600 0.95rem Manrope,Segoe UI,sans-serif; cursor:pointer; border-radius:2px; }}
+    .note {{ margin-top:0.85rem; font-size:0.78rem; color:#6a737b; }}
     .err {{ background:#fde8e4; color:#8a2a12; padding:0.65rem 0.75rem; margin:0 0 0.9rem; }}
-    .ok {{ background:#e7f5ea; color:#1d5c2e; padding:0.75rem 0.85rem; }}
-    .brand {{ font-size:0.75rem; letter-spacing:0.08em; text-transform:uppercase; color:#6a737b; margin-bottom:1.2rem; }}
+    .ok {{ background:#e7f5ea; color:#1d5c2e; padding:0.75rem 0.85rem; margin:0; }}
+    .brand {{ font-size:0.7rem; letter-spacing:0.1em; text-transform:uppercase; color:#6a737b; margin:0.85rem 0 1rem; }}
   </style>
 </head>
 <body>
+  <div class="bar"></div>
   <div class="wrap">
     <div class="brand">Quantum Labs</div>
-    {body}
+    <div class="card">{body}</div>
   </div>
 </body>
 </html>"""
