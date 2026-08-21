@@ -31,15 +31,15 @@ LEGAL_FOOTER_PLAIN = """
 """
 
 LEGAL_FOOTER_HTML = """
-<hr style="border:none;border-top:1px solid #ece8e3;margin:1.75em 0 0.85em">
-<div style="font-size:11px;line-height:1.5;color:#6a737b;font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif">
+<hr style="border:none;border-top:1px solid #e8e2d8;margin:1.75em 0 0.9em">
+<div style="font-size:11px;line-height:1.55;color:#7a828a;font-family:'Segoe UI',Helvetica,Arial,sans-serif">
   <p style="margin:0 0 0.55em">Вы получили это письмо, потому что ваша компания указана в открытых
   источниках как организация, для которой могут быть актуальны сервисы
   платёжной инфраструктуры Quantum Labs (в т.ч. Quantum Payouts).</p>
-  <p style="margin:0 0 0.55em">ООО «Квантум Лабс» · <a href="https://quantumlabs.ru" style="color:#6a737b">quantumlabs.ru</a>
+  <p style="margin:0 0 0.55em">ООО «Квантум Лабс» · <a href="https://quantumlabs.ru" style="color:#7a828a">quantumlabs.ru</a>
   · office@quantumlabs.ru</p>
   <p style="margin:0 0 0.55em"><a href="{unsub_url}" style="color:#c4470f">Отписаться от рассылки</a>
-  · или напишите на <a href="mailto:{unsub}?subject=unsubscribe" style="color:#6a737b">{unsub}</a></p>
+  · или напишите на <a href="mailto:{unsub}?subject=unsubscribe" style="color:#7a828a">{unsub}</a></p>
   <p style="margin:0">Обработка обращений — в соответствии с применимым законодательством РФ
   (в т.ч. 152-ФЗ). Письмо носит информационный характер и не является офертой.</p>
 </div>
@@ -69,7 +69,7 @@ def ensure_legal_footer(plain: str, html: str) -> tuple[str, str]:
 
 
 def _inline_md_to_html(text: str) -> str:
-    """Escape HTML, then apply **bold** → <strong>."""
+    """Escape HTML, then apply **bold** → soft <strong> (not shouting)."""
     from html import escape
 
     parts: list[str] = []
@@ -77,7 +77,7 @@ def _inline_md_to_html(text: str) -> str:
     for m in _MD_BOLD.finditer(text or ""):
         parts.append(escape(text[last : m.start()]))
         parts.append(
-            "<strong style='color:#0f1b24'>" + escape(m.group(1)) + "</strong>"
+            "<strong style='font-weight:600;color:inherit'>" + escape(m.group(1)) + "</strong>"
         )
         last = m.end()
     parts.append(escape(text[last:]))
@@ -91,42 +91,91 @@ def _html_from_plain(plain: str) -> str:
         if not block:
             continue
         # Keep signature / logo placeholders as raw tokens (not wrapped in <p>).
-        if block in ("{signature}", "{logo_header}"):
+        if block in ("{signature}", "{logo_header}", "{callback_cta}"):
             blocks.append(block)
             continue
         lines = [ln.rstrip() for ln in block.split("\n")]
         bullet_lines = [ln for ln in lines if ln.startswith("- ")]
         if bullet_lines and len(bullet_lines) == len([ln for ln in lines if ln.strip()]):
             items = "".join(
-                f"<li style='margin:0.2em 0'>{_inline_md_to_html(ln[2:].strip())}</li>"
+                f"<li style='margin:0.35em 0'>{_inline_md_to_html(ln[2:].strip())}</li>"
                 for ln in bullet_lines
             )
             blocks.append(
-                "<ul style='margin:0.55em 0 0.55em 1.15em;padding:0'>" + items + "</ul>"
+                "<ul style='margin:0.75em 0 1em 1.2em;padding:0;"
+                "font:16px/1.65 Georgia,\"Times New Roman\",serif;color:#1a2229'>"
+                + items
+                + "</ul>"
             )
         else:
             inner = _inline_md_to_html(block).replace("\n", "<br>\n")
-            blocks.append(f"<p style='margin:0 0 0.85em'>{inner}</p>")
+            blocks.append(
+                "<p style='margin:0 0 1.05em;font:16px/1.7 Georgia,\"Times New Roman\",serif;"
+                f"color:#1a2229'>{inner}</p>"
+            )
     body = "\n".join(blocks) if blocks else "<p></p>"
+    return wrap_letter_html(body)
+
+
+def wrap_letter_html(inner: str) -> str:
+    """Readable email shell: warm page, white card, calm type."""
     return (
         '<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        '<meta name="color-scheme" content="light">'
         "</head>"
-        '<body style="margin:0;padding:0;background:#f3f1ec">'
+        '<body style="margin:0;padding:0;background:#ebe6de;-webkit-text-size-adjust:100%">'
         '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
-        'style="background:#f3f1ec"><tr><td style="padding:24px 12px">'
+        'style="background:#ebe6de"><tr><td style="padding:28px 14px">'
         '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
-        'style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #e8e4df">'
-        '<tr><td style="padding:0 28px 28px;'
-        "font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif;"
-        'line-height:1.58;color:#0f1b24;font-size:15px">'
+        'style="max-width:560px;margin:0 auto;background:#ffffff;'
+        'border:1px solid #ddd6cb;border-collapse:separate">'
+        '<tr><td style="padding:8px 36px 36px;'
+        "font-family:Georgia,'Times New Roman',serif;"
+        'line-height:1.7;color:#1a2229;font-size:16px">'
         "{logo_header}"
-        f"{body}\n{{legal_html}}"
+        f"{inner}\n{{legal_html}}"
         "</td></tr></table>"
         "</td></tr></table>"
         "</body></html>"
     )
 
+
+def ensure_letter_chrome(html: str) -> str:
+    """If a saved Campaign template is a flat body, wrap it in the readable shell."""
+    raw = (html or "").strip()
+    if not raw:
+        return raw
+    # Already using a full-page card shell
+    if "background:#ebe6de" in raw or "background:#f3f1ec" in raw:
+        return raw
+    if "max-width:560px" in raw and "Georgia" in raw:
+        return raw
+
+    lower = raw.lower()
+    start = lower.find("<body")
+    if start >= 0:
+        gt = raw.find(">", start)
+        end = lower.rfind("</body>")
+        if gt >= 0 and end > gt:
+            inner = raw[gt + 1 : end].strip()
+        else:
+            inner = raw
+    elif raw.lstrip().lower().startswith("<!doctype") or raw.lstrip().lower().startswith(
+        "<html"
+    ):
+        return raw
+    else:
+        inner = raw
+
+    # Shell injects logo + legal placeholders once
+    inner = inner.replace("{logo_header}", "").replace("{legal_html}", "").strip()
+    # Soften shouting <strong style='color:#0f1b24'> from older templates
+    inner = inner.replace("style='color:#0f1b24'", "style='font-weight:600;color:inherit'")
+    inner = inner.replace('style="color:#0f1b24"', 'style="font-weight:600;color:inherit"')
+    # Bump cramped paragraph margins in legacy HTML a bit
+    inner = inner.replace("margin:0 0 0.85em", "margin:0 0 1.05em")
+    return wrap_letter_html(inner)
 
 def _step(
     *,
@@ -172,19 +221,19 @@ PACKS: dict[str, dict[str, Any]] = {
                 attach_presentation=True,
                 plain=(
                     "{greeting}\n\n"
-                    "Мы — **команда Quantum Labs**.\n\n"
-                    "Вопрос короткий: **как у вас сейчас устроены выплаты клиентам** — "
+                    "Мы — команда Quantum Labs.\n\n"
+                    "Вопрос короткий: как у вас сейчас устроены выплаты клиентам — "
                     "наличные, ручные переводы, банк «как получится»?\n\n"
-                    "Мы строим **платёжную инфраструктуру для бизнеса**. Для ломбардов "
-                    "флагманский сценарий — **выплаты на карты и по СБП** через Quantum Payouts: "
+                    "Мы строим платёжную инфраструктуру для бизнеса. Для ломбардов "
+                    "флагманский сценарий — выплаты на карты и по СБП через Quantum Payouts: "
                     "личный кабинет, реестры, API, 1С / ваша учётная система.\n\n"
-                    "**Важно:** клиент заключает **прямые договоры с банками**. "
-                    "Мы **не посредник**. Мы технологический партнёр: помогаем "
-                    "**согласовать сильные ставки по рынку**, подключить технологию "
+                    "Важно: клиент заключает прямые договоры с банками. "
+                    "Мы не посредник, а технологический партнёр: помогаем "
+                    "согласовать сильные ставки по рынку, подключить технологию "
                     "и сопровождаем дальше в работе.\n\n"
                     "Плюс при необходимости — приём платежей, эквайринг, "
                     "индивидуальные расчётные сценарии.\n\n"
-                    "**15 минут** — сравним вашу схему с доступными вариантами "
+                    "15 минут — сравним вашу схему с доступными вариантами "
                     "и скажем честно, есть ли эффект.\n\n"
                     "{signature}"
                 ),
@@ -288,13 +337,13 @@ PACKS: dict[str, dict[str, Any]] = {
                 attach_presentation=True,
                 plain=(
                     "{greeting}\n\n"
-                    "Мы — **команда Quantum Labs**.\n\n"
-                    "**Как у вас устроена выдача займа клиенту** — реестры, касса, банк-партнёр?\n\n"
-                    "Мы строим **платёжную инфраструктуру**: выдача на **карты и СБП**, "
-                    "API, статусы, сверка. Клиент заключает **прямые договоры с банками** — "
-                    "мы **не посредник**, а технологический партнёр: "
-                    "**ставки по рынку**, подключение, сопровождение.\n\n"
-                    "**15 минут** — сравним вашу схему с вариантами под объёмы {company}.\n\n"
+                    "Мы — команда Quantum Labs.\n\n"
+                    "Как у вас устроена выдача займа клиенту — реестры, касса, банк-партнёр?\n\n"
+                    "Мы строим платёжную инфраструктуру: выдача на карты и СБП, "
+                    "API, статусы, сверка. Клиент заключает прямые договоры с банками — "
+                    "мы не посредник, а технологический партнёр: "
+                    "ставки по рынку, подключение, сопровождение.\n\n"
+                    "15 минут — сравним вашу схему с вариантами под объёмы {company}.\n\n"
                     "{signature}"
                 ),
             ),

@@ -167,6 +167,12 @@ def normalize_signature_template(template: str | None) -> str:
     out: list[str] = []
     for ln in raw.split("\n"):
         s = ln.strip()
+        if not s:
+            out.append("")
+            continue
+        # Decorative separators from old templates (____ / ----)
+        if set(s) <= {"_", "-", "—", "–", " ", "\u00a0"} and len(s) >= 3:
+            continue
         if s.lower() in {x.lower() for x in drop_exact}:
             continue
         if s.startswith("{") and s.endswith("}") and any(
@@ -228,9 +234,9 @@ def _icon_row(*, icon_src: str, label: str, href: str | None = None) -> str:
         else f'<span style="color:#0f1b24">{safe_label}</span>'
     )
     return (
-        '<div style="margin:0 0 5px;padding:0;border:none;line-height:1.35;'
-        "font-size:13px;font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif\">"
-        f'<img src="{escape(icon_src, quote=True)}" width="16" height="16" alt="" '
+        '<div style="margin:0 0 6px;padding:0;border:none;line-height:1.4;'
+        "font-size:13px;font-family:'Segoe UI',Helvetica,Arial,sans-serif;color:#3a4550\">"
+        f'<img src="{escape(icon_src, quote=True)}" width="15" height="15" alt="" '
         'style="display:inline-block;vertical-align:middle;border:0;outline:none;'
         'margin:0 8px 0 0"/>'
         f'<span style="vertical-align:middle;border:none">{content}</span>'
@@ -294,8 +300,8 @@ def build_signature_html(
     parts: list[str] = []
     if text_block:
         parts.append(
-            "<div style='margin:0 0 10px;padding:0;border:none;line-height:1.5;color:#0f1b24;"
-            "font-family:Manrope,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px'>"
+            "<div style='margin:0 0 12px;padding:0;border:none;line-height:1.55;color:#1a2229;"
+            "font-family:Georgia,\"Times New Roman\",serif;font-size:15px'>"
             + escape(text_block).replace("\n", "<br>\n")
             + "</div>"
         )
@@ -320,29 +326,33 @@ def build_signature_html(
     if not parts:
         return ""
     return (
-        "<div style='margin:1.5em 0 0.2em;padding:16px 0 0;border:none;"
-        "border-top:1px solid #ece8e3'>"
+        "<div style='margin:8px 0 0.2em;padding:22px 0 0;border:none;"
+        "border-top:1px solid #e8e2d8'>"
         + "".join(parts)
         + "</div>"
     )
 
 def build_logo_header(*, logo_url: str, company: str) -> str:
-    """Brand mark only — no loud wordmark beside the logo.
-
-    A thin accent bar + mark reads cleaner in cold outreach than
-    «logo + Quantum Labs» chrome.
-    """
+    """Quiet brand header: accent strip + mark + company name."""
     url = (logo_url or "").strip()
-    if not url:
-        return ""
+    name = escape((company or "Quantum Labs").strip() or "Quantum Labs")
+    mark = ""
+    if url:
+        mark = (
+            f'<img src="{escape(url, quote=True)}" width="36" height="36" alt="" '
+            'style="display:block;border:0;border-radius:7px;margin:0 12px 0 0"/>'
+        )
     return (
         '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
-        'style="border-collapse:collapse;margin:0 0 22px">'
-        '<tr><td style="height:3px;line-height:3px;font-size:0;background:#c4470f">'
+        'style="border-collapse:collapse;margin:0 0 28px">'
+        '<tr><td colspan="2" style="height:3px;line-height:3px;font-size:0;background:#c4470f">'
         "&nbsp;</td></tr>"
-        '<tr><td style="padding:18px 0 16px;border-bottom:1px solid #ece8e3">'
-        f'<img src="{escape(url, quote=True)}" width="40" height="40" alt="Quantum Labs" '
-        'style="display:block;border:0;border-radius:8px"/>'
+        '<tr><td style="padding:20px 0 0;vertical-align:middle;width:48px">'
+        f"{mark}"
+        "</td>"
+        '<td style="padding:20px 0 0;vertical-align:middle">'
+        f'<div style="font:600 13px/1.2 \'Segoe UI\',Helvetica,Arial,sans-serif;'
+        f'letter-spacing:0.12em;text-transform:uppercase;color:#6a737b">{name}</div>'
         "</td></tr>"
         "</table>\n"
     )
@@ -425,6 +435,10 @@ def render_cooperation(
             if LEGAL_FOOTER_PLAIN in plain_src
             else plain_src
         ).replace("{legal_html}", LEGAL_FOOTER_HTML)
+    else:
+        from content.packs import ensure_letter_chrome
+
+        html_src = ensure_letter_chrome(html_src)
 
     plain_src, html_src = ensure_legal_footer(plain_src, html_src)
 
@@ -503,7 +517,5 @@ def href_marker_missing(html: str, url: str) -> bool:
     if not url:
         return True
     if url in html:
-        return False
-    if 'name="fio"' in html and 'name="phone"' in html:
         return False
     return True

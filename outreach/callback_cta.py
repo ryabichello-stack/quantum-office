@@ -37,7 +37,7 @@ _DEFAULT_SCRIPT = (
     "кратко расскажи про платёжную инфраструктуру Quantum Payouts и предложи "
     "следующий шаг (созвон с менеджером / демо). Будь вежлив и конкретен."
 )
-_DEFAULT_LEAD = "Оставьте ФИО и телефон — перезвоним в ближайшие минуты."
+_DEFAULT_LEAD = "Одна короткая страница — и мы наберём ваш номер."
 
 
 def _utc_now() -> str:
@@ -241,87 +241,37 @@ def build_callback_cta_html(
     settings: Any = None,
     reply_mailto: str | None = None,
 ) -> str:
-    """Callback block that works across as many clients as possible.
+    """Callback block: title + one line + big button → landing form.
 
-    Reality check:
-    - Gmail / Outlook.com / many mobile apps **strip** ``<form>`` and ``<input>``.
-    - Apple Mail / Thunderbird still submit HTML forms.
-
-    Progressive enhancement:
-    1. Real inline form (Apple Mail / Thunderbird)
-    2. Bulletproof ``<a>`` button outside the form (survives Gmail) → same one-screen page
-    3. ``mailto:`` fallback — reply with FIO/phone in the body
+    No inline form in the letter — most clients strip or fake ``<input>``,
+    which confuses people. The landing page owns FIO + phone.
     """
-    from urllib.parse import quote
-
     title = escape(cta_title(settings))
     lead = escape(cta_lead(settings))
     button = escape(cta_button(settings))
     href = escape(url, quote=True)
-    mail = (reply_mailto or "").strip() or notify_email(settings) or "office@quantumlabs.ru"
-    mailto = (
-        f"mailto:{mail}"
-        f"?subject={quote('Перезвоните мне')}"
-        f"&body={quote('Прошу перезвонить.\\n\\nФИО: \\nТелефон: \\n')}"
-    )
-    mailto_href = escape(mailto, quote=True)
 
-    # Gmail/Outlook strip <form>/<input> but leave dead-looking fields — users fill them
-    # and nothing is submitted. Primary CTA is always a real <a> to the web form.
-    # Inline form is progressive enhancement for Apple Mail / Thunderbird only.
+    # Bulletproof button (Outlook-friendly table + full <a> hit area).
     return (
-        '<div style="margin:1.5em 0 0.35em;padding:0;border:0">'
         '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
-        'style="border-collapse:separate;border:1px solid #e6e1da;background:#faf8f5">'
-        '<tr><td style="padding:18px 18px 16px">'
-        f'<p style="margin:0 0 6px;font:600 16px/1.35 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
-        f'color:#0f1b24">{title}</p>'
-        f'<p style="margin:0 0 14px;font:13px/1.5 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
-        f'color:#5a6570">{lead}</p>'
-        # Bulletproof primary button (works in Gmail / iOS Mail / Outlook)
+        'style="border-collapse:collapse;margin:28px 0 8px">'
+        '<tr><td style="padding:0 0 18px">'
+        '<div style="height:1px;line-height:1px;font-size:0;background:#e8e2d8">&nbsp;</div>'
+        "</td></tr>"
+        '<tr><td style="padding:4px 0 0">'
+        f'<p style="margin:0 0 8px;font:600 17px/1.35 Georgia,\'Times New Roman\',serif;'
+        f'color:#1a2229;letter-spacing:-0.01em">{title}</p>'
+        f'<p style="margin:0 0 18px;font:14px/1.55 \'Segoe UI\',Helvetica,Arial,sans-serif;'
+        f'color:#5c6670">{lead}</p>'
         '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
-        'style="margin:0 0 14px">'
-        "<tr><td style=\"background:#c4470f;border-radius:2px\">"
-        f'<a href="{href}" style="display:inline-block;padding:12px 22px;background:#c4470f;'
-        "color:#ffffff;font:600 13px/1 Manrope,Segoe UI,Helvetica,Arial,sans-serif;"
-        f'text-decoration:none;border-radius:2px">{button}</a>'
+        'style="border-collapse:collapse">'
+        '<tr><td align="center" bgcolor="#c4470f" style="background:#c4470f;border-radius:4px">'
+        f'<a href="{href}" target="_blank" '
+        'style="display:inline-block;padding:15px 34px;background:#c4470f;color:#ffffff;'
+        "font:600 15px/1.2 'Segoe UI',Helvetica,Arial,sans-serif;"
+        f'text-decoration:none;border-radius:4px;letter-spacing:0.01em">{button}</a>'
         "</td></tr></table>"
-        '<p style="margin:0 0 12px;font:12px/1.45 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
-        'color:#6a737b">Откроется короткая форма: ФИО и телефон → сразу перезвоним.</p>'
-        # Optional inline form (Apple Mail etc.)
-        f'<form action="{href}" method="get" style="margin:0;padding:0">'
-        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">'
-        '<tr><td style="padding:0 0 8px;font:600 11px/1.3 Manrope,Segoe UI,sans-serif;'
-        'letter-spacing:0.04em;text-transform:uppercase;color:#6a737b">'
-        "Или заполните прямо в письме (если поля активны)</td></tr>"
-        "<tr><td style=\"padding:0 0 10px\">"
-        '<div style="font:600 11px/1.3 Manrope,Segoe UI,sans-serif;'
-        'letter-spacing:0.04em;text-transform:uppercase;color:#6a737b">ФИО</div>'
-        '<input name="fio" type="text" placeholder="Иванов Иван Иванович" '
-        'style="margin-top:6px;width:100%;max-width:100%;box-sizing:border-box;padding:11px 12px;'
-        "border:1px solid #d0d5da;background:#ffffff;border-radius:2px;"
-        'font:14px/1.4 Manrope,Segoe UI,Helvetica,Arial,sans-serif;color:#0f1b24" />'
-        "</td></tr>"
-        "<tr><td style=\"padding:0 0 12px\">"
-        '<div style="font:600 11px/1.3 Manrope,Segoe UI,sans-serif;'
-        'letter-spacing:0.04em;text-transform:uppercase;color:#6a737b">Телефон</div>'
-        '<input name="phone" type="tel" placeholder="+7 …" '
-        'style="margin-top:6px;width:100%;max-width:100%;box-sizing:border-box;padding:11px 12px;'
-        "border:1px solid #d0d5da;background:#ffffff;border-radius:2px;"
-        'font:14px/1.4 Manrope,Segoe UI,Helvetica,Arial,sans-serif;color:#0f1b24" />'
-        "</td></tr>"
-        "<tr><td style=\"padding:0 0 4px\">"
-        f'<button type="submit" style="display:inline-block;padding:10px 18px;border:0;cursor:pointer;'
-        "background:#ffffff;color:#c4470f;font:600 12px/1 Manrope,Segoe UI,Helvetica,Arial,sans-serif;"
-        f'border:1px solid #c4470f;border-radius:2px">{button} из письма</button>'
-        "</td></tr>"
-        "</table>"
-        "</form>"
-        '<p style="margin:12px 0 0;font:12px/1.45 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
-        f'color:#6a737b">Или <a href="{mailto_href}" style="color:#c4470f;font-weight:600;'
-        'text-decoration:underline">ответьте на письмо</a> с ФИО и телефоном.</p>'
         "</td></tr></table>"
-        "</div>"
     )
 
 
@@ -334,12 +284,8 @@ def build_callback_cta_plain(
     title = cta_title(settings)
     lead = cta_lead(settings)
     button = cta_button(settings)
-    mail = (reply_mailto or "").strip() or "office@quantumlabs.ru"
-    return (
-        f"\n\n{title}\n{lead}\n"
-        f"{button}: {url}\n"
-        f"Или ответьте на {mail} с ФИО и телефоном.\n"
-    )
+    return f"\n\n{title}\n{lead}\n{button}: {url}\n"
+
 
 
 def normalize_phone(raw: str) -> str | None:
