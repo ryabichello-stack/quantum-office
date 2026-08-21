@@ -272,13 +272,37 @@ body.embedded .app { padding-top: 0.35rem; }
 }
 .sig-live-body {
   margin: 0;
-  white-space: pre-wrap;
+  white-space: normal;
   word-break: break-word;
   font-family: var(--font);
   font-size: 0.88rem;
   line-height: 1.45;
   color: var(--ink);
   min-height: 3.2rem;
+}
+.sig-live-body .sig-text {
+  margin: 0 0 0.55rem;
+  white-space: pre-wrap;
+}
+.sig-live-body .sig-contacts {
+  display: grid;
+  gap: 0.35rem;
+}
+.sig-live-body .sig-contact {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.84rem;
+}
+.sig-live-body .sig-contact img {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+.sig-live-body .sig-contact a {
+  color: var(--ink);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(196, 71, 15, 0.35);
 }
 .sig-live-body.sig-missing-phone {
   outline: 1px solid rgba(180, 35, 24, 0.35);

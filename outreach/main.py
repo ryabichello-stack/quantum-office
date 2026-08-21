@@ -663,6 +663,7 @@ class PreviewBody(BaseModel):
     company_name: str | None = None
     website: str | None = None
     phone: str | None = None
+    contact_email: str | None = None
     signature: str | None = None
     logo_url: str | None = None
     logo_enabled: bool | None = None
@@ -683,6 +684,16 @@ def api_preview(body: PreviewBody) -> dict[str, Any]:
         else (rt.get("OUTREACH_WEBSITE", "https://quantumlabs.ru") or "https://quantumlabs.ru")
     )
     phone = body.phone if body.phone is not None else (rt.get("OUTREACH_CONTACT_PHONE", "") or "")
+    contact_email = (
+        body.contact_email
+        if body.contact_email is not None
+        else (
+            (rt.get("OUTREACH_CONTACT_EMAIL", "") or "").strip()
+            or rt.get("OUTREACH_UNSUBSCRIBE_MAILTO", "")
+            or os.getenv("MAIL_USERNAME")
+            or "office@quantumlabs.ru"
+        )
+    )
     signature = (
         body.signature
         if body.signature is not None
@@ -718,6 +729,8 @@ def api_preview(body: PreviewBody) -> dict[str, Any]:
         signature_template=signature or DEFAULT_SIGNATURE,
         logo_url=logo_url,
         logo_enabled=bool(logo_on),
+        contact_email=contact_email or "",
+        icon_base_url=public_base_url(lambda k: rt.get(k, "") or ""),
     )
     attach_on = rt.get_bool("OUTREACH_ATTACH_PRESENTATION", False)
     return {

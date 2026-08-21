@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=sigfix1" />
+  <link rel="stylesheet" href="styles.css?v=iconsfix1" />
   <script>
     (function () {
       function parentBase() {
@@ -101,22 +101,25 @@
             <label class="field">Сайт
               <input id="letterWebsite" type="text" placeholder="https://quantumlabs.ru" />
             </label>
+            <label class="field">Почта
+              <input id="letterEmail" type="email" placeholder="office@quantumlabs.ru" />
+            </label>
             <label class="field">Телефон
               <input id="letterPhone" type="text" placeholder="+7 …" />
             </label>
           </div>
           <div class="task-actions" style="margin-top:-0.25rem">
             <button type="button" id="letterApplyContacts" class="primary">Применить контакты в подпись</button>
-            <span class="muted tight">Телефон, компания и сайт подставятся в превью подписи сразу</span>
+            <span class="muted tight">Сайт, почта и телефон — с микрозначками в HTML-письме</span>
           </div>
 
           <label class="field full">Шаблон подписи
-            <textarea id="letterSignature" class="scroll-y" rows="5" placeholder="С уважением,&#10;команда Quantum Labs&#10;{company}&#10;{website}&#10;{phone_line}"></textarea>
+            <textarea id="letterSignature" class="scroll-y" rows="5" placeholder="С уважением,&#10;команда Quantum Labs&#10;{company}&#10;{website}&#10;{email_line}&#10;{phone_line}"></textarea>
           </label>
-          <p class="muted tight">Плейсхолдеры: {company} {website} {phone} {phone_line}. В тексте письма — {signature}.</p>
+          <p class="muted tight">Плейсхолдеры: {company} {website} {email} {email_line} {phone} {phone_line}. В тексте письма — {signature}.</p>
           <div class="sig-live">
             <p class="sig-live-label">Как будет в письме</p>
-            <pre id="letterSignatureLive" class="sig-live-body"></pre>
+            <div id="letterSignatureLive" class="sig-live-body"></div>
           </div>
 
           <div class="brand-row">
@@ -574,6 +577,6 @@
       </section>
     </main>
   </div>
-  <script src="app.js?v=sigfix1"></script>
+  <script src="app.js?v=iconsfix1"></script>
 </body>
 </html>

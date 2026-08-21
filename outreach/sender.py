@@ -32,11 +32,19 @@ def _render_letter(
     html_template: str | None = None,
     settings: Any = None,
 ) -> tuple[str, str]:
+    from templates import public_base_url
+
     sig = (_cfg(settings, "OUTREACH_SIGNATURE", "") or "").strip() or DEFAULT_SIGNATURE
     logo_url = (_cfg(settings, "OUTREACH_LOGO_URL", "") or "").strip() or default_logo_url(
         lambda k: _cfg(settings, k, "")
     )
     logo_on = _cfg_bool(settings, "OUTREACH_LOGO_ENABLED", True)
+    contact_email = (
+        (_cfg(settings, "OUTREACH_CONTACT_EMAIL", "") or "").strip()
+        or unsubscribe_mailto
+        or os.getenv("MAIL_USERNAME")
+        or "office@quantumlabs.ru"
+    )
     return render_cooperation(
         contact_name=contact_name,
         company_name=company,
@@ -49,6 +57,8 @@ def _render_letter(
         signature_template=sig,
         logo_url=logo_url,
         logo_enabled=logo_on,
+        contact_email=contact_email,
+        icon_base_url=public_base_url(lambda k: _cfg(settings, k, "")),
     )
 
 logger = logging.getLogger("ava-outreach.sender")
