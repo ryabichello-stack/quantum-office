@@ -499,7 +499,14 @@ async def callback_request_page(token: str, request: Request):
                 ip=request.client.host if request.client else None,
             )
             if result.get("ok"):
-                return HTMLResponse(form_page_html(token=token, settings=rt, done=True))
+                return HTMLResponse(
+                    form_page_html(
+                        token=token,
+                        settings=rt,
+                        done=True,
+                        done_message=str(result.get("message") or ""),
+                    )
+                )
             err_map = {
                 "fio_required": "Укажите ФИО",
                 "phone_invalid": "Укажите корректный телефон",
@@ -590,7 +597,14 @@ async def callback_request_page(token: str, request: Request):
     except Exception:  # noqa: BLE001
         logger.debug("callback bitrix note failed", exc_info=True)
 
-    return HTMLResponse(form_page_html(token=token, settings=rt, done=True))
+    return HTMLResponse(
+        form_page_html(
+            token=token,
+            settings=rt,
+            done=True,
+            done_message=str(result.get("message") or ""),
+        )
+    )
 
 
 class CallbackCtaSettingsBody(BaseModel):

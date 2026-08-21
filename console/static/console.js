@@ -1311,7 +1311,7 @@
       $("cbNotifyEnabled").checked = String(s.CALLBACK_NOTIFY_ENABLED || "true").toLowerCase() !== "false";
     if ($("cbDialEnabled"))
       $("cbDialEnabled").checked = String(s.CALLBACK_DIAL_ENABLED || "true").toLowerCase() !== "false";
-    if ($("cbDialMode")) $("cbDialMode").value = s.CALLBACK_DIAL_MODE || "mango_callback";
+    if ($("cbDialMode")) $("cbDialMode").value = s.CALLBACK_DIAL_MODE || "dial";
     if ($("cbNotifyEmail")) $("cbNotifyEmail").value = s.CALLBACK_NOTIFY_EMAIL || "";
     if ($("cbButton")) $("cbButton").value = s.CALLBACK_CTA_BUTTON || "";
     if ($("cbTitle")) $("cbTitle").value = s.CALLBACK_CTA_TITLE || "";
@@ -1371,7 +1371,7 @@
               CALLBACK_CTA_ENABLED: $("cbCtaEnabled") && $("cbCtaEnabled").checked ? "true" : "false",
               CALLBACK_NOTIFY_ENABLED: $("cbNotifyEnabled") && $("cbNotifyEnabled").checked ? "true" : "false",
               CALLBACK_DIAL_ENABLED: $("cbDialEnabled") && $("cbDialEnabled").checked ? "true" : "false",
-              CALLBACK_DIAL_MODE: ($("cbDialMode") && $("cbDialMode").value) || "mango_callback",
+              CALLBACK_DIAL_MODE: ($("cbDialMode") && $("cbDialMode").value) || "dial",
               CALLBACK_NOTIFY_EMAIL: ($("cbNotifyEmail") && $("cbNotifyEmail").value) || "",
               CALLBACK_CTA_BUTTON: ($("cbButton") && $("cbButton").value) || "",
               CALLBACK_CTA_TITLE: ($("cbTitle") && $("cbTitle").value) || "",

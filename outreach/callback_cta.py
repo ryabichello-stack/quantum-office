@@ -127,9 +127,10 @@ def notify_enabled(settings: Any = None) -> bool:
 
 
 def dial_mode(settings: Any = None) -> str:
-    mode = (_cfg(settings, "CALLBACK_DIAL_MODE", "mango_callback") or "mango_callback").strip().lower()
+    # Default ARI dial: Mango VPBX API is often disabled ("Service disabled" 401).
+    mode = (_cfg(settings, "CALLBACK_DIAL_MODE", "dial") or "dial").strip().lower()
     if mode not in {"notify_only", "mango_callback", "dial"}:
-        return "mango_callback"
+        return "dial"
     return mode
 
 
@@ -265,14 +266,9 @@ def build_callback_cta_html(
     )
     mailto_href = escape(mailto, quote=True)
 
-    # One orange CTA only: the form submit.
-    # Gmail strips <form> — then a quiet text link remains (not a second identical button,
-    # which made people fill fields and click the wrong control).
-    open_link = (
-        f'<a href="{href}" style="color:#c4470f;font-weight:600;text-decoration:underline">'
-        "Открыть форму заказа звонка</a>"
-    )
-
+    # Gmail/Outlook strip <form>/<input> but leave dead-looking fields — users fill them
+    # and nothing is submitted. Primary CTA is always a real <a> to the web form.
+    # Inline form is progressive enhancement for Apple Mail / Thunderbird only.
     return (
         '<div style="margin:1.5em 0 0.35em;padding:0;border:0">'
         '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
@@ -282,8 +278,22 @@ def build_callback_cta_html(
         f'color:#0f1b24">{title}</p>'
         f'<p style="margin:0 0 14px;font:13px/1.5 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
         f'color:#5a6570">{lead}</p>'
+        # Bulletproof primary button (works in Gmail / iOS Mail / Outlook)
+        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
+        'style="margin:0 0 14px">'
+        "<tr><td style=\"background:#c4470f;border-radius:2px\">"
+        f'<a href="{href}" style="display:inline-block;padding:12px 22px;background:#c4470f;'
+        "color:#ffffff;font:600 13px/1 Manrope,Segoe UI,Helvetica,Arial,sans-serif;"
+        f'text-decoration:none;border-radius:2px">{button}</a>'
+        "</td></tr></table>"
+        '<p style="margin:0 0 12px;font:12px/1.45 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
+        'color:#6a737b">Откроется короткая форма: ФИО и телефон → сразу перезвоним.</p>'
+        # Optional inline form (Apple Mail etc.)
         f'<form action="{href}" method="get" style="margin:0;padding:0">'
         '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">'
+        '<tr><td style="padding:0 0 8px;font:600 11px/1.3 Manrope,Segoe UI,sans-serif;'
+        'letter-spacing:0.04em;text-transform:uppercase;color:#6a737b">'
+        "Или заполните прямо в письме (если поля активны)</td></tr>"
         "<tr><td style=\"padding:0 0 10px\">"
         '<div style="font:600 11px/1.3 Manrope,Segoe UI,sans-serif;'
         'letter-spacing:0.04em;text-transform:uppercase;color:#6a737b">ФИО</div>'
@@ -301,25 +311,15 @@ def build_callback_cta_html(
         'font:14px/1.4 Manrope,Segoe UI,Helvetica,Arial,sans-serif;color:#0f1b24" />'
         "</td></tr>"
         "<tr><td style=\"padding:0 0 4px\">"
-        f'<button type="submit" style="display:inline-block;padding:12px 22px;border:0;cursor:pointer;'
-        f'background:#c4470f;color:#ffffff;font:600 13px/1 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
-        f'border-radius:2px">{button}</button>'
+        f'<button type="submit" style="display:inline-block;padding:10px 18px;border:0;cursor:pointer;'
+        "background:#ffffff;color:#c4470f;font:600 12px/1 Manrope,Segoe UI,Helvetica,Arial,sans-serif;"
+        f'border:1px solid #c4470f;border-radius:2px">{button} из письма</button>'
         "</td></tr>"
         "</table>"
         "</form>"
-        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" '
-        'style="margin-top:12px">'
-        '<tr><td style="'
-        "font:12px/1.45 Manrope,Segoe UI,Helvetica,Arial,sans-serif;color:#6a737b\">"
-        f"Если поля выше не видны в вашей почте — {open_link}, "
-        "заполните ФИО и телефон там и нажмите «Перезвонить»."
-        "</td></tr>"
-        "<tr><td style=\"padding-top:6px;"
-        "font:12px/1.45 Manrope,Segoe UI,Helvetica,Arial,sans-serif;color:#6a737b\">"
-        f'Или <a href="{mailto_href}" style="color:#c4470f;font-weight:600;text-decoration:underline">'
-        "ответьте на письмо</a> с ФИО и телефоном."
-        "</td></tr>"
-        "</table>"
+        '<p style="margin:12px 0 0;font:12px/1.45 Manrope,Segoe UI,Helvetica,Arial,sans-serif;'
+        f'color:#6a737b">Или <a href="{mailto_href}" style="color:#c4470f;font-weight:600;'
+        'text-decoration:underline">ответьте на письмо</a> с ФИО и телефоном.</p>'
         "</td></tr></table>"
         "</div>"
     )
@@ -405,6 +405,37 @@ def _console_post(path: str, payload: dict[str, Any], *, timeout: float = 45.0) 
         raise RuntimeError(f"console unreachable: {exc}") from exc
 
 
+def _ari_dial(*, phone: str, fio: str, settings: Any = None) -> dict[str, Any]:
+    greeting = scenario_greeting(settings)
+    script = scenario_script(settings)
+    if fio:
+        script = f"Клиент представился как: {fio}.\n\n" + script
+    result = _console_post(
+        "/api/outbound/dial",
+        {
+            "phone": phone,
+            "context": "outbound",
+            "greeting": greeting,
+            "script": script,
+            "use_knowledge": True,
+        },
+    )
+    return {"ok": bool(result.get("ok", True)), "mode": "dial", "result": result}
+
+
+def _mango_callback_failed(result: dict[str, Any]) -> bool:
+    if result.get("ok"):
+        return False
+    http = result.get("http")
+    mango = result.get("mango") if isinstance(result.get("mango"), dict) else {}
+    msg = str(mango.get("message") or result.get("detail") or "").lower()
+    if http in {401, 403, 503}:
+        return True
+    if "service disabled" in msg or "unauthorized" in msg:
+        return True
+    return not bool(result.get("ok"))
+
+
 def trigger_dial(*, phone: str, fio: str, settings: Any = None) -> dict[str, Any]:
     mode = dial_mode(settings)
     if not dial_enabled(settings) or mode == "notify_only":
@@ -418,26 +449,20 @@ def trigger_dial(*, phone: str, fio: str, settings: Any = None) -> dict[str, Any
             "/api/outbound/callback",
             {"phone": phone, "command_id": f"email-cb-{phone[-4:]}"},
         )
-        return {"ok": bool(result.get("ok")), "mode": mode, "result": result}
+        if result.get("ok"):
+            return {"ok": True, "mode": mode, "result": result}
+        # Mango VPBX API often returns 401 "Service disabled" — fall back to ARI.
+        if _mango_callback_failed(result):
+            fallback = _ari_dial(phone=phone, fio=fio, settings=settings)
+            fallback["fallback_from"] = "mango_callback"
+            fallback["mango_error"] = {
+                "http": result.get("http"),
+                "mango": result.get("mango"),
+            }
+            return fallback
+        return {"ok": False, "mode": mode, "result": result}
 
-    # ARI dial with per-call scenario from Quantum panel settings
-    greeting = scenario_greeting(settings)
-    script = scenario_script(settings)
-    if fio:
-        script = (
-            f"Клиент представился как: {fio}.\n\n" + script
-        )
-    result = _console_post(
-        "/api/outbound/dial",
-        {
-            "phone": phone,
-            "context": "outbound",
-            "greeting": greeting,
-            "script": script,
-            "use_knowledge": True,
-        },
-    )
-    return {"ok": bool(result.get("ok", True)), "mode": mode, "result": result}
+    return _ari_dial(phone=phone, fio=fio, settings=settings)
 
 
 def recent_requests(*, limit: int = 30) -> list[dict[str, Any]]:
@@ -491,11 +516,28 @@ def process_callback_request(
         if recent:
             return {"ok": False, "error": "rate_limited"}
 
+    dial_info: dict[str, Any] = {"ok": True, "skipped": True, "mode": "notify_only"}
+    if dial_enabled(settings) and dial_mode(settings) != "notify_only":
+        try:
+            dial_info = trigger_dial(phone=phone_n, fio=name, settings=settings)
+        except Exception as exc:  # noqa: BLE001
+            dial_info = {"ok": False, "error": str(exc)[:400], "mode": dial_mode(settings)}
+            logger.exception("callback dial failed")
+
     notify_ok = False
     notify_error = None
     to_addr = notify_email(settings)
     if notify_enabled(settings):
         try:
+            dial_status = "пропущен (только уведомление)"
+            if dial_info.get("skipped"):
+                dial_status = "выключен"
+            elif dial_info.get("ok"):
+                dial_status = f"OK ({dial_info.get('mode')})"
+                if dial_info.get("fallback_from"):
+                    dial_status += f", fallback с {dial_info.get('fallback_from')}"
+            else:
+                dial_status = f"ОШИБКА ({dial_info.get('mode')}): {dial_info.get('error') or dial_info}"
             body = (
                 f"Заказан звонок из email-рассылки Quantum Labs\n\n"
                 f"ФИО: {name}\n"
@@ -504,6 +546,7 @@ def process_callback_request(
                 f"Outbox id: {verified.get('outbox_id')}\n"
                 f"Режим звонка: {dial_mode(settings)}\n"
                 f"Автозвонок: {'вкл' if dial_enabled(settings) else 'выкл'}\n"
+                f"Результат набора: {dial_status}\n"
                 f"Время (UTC): {_utc_now()}\n"
             )
             _send_staff_notify(
@@ -515,14 +558,6 @@ def process_callback_request(
         except Exception as exc:  # noqa: BLE001
             notify_error = str(exc)[:400]
             logger.exception("callback notify failed")
-
-    dial_info: dict[str, Any] = {"ok": True, "skipped": True, "mode": "notify_only"}
-    if dial_enabled(settings) and dial_mode(settings) != "notify_only":
-        try:
-            dial_info = trigger_dial(phone=phone_n, fio=name, settings=settings)
-        except Exception as exc:  # noqa: BLE001
-            dial_info = {"ok": False, "error": str(exc)[:400], "mode": dial_mode(settings)}
-            logger.exception("callback dial failed")
 
     with _connect() as conn:
         cur = conn.execute(
@@ -550,6 +585,10 @@ def process_callback_request(
         req_id = int(cur.lastrowid)
 
     ok = notify_ok or bool(dial_info.get("ok"))
+    if dial_info.get("ok") and not dial_info.get("skipped"):
+        msg = "Заявка принята. Сейчас набираем ваш номер."
+    else:
+        msg = "Заявка принята. Мы свяжемся с вами в ближайшее время."
     return {
         "ok": ok,
         "id": req_id,
@@ -559,7 +598,7 @@ def process_callback_request(
         "notify_error": notify_error,
         "notify_to": to_addr if notify_ok else None,
         "dial": dial_info,
-        "message": "Заявка принята. Мы свяжемся с вами в ближайшее время.",
+        "message": msg,
     }
 
 
@@ -571,6 +610,7 @@ def form_page_html(
     prefill_fio: str = "",
     error: str = "",
     done: bool = False,
+    done_message: str = "",
 ) -> str:
     """One-screen form — same look as the email card, autofocus, instant submit."""
     title = escape(cta_title(settings))
@@ -578,9 +618,13 @@ def form_page_html(
     button = escape(cta_button(settings))
     err = f'<p class="err">{escape(error)}</p>' if error else ""
     if done:
+        thanks = escape(
+            done_message
+            or "Спасибо! Заявка принята — перезвоним в ближайшие минуты."
+        )
         body = (
             f"<h1>{title}</h1>"
-            "<p class='ok'>Спасибо! Заявка принята — перезвоним в ближайшие минуты.</p>"
+            f"<p class='ok'>{thanks}</p>"
         )
     else:
         body = f"""
