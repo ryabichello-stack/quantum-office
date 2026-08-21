@@ -652,8 +652,34 @@
     });
   }
 
+  function bindInnerWheelScroll(root) {
+    // Inside Console iframe the parent steals mouse-wheel; scroll boxes ourselves.
+    const scope = root || document;
+    scope.querySelectorAll("textarea.scroll-y, #letterPlain, #letterHtml, pre.log, .preview-html, .scroll-y").forEach((el) => {
+      if (el.dataset.wheelScroll === "1") return;
+      el.dataset.wheelScroll = "1";
+      el.addEventListener(
+        "wheel",
+        (ev) => {
+          // Always handle here so the outer iframe page does not eat the gesture
+          ev.preventDefault();
+          ev.stopPropagation();
+          el.scrollTop += ev.deltaY;
+        },
+        { passive: false }
+      );
+    });
+  }
+
   async function boot() {
     bindTabs();
+    bindInnerWheelScroll();
+    const adv = $("letterAdvanced");
+    if (adv) {
+      adv.addEventListener("toggle", () => {
+        if (adv.open) bindInnerWheelScroll(adv);
+      });
+    }
 
     if ($("loginBtn") && $("tokenInput")) {
       $("loginBtn").addEventListener("click", async () => {
@@ -902,10 +928,11 @@
         });
         $("previewSubject").textContent = data.subject || "";
         $("previewPlain").textContent = data.plain || "";
-        const doc = $("previewFrame").contentDocument;
-        doc.open();
-        doc.write(data.html || "");
-        doc.close();
+        const box = $("previewFrame");
+        if (box) {
+          box.innerHTML = data.html || "";
+          bindInnerWheelScroll(box.parentElement || document);
+        }
           if ($("letterLog")) {
             $("letterLog").hidden = false;
             $("letterLog").textContent = data.attach_presentation

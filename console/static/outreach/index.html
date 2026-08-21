@@ -113,21 +113,21 @@
           <p class="muted tight" id="letterPdfMeta"></p>
 
           <label class="field full">Текст письма
-            <textarea id="letterPlain" rows="10" placeholder="Текст первого письма…"></textarea>
+            <textarea id="letterPlain" class="scroll-y" rows="12" placeholder="Текст первого письма…"></textarea>
           </label>
 
-          <details class="task-advanced">
+          <details class="task-advanced" id="letterAdvanced">
             <summary>HTML-версия и превью</summary>
             <p class="muted tight">Плейсхолдеры: {name} {company} {website} {unsub} {unsub_url} {phone_line}</p>
             <label class="field full">HTML
-              <textarea id="letterHtml" rows="8"></textarea>
+              <textarea id="letterHtml" class="scroll-y" rows="10"></textarea>
             </label>
             <div class="grid2" style="margin-top:0.65rem">
               <div>
                 <p id="previewSubject" class="preview-subject"></p>
-                <iframe id="previewFrame" title="preview"></iframe>
+                <div id="previewFrame" class="preview-html scroll-y" title="preview"></div>
               </div>
-              <pre id="previewPlain" class="log"></pre>
+              <pre id="previewPlain" class="log scroll-y"></pre>
             </div>
           </details>
 

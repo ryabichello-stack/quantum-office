@@ -262,9 +262,61 @@ textarea {
   font-size: 0.8rem;
   line-height: 1.45;
   min-height: 8rem;
-  /* grow with content / user resize — page scrolls in the iframe */
   overflow: auto;
 }
+/* Fixed-height editors — mouse wheel scrolls inside (iframe parent steals otherwise) */
+textarea.scroll-y,
+#letterPlain,
+#letterHtml {
+  height: 280px;
+  max-height: 280px;
+  min-height: 280px;
+  resize: vertical;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+}
+
+.log, .msg.codeblock, pre.log {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #0f1b24;
+  color: #d7e4ee;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  height: 280px;
+  max-height: 280px;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+}
+
+.preview-subject {
+  margin: 0 0 0.45rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.preview-html,
+#previewFrame {
+  width: 100%;
+  height: 280px;
+  max-height: 280px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+  padding: 0.75rem 0.9rem;
+  box-sizing: border-box;
+  font-family: Manrope, Segoe UI, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #1a1a1a;
+}
+.preview-html img { max-width: 100%; }
 
 button {
   cursor: pointer;
@@ -503,36 +555,6 @@ th {
   background: rgba(244, 247, 250, 0.8);
 }
 tr:last-child td { border-bottom: 0; }
-
-.log, .msg.codeblock, pre.log {
-  margin: 0;
-  padding: 0.65rem 0.75rem;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: #0f1b24;
-  color: #d7e4ee;
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  line-height: 1.4;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 220px;
-  overflow: auto;
-}
-
-.preview-subject {
-  margin: 0 0 0.45rem;
-  font-weight: 600;
-  font-size: 0.9rem;
-}
-iframe#previewFrame,
-#previewFrame {
-  width: 100%;
-  height: 280px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #fff;
-}
 
 .bars { display: grid; gap: 0.35rem; }
 .bar-row {
