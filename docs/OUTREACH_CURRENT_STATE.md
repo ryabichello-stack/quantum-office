@@ -28,7 +28,8 @@
 | **B** | ✅ | Фильтры очереди, row actions, deferred hint, inbox badges |
 | **C** | ✅ | Праздники РФ, OOO-pause, TZ fairness, auto-geo после sync |
 | **D** | ✅ | Next actions + alerts, campaign collapse, CI pytest+sync |
-| **E+** | 🔲 | RBAC, multi-campaign, step analytics, отдельный sending domain |
+| **E** | ✅ | Push notify (email/Telegram), step analytics, consent ledger |
+| **F+** | 🔲 | Company drill-down, push to external on-call, full compliance export |
 
 ---
 
@@ -67,6 +68,15 @@
 - `GET /api/ops/summary` — alerts + next actions
 - `GET /api/ops/health` — SMTP/IMAP/Bitrix/mailbox pause
 - `GET /api/dashboard` — полная сводка
+- `GET /api/modules/analytics/sequence-steps` — воронка по шагам цепочки
+- `GET /api/modules/consent/ledger` — журнал DNC/consent
+
+### Уведомления (Layer E)
+
+Настройки → «Уведомления оператору»: email + опционально Telegram (`OPS_NOTIFY_TELEGRAM_*`).  
+События: human/positive reply, mailbox pause, callback CTA. Dedup в `ops_notify_dedup`.
+
+Статика: `outreach/static` → `console/static/outreach` (`?v=ops5`).
 
 ---
 
@@ -85,8 +95,8 @@
 | Риск | Митигация сейчас | Следующий шаг |
 |------|------------------|---------------|
 | Репутация `office@` | Warmup, caps, pause | Отдельный sending domain при росте |
-| Потеря ответов | IMAP watcher + inbox UI | Push-уведомления (email/Telegram) |
-| Compliance | Unsub, suppression, 152‑ФЗ footer | Consent ledger per contact |
+| Потеря ответов | IMAP + inbox + **push notify** | Telegram token в настройках |
+| Compliance | Unsub, suppression, **consent ledger** | Экспорт / legal hold |
 | Один email/компания | Архитектура outbox | Multi-contact targeting |
 
 ---

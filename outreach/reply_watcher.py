@@ -611,6 +611,56 @@ def check_replies(
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("reply notify email failed: %s", exc)
                     item["notify_error"] = str(exc)[:300]
+            try:
+                from core.paths import SETTINGS_DB
+                from ops_notify import notify_positive_reply
+                from runtime_settings import RuntimeSettings
+
+                ops = notify_positive_reply(
+                    classification=classified.classification,
+                    from_email=from_email,
+                    subject=subject,
+                    preview=preview,
+                    company_name=row.contact_name or "",
+                    company_id=row.company_id or "",
+                    settings=RuntimeSettings(SETTINGS_DB),
+                )
+                if ops.get("email") or ops.get("telegram"):
+                    item["ops_notify"] = ops
+            except Exception:  # noqa: BLE001
+                logger.debug("ops notify on reply failed", exc_info=True)
+
+            if classified.classification == "unsubscribe":
+                try:
+                    from modules.consent import ConsentLedgerStore
+
+                    ConsentLedgerStore().record(
+                        email=from_email,
+                        status="unsubscribed",
+                        source="reply-classify",
+                        reason=classified.reason,
+                        company_id=row.company_id or "",
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+            elif classified.classification in (
+                "positive_interest",
+                "human_unclassified",
+                "forwarded",
+                "negative",
+            ):
+                try:
+                    from modules.consent import ConsentLedgerStore
+
+                    ConsentLedgerStore().record(
+                        email=from_email,
+                        status="replied",
+                        source="reply-classify",
+                        reason=classified.classification,
+                        company_id=row.company_id or "",
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
 
             if classified.classification not in ("automatic", "out_of_office", "bounce"):
                 store.mark_replied(row.id)

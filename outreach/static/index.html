@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops4" />
+  <link rel="stylesheet" href="styles.css?v=ops5" />
   <script>
     (function () {
       function parentBase() {
@@ -490,6 +490,12 @@
             <div class="funnel-viz" id="reportFunnelBars" aria-label="Воронка"></div>
           </div>
 
+          <div class="report-panel">
+            <p class="report-panel-head">Цепочка — дошли до шага</p>
+            <p class="muted tight">Сколько лидов получили как минимум N-е письмо (по current_step в sequences).</p>
+            <div id="reportSequenceSteps" class="seq-steps"></div>
+          </div>
+
           <div class="grid2">
             <div class="report-panel">
               <p class="report-panel-head">По дням</p>
@@ -608,6 +614,49 @@
             <input id="setReplyWatch" type="checkbox" />
             Следить за ответами по IMAP
           </label>
+
+          <fieldset class="task-mode">
+            <legend>Уведомления оператору</legend>
+            <label class="field check">
+              <input id="opsNotifyEnabled" type="checkbox" checked />
+              Push-уведомления (email / Telegram)
+            </label>
+            <label class="field check">
+              <input id="opsNotifyEmailEnabled" type="checkbox" checked />
+              Email (дублирует REPLY_NOTIFY при ответах)
+            </label>
+            <label class="field">Email для алертов
+              <input id="opsNotifyEmail" type="email" placeholder="office@quantumlabs.ru" />
+            </label>
+            <label class="field check">
+              <input id="opsNotifyTelegramEnabled" type="checkbox" />
+              Telegram (если указаны bot token + chat id)
+            </label>
+            <div class="task-grid">
+              <label class="field">Telegram bot token
+                <input id="opsNotifyTgToken" type="password" placeholder="из @BotFather" autocomplete="off" />
+              </label>
+              <label class="field">Telegram chat id
+                <input id="opsNotifyTgChat" type="text" placeholder="-100… или user id" />
+              </label>
+            </div>
+            <label class="field check">
+              <input id="opsNotifyOnReply" type="checkbox" checked />
+              Ответы (positive / human / negative)
+            </label>
+            <label class="field check">
+              <input id="opsNotifyOnPause" type="checkbox" checked />
+              Mailbox pause (bounce spike)
+            </label>
+            <label class="field check">
+              <input id="opsNotifyOnCallback" type="checkbox" checked />
+              Заявки «Заказать звонок»
+            </label>
+            <div class="actions" style="margin-top:0.35rem">
+              <button type="button" id="opsNotifySave" class="primary">Сохранить уведомления</button>
+            </div>
+          </fieldset>
+
           <p class="muted tight" id="settingsMeta"></p>
           <div class="task-actions">
             <button type="button" id="settingsSave" class="primary">Сохранить лимиты</button>
@@ -644,6 +693,24 @@
             <div class="actions" style="margin-top:0.45rem">
               <button type="button" id="schedSave" class="primary">Сохранить legacy-окно</button>
             </div>
+          </details>
+
+          <details class="task-advanced">
+            <summary>Consent ledger (аудит DNC)</summary>
+            <p class="muted tight">Журнал согласий / отказов / bounce. Пополняется при unsub, suppression, ответах.</p>
+            <div class="actions wrap-actions">
+              <button type="button" id="consentReloadBtn" class="btn-quiet">Обновить</button>
+              <button type="button" id="consentImportBtn" class="btn-quiet">Импорт из suppression</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Когда</th><th>Email</th><th>Статус</th><th>Источник</th><th>Причина</th></tr>
+                </thead>
+                <tbody id="consentBody"></tbody>
+              </table>
+            </div>
+            <pre id="consentLog" class="log"></pre>
           </details>
 
           <details class="task-advanced">
@@ -703,6 +770,6 @@
       </section>
     </main>
   </div>
-  <script src="app.js?v=ops4"></script>
+  <script src="app.js?v=ops5"></script>
 </body>
 </html>

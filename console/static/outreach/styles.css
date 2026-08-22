@@ -1195,6 +1195,26 @@ button.small { height: 26px; font-size: 0.72rem; padding: 0 0.45rem; }
 }
 .campaign-chain > summary { font-weight: 600; }
 
+.seq-steps .seq-step-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.25rem 0;
+  font-size: 0.82rem;
+}
+.seq-steps .seq-step-bar {
+  flex: 1;
+  height: 8px;
+  background: #eef2f6;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.seq-steps .seq-step-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #0d8f7a, #3b82f6);
+}
+
 @media (max-width: 860px) {
   .grid2 { grid-template-columns: 1fr; }
   .top { flex-direction: column; align-items: stretch; }

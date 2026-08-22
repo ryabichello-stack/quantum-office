@@ -37,6 +37,7 @@ from modules.tracking import PIXEL_GIF, TrackingModule
 from modules.verification import VerificationModule
 from modules.sequences import SequencesModule
 from modules.policy import PolicyModule
+from modules.consent import ConsentModule
 from modules.replies import RepliesModule
 from outbox import OutboxStore
 from reply_watcher import ReplyWatchThread, check_replies, imap_configured, reply_watch_status
@@ -90,6 +91,7 @@ _telephony_mod = TelephonyModule()
 _verification_mod = VerificationModule()
 _sequences_mod = SequencesModule()
 _policy_mod = PolicyModule()
+_consent_mod = ConsentModule()
 _replies_mod = RepliesModule()
 _registry.register(_tracking_mod)
 _registry.register(_deliver_mod)
@@ -101,6 +103,7 @@ _registry.register(_telephony_mod)
 _registry.register(_verification_mod)
 _registry.register(_sequences_mod)
 _registry.register(_policy_mod)
+_registry.register(_consent_mod)
 _registry.register(_replies_mod)
 _app_ctx: AppContext | None = None
 
@@ -260,6 +263,7 @@ def _status_payload() -> dict[str, Any]:
         "sequences": _sequences_mod.health(),
         "policy": _policy_mod.health(),
         "reply_inbox": _replies_mod.health(),
+        "consent": _consent_mod.health(),
         "deliverability": _deliver_mod.store.stats(rt, rt.get_int("OUTREACH_DAILY_LIMIT", 15)),
         "engagement": _tracking_mod.store.engagement_counts(),
         "warmup_enabled": rt.get_bool("WARMUP_ENABLED", True),

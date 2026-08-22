@@ -160,6 +160,14 @@ class DeliverabilityStore:
                 ((reason or "manual")[:500], _utc_now()),
             )
         logger.warning("mailbox PAUSED: %s", reason)
+        try:
+            from core.paths import SETTINGS_DB
+            from ops_notify import notify_mailbox_paused
+            from runtime_settings import RuntimeSettings
+
+            notify_mailbox_paused(reason=reason, settings=RuntimeSettings(SETTINGS_DB))
+        except Exception:  # noqa: BLE001
+            logger.debug("ops notify on mailbox pause failed", exc_info=True)
 
     def resume_mailbox(self) -> None:
         with self.connect() as conn:
@@ -332,6 +340,17 @@ class DeliverabilityStore:
                 """,
                 (email.strip().lower(), reason, source, _utc_now()),
             )
+        try:
+            from modules.consent import ConsentLedgerStore, record_consent_from_suppression
+
+            record_consent_from_suppression(
+                ConsentLedgerStore(),
+                email=email,
+                reason=reason,
+                source=source,
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("consent ledger on suppression failed", exc_info=True)
 
     def remove_suppression(self, email: str) -> bool:
         with self.connect() as conn:

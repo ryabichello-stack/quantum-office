@@ -735,6 +735,25 @@
       )
       .join("");
 
+    const seq = data.sequence_steps || {};
+    const steps = seq.steps || [];
+    const seqMax = Math.max(1, ...(steps.map((s) => s.reached || 0)));
+    if ($("reportSequenceSteps")) {
+      $("reportSequenceSteps").innerHTML = steps.length
+        ? steps
+            .map(
+              (s) => `<div class="seq-step-row">
+              <span>Шаг ${s.step}</span>
+              <div class="seq-step-bar"><i style="width:${Math.round(((s.reached || 0) / seqMax) * 100)}%"></i></div>
+              <b>${s.reached || 0}</b>
+              <span class="muted">${s.pct_of_total != null ? s.pct_of_total + "%" : ""}</span>
+            </div>`
+            )
+            .join("") +
+            `<p class="muted tight" style="margin-top:0.35rem">Всего цепочек: ${seq.total_sequences || 0}</p>`
+        : `<p class="muted tight">Нет данных по цепочкам</p>`;
+    }
+
     const notes = (f.notes && Object.entries(f.notes)) || [];
     $("reportNotes").innerHTML = notes.length
       ? notes
@@ -850,6 +869,38 @@
     if ($("oooPauseDays")) {
       $("oooPauseDays").value = s.OOO_PAUSE_DAYS || "7";
     }
+    if ($("opsNotifyEnabled")) {
+      $("opsNotifyEnabled").checked = String(s.OPS_NOTIFY_ENABLED || "true").toLowerCase() !== "false";
+    }
+    if ($("opsNotifyEmailEnabled")) {
+      $("opsNotifyEmailEnabled").checked =
+        String(s.OPS_NOTIFY_EMAIL_ENABLED || "true").toLowerCase() !== "false";
+    }
+    if ($("opsNotifyEmail")) {
+      $("opsNotifyEmail").value = s.OPS_NOTIFY_EMAIL || s.REPLY_NOTIFY_EMAIL || "";
+    }
+    if ($("opsNotifyTelegramEnabled")) {
+      $("opsNotifyTelegramEnabled").checked =
+        String(s.OPS_NOTIFY_TELEGRAM_ENABLED || "false").toLowerCase() === "true";
+    }
+    if ($("opsNotifyTgToken")) {
+      $("opsNotifyTgToken").value = s.OPS_NOTIFY_TELEGRAM_BOT_TOKEN || "";
+    }
+    if ($("opsNotifyTgChat")) {
+      $("opsNotifyTgChat").value = s.OPS_NOTIFY_TELEGRAM_CHAT_ID || "";
+    }
+    if ($("opsNotifyOnReply")) {
+      $("opsNotifyOnReply").checked =
+        String(s.OPS_NOTIFY_ON_POSITIVE_REPLY || "true").toLowerCase() !== "false";
+    }
+    if ($("opsNotifyOnPause")) {
+      $("opsNotifyOnPause").checked =
+        String(s.OPS_NOTIFY_ON_MAILBOX_PAUSE || "true").toLowerCase() !== "false";
+    }
+    if ($("opsNotifyOnCallback")) {
+      $("opsNotifyOnCallback").checked =
+        String(s.OPS_NOTIFY_ON_CALLBACK || "true").toLowerCase() !== "false";
+    }
     if ($("localWindowsHint")) {
       const on = $("localWindowsEnabled") && $("localWindowsEnabled").checked;
       $("localWindowsHint").textContent = on
@@ -894,6 +945,25 @@
       $("letterTestTo").value = s.MAIL_USERNAME;
     }
     refreshSignatureLive();
+  }
+
+  async function loadConsentLedger() {
+    if (!$("consentBody")) return;
+    const data = await api("/api/modules/consent/ledger?limit=60");
+    $("consentBody").innerHTML = (data.items || [])
+      .map(
+        (r) => `<tr>
+        <td class="cell-narrow">${escapeHtml((r.created_at || "").slice(0, 16))}</td>
+        <td class="cell-wide">${escapeHtml(r.email || "")}</td>
+        <td class="cell-narrow">${escapeHtml(r.status || "")}</td>
+        <td class="cell-narrow">${escapeHtml(r.source || "")}</td>
+        <td class="cell-wide">${escapeHtml(r.reason || "")}</td>
+      </tr>`
+      )
+      .join("");
+    if ($("consentLog") && data.counts) {
+      $("consentLog").textContent = `Всего записей: ${data.counts.total || 0}`;
+    }
   }
 
   async function loadAntiban() {
@@ -1314,7 +1384,7 @@
     } else if (tab === "report") loadReport().catch(logAction);
     else if (tab === "settings") {
       loadSettingsIntoForms()
-        .then(() => loadAntiban())
+        .then(() => Promise.all([loadAntiban(), loadConsentLedger()]))
         .catch((e) => {
           if ($("antibanLog")) $("antibanLog").textContent = String(e);
           logAction(e);
@@ -1363,7 +1433,7 @@
         if (tab === "report") loadReport().catch(logAction);
         if (tab === "settings") {
           loadSettingsIntoForms()
-            .then(() => loadAntiban())
+            .then(() => Promise.all([loadAntiban(), loadConsentLedger()]))
             .catch((e) => {
               if ($("antibanLog")) $("antibanLog").textContent = String(e);
               logAction(e);
@@ -2258,6 +2328,49 @@
         logAction(String(e));
       }
     });
+
+    if ($("opsNotifySave")) {
+      $("opsNotifySave").addEventListener("click", async () => {
+        try {
+          const payload = {
+            OPS_NOTIFY_ENABLED: $("opsNotifyEnabled").checked ? "true" : "false",
+            OPS_NOTIFY_EMAIL_ENABLED: $("opsNotifyEmailEnabled").checked ? "true" : "false",
+            OPS_NOTIFY_EMAIL: ($("opsNotifyEmail").value || "").trim(),
+            OPS_NOTIFY_TELEGRAM_ENABLED: $("opsNotifyTelegramEnabled").checked ? "true" : "false",
+            OPS_NOTIFY_TELEGRAM_BOT_TOKEN: ($("opsNotifyTgToken").value || "").trim(),
+            OPS_NOTIFY_TELEGRAM_CHAT_ID: ($("opsNotifyTgChat").value || "").trim(),
+            OPS_NOTIFY_ON_POSITIVE_REPLY: $("opsNotifyOnReply").checked ? "true" : "false",
+            OPS_NOTIFY_ON_MAILBOX_PAUSE: $("opsNotifyOnPause").checked ? "true" : "false",
+            OPS_NOTIFY_ON_CALLBACK: $("opsNotifyOnCallback").checked ? "true" : "false",
+          };
+          logAction(await api("/api/settings", { method: "PUT", body: JSON.stringify({ settings: payload }) }));
+          await loadSettingsIntoForms();
+        } catch (e) {
+          logAction(String(e));
+        }
+      });
+    }
+    if ($("consentReloadBtn")) {
+      $("consentReloadBtn").addEventListener("click", () =>
+        loadConsentLedger().catch((e) => {
+          if ($("consentLog")) $("consentLog").textContent = String(e);
+        })
+      );
+    }
+    if ($("consentImportBtn")) {
+      $("consentImportBtn").addEventListener("click", async () => {
+        try {
+          const data = await api("/api/modules/consent/import-suppression", {
+            method: "POST",
+            body: "{}",
+          });
+          if ($("consentLog")) $("consentLog").textContent = JSON.stringify(data, null, 2);
+          await loadConsentLedger();
+        } catch (e) {
+          if ($("consentLog")) $("consentLog").textContent = String(e);
+        }
+      });
+    }
 
     $("antibanSave").addEventListener("click", async () => {
       try {

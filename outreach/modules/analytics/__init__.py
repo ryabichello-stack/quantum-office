@@ -20,6 +20,41 @@ def _pct(num: int, den: int) -> float | None:
     return round(100.0 * num / den, 2)
 
 
+def build_sequence_step_report(seq_store: Any, *, max_steps: int = 5) -> dict[str, Any]:
+    """Funnel by sequence step reached (current_step = last completed send)."""
+    steps_out: list[dict[str, Any]] = []
+    status_counts: dict[str, int] = {}
+    total = 0
+    with seq_store.connect() as conn:
+        total = int(conn.execute("SELECT COUNT(*) AS n FROM sequence_leads").fetchone()["n"])
+        for row in conn.execute(
+            "SELECT status, COUNT(*) AS n FROM sequence_leads GROUP BY status"
+        ):
+            status_counts[str(row["status"])] = int(row["n"])
+        for step in range(1, max(1, max_steps) + 1):
+            reached = int(
+                conn.execute(
+                    "SELECT COUNT(*) AS n FROM sequence_leads WHERE current_step >= ?",
+                    (step,),
+                ).fetchone()["n"]
+            )
+            steps_out.append(
+                {
+                    "step": step,
+                    "reached": reached,
+                    "pct_of_total": round(100.0 * reached / total, 1) if total else None,
+                }
+            )
+    return {
+        "total_sequences": total,
+        "status_counts": status_counts,
+        "steps": steps_out,
+        "notes": {
+            "reached": "current_step >= N — получили как минимум N-е письмо цепочки",
+        },
+    }
+
+
 def build_report(
     *,
     tracking: TrackingStore,
@@ -91,13 +126,34 @@ def build_report(
     }
 
 
+def build_report_with_sequences(
+    *,
+    tracking: TrackingStore,
+    outbox: OutboxStore,
+    seq_store: Any,
+    days: int = 14,
+    recent_limit: int = 40,
+    settings: Any = None,
+) -> dict[str, Any]:
+    report = build_report(
+        tracking=tracking,
+        outbox=outbox,
+        days=days,
+        recent_limit=recent_limit,
+        settings=settings,
+    )
+    report["sequence_steps"] = build_sequence_step_report(seq_store)
+    return report
+
+
 class AnalyticsModule:
     name = "analytics"
-    version = "1.0.0"
+    version = "1.1.0"
 
     def __init__(self) -> None:
         self.tracking = TrackingStore()
         self._settings: Any = None
+        self._sequences: Any = None
 
     def init_db(self) -> None:
         self.tracking.init_db()
@@ -106,6 +162,8 @@ class AnalyticsModule:
         self._settings = ctx.settings
         if "tracking" in ctx.extras:
             self.tracking = ctx.extras["tracking"]
+        if "sequences" in ctx.extras:
+            self._sequences = ctx.extras["sequences"]
         ctx.extras["analytics"] = self
         logger.info("analytics module ready")
 
@@ -131,13 +189,24 @@ class AnalyticsModule:
             days: int = Query(14, ge=1, le=90),
             recent_limit: int = Query(40, ge=1, le=200),
         ) -> dict[str, Any]:
-            return build_report(
+            from modules.sequences import SequenceStore
+
+            seq = self._sequences or SequenceStore()
+            return build_report_with_sequences(
                 tracking=self.tracking,
                 outbox=OutboxStore(OUTBOX_DB),
+                seq_store=seq,
                 days=days,
                 recent_limit=recent_limit,
                 settings=self._settings,
             )
+
+        @router.get("/sequence-steps")
+        def api_sequence_steps() -> dict[str, Any]:
+            from modules.sequences import SequenceStore
+
+            seq = self._sequences or SequenceStore()
+            return {"ok": True, **build_sequence_step_report(seq)}
 
         @router.get("/funnel")
         def api_funnel() -> dict[str, Any]:

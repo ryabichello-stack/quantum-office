@@ -482,6 +482,17 @@ def process_callback_request(
         except Exception as exc:  # noqa: BLE001
             notify_error = str(exc)[:400]
             logger.exception("callback notify failed")
+        try:
+            from ops_notify import notify_callback_request
+
+            notify_callback_request(
+                fio=name,
+                phone=phone_n,
+                source_email=source_email or str(verified.get("email") or ""),
+                settings=settings,
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("ops telegram callback notify failed", exc_info=True)
 
     with _connect() as conn:
         cur = conn.execute(
