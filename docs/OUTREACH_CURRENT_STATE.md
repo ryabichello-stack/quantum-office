@@ -16,7 +16,7 @@
 
 **Объём:** ~1785 компаний, ~3121 контакт. **Лимит:** ~15 писем/день, один ящик.
 
-**Прод:** `ava-outreach.service` `:8012`, UI через Quantum Console `?v=ops13`.
+**Прод:** `ava-outreach.service` `:8012`, UI через Quantum Console `?v=ops14`.
 
 ---
 
@@ -30,7 +30,7 @@
 | **D** | ✅ | Next actions + alerts, campaign collapse, CI pytest+sync |
 | **E** | ✅ | Push notify (email/Telegram), step analytics, consent ledger |
 | **F** | ✅ | Bulk queue, company card, on-call webhook, consent CSV |
-| **F+** | 🟡 | Calendar view, consent export filters + legal hold |
+| **F+** | ✅ | Server calendar API, consent export filters + legal hold |
 
 ---
 
@@ -58,7 +58,7 @@
 | Вкладка | Есть | Профи-уровень (ещё нет) |
 |---------|------|-------------------------|
 | **Кампания** | Pack, 5-step chain (collapse), брендинг, тест | Wizard, template versions, approval gate |
-| **Очередь** | Due + первые, TZ/окно, фильтры, row actions, **bulk**, **14-day calendar**, **company card** | Server-side calendar API, assignee |
+| **Очередь** | Due + первые, TZ/окно, фильтры, row actions, **bulk**, **14-day calendar API**, **company card** | Assignee |
 | **Входящие** | Классификация, badges, «Готово», company card | Thread view, reply from UI, assignee |
 | **Результат** | Воронка, по дням, последние, **step analytics API** | Cohort export, in-UI step funnel |
 | **Клиенты** | Sync+geo+rebuild (auto-geo), city/TZ table, **company card**, **data quality** | Bulk geo repair |
@@ -80,15 +80,15 @@
 API: `POST /api/ops/notify`, `POST /api/ops/telegram/verify|discover|test|apply-branding`, статус в `GET /api/ops/health`.  
 `apply-branding`: `include_profile_photo=false` при сохранении настроек; `true` — кнопка «Применить брендинг».
 
-Статика: `outreach/static` → `console/static/outreach` (`?v=ops13`).
+Статика: `outreach/static` → `console/static/outreach` (`?v=ops14`).
 
 ### Layer F ✅
 
 - Company card, bulk queue, on-call webhook, consent CSV, data quality
 
-### Layer F+ 🟡
+### Layer F+ ✅
 
-- **Календарь очереди** — 14 дней во вкладке «Очередь»
+- **Календарь очереди** — `GET /api/modules/sequences/calendar?days=14` (МСК), UI во вкладке «Очередь»
 - **Consent export** — `created_from` / `created_to`, `legal_hold` snapshot
 
 ---

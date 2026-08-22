@@ -1533,6 +1533,54 @@
       .join("");
   }
 
+  function renderQueueCalendarFromApi(cal) {
+    const box = $("queueCalendar");
+    if (!box) return;
+    const days = (cal && cal.calendar) || [];
+    const fmtDay = (key) => {
+      try {
+        const d = new Date(key + "T12:00:00");
+        return d.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" });
+      } catch (_) {
+        return key;
+      }
+    };
+    if (!days.length) {
+      box.innerHTML = `<p class="muted tight">Нет данных календаря</p>`;
+      return;
+    }
+    const totals = (cal && cal.totals) || {};
+    const meta =
+      totals.items != null
+        ? `<p class="muted tight">Всего ${totals.items} · due ${totals.due || 0} · дней с задачами ${totals.days_with_items || 0} (${cal.timezone || "Europe/Moscow"})</p>`
+        : "";
+    box.innerHTML =
+      meta +
+      days
+        .map((day) => {
+          const items = day.items || [];
+          const dueN = day.due_count || 0;
+          const sample = items
+            .slice(0, 4)
+            .map(
+              (r) =>
+                `<li>${escapeHtml(r.email || "")} · ${escapeHtml(
+                  String(r.next_step || r.next_label || "")
+                )}</li>`
+            )
+            .join("");
+          const more =
+            day.truncated || items.length > 4
+              ? `<li class="muted">+${Math.max(0, (day.count || items.length) - 4)} ещё</li>`
+              : "";
+          return `<div class="cal-day ${dueN ? "cal-day-due" : ""}">
+          <div class="cal-day-head"><strong>${escapeHtml(fmtDay(day.date))}</strong><span>${day.count || 0}</span></div>
+          <ul class="cal-day-list">${sample || "<li class='muted'>—</li>"}${more}</ul>
+        </div>`;
+        })
+        .join("");
+  }
+
   async function loadQueueView() {
     const qEl = $("outboxQ");
     const statusEl = $("outboxStatus");
@@ -1558,7 +1606,12 @@
         <div class="stat"><div class="n">${c.first_touch_in_window != null ? c.first_touch_in_window : "—"}</div><div class="l">В окне сейчас</div></div>
         <div class="stat"><div class="n">${(c.sequences && c.sequences.active) || 0}</div><div class="l">Активных цепочек</div></div>`;
     }
-    renderQueueCalendar(queue);
+    try {
+      const cal = await api("/api/modules/sequences/calendar?days=14");
+      renderQueueCalendarFromApi(cal);
+    } catch (_) {
+      renderQueueCalendar(queue);
+    }
 
     const fmtCity = (r) => escapeHtml((r && r.city) || "—");
     const fmtTimezone = (r) => {

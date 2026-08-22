@@ -482,6 +482,142 @@ class SequenceStore:
             out.append(d)
         return out
 
+    def list_scheduled_until(self, until_iso: str, *, limit: int = 1000) -> list[dict[str, Any]]:
+        """Active leads with next_action_at on or before ``until_iso`` (due + upcoming)."""
+        self.resume_due_pauses()
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM sequence_leads
+                WHERE status='active'
+                  AND next_action_at IS NOT NULL
+                  AND next_action_at <= ?
+                ORDER BY next_action_at ASC
+                LIMIT ?
+                """,
+                (until_iso, max(1, min(int(limit), 2000))),
+            ).fetchall()
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            d = dict(r)
+            pack_id = self._pack_id_of(d)
+            if int(d.get("current_step") or 0) >= self.max_step(pack_id):
+                continue
+            d["pack_id"] = pack_id
+            d["step_def"] = self.next_step_def(d)
+            out.append(d)
+        return out
+
+    def _lead_queue_row(self, lead: dict[str, Any], *, due: bool) -> dict[str, Any]:
+        step_def = lead.get("step_def") or self.next_step_def(lead) or {}
+        meta: dict[str, Any] = {}
+        try:
+            meta = json.loads(lead.get("meta_json") or "{}")
+            if not isinstance(meta, dict):
+                meta = {}
+        except Exception:  # noqa: BLE001
+            meta = {}
+        nxt = int(step_def.get("step") or (int(lead.get("current_step") or 0) + 1))
+        return {
+            "kind": "followup",
+            "email": lead.get("email"),
+            "company_id": lead.get("company_id") or "",
+            "contact_name": lead.get("contact_name") or "",
+            "current_step": int(lead.get("current_step") or 0),
+            "next_step": nxt,
+            "next_label": step_def.get("label") or f"step_{nxt}",
+            "next_subject": step_def.get("subject") or lead.get("subject_base") or "",
+            "delay_days": step_def.get("delay_days"),
+            "next_action_at": lead.get("next_action_at"),
+            "due": due,
+            "pack_id": lead.get("pack_id") or meta.get("pack_id") or "",
+            "timezone": meta.get("timezone") or "",
+            "anchor_sent_at": meta.get("anchor_sent_at") or "",
+        }
+
+    def calendar_snapshot(
+        self,
+        *,
+        days: int = 14,
+        first_touch: list[dict[str, Any]] | None = None,
+        limit: int = 1000,
+    ) -> dict[str, Any]:
+        """14-day (default) operator calendar: follow-ups + first-touch by Moscow date."""
+        from zoneinfo import ZoneInfo
+
+        days_n = max(1, min(int(days or 14), 60))
+        msk = ZoneInfo("Europe/Moscow")
+        today = datetime.now(msk).date()
+        end = today + timedelta(days=days_n - 1)
+        until_local = datetime(
+            end.year, end.month, end.day, 23, 59, 59, tzinfo=msk
+        )
+        until_iso = _iso(until_local.astimezone(timezone.utc))
+        now_iso = _iso(_utc_now())
+
+        buckets: dict[str, list[dict[str, Any]]] = {
+            (today + timedelta(days=i)).isoformat(): [] for i in range(days_n)
+        }
+
+        def _day_key(iso: str | None) -> str:
+            if not iso:
+                return today.isoformat()
+            try:
+                raw = str(iso).replace("Z", "+00:00")
+                dt = datetime.fromisoformat(raw)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                local_d = dt.astimezone(msk).date()
+                if local_d < today:
+                    return today.isoformat()
+                return local_d.isoformat()
+            except Exception:  # noqa: BLE001
+                return today.isoformat()
+
+        for lead in self.list_scheduled_until(until_iso, limit=limit):
+            due = bool(lead.get("next_action_at") and str(lead["next_action_at"]) <= now_iso)
+            row = self._lead_queue_row(lead, due=due)
+            key = _day_key(row.get("next_action_at"))
+            if key in buckets:
+                buckets[key].append(row)
+
+        for item in first_touch or []:
+            key = _day_key(item.get("next_slot_at") or item.get("next_action_at"))
+            if key in buckets:
+                buckets[key].append(item)
+
+        day_rows: list[dict[str, Any]] = []
+        total_items = 0
+        total_due = 0
+        for day, items in buckets.items():
+            due_n = sum(1 for x in items if x.get("due"))
+            total_items += len(items)
+            total_due += due_n
+            preview_limit = 8
+            day_rows.append(
+                {
+                    "date": day,
+                    "count": len(items),
+                    "due_count": due_n,
+                    "items": items[:preview_limit],
+                    "truncated": len(items) > preview_limit,
+                }
+            )
+
+        return {
+            "ok": True,
+            "days": days_n,
+            "timezone": "Europe/Moscow",
+            "from": today.isoformat(),
+            "to": end.isoformat(),
+            "totals": {
+                "items": total_items,
+                "due": total_due,
+                "days_with_items": sum(1 for d in day_rows if d["count"]),
+            },
+            "calendar": day_rows,
+        }
+
     def queue_snapshot(
         self,
         *,
@@ -494,35 +630,8 @@ class SequenceStore:
         upcoming_raw = self.list_upcoming(limit=upcoming_limit)
         counts = self.counts()
 
-        def _lead_row(lead: dict[str, Any], *, due: bool) -> dict[str, Any]:
-            step_def = lead.get("step_def") or self.next_step_def(lead) or {}
-            meta: dict[str, Any] = {}
-            try:
-                meta = json.loads(lead.get("meta_json") or "{}")
-                if not isinstance(meta, dict):
-                    meta = {}
-            except Exception:  # noqa: BLE001
-                meta = {}
-            nxt = int(step_def.get("step") or (int(lead.get("current_step") or 0) + 1))
-            return {
-                "kind": "followup",
-                "email": lead.get("email"),
-                "company_id": lead.get("company_id") or "",
-                "contact_name": lead.get("contact_name") or "",
-                "current_step": int(lead.get("current_step") or 0),
-                "next_step": nxt,
-                "next_label": step_def.get("label") or f"step_{nxt}",
-                "next_subject": step_def.get("subject") or lead.get("subject_base") or "",
-                "delay_days": step_def.get("delay_days"),
-                "next_action_at": lead.get("next_action_at"),
-                "due": due,
-                "pack_id": lead.get("pack_id") or meta.get("pack_id") or "",
-                "timezone": meta.get("timezone") or "",
-                "anchor_sent_at": meta.get("anchor_sent_at") or "",
-            }
-
-        followups_due = [_lead_row(x, due=True) for x in due_raw]
-        followups_upcoming = [_lead_row(x, due=False) for x in upcoming_raw]
+        followups_due = [self._lead_queue_row(x, due=True) for x in due_raw]
+        followups_upcoming = [self._lead_queue_row(x, due=False) for x in upcoming_raw]
         return {
             "ok": True,
             "send_order": "followups_due_then_first_touch",
@@ -671,6 +780,56 @@ class SequencesModule:
             snap["counts"]["first_touch_in_window"] = sum(
                 1 for x in first_touch if x.get("in_window")
             )
+            return snap
+
+        @router.get("/calendar")
+        def calendar(days: int = 14) -> dict[str, Any]:
+            """Server-side 14-day queue calendar (Moscow dates)."""
+            from modules.clients import ClientsStore, company_geo_row
+            from outbox import OutboxStore
+            from core.paths import DATA_DIR, SETTINGS_DB
+            from geo_schedule import window_status
+            from runtime_settings import RuntimeSettings
+
+            days_n = max(1, min(int(days or 14), 60))
+            outbox = OutboxStore(DATA_DIR / "outbox.db")
+            clients = ClientsStore()
+            rt = RuntimeSettings(SETTINGS_DB)
+            pending_rows = outbox.list_pending(min(500, 50 * days_n))
+            first_touch: list[dict[str, Any]] = []
+            for row in pending_rows:
+                geo = company_geo_row(clients, row.company_id or "")
+                item: dict[str, Any] = {
+                    "kind": "first_touch",
+                    "outbox_id": row.id,
+                    "email": row.email,
+                    "company_id": row.company_id or "",
+                    "contact_name": row.contact_name or "",
+                    "next_step": 1,
+                    "next_label": "intro",
+                    "next_subject": "",
+                    "timezone": geo.get("timezone") or "",
+                    "city": geo.get("city") or "",
+                    "due": True,
+                }
+                win = window_status(item.get("timezone") or "", settings=rt)
+                item["in_window"] = bool(win.get("in_window"))
+                item["window_label"] = win.get("label") or ""
+                item["next_slot_at"] = win.get("next_slot_at")
+                item["next_slot_local"] = win.get("next_slot_local")
+                first_touch.append(item)
+
+            snap = self.store.calendar_snapshot(
+                days=days_n, first_touch=first_touch, limit=1000
+            )
+            for day in snap.get("calendar") or []:
+                for item in day.get("items") or []:
+                    if item.get("kind") != "followup":
+                        continue
+                    if not item.get("timezone"):
+                        geo = company_geo_row(clients, str(item.get("company_id") or ""))
+                        item["timezone"] = geo.get("timezone") or ""
+                        item["city"] = geo.get("city") or ""
             return snap
 
         @router.get("/packs")

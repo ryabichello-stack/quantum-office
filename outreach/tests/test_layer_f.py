@@ -130,3 +130,49 @@ def test_notify_ops_event_oncall_webhook(mock_oncall, mock_store):
     )
     assert out.get("oncall") is True
     mock_oncall.assert_called_once()
+
+
+def test_calendar_snapshot_buckets_by_msk_day():
+    from datetime import datetime, timedelta, timezone
+    from zoneinfo import ZoneInfo
+
+    with tempfile.TemporaryDirectory() as tmp:
+        store = SequenceStore(Path(tmp) / "seq.db")
+        store.init_db()
+        msk = ZoneInfo("Europe/Moscow")
+        today = datetime.now(msk).date()
+        day2 = today + timedelta(days=2)
+        day3 = today + timedelta(days=3)
+        at2 = datetime(day2.year, day2.month, day2.day, 12, 0, tzinfo=msk).astimezone(timezone.utc)
+        at3 = datetime(day3.year, day3.month, day3.day, 9, 0, tzinfo=msk).astimezone(timezone.utc)
+        with store.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO sequence_leads(
+                  email, company_id, contact_name, status, current_step,
+                  next_action_at, subject_base, meta_json, created_at, updated_at
+                ) VALUES (?, '1', 'Иван', 'active', 1, ?, 'subj', '{}', 'now', 'now')
+                """,
+                ("a@b.ru", at2.isoformat()),
+            )
+        first = [
+            {
+                "kind": "first_touch",
+                "email": "c@d.ru",
+                "next_step": 1,
+                "next_label": "intro",
+                "due": True,
+                "next_slot_at": at3.isoformat(),
+            }
+        ]
+        snap = store.calendar_snapshot(days=14, first_touch=first)
+        assert snap["ok"] is True
+        assert snap["timezone"] == "Europe/Moscow"
+        assert len(snap["calendar"]) == 14
+        by_date = {d["date"]: d for d in snap["calendar"]}
+        assert by_date[day2.isoformat()]["count"] == 1
+        assert by_date[day2.isoformat()]["items"][0]["email"] == "a@b.ru"
+        assert by_date[day3.isoformat()]["count"] == 1
+        assert by_date[day3.isoformat()]["items"][0]["kind"] == "first_touch"
+        assert snap["totals"]["items"] >= 2
+
