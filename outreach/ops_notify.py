@@ -6,6 +6,7 @@ import logging
 import os
 import smtplib
 import sqlite3
+import json
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
@@ -258,3 +259,97 @@ def notify_callback_request(
     dedup_key=f"callback:{phone}",
     dedup_minutes=15,
   )
+
+
+def _telegram_api(token: str, method: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
+  tok = (token or "").strip()
+  if not tok:
+    return {"ok": False, "error": "bot_token_required"}
+  url = f"https://api.telegram.org/bot{tok}/{method}"
+  data = None
+  if params:
+    data = parse.urlencode({k: v for k, v in params.items() if v is not None}).encode("utf-8")
+  req = request.Request(url, data=data, method="POST" if data else "GET")
+  try:
+    with request.urlopen(req, timeout=20) as resp:
+      payload = json.loads(resp.read().decode("utf-8"))
+  except error.HTTPError as exc:
+    try:
+      payload = json.loads(exc.read().decode("utf-8"))
+    except Exception:  # noqa: BLE001
+      return {"ok": False, "error": f"telegram_http_{exc.code}"}
+  except Exception as exc:  # noqa: BLE001
+    return {"ok": False, "error": str(exc)[:300]}
+  if not payload.get("ok"):
+    return {"ok": False, "error": payload.get("description") or "telegram_error", "raw": payload}
+  return {"ok": True, "result": payload.get("result")}
+
+
+def telegram_verify_bot(token: str) -> dict[str, Any]:
+  out = _telegram_api(token, "getMe")
+  if not out.get("ok"):
+    return out
+  bot = out.get("result") or {}
+  return {
+    "ok": True,
+    "bot_id": bot.get("id"),
+    "username": bot.get("username"),
+    "first_name": bot.get("first_name"),
+    "link": f"https://t.me/{bot.get('username')}" if bot.get("username") else None,
+  }
+
+
+def telegram_discover_chats(token: str, *, limit: int = 20) -> dict[str, Any]:
+  out = _telegram_api(token, "getUpdates", params={"limit": str(max(1, min(limit, 100)))})
+  if not out.get("ok"):
+    return out
+  chats: dict[str, dict[str, Any]] = {}
+  for upd in out.get("result") or []:
+    msg = upd.get("message") or upd.get("edited_message") or {}
+    chat = msg.get("chat") or {}
+    cid = chat.get("id")
+    if cid is None:
+      continue
+    key = str(cid)
+    title = (
+      chat.get("title")
+      or " ".join(
+        p for p in (chat.get("first_name"), chat.get("last_name")) if p
+      )
+      or chat.get("username")
+      or key
+    )
+    chats[key] = {
+      "chat_id": key,
+      "type": chat.get("type"),
+      "title": title,
+      "username": chat.get("username"),
+    }
+  items = list(chats.values())
+  items.sort(key=lambda c: c.get("title") or "")
+  return {
+    "ok": True,
+    "chats": items,
+    "hint": "Напишите боту /start в Telegram, затем нажмите «Найти chat id» снова."
+    if not items
+    else "",
+  }
+
+
+def telegram_send_message(token: str, chat_id: str, text: str) -> dict[str, Any]:
+  out = _telegram_api(
+    token,
+    "sendMessage",
+    params={"chat_id": str(chat_id).strip(), "text": text[:3900]},
+  )
+  if not out.get("ok"):
+    return out
+  return {"ok": True, "message_id": (out.get("result") or {}).get("message_id")}
+
+
+def resolve_bot_token(token: str | None, settings: Any = None) -> str:
+  cand = (token or "").strip()
+  if cand:
+    return cand
+  return _cfg(settings, "OPS_NOTIFY_TELEGRAM_BOT_TOKEN", "").strip()
+

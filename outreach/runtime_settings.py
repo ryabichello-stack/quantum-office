@@ -94,6 +94,13 @@ SECRET_KEYS = frozenset(
     }
 )
 
+# Stored in DB but never returned verbatim to the UI (empty save keeps existing value).
+MASKED_KEYS = frozenset(
+    {
+        "OPS_NOTIFY_TELEGRAM_BOT_TOKEN",
+    }
+)
+
 
 class RuntimeSettings:
     def __init__(self, db_path: Path) -> None:
@@ -160,6 +167,8 @@ class RuntimeSettings:
                 if key not in EDITABLE_KEYS:
                     continue
                 text = "" if value is None else str(value)
+                if key in MASKED_KEYS and not text.strip():
+                    continue
                 conn.execute(
                     """
                     INSERT INTO app_settings(key, value, updated_at)
@@ -178,7 +187,12 @@ class RuntimeSettings:
         """Public settings for UI (no secrets)."""
         out: dict[str, Any] = {}
         for key in EDITABLE_KEYS:
-            out[key] = self.get(key, "")
+            raw = self.get(key, "")
+            if key in MASKED_KEYS:
+                out[key] = ""
+                out[f"{key}_CONFIGURED"] = bool((raw or "").strip())
+            else:
+                out[key] = raw
         # Read-only hints
         out["MAIL_USERNAME"] = os.getenv("MAIL_USERNAME", "")
         out["MAIL_SMTP_HOST"] = os.getenv("MAIL_SMTP_HOST", "")

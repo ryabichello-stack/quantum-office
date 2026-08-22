@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops5" />
+  <link rel="stylesheet" href="styles.css?v=ops6" />
   <script>
     (function () {
       function parentBase() {
@@ -617,28 +617,49 @@
 
           <fieldset class="task-mode">
             <legend>Уведомления оператору</legend>
+            <div id="integrationsStatus" class="integrations-status muted tight"></div>
             <label class="field check">
               <input id="opsNotifyEnabled" type="checkbox" checked />
               Push-уведомления (email / Telegram)
             </label>
             <label class="field check">
+              <input id="replyNotifyEnabled" type="checkbox" checked />
+              REPLY_NOTIFY (legacy IMAP-алерты при ответах)
+            </label>
+            <label class="field check">
               <input id="opsNotifyEmailEnabled" type="checkbox" checked />
-              Email (дублирует REPLY_NOTIFY при ответах)
+              Email (OPS_NOTIFY + REPLY_NOTIFY)
             </label>
             <label class="field">Email для алертов
               <input id="opsNotifyEmail" type="email" placeholder="office@quantumlabs.ru" />
             </label>
             <label class="field check">
               <input id="opsNotifyTelegramEnabled" type="checkbox" />
-              Telegram (если указаны bot token + chat id)
+              Telegram push
             </label>
-            <div class="task-grid">
-              <label class="field">Telegram bot token
-                <input id="opsNotifyTgToken" type="password" placeholder="из @BotFather" autocomplete="off" />
+            <div class="telegram-wizard">
+              <p class="muted tight">1) Создайте бота в @BotFather → вставьте token → «Проверить бота». 2) Напишите боту /start → «Найти chat id». 3) «Тест».</p>
+              <div id="opsTelegramStatus" class="telegram-status muted tight"></div>
+              <div id="opsTelegramBotInfo" class="telegram-bot-info hidden"></div>
+              <div class="task-grid">
+                <label class="field">Telegram bot token
+                  <input id="opsNotifyTgToken" type="password" placeholder="из @BotFather" autocomplete="off" />
+                </label>
+                <label class="field">Telegram chat id
+                  <input id="opsNotifyTgChat" type="text" placeholder="-100… или user id" />
+                </label>
+              </div>
+              <label class="field hidden" id="opsNotifyTgChatSelectWrap">Выбрать из недавних чатов
+                <select id="opsNotifyTgChatSelect">
+                  <option value="">— выберите чат —</option>
+                </select>
               </label>
-              <label class="field">Telegram chat id
-                <input id="opsNotifyTgChat" type="text" placeholder="-100… или user id" />
-              </label>
+              <div class="actions wrap-actions" style="margin-top:0.35rem">
+                <button type="button" id="opsTelegramVerify" class="btn-quiet">Проверить бота</button>
+                <button type="button" id="opsTelegramDiscover" class="btn-quiet">Найти chat id</button>
+                <button type="button" id="opsTelegramTest" class="btn-quiet">Отправить тест</button>
+              </div>
+              <pre id="opsTelegramLog" class="log tight"></pre>
             </div>
             <label class="field check">
               <input id="opsNotifyOnReply" type="checkbox" checked />
@@ -770,6 +791,6 @@
       </section>
     </main>
   </div>
-  <script src="app.js?v=ops5"></script>
+  <script src="app.js?v=ops6"></script>
 </body>
 </html>

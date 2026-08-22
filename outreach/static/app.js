@@ -34,6 +34,7 @@
 
   let token = EMBEDDED ? "" : localStorage.getItem("outreach_token") || "";
   let settingsCache = null;
+  let tgTokenConfigured = false;
 
   const $ = (id) => document.getElementById(id);
 
@@ -800,6 +801,75 @@
       .join("");
   }
 
+  function pill(cls, label) {
+    return `<span class="integration-pill ${cls}"><span class="dot"></span>${escapeHtml(label)}</span>`;
+  }
+
+  function renderIntegrationsStatus(health) {
+    const box = $("integrationsStatus");
+    if (!box || !health) return;
+    const tg = health.telegram || {};
+    const pills = [
+      pill(health.smtp_configured ? "ok" : "bad", "SMTP"),
+      pill(health.imap_configured ? "ok" : "warn", "IMAP"),
+      pill(health.bitrix_webhook_configured ? "ok" : "warn", "Bitrix"),
+      pill(tg.ready ? "ok" : tg.token_configured ? "warn" : "bad", "Telegram"),
+    ];
+    box.innerHTML = pills.join("");
+  }
+
+  function renderTelegramStatus(health) {
+    const box = $("opsTelegramStatus");
+    if (!box) return;
+    const tg = (health && health.telegram) || {};
+    if (tg.ready) {
+      box.className = "telegram-status ok tight";
+      box.textContent = "Telegram подключён: token + chat id, push включён.";
+    } else if (tg.enabled && tg.token_configured && !tg.chat_id_configured) {
+      box.className = "telegram-status warn tight";
+      box.textContent = "Token сохранён. Напишите боту /start и нажмите «Найти chat id».";
+    } else if (tg.token_configured && !tg.enabled) {
+      box.className = "telegram-status warn tight";
+      box.textContent = "Token сохранён. Включите Telegram push и укажите chat id.";
+    } else {
+      box.className = "telegram-status muted tight";
+      box.textContent = "Telegram не настроен.";
+    }
+  }
+
+  async function loadIntegrationsHealth() {
+    const health = await api("/api/ops/health");
+    renderIntegrationsStatus(health);
+    renderTelegramStatus(health);
+    return health;
+  }
+
+  function currentTelegramToken() {
+    const raw = ($("opsNotifyTgToken") && $("opsNotifyTgToken").value || "").trim();
+    if (raw && raw !== "••••••••") return raw;
+    return null;
+  }
+
+  function opsNotifyPayload() {
+    const payload = {
+      OPS_NOTIFY_ENABLED: $("opsNotifyEnabled").checked ? "true" : "false",
+      REPLY_NOTIFY_ENABLED:
+        $("replyNotifyEnabled") && $("replyNotifyEnabled").checked ? "true" : "false",
+      OPS_NOTIFY_EMAIL_ENABLED: $("opsNotifyEmailEnabled").checked ? "true" : "false",
+      OPS_NOTIFY_EMAIL: ($("opsNotifyEmail").value || "").trim(),
+      OPS_NOTIFY_TELEGRAM_ENABLED: $("opsNotifyTelegramEnabled").checked ? "true" : "false",
+      OPS_NOTIFY_TELEGRAM_CHAT_ID: ($("opsNotifyTgChat").value || "").trim(),
+      OPS_NOTIFY_ON_POSITIVE_REPLY: $("opsNotifyOnReply").checked ? "true" : "false",
+      OPS_NOTIFY_ON_MAILBOX_PAUSE: $("opsNotifyOnPause").checked ? "true" : "false",
+      OPS_NOTIFY_ON_CALLBACK: $("opsNotifyOnCallback").checked ? "true" : "false",
+    };
+    const tokenVal = currentTelegramToken();
+    if (tokenVal) payload.OPS_NOTIFY_TELEGRAM_BOT_TOKEN = tokenVal;
+    const email = ($("opsNotifyEmail").value || "").trim();
+    if (email) payload.REPLY_NOTIFY_EMAIL = email;
+    return payload;
+  }
+
   async function loadSettingsIntoForms() {
     const data = await api("/api/settings");
     settingsCache = data.settings || {};
@@ -869,6 +939,10 @@
     if ($("oooPauseDays")) {
       $("oooPauseDays").value = s.OOO_PAUSE_DAYS || "7";
     }
+    if ($("replyNotifyEnabled")) {
+      $("replyNotifyEnabled").checked =
+        String(s.REPLY_NOTIFY_ENABLED || "true").toLowerCase() !== "false";
+    }
     if ($("opsNotifyEnabled")) {
       $("opsNotifyEnabled").checked = String(s.OPS_NOTIFY_ENABLED || "true").toLowerCase() !== "false";
     }
@@ -884,7 +958,13 @@
         String(s.OPS_NOTIFY_TELEGRAM_ENABLED || "false").toLowerCase() === "true";
     }
     if ($("opsNotifyTgToken")) {
-      $("opsNotifyTgToken").value = s.OPS_NOTIFY_TELEGRAM_BOT_TOKEN || "";
+      tgTokenConfigured =
+        String(s.OPS_NOTIFY_TELEGRAM_BOT_TOKEN_CONFIGURED || "").toLowerCase() === "true" ||
+        Boolean((s.OPS_NOTIFY_TELEGRAM_BOT_TOKEN || "").trim());
+      $("opsNotifyTgToken").value = tgTokenConfigured ? "••••••••" : "";
+      $("opsNotifyTgToken").placeholder = tgTokenConfigured
+        ? "•••••••• (сохранён — введите новый чтобы заменить)"
+        : "из @BotFather";
     }
     if ($("opsNotifyTgChat")) {
       $("opsNotifyTgChat").value = s.OPS_NOTIFY_TELEGRAM_CHAT_ID || "";
@@ -1384,7 +1464,7 @@
     } else if (tab === "report") loadReport().catch(logAction);
     else if (tab === "settings") {
       loadSettingsIntoForms()
-        .then(() => Promise.all([loadAntiban(), loadConsentLedger()]))
+        .then(() => Promise.all([loadAntiban(), loadConsentLedger(), loadIntegrationsHealth()]))
         .catch((e) => {
           if ($("antibanLog")) $("antibanLog").textContent = String(e);
           logAction(e);
@@ -1433,7 +1513,7 @@
         if (tab === "report") loadReport().catch(logAction);
         if (tab === "settings") {
           loadSettingsIntoForms()
-            .then(() => Promise.all([loadAntiban(), loadConsentLedger()]))
+            .then(() => Promise.all([loadAntiban(), loadConsentLedger(), loadIntegrationsHealth()]))
             .catch((e) => {
               if ($("antibanLog")) $("antibanLog").textContent = String(e);
               logAction(e);
@@ -2332,21 +2412,100 @@
     if ($("opsNotifySave")) {
       $("opsNotifySave").addEventListener("click", async () => {
         try {
-          const payload = {
-            OPS_NOTIFY_ENABLED: $("opsNotifyEnabled").checked ? "true" : "false",
-            OPS_NOTIFY_EMAIL_ENABLED: $("opsNotifyEmailEnabled").checked ? "true" : "false",
-            OPS_NOTIFY_EMAIL: ($("opsNotifyEmail").value || "").trim(),
-            OPS_NOTIFY_TELEGRAM_ENABLED: $("opsNotifyTelegramEnabled").checked ? "true" : "false",
-            OPS_NOTIFY_TELEGRAM_BOT_TOKEN: ($("opsNotifyTgToken").value || "").trim(),
-            OPS_NOTIFY_TELEGRAM_CHAT_ID: ($("opsNotifyTgChat").value || "").trim(),
-            OPS_NOTIFY_ON_POSITIVE_REPLY: $("opsNotifyOnReply").checked ? "true" : "false",
-            OPS_NOTIFY_ON_MAILBOX_PAUSE: $("opsNotifyOnPause").checked ? "true" : "false",
-            OPS_NOTIFY_ON_CALLBACK: $("opsNotifyOnCallback").checked ? "true" : "false",
-          };
+          const payload = opsNotifyPayload();
           logAction(await api("/api/settings", { method: "PUT", body: JSON.stringify({ settings: payload }) }));
           await loadSettingsIntoForms();
+          await loadIntegrationsHealth();
         } catch (e) {
           logAction(String(e));
+        }
+      });
+    }
+
+    if ($("opsTelegramVerify")) {
+      $("opsTelegramVerify").addEventListener("click", async () => {
+        const log = $("opsTelegramLog");
+        const info = $("opsTelegramBotInfo");
+        try {
+          const data = await api("/api/ops/telegram/verify", {
+            method: "POST",
+            body: JSON.stringify({ bot_token: currentTelegramToken() }),
+          });
+          if (log) log.textContent = JSON.stringify(data, null, 2);
+          if (info) {
+            info.classList.remove("hidden");
+            const link = data.link
+              ? `<a href="${escapeHtml(data.link)}" target="_blank" rel="noopener">@${escapeHtml(data.username || "")}</a>`
+              : escapeHtml(data.first_name || "бот");
+            info.innerHTML = `Бот: ${link} · id ${escapeHtml(String(data.bot_id || ""))}`;
+          }
+        } catch (e) {
+          if (log) log.textContent = String(e);
+          if (info) info.classList.add("hidden");
+        }
+      });
+    }
+
+    if ($("opsTelegramDiscover")) {
+      $("opsTelegramDiscover").addEventListener("click", async () => {
+        const log = $("opsTelegramLog");
+        const selWrap = $("opsNotifyTgChatSelectWrap");
+        const sel = $("opsNotifyTgChatSelect");
+        try {
+          const data = await api("/api/ops/telegram/discover", {
+            method: "POST",
+            body: JSON.stringify({ bot_token: currentTelegramToken() }),
+          });
+          if (log) {
+            log.textContent = data.hint
+              ? `${data.hint}\n\n${JSON.stringify(data, null, 2)}`
+              : JSON.stringify(data, null, 2);
+          }
+          const chats = data.chats || [];
+          if (sel && chats.length) {
+            sel.innerHTML =
+              '<option value="">— выберите чат —</option>' +
+              chats
+                .map(
+                  (c) =>
+                    `<option value="${escapeHtml(c.chat_id)}">${escapeHtml(c.title || c.chat_id)} (${escapeHtml(c.type || "")})</option>`
+                )
+                .join("");
+            if (selWrap) selWrap.classList.remove("hidden");
+            if (chats.length === 1 && $("opsNotifyTgChat")) {
+              $("opsNotifyTgChat").value = chats[0].chat_id;
+            }
+          } else if (selWrap) {
+            selWrap.classList.add("hidden");
+          }
+        } catch (e) {
+          if (log) log.textContent = String(e);
+        }
+      });
+    }
+
+    if ($("opsNotifyTgChatSelect")) {
+      $("opsNotifyTgChatSelect").addEventListener("change", () => {
+        const v = $("opsNotifyTgChatSelect").value;
+        if (v && $("opsNotifyTgChat")) $("opsNotifyTgChat").value = v;
+      });
+    }
+
+    if ($("opsTelegramTest")) {
+      $("opsTelegramTest").addEventListener("click", async () => {
+        const log = $("opsTelegramLog");
+        try {
+          const data = await api("/api/ops/telegram/test", {
+            method: "POST",
+            body: JSON.stringify({
+              bot_token: currentTelegramToken(),
+              chat_id: ($("opsNotifyTgChat").value || "").trim(),
+            }),
+          });
+          if (log) log.textContent = JSON.stringify(data, null, 2);
+          await loadIntegrationsHealth();
+        } catch (e) {
+          if (log) log.textContent = String(e);
         }
       });
     }

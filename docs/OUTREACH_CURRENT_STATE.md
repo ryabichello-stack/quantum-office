@@ -74,9 +74,12 @@
 ### Уведомления (Layer E)
 
 Настройки → «Уведомления оператору»: email + опционально Telegram (`OPS_NOTIFY_TELEGRAM_*`).  
+Мастер в UI: **Проверить бота** → **Найти chat id** (после `/start` в Telegram) → **Отправить тест**.  
+API: `POST /api/ops/telegram/verify|discover|test`, статус в `GET /api/ops/health`.  
+Token в UI маскируется; пустое сохранение не затирает уже записанный token.  
 События: human/positive reply, mailbox pause, callback CTA. Dedup в `ops_notify_dedup`.
 
-Статика: `outreach/static` → `console/static/outreach` (`?v=ops5`).
+Статика: `outreach/static` → `console/static/outreach` (`?v=ops6`).
 
 ---
 
@@ -95,7 +98,7 @@
 | Риск | Митигация сейчас | Следующий шаг |
 |------|------------------|---------------|
 | Репутация `office@` | Warmup, caps, pause | Отдельный sending domain при росте |
-| Потеря ответов | IMAP + inbox + **push notify** | Telegram token в настройках |
+| Потеря ответов | IMAP + inbox + **push notify** | Telegram wizard в настройках |
 | Compliance | Unsub, suppression, **consent ledger** | Экспорт / legal hold |
 | Один email/компания | Архитектура outbox | Multi-contact targeting |
 

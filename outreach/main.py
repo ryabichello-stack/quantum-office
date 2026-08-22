@@ -858,6 +858,9 @@ def api_ops_health() -> dict[str, Any]:
     rt = _rt()
     paused, pause_reason = _deliver_mod.store.is_paused()
     rw = reply_watch_status()
+    tg_token = (rt.get("OPS_NOTIFY_TELEGRAM_BOT_TOKEN", "") or "").strip()
+    tg_chat = (rt.get("OPS_NOTIFY_TELEGRAM_CHAT_ID", "") or "").strip()
+    tg_enabled = rt.get_bool("OPS_NOTIFY_TELEGRAM_ENABLED", False)
     return {
         "ok": True,
         "smtp_configured": smtp_configured(),
@@ -869,7 +872,73 @@ def api_ops_health() -> dict[str, Any]:
         "run_state": (rt.get("OUTREACH_RUN_STATE", "stopped") or "stopped").lower(),
         "outreach_enabled": rt.get_bool("OUTREACH_ENABLED", False),
         "runner": _runner_mod.health(),
+        "telegram": {
+            "enabled": tg_enabled,
+            "token_configured": bool(tg_token),
+            "chat_id_configured": bool(tg_chat),
+            "ready": tg_enabled and bool(tg_token) and bool(tg_chat),
+        },
+        "ops_notify": {
+            "enabled": rt.get_bool("OPS_NOTIFY_ENABLED", True),
+            "email_configured": bool(
+                (rt.get("OPS_NOTIFY_EMAIL", "") or rt.get("REPLY_NOTIFY_EMAIL", "") or "").strip()
+            ),
+        },
     }
+
+
+class TelegramTokenBody(BaseModel):
+    bot_token: str | None = None
+
+
+class TelegramTestBody(BaseModel):
+    bot_token: str | None = None
+    chat_id: str | None = None
+    message: str | None = None
+
+
+@app.post("/api/ops/telegram/verify", dependencies=[Depends(require_ui_auth)])
+def api_telegram_verify(body: TelegramTokenBody) -> dict[str, Any]:
+    from ops_notify import resolve_bot_token, telegram_verify_bot
+
+    tok = resolve_bot_token(body.bot_token, _rt())
+    if not tok:
+        raise HTTPException(status_code=400, detail="bot_token_required")
+    out = telegram_verify_bot(tok)
+    if not out.get("ok"):
+        raise HTTPException(status_code=400, detail=out.get("error") or "telegram_verify_failed")
+    return out
+
+
+@app.post("/api/ops/telegram/discover", dependencies=[Depends(require_ui_auth)])
+def api_telegram_discover(body: TelegramTokenBody) -> dict[str, Any]:
+    from ops_notify import resolve_bot_token, telegram_discover_chats
+
+    tok = resolve_bot_token(body.bot_token, _rt())
+    if not tok:
+        raise HTTPException(status_code=400, detail="bot_token_required")
+    out = telegram_discover_chats(tok)
+    if not out.get("ok"):
+        raise HTTPException(status_code=400, detail=out.get("error") or "telegram_discover_failed")
+    return out
+
+
+@app.post("/api/ops/telegram/test", dependencies=[Depends(require_ui_auth)])
+def api_telegram_test(body: TelegramTestBody) -> dict[str, Any]:
+    from ops_notify import resolve_bot_token, telegram_send_message
+
+    rt = _rt()
+    tok = resolve_bot_token(body.bot_token, rt)
+    chat_id = (body.chat_id or rt.get("OPS_NOTIFY_TELEGRAM_CHAT_ID", "") or "").strip()
+    if not tok:
+        raise HTTPException(status_code=400, detail="bot_token_required")
+    if not chat_id:
+        raise HTTPException(status_code=400, detail="chat_id_required")
+    text = (body.message or "").strip() or "✅ Quantum Outreach: тестовое уведомление оператору."
+    out = telegram_send_message(tok, chat_id, text)
+    if not out.get("ok"):
+        raise HTTPException(status_code=400, detail=out.get("error") or "telegram_send_failed")
+    return out
 
 
 @app.get("/api/outbox", dependencies=[Depends(require_ui_auth)])

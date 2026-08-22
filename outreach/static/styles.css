@@ -1141,6 +1141,51 @@ button.small { height: 26px; font-size: 0.72rem; padding: 0 0.45rem; }
 .ops-alert.info { border-color: rgba(59, 130, 246, 0.25); background: #f5f9ff; }
 .ops-alert button { flex-shrink: 0; }
 
+.integrations-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+  margin: 0 0 0.65rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: #fafbfd;
+}
+.integration-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+}
+.integration-pill .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #9ca3af;
+}
+.integration-pill.ok .dot { background: #16a34a; }
+.integration-pill.warn .dot { background: #d97706; }
+.integration-pill.bad .dot { background: #dc2626; }
+
+.telegram-wizard {
+  margin: 0.35rem 0 0.65rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fcfcfe;
+}
+.telegram-status.ok { color: #166534; }
+.telegram-status.warn { color: #92400e; }
+.telegram-status.bad { color: #991b1b; }
+.telegram-bot-info {
+  margin: 0.35rem 0;
+  padding: 0.4rem 0.55rem;
+  border-radius: 6px;
+  background: #eef6ff;
+  font-size: 0.82rem;
+}
+.telegram-bot-info.hidden { display: none; }
+
 .ops-actions {
   margin: 0 0 0.85rem;
   padding: 0.65rem 0.75rem;
