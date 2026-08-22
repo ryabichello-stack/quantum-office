@@ -395,3 +395,105 @@ def resolve_bot_token(token: str | None, settings: Any = None) -> str:
     return cand
   return _cfg(settings, "OPS_NOTIFY_TELEGRAM_BOT_TOKEN", "").strip()
 
+
+def resolve_avatar_jpg(explicit: str | None = None) -> Path | None:
+  if explicit:
+    p = Path(explicit)
+    return p if p.is_file() else None
+  for cand in (
+    os.getenv("PANEL_BOT_AVATAR_JPG", "").strip(),
+    "/opt/quantum-console/static/brand/quantum-panel-bot-512.jpg",
+    "/opt/ava-outreach/static/brand/quantum-panel-bot-512.jpg",
+  ):
+    if cand and Path(cand).is_file():
+      return Path(cand)
+  return None
+
+
+def telegram_set_profile_photo(token: str, jpg_path: str) -> dict[str, Any]:
+  import httpx
+
+  path = Path(jpg_path)
+  if not path.is_file():
+    return {"ok": False, "error": "avatar_jpg_not_found"}
+  tok = (token or "").strip()
+  if not tok:
+    return {"ok": False, "error": "bot_token_required"}
+  url = f"https://api.telegram.org/bot{tok}/setMyProfilePhoto"
+  try:
+    with httpx.Client(timeout=60) as client, path.open("rb") as handle:
+      resp = client.post(
+        url,
+        files={
+          "photo": (None, '{"type":"static","photo":"attach://myfile"}'),
+          "myfile": ("avatar.jpg", handle, "image/jpeg"),
+        },
+      )
+    data = resp.json()
+  except Exception as exc:  # noqa: BLE001
+    return {"ok": False, "error": str(exc)[:300]}
+  if not data.get("ok"):
+    return {"ok": False, "error": data.get("description") or "set_profile_photo_failed", "raw": data}
+  return {"ok": True}
+
+
+def telegram_apply_branding(token: str, *, avatar_jpg: str | None = None) -> dict[str, Any]:
+  """Set bot name, RU descriptions, and profile photo via Bot API."""
+  tok = (token or "").strip()
+  if not tok:
+    return {"ok": False, "error": "bot_token_required"}
+
+  short_ru = (
+    "Quantum Panel — операторский центр Quantum Labs. Outreach, телефония, сервисы."
+  )
+  desc_ru = (
+    "Quantum Panel\n\n"
+    "Операторский центр управления Quantum Labs — один канал для важных событий.\n\n"
+    "Outreach · ответы и заявки на звонок\n"
+    "Console · статус робота и сервисов\n"
+    "Телефония · звонки и обзвоны\n\n"
+    "a.47z.ru/_quantum_console"
+  )
+  out: dict[str, Any] = {"ok": True, "steps": {}}
+
+  name = _telegram_api(tok, "setMyName", params={"name": "Quantum Panel"})
+  out["steps"]["name"] = name
+  if not name.get("ok"):
+    out["ok"] = False
+    out["error"] = name.get("error") or "set_name_failed"
+    return out
+
+  short = _telegram_api(
+    tok,
+    "setMyShortDescription",
+    params={"short_description": short_ru, "language_code": "ru"},
+  )
+  out["steps"]["short_description"] = short
+  if not short.get("ok"):
+    out["ok"] = False
+    out["error"] = short.get("error") or "set_short_description_failed"
+    return out
+
+  desc = _telegram_api(
+    tok,
+    "setMyDescription",
+    params={"description": desc_ru, "language_code": "ru"},
+  )
+  out["steps"]["description"] = desc
+  if not desc.get("ok"):
+    out["ok"] = False
+    out["error"] = desc.get("error") or "set_description_failed"
+    return out
+
+  jpg = resolve_avatar_jpg(avatar_jpg)
+  if jpg:
+    photo = telegram_set_profile_photo(tok, str(jpg))
+    out["steps"]["profile_photo"] = photo
+    if not photo.get("ok"):
+      out["ok"] = False
+      out["error"] = photo.get("error") or "set_profile_photo_failed"
+  else:
+    out["steps"]["profile_photo"] = {"ok": False, "skipped": True, "error": "avatar_jpg_not_found"}
+
+  return out
+

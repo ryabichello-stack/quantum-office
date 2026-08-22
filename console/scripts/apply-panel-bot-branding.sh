@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# Apply Quantum Panel branding to @Quantum_panel_bot via Telegram Bot API.
-# Profile photo: upload quantum-panel-bot-512.png via @BotFather → /setuserpic (no Bot API).
+# Apply Quantum Panel bot branding (name, description, avatar) via Telegram Bot API.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-IMG="${1:-$ROOT/static/brand/quantum-panel-bot-512.png}"
-LOCKUP="${ROOT}/static/brand/quantum-panel-bot-lockup-512.png"
+JPG="${1:-$ROOT/static/brand/quantum-panel-bot-512.jpg}"
 
 if [[ -f "$ROOT/scripts/render-panel-bot-avatar.py" ]]; then
   python3 "$ROOT/scripts/render-panel-bot-avatar.py" 2>/dev/null || true
@@ -18,6 +16,11 @@ if [[ -z "${BOT_TOKEN:-}" ]]; then
 fi
 if [[ -z "${BOT_TOKEN:-}" ]]; then
   echo "Set BOT_TOKEN or configure OPS_NOTIFY_TELEGRAM_BOT_TOKEN in outreach settings.db" >&2
+  exit 1
+fi
+
+if [[ ! -f "$JPG" ]]; then
+  echo "Avatar JPG not found: $JPG" >&2
   exit 1
 fi
 
@@ -39,24 +42,8 @@ curl -fsS -X POST "$API/setMyShortDescription" \
   --data-urlencode "short_description=${SHORT_RU}" -d "language_code=ru" >/dev/null
 curl -fsS -X POST "$API/setMyDescription" \
   --data-urlencode "description=${DESC_RU}" -d "language_code=ru" >/dev/null
+curl -fsS -X POST "$API/setMyProfilePhoto" \
+  -F 'photo={"type":"static","photo":"attach://myfile"}' \
+  -F "myfile=@${JPG};type=image/jpeg" >/dev/null
 
-echo "OK: name + description (ru) applied."
-
-if [[ -f "$IMG" && -n "${NOTIFY_CHAT_ID:-}" ]]; then
-  curl -fsS -X POST "$API/sendPhoto" \
-    -F "chat_id=${NOTIFY_CHAT_ID}" \
-    -F "photo=@${IMG}" \
-    --form-string "caption=Quantum Panel — аватар (фирменная орбита Quantum Labs + надпись).\n\n@BotFather → /setuserpic → @Quantum_panel_bot → это фото." \
-    >/dev/null
-  if [[ -f "$LOCKUP" ]]; then
-    curl -fsS -X POST "$API/sendPhoto" \
-      -F "chat_id=${NOTIFY_CHAT_ID}" \
-      -F "photo=@${LOCKUP}" \
-      --form-string "caption=Альтернатива с большими полями — для документов." \
-      >/dev/null
-  fi
-  echo "OK: logo sent to chat ${NOTIFY_CHAT_ID}"
-elif [[ -f "$IMG" ]]; then
-  echo "Tip: NOTIF_CHAT_ID=963782 $0  # send logo + BotFather hint"
-  echo "Avatar: @BotFather → /setuserpic → select bot → upload: $IMG"
-fi
+echo "OK: Quantum Panel branding applied (name, description, avatar)."

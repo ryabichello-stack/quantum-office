@@ -964,7 +964,7 @@
       $("opsNotifyTgToken").value = tgTokenConfigured ? "••••••••" : "";
       $("opsNotifyTgToken").placeholder = tgTokenConfigured
         ? "•••••••• (сохранён — введите новый чтобы заменить)"
-        : "из @BotFather";
+        : "токен бота";
     }
     if ($("opsNotifyTgChat")) {
       $("opsNotifyTgChat").value = s.OPS_NOTIFY_TELEGRAM_CHAT_ID || "";
@@ -2413,11 +2413,36 @@
       $("opsNotifySave").addEventListener("click", async () => {
         try {
           const payload = opsNotifyPayload();
-          logAction(await api("/api/settings", { method: "PUT", body: JSON.stringify({ settings: payload }) }));
+          const saved = await api("/api/settings", { method: "PUT", body: JSON.stringify({ settings: payload }) });
+          let branding = null;
+          try {
+            branding = await api("/api/ops/telegram/apply-branding", {
+              method: "POST",
+              body: JSON.stringify({ bot_token: currentTelegramToken() }),
+            });
+          } catch (brandErr) {
+            branding = { error: String(brandErr) };
+          }
+          logAction({ settings: saved, branding });
           await loadSettingsIntoForms();
           await loadIntegrationsHealth();
         } catch (e) {
           logAction(String(e));
+        }
+      });
+    }
+
+    if ($("opsTelegramApplyBrand")) {
+      $("opsTelegramApplyBrand").addEventListener("click", async () => {
+        const log = $("opsTelegramLog");
+        try {
+          const data = await api("/api/ops/telegram/apply-branding", {
+            method: "POST",
+            body: JSON.stringify({ bot_token: currentTelegramToken() }),
+          });
+          if (log) log.textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+          if (log) log.textContent = String(e);
         }
       });
     }

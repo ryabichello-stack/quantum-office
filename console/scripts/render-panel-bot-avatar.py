@@ -14,6 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parents[1]
 BRAND = ROOT / "static" / "brand"
 OUT_ICON = BRAND / "quantum-panel-bot-512.png"
+OUT_JPG = BRAND / "quantum-panel-bot-512.jpg"
 OUT_LOCKUP = BRAND / "quantum-panel-bot-lockup-512.png"
 MARK_SRC = BRAND / "logo-square.jpg"
 
@@ -93,6 +94,7 @@ def render_icon() -> None:
     draw = ImageDraw.Draw(canvas)
     _draw_lockup(draw)
     canvas.save(OUT_ICON, optimize=True)
+    canvas.convert("RGB").save(OUT_JPG, quality=95, optimize=True)
 
 
 def render_lockup() -> None:
@@ -107,6 +109,7 @@ def main() -> None:
     render_icon()
     render_lockup()
     print(f"wrote {OUT_ICON}")
+    print(f"wrote {OUT_JPG}")
 
 
 if __name__ == "__main__":

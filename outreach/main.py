@@ -941,6 +941,23 @@ def api_telegram_test(body: TelegramTestBody) -> dict[str, Any]:
     return out
 
 
+class TelegramBrandingBody(BaseModel):
+    bot_token: str | None = None
+    avatar_jpg: str | None = None
+
+
+@app.post("/api/ops/telegram/apply-branding", dependencies=[Depends(require_ui_auth)])
+def api_telegram_apply_branding(body: TelegramBrandingBody | None = None) -> dict[str, Any]:
+    from ops_notify import resolve_bot_token, telegram_apply_branding
+
+    body = body or TelegramBrandingBody()
+    tok = resolve_bot_token(body.bot_token, _rt())
+    out = telegram_apply_branding(tok, avatar_jpg=body.avatar_jpg)
+    if not out.get("ok"):
+        raise HTTPException(status_code=400, detail=out.get("error") or "apply_branding_failed")
+    return out
+
+
 @app.get("/api/outbox", dependencies=[Depends(require_ui_auth)])
 def api_outbox(
     status: str | None = None,

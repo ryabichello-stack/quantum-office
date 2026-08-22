@@ -52,7 +52,7 @@ Apple-style: **symbol on icon**, name «Quantum Panel» shown by Telegram beside
 NOTIFY_CHAT_ID=963782 BOT_TOKEN=... ./scripts/apply-panel-bot-branding.sh
 ```
 
-Avatar: @BotFather → `/setuserpic` → `quantum-panel-bot-512.png`.
+Applies name, RU description, and avatar via Telegram Bot API (no manual steps).
 
 ## Пути на проде
 

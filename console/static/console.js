@@ -719,7 +719,7 @@
       box.textContent = "Token есть. Укажите chat id и сохраните.";
     } else {
       box.className = "panel-notify-status muted tight";
-      box.textContent = "Бот не настроен. Вставьте token от @BotFather.";
+      box.textContent = "Бот не настроен. Укажите token и нажмите «Сохранить».";
     }
   }
 
@@ -745,7 +745,7 @@
       $("panelTgToken").value = tokenConfigured ? "••••••••" : "";
       $("panelTgToken").placeholder = tokenConfigured
         ? "•••••••• (сохранён)"
-        : "из @BotFather";
+        : "токен бота";
     }
     if ($("panelTgChat")) {
       $("panelTgChat").value = settings.OPS_NOTIFY_TELEGRAM_CHAT_ID || "";
@@ -835,6 +835,21 @@
       };
     }
 
+    if ($("panelTgApplyBrand")) {
+      $("panelTgApplyBrand").onclick = async () => {
+        const log = $("panelNotifyLog");
+        try {
+          const data = await outreachApi("/api/ops/telegram/apply-branding", {
+            method: "POST",
+            body: JSON.stringify({ bot_token: panelTgTokenValue() }),
+          });
+          if (log) log.textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+          if (log) log.textContent = e.message || String(e);
+        }
+      };
+    }
+
     if ($("panelTgSave")) {
       $("panelTgSave").onclick = async () => {
         const log = $("panelNotifyLog");
@@ -850,7 +865,16 @@
             method: "PUT",
             body: JSON.stringify({ settings: payload }),
           });
-          if (log) log.textContent = JSON.stringify(data, null, 2);
+          let brand = null;
+          try {
+            brand = await outreachApi("/api/ops/telegram/apply-branding", {
+              method: "POST",
+              body: JSON.stringify({ bot_token: tok }),
+            });
+          } catch (brandErr) {
+            brand = { error: String(brandErr) };
+          }
+          if (log) log.textContent = JSON.stringify({ settings: data, branding: brand }, null, 2);
           await loadPanelNotify();
         } catch (e) {
           if (log) log.textContent = e.message || String(e);

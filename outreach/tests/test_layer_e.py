@@ -15,6 +15,7 @@ from ops_notify import (
     _format_panel_telegram,
     notify_ops_event,
     resolve_bot_token,
+    telegram_apply_branding,
     telegram_discover_chats,
     telegram_verify_bot,
 )
@@ -167,6 +168,19 @@ def test_notify_ops_event_panel_branding(mock_email, mock_tg):
     mock_tg.assert_called_once()
     assert PANEL_BRAND in mock_tg.call_args.kwargs["text"]
     assert "Console" in mock_tg.call_args.kwargs["text"]
+
+
+@patch("ops_notify.resolve_avatar_jpg")
+@patch("ops_notify._telegram_api")
+def test_telegram_apply_branding_mocked(mock_api, mock_jpg):
+    from pathlib import Path
+
+    mock_api.return_value = {"ok": True, "result": True}
+    mock_jpg.return_value = Path("/tmp/fake.jpg")
+    with patch("ops_notify.telegram_set_profile_photo", return_value={"ok": True}) as mock_photo:
+        out = telegram_apply_branding("tok", avatar_jpg="/tmp/fake.jpg")
+        assert out.get("ok") is True
+        assert mock_photo.called
 
 
 def test_runtime_settings_masked_token_not_overwritten():
