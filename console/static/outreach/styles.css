@@ -1188,6 +1188,37 @@ button.small { height: 26px; font-size: 0.72rem; padding: 0 0.45rem; }
   flex: 0 0 auto;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
 }
+.queue-calendar {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.55rem;
+  margin: 0.55rem 0 0.2rem;
+}
+.cal-day {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  padding: 0.45rem 0.55rem;
+  background: #fafafa;
+  min-height: 5.5rem;
+}
+.cal-day-due {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+.cal-day-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.35rem;
+  margin-bottom: 0.25rem;
+  font-size: 0.82rem;
+}
+.cal-day-list {
+  margin: 0;
+  padding-left: 1rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
 .bulk-bar {
   display: flex;
   align-items: center;

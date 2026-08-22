@@ -126,6 +126,8 @@ class ConsentLedgerStore:
     *,
     q: str | None = None,
     status: str | None = None,
+    created_from: str | None = None,
+    created_to: str | None = None,
     limit: int = 80,
     offset: int = 0,
   ) -> tuple[list[dict[str, Any]], int]:
@@ -138,6 +140,12 @@ class ConsentLedgerStore:
     if status:
       clauses.append("status = ?")
       params.append(status.strip().lower())
+    if created_from:
+      clauses.append("created_at >= ?")
+      params.append(created_from.strip())
+    if created_to:
+      clauses.append("created_at <= ?")
+      params.append(created_to.strip())
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     lim = max(1, min(int(limit), 200))
     off = max(0, int(offset))
@@ -159,9 +167,18 @@ class ConsentLedgerStore:
     *,
     q: str | None = None,
     status: str | None = None,
+    created_from: str | None = None,
+    created_to: str | None = None,
     limit: int = 5000,
   ) -> list[dict[str, Any]]:
-    items, _ = self.list_entries(q=q, status=status, limit=limit, offset=0)
+    items, _ = self.list_entries(
+      q=q,
+      status=status,
+      created_from=created_from,
+      created_to=created_to,
+      limit=limit,
+      offset=0,
+    )
     return items
 
   def counts(self) -> dict[str, int]:
@@ -267,10 +284,25 @@ class ConsentModule:
     def export_ledger(
       q: str | None = None,
       status: str | None = None,
+      created_from: str | None = None,
+      created_to: str | None = None,
+      legal_hold: bool = False,
       limit: int = 5000,
     ) -> Response:
-      rows = self.store.export_rows(q=q, status=status, limit=limit)
+      rows = self.store.export_rows(
+        q=q,
+        status=status,
+        created_from=created_from,
+        created_to=created_to,
+        limit=limit,
+      )
       buf = io.StringIO()
+      if legal_hold:
+        buf.write(
+          "# legal_hold_snapshot,generated_at="
+          + datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+          + "\n"
+        )
       writer = csv.DictWriter(
         buf,
         fieldnames=[

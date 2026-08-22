@@ -29,8 +29,8 @@
 | **C** | ✅ | Праздники РФ, OOO-pause, TZ fairness, auto-geo после sync |
 | **D** | ✅ | Next actions + alerts, campaign collapse, CI pytest+sync |
 | **E** | ✅ | Push notify (email/Telegram), step analytics, consent ledger |
-| **F** | 🟡 | Bulk queue, company card + data quality, on-call webhook test, consent CSV |
-| **F+** | 🔲 | Company data quality score, bulk queue actions, legal hold |
+| **F** | ✅ | Bulk queue, company card, on-call webhook, consent CSV |
+| **F+** | 🟡 | Calendar view, consent export filters + legal hold |
 
 ---
 
@@ -80,14 +80,16 @@
 API: `POST /api/ops/telegram/verify|discover|test|apply-branding`, статус в `GET /api/ops/health`.  
 `apply-branding`: `include_profile_photo=false` при сохранении настроек; `true` — кнопка «Применить брендинг».
 
-Статика: `outreach/static` → `console/static/outreach` (`?v=ops10`).
+Статика: `outreach/static` → `console/static/outreach` (`?v=ops12`).
 
-### Layer F (в работе)
+### Layer F ✅
 
-- `GET /api/modules/clients/company/{id}` — карточка компании (CRM + outbox + sequences + consent)
-- UI: клик по ID компании → **Peel-away** панель справа (Queue / Clients / Inbox)
-- `GET /api/modules/consent/export` — CSV экспорт consent ledger
-- `OPS_NOTIFY_ONCALL_WEBHOOK_URL` — дублирование алертов на внешний webhook
+- Company card, bulk queue, on-call webhook, consent CSV, data quality
+
+### Layer F+ 🟡
+
+- **Календарь очереди** — 14 дней во вкладке «Очередь»
+- **Consent export** — `created_from` / `created_to`, `legal_hold` snapshot
 
 ---
 

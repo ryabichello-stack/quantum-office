@@ -65,6 +65,16 @@ def test_consent_export_rows():
         assert rows[0]["email"] == "a@b.ru"
 
 
+def test_consent_export_date_filter():
+    with tempfile.TemporaryDirectory() as tmp:
+        store = ConsentLedgerStore(Path(tmp) / "c.db")
+        store.record(email="old@b.ru", status="unsubscribed", source="test", reason="old")
+        rows, total = store.list_entries(created_from="2099-01-01T00:00:00+00:00")
+        assert total == 0
+        rows2, total2 = store.list_entries()
+        assert total2 == 1
+
+
 @patch("ops_notify._notify_store")
 @patch("ops_notify._notify_oncall_webhook")
 def test_notify_oncall_test(mock_hook, mock_store):

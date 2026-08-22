@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops11" />
+  <link rel="stylesheet" href="styles.css?v=ops12" />
   <script>
     (function () {
       function parentBase() {
@@ -279,6 +279,12 @@
 
           <div id="queueStats" class="stat-grid"></div>
           <p class="muted tight" id="queueDeferHint"></p>
+
+          <details class="task-advanced" id="queueCalendarWrap" open>
+            <summary>Календарь очереди (14 дней)</summary>
+            <p class="muted tight">Follow-up по дате next_action_at; первые письма — по ближайшему слоту окна.</p>
+            <div id="queueCalendar" class="queue-calendar"></div>
+          </details>
 
           <h3 class="section-title" style="font-size:1.05rem;margin-top:1rem">Сейчас к отправке — цепочка</h3>
           <p class="muted tight">Письма 2+, у которых подошёл срок (по дате первого письма + локальное окно).</p>
@@ -749,6 +755,18 @@
               <button type="button" id="consentImportBtn" class="btn-quiet">Импорт из suppression</button>
               <button type="button" id="consentExportBtn" class="btn-quiet">Экспорт CSV</button>
             </div>
+            <div class="task-grid compact-grid">
+              <label class="field">С даты
+                <input id="consentFrom" type="date" />
+              </label>
+              <label class="field">По дату
+                <input id="consentTo" type="date" />
+              </label>
+              <label class="field check" style="align-self:end">
+                <input id="consentLegalHold" type="checkbox" />
+                Legal hold snapshot
+              </label>
+            </div>
             <div class="table-wrap">
               <table>
                 <thead>
@@ -833,6 +851,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=ops11"></script>
+  <script src="app.js?v=ops12"></script>
 </body>
 </html>

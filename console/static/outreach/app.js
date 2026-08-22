@@ -1469,6 +1469,65 @@
     renderOutboxTable(outboxItemsCache, outboxTotalCache);
   }
 
+  function bucketQueueCalendar(queue, days = 14) {
+    const buckets = new Map();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    for (let i = 0; i < days; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      buckets.set(d.toISOString().slice(0, 10), []);
+    }
+    const pickDate = (iso) => {
+      if (!iso) return null;
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return null;
+      return d.toISOString().slice(0, 10);
+    };
+    const add = (item, iso) => {
+      const key = pickDate(iso) || today.toISOString().slice(0, 10);
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(item);
+    };
+    (queue.followups_due || []).forEach((r) => add(r, r.next_action_at));
+    (queue.followups_upcoming || []).forEach((r) => add(r, r.next_action_at));
+    (queue.first_touch || []).forEach((r) => add(r, r.next_slot_at));
+    return buckets;
+  }
+
+  function renderQueueCalendar(queue) {
+    const box = $("queueCalendar");
+    if (!box) return;
+    const buckets = bucketQueueCalendar(queue, 14);
+    const fmtDay = (key) => {
+      try {
+        const d = new Date(key + "T12:00:00");
+        return d.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" });
+      } catch (_) {
+        return key;
+      }
+    };
+    box.innerHTML = Array.from(buckets.entries())
+      .map(([day, items]) => {
+        const dueN = items.filter((x) => x.due !== false).length;
+        const sample = items
+          .slice(0, 4)
+          .map(
+            (r) =>
+              `<li>${escapeHtml(r.email || "")} · ${escapeHtml(
+                String(r.next_step || r.next_label || "")
+              )}</li>`
+          )
+          .join("");
+        const more = items.length > 4 ? `<li class="muted">+${items.length - 4} ещё</li>` : "";
+        return `<div class="cal-day ${dueN ? "cal-day-due" : ""}">
+          <div class="cal-day-head"><strong>${escapeHtml(fmtDay(day))}</strong><span>${items.length}</span></div>
+          <ul class="cal-day-list">${sample || "<li class='muted'>—</li>"}${more}</ul>
+        </div>`;
+      })
+      .join("");
+  }
+
   async function loadQueueView() {
     const qEl = $("outboxQ");
     const statusEl = $("outboxStatus");
@@ -1494,6 +1553,7 @@
         <div class="stat"><div class="n">${c.first_touch_in_window != null ? c.first_touch_in_window : "—"}</div><div class="l">В окне сейчас</div></div>
         <div class="stat"><div class="n">${(c.sequences && c.sequences.active) || 0}</div><div class="l">Активных цепочек</div></div>`;
     }
+    renderQueueCalendar(queue);
 
     const fmtCity = (r) => escapeHtml((r && r.city) || "—");
     const fmtTimezone = (r) => {
@@ -2757,11 +2817,18 @@
       });
     }
     if ($("consentExportBtn")) {
-      $("consentExportBtn").addEventListener("click", () =>
-        downloadApi("/api/modules/consent/export", "quantum-panel-consent-ledger.csv").catch((e) => {
+      $("consentExportBtn").addEventListener("click", () => {
+        const qs = new URLSearchParams();
+        const from = ($("consentFrom") && $("consentFrom").value) || "";
+        const to = ($("consentTo") && $("consentTo").value) || "";
+        if (from) qs.set("created_from", from + "T00:00:00+00:00");
+        if (to) qs.set("created_to", to + "T23:59:59+00:00");
+        if ($("consentLegalHold") && $("consentLegalHold").checked) qs.set("legal_hold", "true");
+        const path = "/api/modules/consent/export" + (qs.toString() ? "?" + qs.toString() : "");
+        downloadApi(path, "quantum-panel-consent-ledger.csv").catch((e) => {
           if ($("consentLog")) $("consentLog").textContent = String(e);
-        })
-      );
+        });
+      });
     }
 
     document.addEventListener("click", (ev) => {
