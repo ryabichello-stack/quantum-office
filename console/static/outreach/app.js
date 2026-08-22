@@ -831,17 +831,29 @@
     return `<button type="button" class="linkish company-open" data-company-id="${escapeHtml(cid)}">${text}</button>`;
   }
 
+  function closeCompanyCard() {
+    const peel = $("companyPeelAway");
+    if (!peel) return;
+    peel.classList.remove("is-open");
+    window.setTimeout(() => {
+      if (!peel.classList.contains("is-open")) peel.hidden = true;
+    }, 260);
+    document.body.classList.remove("peel-away-open");
+  }
+
   async function openCompanyCard(companyId) {
-    const dlg = $("companyCardDialog");
+    const peel = $("companyPeelAway");
     const body = $("companyCardBody");
     const title = $("companyCardTitle");
     const meta = $("companyCardMeta");
     const cid = String(companyId || "").trim();
-    if (!dlg || !cid) return;
+    if (!peel || !cid) return;
+    peel.hidden = false;
+    requestAnimationFrame(() => peel.classList.add("is-open"));
+    document.body.classList.add("peel-away-open");
     if (title) title.textContent = `Компания ${cid}`;
     if (meta) meta.textContent = "Загрузка…";
     if (body) body.textContent = "Загрузка…";
-    dlg.showModal();
     try {
       const data = await api(`/api/modules/clients/company/${encodeURIComponent(cid)}`);
       const c = data.company || {};
@@ -1542,7 +1554,7 @@
           <td>${escapeHtml(r.from_email || "")}</td>
           <td>${inboxClassBadge(r.classification)} <span class="muted">(${Number(r.confidence || 0).toFixed(2)})</span></td>
           <td>${escapeHtml(r.subject || "")}</td>
-          <td>${escapeHtml(r.company_id || "")}</td>
+          <td>${companyLink(r.company_id, r.company_id)}</td>
           <td>${btn}</td>
         </tr>`;
       })
@@ -2675,6 +2687,16 @@
       if (!btn || !btn.classList.contains("company-open")) return;
       ev.preventDefault();
       openCompanyCard(btn.getAttribute("data-company-id"));
+    });
+
+    if ($("companyPeelClose")) {
+      $("companyPeelClose").addEventListener("click", closeCompanyCard);
+    }
+    if ($("companyPeelBackdrop")) {
+      $("companyPeelBackdrop").addEventListener("click", closeCompanyCard);
+    }
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") closeCompanyCard();
     });
 
     $("antibanSave").addEventListener("click", async () => {

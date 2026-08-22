@@ -80,12 +80,12 @@
 API: `POST /api/ops/telegram/verify|discover|test|apply-branding`, статус в `GET /api/ops/health`.  
 `apply-branding`: `include_profile_photo=false` при сохранении настроек; `true` — кнопка «Применить брендинг».
 
-Статика: `outreach/static` → `console/static/outreach` (`?v=ops9`).
+Статика: `outreach/static` → `console/static/outreach` (`?v=ops10`).
 
 ### Layer F (в работе)
 
 - `GET /api/modules/clients/company/{id}` — карточка компании (CRM + outbox + sequences + consent)
-- UI: клик по ID компании в **Очередь** / **Клиенты** → модальное окно
+- UI: клик по ID компании → **Peel-away** панель справа (Queue / Clients / Inbox)
 - `GET /api/modules/consent/export` — CSV экспорт consent ledger
 - `OPS_NOTIFY_ONCALL_WEBHOOK_URL` — дублирование алертов на внешний webhook
 

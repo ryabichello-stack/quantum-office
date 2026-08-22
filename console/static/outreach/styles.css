@@ -1188,42 +1188,85 @@ button.small { height: 26px; font-size: 0.72rem; padding: 0 0.45rem; }
   flex: 0 0 auto;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
 }
-.company-card-dialog {
+.peel-away {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  pointer-events: none;
+}
+.peel-away.is-open {
+  pointer-events: auto;
+}
+.peel-away-backdrop {
+  position: absolute;
+  inset: 0;
   border: none;
-  border-radius: 14px;
-  padding: 0;
-  max-width: min(920px, 96vw);
-  width: 100%;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
-}
-.company-card-dialog::backdrop {
-  background: rgba(8, 8, 10, 0.45);
-}
-.company-card-panel {
   margin: 0;
   padding: 0;
+  background: rgba(8, 8, 10, 0.38);
+  opacity: 0;
+  transition: opacity 0.24s ease;
+  cursor: pointer;
 }
-.company-card-head {
+.peel-away.is-open .peel-away-backdrop {
+  opacity: 1;
+}
+.peel-away-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: min(460px, 92vw);
+  background: #fff;
+  box-shadow: -18px 0 48px rgba(8, 8, 10, 0.18);
+  transform: translateX(104%);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  display: flex;
+  flex-direction: column;
+}
+.peel-away.is-open .peel-away-panel {
+  transform: translateX(0);
+}
+.peel-away-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 1rem 1.1rem 0.35rem;
+  padding: 1rem 1.1rem 0.55rem;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background: linear-gradient(180deg, #fff 0%, #faf8f6 100%);
 }
-.company-card-body {
-  padding: 0.85rem 1.1rem 1.1rem;
-  max-height: 70vh;
+.peel-away-kicker {
+  margin: 0 0 0.2rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #b45309;
+}
+.peel-away-head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.peel-away-body {
+  padding: 0.85rem 1.1rem 1.2rem;
   overflow: auto;
+  flex: 1 1 auto;
+}
+body.peel-away-open {
+  overflow: hidden;
 }
 .company-card-grid {
   display: grid;
   gap: 0.85rem;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: 1fr;
 }
 .company-card-grid h3 {
   margin: 0 0 0.35rem;
   font-size: 0.92rem;
+}
+.company-card-grid table {
+  width: 100%;
+  font-size: 0.86rem;
 }
 button.linkish {
   background: none;
