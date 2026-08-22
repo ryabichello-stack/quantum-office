@@ -853,15 +853,21 @@ button.small { height: 26px; font-size: 0.72rem; padding: 0 0.45rem; }
   white-space: nowrap;
   width: 1%;
 }
+.table-wrap td.cell-city,
 .table-wrap td.cell-tz {
-  max-width: 9rem;
-  min-width: 5.5rem;
+  max-width: 8rem;
+  min-width: 4.5rem;
   white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
   line-height: 1.35;
+  font-size: 0.78rem;
 }
-.table-wrap td.cell-tz .muted {
+.table-wrap td.cell-tz {
+  font-family: var(--mono);
   font-size: 0.72rem;
-  display: block;
+  color: var(--ink);
+  max-width: 9rem;
 }
 .table-wrap th {
   font-size: 0.7rem;

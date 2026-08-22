@@ -911,15 +911,10 @@
         <div class="stat"><div class="n">${(c.sequences && c.sequences.active) || 0}</div><div class="l">Активных цепочек</div></div>`;
     }
 
-    const fmtTz = (r) => {
-      const city = (r && r.city) || "";
-      const tz = (r && r.timezone) || "";
-      const tzRaw = (r && r.timezone_raw) || "";
-      const label = tz || tzRaw;
-      if (city && label) {
-        return escapeHtml(city) + "<br><span class='muted'>" + escapeHtml(label) + "</span>";
-      }
-      return escapeHtml(city || label || "—");
+    const fmtCity = (r) => escapeHtml((r && r.city) || "—");
+    const fmtTimezone = (r) => {
+      const tz = ((r && r.timezone) || (r && r.timezone_raw) || "").trim();
+      return escapeHtml(tz || "—");
     };
     const fmtWhen = (iso) => {
       if (!iso) return "сейчас";
@@ -938,10 +933,11 @@
         ? due
             .map(
               (r) => `<tr>
-            <td class="cell-narrow"><strong>${r.next_step || "—"}</strong><br><span class="muted">${escapeHtml(r.next_label || "")}</span></td>
+            <td class="cell-narrow">${escapeHtml(r.next_step || "—")}</td>
             <td class="cell-narrow">${fmtWhen(r.next_action_at)}</td>
             <td class="cell-wide">${escapeHtml(r.contact_name || "—")}<br><span class="muted">${escapeHtml(r.email || "")}</span></td>
-            <td>${fmtTz(r)}</td>
+            <td class="cell-city">${fmtCity(r)}</td>
+            <td class="cell-tz">${fmtTimezone(r)}</td>
             <td class="cell-wide">${escapeHtml(r.next_subject || "")}</td>
           </tr>`
             )
@@ -958,7 +954,8 @@
             <td>${r.next_step || "—"}</td>
             <td>${fmtWhen(r.next_action_at)}</td>
             <td>${escapeHtml(r.contact_name || "")}<br><span class="muted">${escapeHtml(r.email || "")}</span></td>
-            <td>${escapeHtml(r.timezone || "—")}</td>
+            <td class="cell-city">${fmtCity(r)}</td>
+            <td class="cell-tz">${fmtTimezone(r)}</td>
             <td>${escapeHtml(r.next_label || "")}</td>
           </tr>`
             )
@@ -972,16 +969,21 @@
     if (status) qs.set("status", status);
     if (!q && status === "pending") qs.set("sort", "id_asc");
     const data = await api("/api/outbox?" + qs.toString());
-    const missingTz = (data.items || []).filter((r) => !r.timezone && !r.timezone_raw).length;
+    const items = data.items || [];
+    const missingTz = items.filter((r) => !r.timezone && !r.timezone_raw).length;
     if ($("outboxMeta")) {
-      let meta = `Показано ${data.items.length} из ${data.total}`;
-      if (missingTz && (!status || status === "pending")) {
-        meta += ` · без TZ: ${missingTz} (нужен backfill geo или company_id)`;
+      let meta = `Показано ${items.length} из ${data.total}`;
+      if (items.length) {
+        const s = items[0];
+        meta += ` · пример: ${s.city || "—"} / ${s.timezone || s.timezone_raw || "—"}`;
+      }
+      if (missingTz && status === "pending") {
+        meta += ` · без TZ: ${missingTz}`;
       }
       $("outboxMeta").textContent = meta;
     }
     if ($("outboxBody")) {
-      $("outboxBody").innerHTML = data.items
+      $("outboxBody").innerHTML = items
         .map((r) => {
           const actions = ["pending", "skipped", "failed"]
             .map(
@@ -993,7 +995,8 @@
           <td>${r.id}</td>
           <td class="cell-wide">${escapeHtml(r.email)}</td>
           <td class="cell-wide">${escapeHtml(r.contact_name || r.director_greeting || "")}</td>
-          <td class="cell-tz">${fmtTz(r)}</td>
+          <td class="cell-city">${fmtCity(r)}</td>
+          <td class="cell-tz">${fmtTimezone(r)}</td>
           <td class="cell-narrow">${escapeHtml(r.status)}</td>
           <td class="cell-narrow">${escapeHtml(r.sent_at || "")}</td>
           <td class="cell-actions">${actions}</td>
