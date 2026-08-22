@@ -11,6 +11,8 @@ from modules.analytics import build_sequence_step_report
 from modules.consent import ConsentLedgerStore, record_consent_from_suppression
 from ops_notify import (
     OpsNotifyStore,
+    PANEL_BRAND,
+    _format_panel_telegram,
     notify_ops_event,
     resolve_bot_token,
     telegram_discover_chats,
@@ -133,6 +135,38 @@ def test_telegram_discover_chats(mock_api):
     out = telegram_discover_chats("tok")
     assert out["ok"] is True
     assert out["chats"][0]["chat_id"] == "12345"
+
+
+def test_panel_telegram_format():
+    text = _format_panel_telegram(source="Outreach", title="Тест", body="Тело")
+    assert PANEL_BRAND in text
+    assert "Outreach" in text
+    assert "Тест" in text
+
+
+@patch("ops_notify._notify_telegram")
+@patch("ops_notify._notify_email")
+def test_notify_ops_event_panel_branding(mock_email, mock_tg):
+    settings = MagicMock()
+    settings.get.side_effect = lambda k, d="": {
+        "OPS_NOTIFY_ENABLED": "true",
+        "OPS_NOTIFY_EMAIL_ENABLED": "false",
+        "OPS_NOTIFY_TELEGRAM_ENABLED": "true",
+        "OPS_NOTIFY_TELEGRAM_BOT_TOKEN": "tok",
+        "OPS_NOTIFY_TELEGRAM_CHAT_ID": "1",
+    }.get(k, d)
+    out = notify_ops_event(
+        event="test",
+        title="Alert",
+        body="Details",
+        settings=settings,
+        source="Console",
+        dedup_key="panel-brand-test",
+    )
+    assert out.get("telegram") is True
+    mock_tg.assert_called_once()
+    assert PANEL_BRAND in mock_tg.call_args.kwargs["text"]
+    assert "Console" in mock_tg.call_args.kwargs["text"]
 
 
 def test_runtime_settings_masked_token_not_overwritten():

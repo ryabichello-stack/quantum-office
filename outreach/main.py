@@ -925,7 +925,7 @@ def api_telegram_discover(body: TelegramTokenBody) -> dict[str, Any]:
 
 @app.post("/api/ops/telegram/test", dependencies=[Depends(require_ui_auth)])
 def api_telegram_test(body: TelegramTestBody) -> dict[str, Any]:
-    from ops_notify import resolve_bot_token, telegram_send_message
+    from ops_notify import PANEL_BRAND, resolve_bot_token, telegram_send_message
 
     rt = _rt()
     tok = resolve_bot_token(body.bot_token, rt)
@@ -934,7 +934,7 @@ def api_telegram_test(body: TelegramTestBody) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="bot_token_required")
     if not chat_id:
         raise HTTPException(status_code=400, detail="chat_id_required")
-    text = (body.message or "").strip() or "✅ Quantum Outreach: тестовое уведомление оператору."
+    text = (body.message or "").strip() or f"✅ {PANEL_BRAND}: тестовое уведомление оператору."
     out = telegram_send_message(tok, chat_id, text)
     if not out.get("ok"):
         raise HTTPException(status_code=400, detail=out.get("error") or "telegram_send_failed")

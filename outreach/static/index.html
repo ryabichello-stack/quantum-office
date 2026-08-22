@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops6" />
+  <link rel="stylesheet" href="styles.css?v=ops7" />
   <script>
     (function () {
       function parentBase() {
@@ -616,11 +616,12 @@
           </label>
 
           <fieldset class="task-mode">
-            <legend>Уведомления оператору</legend>
+            <legend>Уведомления Quantum Panel</legend>
+            <p class="muted tight">Общий бот <strong>@Quantum_panel_bot</strong> для всего центра управления: Outreach, Console, звонки и сервисы. Ниже — каналы и события Outreach; подключение бота одно на весь Panel.</p>
             <div id="integrationsStatus" class="integrations-status muted tight"></div>
             <label class="field check">
               <input id="opsNotifyEnabled" type="checkbox" checked />
-              Push-уведомления (email / Telegram)
+              Push-уведомления Panel (email / Telegram)
             </label>
             <label class="field check">
               <input id="replyNotifyEnabled" type="checkbox" checked />
@@ -635,10 +636,10 @@
             </label>
             <label class="field check">
               <input id="opsNotifyTelegramEnabled" type="checkbox" />
-              Telegram push
+              Telegram push (Quantum Panel)
             </label>
             <div class="telegram-wizard">
-              <p class="muted tight">1) Создайте бота в @BotFather → вставьте token → «Проверить бота». 2) Напишите боту /start → «Найти chat id». 3) «Тест».</p>
+              <p class="muted tight">Подключение @Quantum_panel_bot: token → «Проверить бота» → /start в Telegram → «Найти chat id» → «Тест».</p>
               <div id="opsTelegramStatus" class="telegram-status muted tight"></div>
               <div id="opsTelegramBotInfo" class="telegram-bot-info hidden"></div>
               <div class="task-grid">
@@ -663,15 +664,15 @@
             </div>
             <label class="field check">
               <input id="opsNotifyOnReply" type="checkbox" checked />
-              Ответы (positive / human / negative)
+              Outreach: ответы (positive / human / negative)
             </label>
             <label class="field check">
               <input id="opsNotifyOnPause" type="checkbox" checked />
-              Mailbox pause (bounce spike)
+              Outreach: mailbox pause (bounce spike)
             </label>
             <label class="field check">
               <input id="opsNotifyOnCallback" type="checkbox" checked />
-              Заявки «Заказать звонок»
+              Outreach: заявки «Заказать звонок»
             </label>
             <div class="actions" style="margin-top:0.35rem">
               <button type="button" id="opsNotifySave" class="primary">Сохранить уведомления</button>
@@ -791,6 +792,6 @@
       </section>
     </main>
   </div>
-  <script src="app.js?v=ops6"></script>
+  <script src="app.js?v=ops7"></script>
 </body>
 </html>

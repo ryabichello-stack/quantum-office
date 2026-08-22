@@ -19,6 +19,8 @@ from core.paths import MODULES_DB
 
 logger = logging.getLogger("ava-outreach.ops_notify")
 
+PANEL_BRAND = os.getenv("PANEL_NOTIFY_BRAND", "Quantum Panel").strip() or "Quantum Panel"
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -137,12 +139,23 @@ def _notify_telegram(*, text: str, bot_token: str, chat_id: str) -> None:
     raise RuntimeError(f"telegram HTTP {exc.code}") from exc
 
 
+def _format_panel_subject(*, source: str, title: str) -> str:
+  src = (source or "Panel").strip() or "Panel"
+  return f"[{PANEL_BRAND} · {src}] {title}"
+
+
+def _format_panel_telegram(*, source: str, title: str, body: str) -> str:
+  src = (source or "Panel").strip() or "Panel"
+  return f"🔔 {PANEL_BRAND} · {src}\n\n{title}\n\n{body}".strip()
+
+
 def notify_ops_event(
   *,
   event: str,
   title: str,
   body: str,
   settings: Any = None,
+  source: str = "Outreach",
   dedup_key: str | None = None,
   dedup_minutes: int = 30,
   force_email: bool = False,
@@ -170,7 +183,7 @@ def notify_ops_event(
   ).strip()
 
   result: dict[str, Any] = {"ok": True, "event": event, "email": False, "telegram": False}
-  subject = f"[Outreach] {title}"
+  subject = _format_panel_subject(source=source, title=title)
 
   if email_on and to_addr:
     try:
@@ -182,7 +195,11 @@ def notify_ops_event(
 
   if tg_on and bot_token and chat_id:
     try:
-      _notify_telegram(text=f"{title}\n\n{body}", bot_token=bot_token, chat_id=chat_id)
+      _notify_telegram(
+        text=_format_panel_telegram(source=source, title=title, body=body),
+        bot_token=bot_token,
+        chat_id=chat_id,
+      )
       result["telegram"] = True
     except Exception as exc:  # noqa: BLE001
       logger.warning("ops notify telegram failed: %s", exc)
@@ -223,6 +240,7 @@ def notify_positive_reply(
     title=f"Ответ: {classification} — {from_email}",
     body=body,
     settings=settings,
+    source="Outreach",
     dedup_key=f"reply:{from_email}:{classification}",
     dedup_minutes=60,
   )
@@ -236,6 +254,7 @@ def notify_mailbox_paused(*, reason: str, settings: Any = None) -> dict[str, Any
     title="Ящик на паузе",
     body=f"Outreach приостановил отправку.\nПричина: {reason}\n\nПроверьте Anti-ban в настройках.",
     settings=settings,
+    source="Outreach",
     dedup_key=f"mailbox_pause:{reason[:120]}",
     dedup_minutes=120,
     force_telegram=True,
@@ -256,8 +275,31 @@ def notify_callback_request(
     title=f"Заявка на звонок: {fio or phone}",
     body=f"ФИО: {fio}\nТелефон: {phone}\nEmail CTA: {source_email or '—'}",
     settings=settings,
+    source="Outreach",
     dedup_key=f"callback:{phone}",
     dedup_minutes=15,
+  )
+
+
+def notify_panel_event(
+  *,
+  event: str,
+  title: str,
+  body: str,
+  source: str = "Console",
+  settings: Any = None,
+  dedup_key: str | None = None,
+  dedup_minutes: int = 30,
+) -> dict[str, Any]:
+  """Panel-wide operator alert (Console, telephony, services, etc.)."""
+  return notify_ops_event(
+    event=event,
+    title=title,
+    body=body,
+    settings=settings,
+    source=source,
+    dedup_key=dedup_key,
+    dedup_minutes=dedup_minutes,
   )
 
 

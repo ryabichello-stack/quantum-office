@@ -694,6 +694,171 @@
     openCall(callId).catch((e) => alert(e.message));
   }
 
+  function panelTgTokenValue() {
+    const raw = (($("panelTgToken") && $("panelTgToken").value) || "").trim();
+    if (raw && raw !== "••••••••") return raw;
+    return null;
+  }
+
+  async function outreachApi(path, opts = {}) {
+    return api("/api/outreach" + path, opts);
+  }
+
+  function renderPanelNotifyStatus(health) {
+    const box = $("panelNotifyStatus");
+    if (!box) return;
+    const tg = (health && health.telegram) || {};
+    if (tg.ready) {
+      box.className = "panel-notify-status ok tight";
+      box.textContent = "Telegram подключён — уведомления Quantum Panel активны.";
+    } else if (tg.token_configured && !tg.chat_id_configured) {
+      box.className = "panel-notify-status warn tight";
+      box.textContent = "Token сохранён. Напишите @Quantum_panel_bot /start и нажмите «Найти chat id».";
+    } else if (tg.token_configured) {
+      box.className = "panel-notify-status warn tight";
+      box.textContent = "Token есть. Укажите chat id и сохраните.";
+    } else {
+      box.className = "panel-notify-status muted tight";
+      box.textContent = "Бот не настроен. Вставьте token от @BotFather.";
+    }
+  }
+
+  async function loadPanelNotify() {
+    if (!$("panelNotifyBox")) return;
+    let health = {};
+    let settings = {};
+    try {
+      health = await outreachApi("/api/ops/health");
+      const data = await outreachApi("/api/settings");
+      settings = (data && data.settings) || {};
+    } catch (e) {
+      if ($("panelNotifyStatus")) {
+        $("panelNotifyStatus").className = "panel-notify-status bad tight";
+        $("panelNotifyStatus").textContent = "Outreach недоступен: " + (e.message || String(e));
+      }
+      return;
+    }
+    renderPanelNotifyStatus(health);
+    const tokenConfigured =
+      String(settings.OPS_NOTIFY_TELEGRAM_BOT_TOKEN_CONFIGURED || "").toLowerCase() === "true";
+    if ($("panelTgToken")) {
+      $("panelTgToken").value = tokenConfigured ? "••••••••" : "";
+      $("panelTgToken").placeholder = tokenConfigured
+        ? "•••••••• (сохранён)"
+        : "из @BotFather";
+    }
+    if ($("panelTgChat")) {
+      $("panelTgChat").value = settings.OPS_NOTIFY_TELEGRAM_CHAT_ID || "";
+    }
+  }
+
+  function bindPanelNotify() {
+    if (!$("panelNotifyBox") || $("panelNotifyBox").dataset.bound === "1") return;
+    $("panelNotifyBox").dataset.bound = "1";
+
+    if ($("panelTgVerify")) {
+      $("panelTgVerify").onclick = async () => {
+        const log = $("panelNotifyLog");
+        try {
+          const data = await outreachApi("/api/ops/telegram/verify", {
+            method: "POST",
+            body: JSON.stringify({ bot_token: panelTgTokenValue() }),
+          });
+          if (log) log.textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+          if (log) log.textContent = e.message || String(e);
+        }
+      };
+    }
+
+    if ($("panelTgDiscover")) {
+      $("panelTgDiscover").onclick = async () => {
+        const log = $("panelNotifyLog");
+        const selWrap = $("panelTgChatSelectWrap");
+        const sel = $("panelTgChatSelect");
+        try {
+          const data = await outreachApi("/api/ops/telegram/discover", {
+            method: "POST",
+            body: JSON.stringify({ bot_token: panelTgTokenValue() }),
+          });
+          if (log) {
+            log.textContent = data.hint
+              ? data.hint + "\n\n" + JSON.stringify(data, null, 2)
+              : JSON.stringify(data, null, 2);
+          }
+          const chats = data.chats || [];
+          if (sel && chats.length) {
+            sel.innerHTML =
+              '<option value="">— выберите чат —</option>' +
+              chats
+                .map(
+                  (c) =>
+                    `<option value="${esc(c.chat_id)}">${esc(c.title || c.chat_id)} (${esc(
+                      c.type || ""
+                    )})</option>`
+                )
+                .join("");
+            if (selWrap) selWrap.classList.remove("hidden");
+            if (chats.length === 1 && $("panelTgChat")) $("panelTgChat").value = chats[0].chat_id;
+          } else if (selWrap) {
+            selWrap.classList.add("hidden");
+          }
+        } catch (e) {
+          if (log) log.textContent = e.message || String(e);
+        }
+      };
+    }
+
+    if ($("panelTgChatSelect")) {
+      $("panelTgChatSelect").onchange = () => {
+        const v = $("panelTgChatSelect").value;
+        if (v && $("panelTgChat")) $("panelTgChat").value = v;
+      };
+    }
+
+    if ($("panelTgTest")) {
+      $("panelTgTest").onclick = async () => {
+        const log = $("panelNotifyLog");
+        try {
+          const data = await outreachApi("/api/ops/telegram/test", {
+            method: "POST",
+            body: JSON.stringify({
+              bot_token: panelTgTokenValue(),
+              chat_id: (($("panelTgChat") && $("panelTgChat").value) || "").trim(),
+            }),
+          });
+          if (log) log.textContent = JSON.stringify(data, null, 2);
+          await loadPanelNotify();
+        } catch (e) {
+          if (log) log.textContent = e.message || String(e);
+        }
+      };
+    }
+
+    if ($("panelTgSave")) {
+      $("panelTgSave").onclick = async () => {
+        const log = $("panelNotifyLog");
+        try {
+          const payload = {
+            OPS_NOTIFY_ENABLED: "true",
+            OPS_NOTIFY_TELEGRAM_ENABLED: "true",
+            OPS_NOTIFY_TELEGRAM_CHAT_ID: (($("panelTgChat") && $("panelTgChat").value) || "").trim(),
+          };
+          const tok = panelTgTokenValue();
+          if (tok) payload.OPS_NOTIFY_TELEGRAM_BOT_TOKEN = tok;
+          const data = await outreachApi("/api/settings", {
+            method: "PUT",
+            body: JSON.stringify({ settings: payload }),
+          });
+          if (log) log.textContent = JSON.stringify(data, null, 2);
+          await loadPanelNotify();
+        } catch (e) {
+          if (log) log.textContent = e.message || String(e);
+        }
+      };
+    }
+  }
+
   async function loadSecrets() {
     const s = await api("/api/secrets-checklist");
     $("secretsBox").innerHTML = `<table><thead><tr><th>Scope</th><th>Key</th><th></th><th>Hint</th></tr></thead><tbody>
@@ -710,12 +875,18 @@
   }
 
   async function refreshAll() {
+    bindPanelNotify();
     const errors = [];
     try {
       await loadStatus();
     } catch (e) {
       if ($("statusBox")) $("statusBox").textContent = e.message;
       errors.push(e);
+    }
+    try {
+      await loadPanelNotify();
+    } catch (e) {
+      if ($("panelNotifyLog")) $("panelNotifyLog").textContent = e.message || String(e);
     }
     const jobs = [
       ["scenario", loadScenario],
@@ -1027,7 +1198,7 @@
             status.textContent = "Не удалось загрузить Outreach UI";
           }
         };
-        frame.src = BASE + "/assets/outreach/index.html?v=ops6";
+        frame.src = BASE + "/assets/outreach/index.html?v=ops7";
       }
     }
   }

@@ -681,6 +681,14 @@ button.btn-quiet:hover {
   margin-bottom: 0.35rem;
 }
 .surface-tight table { margin: 0; }
+.panel-notify-box {
+  margin-top: 0.85rem;
+}
+.panel-notify-status.ok { color: #166534; }
+.panel-notify-status.warn { color: #92400e; }
+.panel-notify-status.bad { color: #991b1b; }
+.panel-notify-grid { margin-top: 0.45rem; }
+.panel-notify-box .tight { margin-top: 0.35rem; max-height: 8rem; overflow: auto; }
 .pult-details {
   margin-top: 1rem;
   padding: 0.65rem 0.8rem;

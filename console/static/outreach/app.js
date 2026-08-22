@@ -824,7 +824,7 @@
     const tg = (health && health.telegram) || {};
     if (tg.ready) {
       box.className = "telegram-status ok tight";
-      box.textContent = "Telegram подключён: token + chat id, push включён.";
+      box.textContent = "Quantum Panel: Telegram подключён (token + chat id).";
     } else if (tg.enabled && tg.token_configured && !tg.chat_id_configured) {
       box.className = "telegram-status warn tight";
       box.textContent = "Token сохранён. Напишите боту /start и нажмите «Найти chat id».";

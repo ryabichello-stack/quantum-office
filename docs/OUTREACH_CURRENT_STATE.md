@@ -73,13 +73,12 @@
 
 ### Уведомления (Layer E)
 
-Настройки → «Уведомления оператору»: email + опционально Telegram (`OPS_NOTIFY_TELEGRAM_*`).  
-Мастер в UI: **Проверить бота** → **Найти chat id** (после `/start` в Telegram) → **Отправить тест**.  
-API: `POST /api/ops/telegram/verify|discover|test`, статус в `GET /api/ops/health`.  
-Token в UI маскируется; пустое сохранение не затирает уже записанный token.  
-События: human/positive reply, mailbox pause, callback CTA. Dedup в `ops_notify_dedup`.
+**Quantum Panel** — общий канал оператору (email + @Quantum_panel_bot) для всего центра управления.  
+Настройка: **Пульт Console** или Outreach → «Уведомления Quantum Panel».  
+Сейчас события Outreach помечаются как `Quantum Panel · Outreach`; Console/звонки — через `notify_panel_event()`.  
+API: `POST /api/ops/telegram/verify|discover|test`, статус в `GET /api/ops/health`.
 
-Статика: `outreach/static` → `console/static/outreach` (`?v=ops6`).
+Статика: `outreach/static` → `console/static/outreach` (`?v=ops7`).
 
 ---
 

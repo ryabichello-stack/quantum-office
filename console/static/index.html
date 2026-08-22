@@ -88,6 +88,31 @@
       <main>
         <section id="tab-status" class="panel active">
           <div id="statusBox" class="surface">Загрузка…</div>
+          <div id="panelNotifyBox" class="surface panel-notify-box">
+            <div class="pult-section-head">
+              <h2 class="section-title">Уведомления Quantum Panel</h2>
+              <p class="muted tight">Общий Telegram-бот <strong>@Quantum_panel_bot</strong> для всего центра управления — Outreach, Console, звонки, сервисы.</p>
+            </div>
+            <div id="panelNotifyStatus" class="panel-notify-status muted tight">Загрузка…</div>
+            <div class="grid2 panel-notify-grid">
+              <label class="field">Bot token
+                <input id="panelTgToken" type="password" placeholder="из @BotFather" autocomplete="off" />
+              </label>
+              <label class="field">Chat id
+                <input id="panelTgChat" type="text" placeholder="ваш user id" />
+              </label>
+            </div>
+            <label class="field hidden" id="panelTgChatSelectWrap">Выбрать чат
+              <select id="panelTgChatSelect"><option value="">—</option></select>
+            </label>
+            <div class="actions wrap-actions">
+              <button type="button" id="panelTgVerify" class="btn-quiet">Проверить бота</button>
+              <button type="button" id="panelTgDiscover" class="btn-quiet">Найти chat id</button>
+              <button type="button" id="panelTgTest" class="btn-quiet">Тест</button>
+              <button type="button" id="panelTgSave" class="primary">Сохранить</button>
+            </div>
+            <pre id="panelNotifyLog" class="msg codeblock tight"></pre>
+          </div>
         </section>
 
         <section id="tab-outreach" class="panel panel-flush">
