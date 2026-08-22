@@ -437,8 +437,13 @@ def telegram_set_profile_photo(token: str, jpg_path: str) -> dict[str, Any]:
   return {"ok": True}
 
 
-def telegram_apply_branding(token: str, *, avatar_jpg: str | None = None) -> dict[str, Any]:
-  """Set bot name, RU descriptions, and profile photo via Bot API."""
+def telegram_apply_branding(
+  token: str,
+  *,
+  avatar_jpg: str | None = None,
+  include_profile_photo: bool = True,
+) -> dict[str, Any]:
+  """Set bot name, RU descriptions, and optionally profile photo via Bot API."""
   tok = (token or "").strip()
   if not tok:
     return {"ok": False, "error": "bot_token_required"}
@@ -485,15 +490,18 @@ def telegram_apply_branding(token: str, *, avatar_jpg: str | None = None) -> dic
     out["error"] = desc.get("error") or "set_description_failed"
     return out
 
-  jpg = resolve_avatar_jpg(avatar_jpg)
-  if jpg:
-    photo = telegram_set_profile_photo(tok, str(jpg))
-    out["steps"]["profile_photo"] = photo
-    if not photo.get("ok"):
-      out["ok"] = False
-      out["error"] = photo.get("error") or "set_profile_photo_failed"
+  if include_profile_photo:
+    jpg = resolve_avatar_jpg(avatar_jpg)
+    if jpg:
+      photo = telegram_set_profile_photo(tok, str(jpg))
+      out["steps"]["profile_photo"] = photo
+      if not photo.get("ok"):
+        out["ok"] = False
+        out["error"] = photo.get("error") or "set_profile_photo_failed"
+    else:
+      out["steps"]["profile_photo"] = {"ok": False, "skipped": True, "error": "avatar_jpg_not_found"}
   else:
-    out["steps"]["profile_photo"] = {"ok": False, "skipped": True, "error": "avatar_jpg_not_found"}
+    out["steps"]["profile_photo"] = {"ok": True, "skipped": True, "reason": "include_profile_photo_false"}
 
   return out
 

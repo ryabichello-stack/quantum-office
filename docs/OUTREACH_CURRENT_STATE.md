@@ -76,9 +76,10 @@
 **Quantum Panel** — общий канал оператору (email + @Quantum_panel_bot) для всего центра управления.  
 Настройка: **Пульт Console** или Outreach → «Уведомления Quantum Panel».  
 Сейчас события Outreach помечаются как `Quantum Panel · Outreach`; Console/звонки — через `notify_panel_event()`.  
-API: `POST /api/ops/telegram/verify|discover|test`, статус в `GET /api/ops/health`.
+API: `POST /api/ops/telegram/verify|discover|test|apply-branding`, статус в `GET /api/ops/health`.  
+`apply-branding`: `include_profile_photo=false` при сохранении настроек; `true` — кнопка «Применить брендинг».
 
-Статика: `outreach/static` → `console/static/outreach` (`?v=ops7`).
+Статика: `outreach/static` → `console/static/outreach` (`?v=ops8`).
 
 ---
 

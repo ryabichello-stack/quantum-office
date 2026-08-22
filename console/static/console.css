@@ -688,6 +688,17 @@ button.btn-quiet:hover {
 .panel-notify-status.warn { color: #92400e; }
 .panel-notify-status.bad { color: #991b1b; }
 .panel-notify-grid { margin-top: 0.45rem; }
+.panel-tg-brand-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin: 0.55rem 0 0.35rem;
+}
+.panel-tg-brand-preview img {
+  border-radius: 12px;
+  flex: 0 0 auto;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+}
 .panel-notify-box .tight { margin-top: 0.35rem; max-height: 8rem; overflow: auto; }
 .pult-details {
   margin-top: 1rem;

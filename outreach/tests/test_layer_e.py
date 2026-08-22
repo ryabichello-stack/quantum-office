@@ -183,6 +183,16 @@ def test_telegram_apply_branding_mocked(mock_api, mock_jpg):
         assert mock_photo.called
 
 
+@patch("ops_notify._telegram_api")
+def test_telegram_apply_branding_skips_photo(mock_api):
+    mock_api.return_value = {"ok": True, "result": True}
+    with patch("ops_notify.telegram_set_profile_photo") as mock_photo:
+        out = telegram_apply_branding("tok", include_profile_photo=False)
+        assert out.get("ok") is True
+        mock_photo.assert_not_called()
+        assert out["steps"]["profile_photo"]["skipped"] is True
+
+
 def test_runtime_settings_masked_token_not_overwritten():
     with tempfile.TemporaryDirectory() as tmp:
         rt = RuntimeSettings(Path(tmp) / "s.db")

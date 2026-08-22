@@ -2418,7 +2418,10 @@
           try {
             branding = await api("/api/ops/telegram/apply-branding", {
               method: "POST",
-              body: JSON.stringify({ bot_token: currentTelegramToken() }),
+              body: JSON.stringify({
+                bot_token: currentTelegramToken(),
+                include_profile_photo: false,
+              }),
             });
           } catch (brandErr) {
             branding = { error: String(brandErr) };
@@ -2438,7 +2441,10 @@
         try {
           const data = await api("/api/ops/telegram/apply-branding", {
             method: "POST",
-            body: JSON.stringify({ bot_token: currentTelegramToken() }),
+            body: JSON.stringify({
+              bot_token: currentTelegramToken(),
+              include_profile_photo: true,
+            }),
           });
           if (log) log.textContent = JSON.stringify(data, null, 2);
         } catch (e) {

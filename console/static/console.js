@@ -725,6 +725,10 @@
 
   async function loadPanelNotify() {
     if (!$("panelNotifyBox")) return;
+    const preview = $("panelTgAvatarPreview");
+    if (preview) {
+      preview.src = (window.__QC_BASE__ || "") + "/assets/brand/quantum-panel-bot-512.png?v=ops8";
+    }
     let health = {};
     let settings = {};
     try {
@@ -841,7 +845,10 @@
         try {
           const data = await outreachApi("/api/ops/telegram/apply-branding", {
             method: "POST",
-            body: JSON.stringify({ bot_token: panelTgTokenValue() }),
+            body: JSON.stringify({
+              bot_token: panelTgTokenValue(),
+              include_profile_photo: true,
+            }),
           });
           if (log) log.textContent = JSON.stringify(data, null, 2);
         } catch (e) {
@@ -869,7 +876,10 @@
           try {
             brand = await outreachApi("/api/ops/telegram/apply-branding", {
               method: "POST",
-              body: JSON.stringify({ bot_token: tok }),
+              body: JSON.stringify({
+                bot_token: tok,
+                include_profile_photo: false,
+              }),
             });
           } catch (brandErr) {
             brand = { error: String(brandErr) };
@@ -1222,7 +1232,7 @@
             status.textContent = "Не удалось загрузить Outreach UI";
           }
         };
-        frame.src = BASE + "/assets/outreach/index.html?v=ops7";
+        frame.src = BASE + "/assets/outreach/index.html?v=ops8";
       }
     }
   }

@@ -944,6 +944,7 @@ def api_telegram_test(body: TelegramTestBody) -> dict[str, Any]:
 class TelegramBrandingBody(BaseModel):
     bot_token: str | None = None
     avatar_jpg: str | None = None
+    include_profile_photo: bool = True
 
 
 @app.post("/api/ops/telegram/apply-branding", dependencies=[Depends(require_ui_auth)])
@@ -952,7 +953,11 @@ def api_telegram_apply_branding(body: TelegramBrandingBody | None = None) -> dic
 
     body = body or TelegramBrandingBody()
     tok = resolve_bot_token(body.bot_token, _rt())
-    out = telegram_apply_branding(tok, avatar_jpg=body.avatar_jpg)
+    out = telegram_apply_branding(
+        tok,
+        avatar_jpg=body.avatar_jpg,
+        include_profile_photo=body.include_profile_photo,
+    )
     if not out.get("ok"):
         raise HTTPException(status_code=400, detail=out.get("error") or "apply_branding_failed")
     return out
