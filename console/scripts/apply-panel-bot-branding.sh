@@ -6,6 +6,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IMG="${1:-$ROOT/static/brand/quantum-panel-bot-512.png}"
 LOCKUP="${ROOT}/static/brand/quantum-panel-bot-lockup-512.png"
 
+if [[ -f "$ROOT/scripts/render-panel-bot-avatar.py" ]]; then
+  python3 "$ROOT/scripts/render-panel-bot-avatar.py" 2>/dev/null || true
+fi
+
 if [[ -z "${BOT_TOKEN:-}" ]]; then
   if [[ -f /opt/ava-outreach/data/settings.db ]]; then
     BOT_TOKEN=$(sqlite3 /opt/ava-outreach/data/settings.db \
@@ -42,13 +46,13 @@ if [[ -f "$IMG" && -n "${NOTIFY_CHAT_ID:-}" ]]; then
   curl -fsS -X POST "$API/sendPhoto" \
     -F "chat_id=${NOTIFY_CHAT_ID}" \
     -F "photo=@${IMG}" \
-    --form-string "caption=Quantum Panel — аватар (символ, без текста).\n\n@BotFather → /setuserpic → @Quantum_panel_bot → это фото.\n\nИмя «Quantum Panel» Telegram покажет рядом с иконкой." \
+    --form-string "caption=Quantum Panel — аватар (фирменная орбита Quantum Labs + надпись).\n\n@BotFather → /setuserpic → @Quantum_panel_bot → это фото." \
     >/dev/null
   if [[ -f "$LOCKUP" ]]; then
     curl -fsS -X POST "$API/sendPhoto" \
       -F "chat_id=${NOTIFY_CHAT_ID}" \
       -F "photo=@${LOCKUP}" \
-      --form-string "caption=Полный lockup с типографикой (для превью / документов)." \
+      --form-string "caption=Альтернатива с большими полями — для документов." \
       >/dev/null
   fi
   echo "OK: logo sent to chat ${NOTIFY_CHAT_ID}"
