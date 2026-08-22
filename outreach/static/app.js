@@ -893,7 +893,15 @@
         )
         .join("");
       if (body) {
+        const dq = data.data_quality || {};
+        const dqChecks = (dq.checks || [])
+          .map((c) => `<li class="${c.ok ? "ok" : "warn"}">${escapeHtml(c.label)}</li>`)
+          .join("");
         body.innerHTML = `
+          <section class="peel-quality">
+            <h3>Data quality · ${escapeHtml(String(dq.score ?? "—"))}%</h3>
+            <ul class="dq-list">${dqChecks || "<li class='muted'>—</li>"}</ul>
+          </section>
           <div class="company-card-grid">
             <section><h3>Контакты</h3>${(data.contacts || []).length ? `<ul>${(data.contacts || [])
               .map((r) => `<li>${escapeHtml(r.display_name || "")} · ${escapeHtml(r.primary_email || "")}</li>`)
@@ -1338,6 +1346,39 @@
     return items;
   }
 
+  function outboxSelectedIds() {
+    return Array.from(document.querySelectorAll(".outbox-pick:checked")).map((el) =>
+      Number(el.getAttribute("data-id"))
+    );
+  }
+
+  function updateOutboxBulkBar() {
+    const ids = outboxSelectedIds();
+    const bar = $("outboxBulkBar");
+    const count = $("outboxBulkCount");
+    if (!bar) return;
+    if (ids.length) {
+      bar.classList.remove("hidden");
+      if (count) count.textContent = `Выбрано: ${ids.length}`;
+    } else {
+      bar.classList.add("hidden");
+    }
+  }
+
+  async function runOutboxBulk(action) {
+    const ids = outboxSelectedIds();
+    if (!ids.length) return;
+    const label = { skip: "пропустить", stop: "остановить цепочки", send_now: "отправить сейчас" }[action];
+    if (!confirm(`${label} для ${ids.length} строк?`)) return;
+    const data = await api("/api/outbox/bulk", {
+      method: "POST",
+      body: JSON.stringify({ ids, action }),
+    });
+    logAction(data);
+    await loadOutbox();
+    updateOutboxBulkBar();
+  }
+
   function outboxRowActions(r) {
     if (r.status !== "pending") return `<span class="muted">—</span>`;
     const email = escapeHtml(r.email || "");
@@ -1380,6 +1421,11 @@
         ? filtered
             .map(
               (r) => `<tr>
+          <td class="cell-check">${
+            r.status === "pending"
+              ? `<input type="checkbox" class="outbox-pick" data-id="${r.id}" />`
+              : `<span class="muted">·</span>`
+          }</td>
           <td>${r.id}</td>
           <td class="cell-wide">${escapeHtml(r.email)}</td>
           <td class="cell-wide">${escapeHtml(r.contact_name || r.director_greeting || "")}</td>
@@ -1393,8 +1439,9 @@
         </tr>`
             )
             .join("")
-        : `<tr><td colspan="10" class="muted">Нет строк по фильтру</td></tr>`;
+        : `<tr><td colspan="11" class="muted">Нет строк по фильтру</td></tr>`;
     }
+    updateOutboxBulkBar();
   }
 
   function captureBatchMeta(result) {
@@ -2112,6 +2159,11 @@
       });
     }
     if ($("outboxBody")) {
+      $("outboxBody").addEventListener("change", (ev) => {
+        if (ev.target && ev.target.classList && ev.target.classList.contains("outbox-pick")) {
+          updateOutboxBulkBar();
+        }
+      });
       $("outboxBody").addEventListener("click", async (ev) => {
         const btn = ev.target.closest("button[data-action]");
         if (!btn) return;
@@ -2145,6 +2197,36 @@
             return;
           }
           await loadOutbox();
+        } catch (e) {
+          logAction(String(e));
+        }
+      });
+    }
+    if ($("outboxSelectAll")) {
+      $("outboxSelectAll").addEventListener("change", (ev) => {
+        const on = ev.target.checked;
+        document.querySelectorAll(".outbox-pick").forEach((el) => {
+          el.checked = on;
+        });
+        updateOutboxBulkBar();
+      });
+    }
+    ["outboxBulkSend", "outboxBulkSkip", "outboxBulkStop"].forEach((id, idx) => {
+      const btn = $(id);
+      const action = ["send_now", "skip", "stop"][idx];
+      if (btn) {
+        btn.addEventListener("click", () => runOutboxBulk(action).catch((e) => logAction(String(e))));
+      }
+    });
+
+    if ($("opsOncallTest")) {
+      $("opsOncallTest").addEventListener("click", async () => {
+        try {
+          const data = await api("/api/ops/oncall/test", {
+            method: "POST",
+            body: JSON.stringify({ message: "Quantum Panel · тест on-call webhook" }),
+          });
+          logAction(data);
         } catch (e) {
           logAction(String(e));
         }
@@ -2696,7 +2778,8 @@
       $("companyPeelBackdrop").addEventListener("click", closeCompanyCard);
     }
     document.addEventListener("keydown", (ev) => {
-      if (ev.key === "Escape") closeCompanyCard();
+      const peel = $("companyPeelAway");
+      if (ev.key === "Escape" && peel && peel.classList.contains("is-open")) closeCompanyCard();
     });
 
     $("antibanSave").addEventListener("click", async () => {

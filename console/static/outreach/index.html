@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops10" />
+  <link rel="stylesheet" href="styles.css?v=ops11" />
   <script>
     (function () {
       function parentBase() {
@@ -318,10 +318,17 @@
             </label>
           </div>
           <p class="muted tight" id="outboxMeta"></p>
+          <div id="outboxBulkBar" class="bulk-bar hidden">
+            <span id="outboxBulkCount" class="muted tight">Выбрано: 0</span>
+            <button type="button" id="outboxBulkSend" class="btn-quiet">Сейчас</button>
+            <button type="button" id="outboxBulkSkip" class="btn-quiet">Skip</button>
+            <button type="button" id="outboxBulkStop" class="btn-quiet">Стоп</button>
+          </div>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
+                  <th class="cell-check"><input type="checkbox" id="outboxSelectAll" title="Выбрать pending" /></th>
                   <th>ID</th><th>Email</th><th>Кому</th><th>Компания</th><th>Город</th><th>TZ</th><th>Окно</th><th>Статус</th><th>Отправлено</th><th>Действия</th>
                 </tr>
               </thead>
@@ -689,6 +696,7 @@
               <label class="field">Webhook URL
                 <input id="opsNotifyOncallUrl" type="url" placeholder="https://hooks.example/oncall" autocomplete="off" />
               </label>
+              <button type="button" id="opsOncallTest" class="btn-quiet">Тест webhook</button>
             </details>
             <div class="actions" style="margin-top:0.35rem">
               <button type="button" id="opsNotifySave" class="primary">Сохранить уведомления</button>
@@ -825,6 +833,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=ops10"></script>
+  <script src="app.js?v=ops11"></script>
 </body>
 </html>

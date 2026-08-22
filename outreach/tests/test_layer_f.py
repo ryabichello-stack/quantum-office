@@ -67,6 +67,40 @@ def test_consent_export_rows():
 
 @patch("ops_notify._notify_store")
 @patch("ops_notify._notify_oncall_webhook")
+def test_notify_oncall_test(mock_hook, mock_store):
+    settings = MagicMock()
+    settings.get.side_effect = lambda k, d="": {
+        "OPS_NOTIFY_ONCALL_ENABLED": "true",
+        "OPS_NOTIFY_ONCALL_WEBHOOK_URL": "https://hooks.example/oncall",
+    }.get(k, d)
+    from ops_notify import notify_oncall_test
+
+    out = notify_oncall_test(settings, message="ping")
+    assert out.get("ok") is True
+    mock_hook.assert_called_once()
+
+
+def test_build_company_card_has_data_quality():
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        clients = ClientsStore(tmp_path / "clients.db")
+        outbox = OutboxStore(tmp_path / "outbox.db")
+        sequences = SequenceStore(tmp_path / "sequences.db")
+        consent = ConsentLedgerStore(tmp_path / "consent.db")
+        _seed_company(clients)
+        out = build_company_card(
+            "42",
+            clients=clients,
+            outbox=outbox,
+            sequences=sequences,
+            consent=consent,
+        )
+        assert "data_quality" in out
+        assert "score" in out["data_quality"]
+
+
+@patch("ops_notify._notify_store")
+@patch("ops_notify._notify_oncall_webhook")
 def test_notify_ops_event_oncall_webhook(mock_oncall, mock_store):
     mock_store.return_value.should_send.return_value = True
     settings = MagicMock()

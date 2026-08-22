@@ -29,7 +29,7 @@
 | **C** | ✅ | Праздники РФ, OOO-pause, TZ fairness, auto-geo после sync |
 | **D** | ✅ | Next actions + alerts, campaign collapse, CI pytest+sync |
 | **E** | ✅ | Push notify (email/Telegram), step analytics, consent ledger |
-| **F** | 🟡 | Company drill-down, on-call webhook, consent CSV export |
+| **F** | 🟡 | Bulk queue, company card + data quality, on-call webhook test, consent CSV |
 | **F+** | 🔲 | Company data quality score, bulk queue actions, legal hold |
 
 ---

@@ -262,6 +262,26 @@ def notify_ops_event(
   return result
 
 
+def notify_oncall_test(settings: Any = None, *, message: str | None = None) -> dict[str, Any]:
+  url = _cfg(settings, "OPS_NOTIFY_ONCALL_WEBHOOK_URL", "").strip()
+  if not _cfg_bool(settings, "OPS_NOTIFY_ONCALL_ENABLED", bool(url)):
+    return {"ok": False, "error": "oncall_disabled"}
+  if not url:
+    return {"ok": False, "error": "oncall_webhook_required"}
+  text = (message or "").strip() or "Тестовый алерт Quantum Panel (on-call webhook)."
+  try:
+    _notify_oncall_webhook(
+      url=url,
+      event="oncall_test",
+      source="Panel",
+      title="On-call test",
+      body=text,
+    )
+  except Exception as exc:  # noqa: BLE001
+    return {"ok": False, "error": str(exc)[:300]}
+  return {"ok": True}
+
+
 def notify_positive_reply(
   *,
   classification: str,

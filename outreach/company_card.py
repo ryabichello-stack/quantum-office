@@ -105,6 +105,30 @@ def _consent_for_company(consent: ConsentLedgerStore, company_id: str) -> list[d
     return [i for i in items if (i.get("company_id") or "").strip() == company_id]
 
 
+def _data_quality(
+    company: dict[str, Any],
+    *,
+    outbox_rows: list[dict[str, Any]],
+    seq_rows: list[dict[str, Any]],
+    consent_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    checks: list[dict[str, Any]] = []
+
+    def add(key: str, label: str, ok: bool) -> None:
+        checks.append({"key": key, "label": label, "ok": bool(ok)})
+
+    add("timezone", "Timezone", bool(company.get("timezone")))
+    add("director", "ФИО / greeting", bool(company.get("director_greeting") or company.get("director_name")))
+    add("email", "Primary email", bool(company.get("primary_email")))
+    add("inn", "ИНН", bool(company.get("inn")))
+    add("outbox", "В outbox", bool(outbox_rows))
+    add("consent_clean", "Нет DNC в consent", not any(
+        (r.get("status") or "") in ("unsubscribed", "bounced", "manual_dnc") for r in consent_rows
+    ))
+    score = round(100 * sum(1 for c in checks if c["ok"]) / max(len(checks), 1))
+    return {"score": score, "checks": checks}
+
+
 def build_company_card(
     company_id: str,
     *,
@@ -131,24 +155,32 @@ def build_company_card(
     seq_rows = _sequences_for_company(sequences, cid)
     consent_rows = _consent_for_company(consent, cid)
 
+    company_view = {
+        "bitrix_id": cid,
+        "title": company.get("title") or "",
+        "inn": company.get("inn") or "",
+        "ogrn": company.get("ogrn") or "",
+        "city": company.get("city") or "",
+        "region": company.get("region") or "",
+        "timezone": company.get("timezone") or company.get("timezone_raw") or "",
+        "director_name": company.get("director_name") or "",
+        "director_greeting": company.get("director_greeting") or "",
+        "primary_email": company.get("primary_email") or "",
+        "emails": company.get("emails") or [],
+        "phones": company.get("phones") or [],
+        "synced_at": company.get("synced_at") or "",
+    }
+
     return {
         "ok": True,
         "company_id": cid,
-        "company": {
-            "bitrix_id": cid,
-            "title": company.get("title") or "",
-            "inn": company.get("inn") or "",
-            "ogrn": company.get("ogrn") or "",
-            "city": company.get("city") or "",
-            "region": company.get("region") or "",
-            "timezone": company.get("timezone") or company.get("timezone_raw") or "",
-            "director_name": company.get("director_name") or "",
-            "director_greeting": company.get("director_greeting") or "",
-            "primary_email": company.get("primary_email") or "",
-            "emails": company.get("emails") or [],
-            "phones": company.get("phones") or [],
-            "synced_at": company.get("synced_at") or "",
-        },
+        "company": company_view,
+        "data_quality": _data_quality(
+            company_view,
+            outbox_rows=outbox_rows,
+            seq_rows=seq_rows,
+            consent_rows=consent_rows,
+        ),
         "contacts": _company_contacts(clients, cid),
         "emails": _company_emails(clients, cid),
         "outbox": outbox_rows,

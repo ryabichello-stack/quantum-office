@@ -10,7 +10,7 @@ import secrets
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
@@ -861,6 +861,8 @@ def api_ops_health() -> dict[str, Any]:
     tg_token = (rt.get("OPS_NOTIFY_TELEGRAM_BOT_TOKEN", "") or "").strip()
     tg_chat = (rt.get("OPS_NOTIFY_TELEGRAM_CHAT_ID", "") or "").strip()
     tg_enabled = rt.get_bool("OPS_NOTIFY_TELEGRAM_ENABLED", False)
+    oncall_url = (rt.get("OPS_NOTIFY_ONCALL_WEBHOOK_URL", "") or "").strip()
+    oncall_enabled = rt.get_bool("OPS_NOTIFY_ONCALL_ENABLED", bool(oncall_url))
     return {
         "ok": True,
         "smtp_configured": smtp_configured(),
@@ -877,6 +879,11 @@ def api_ops_health() -> dict[str, Any]:
             "token_configured": bool(tg_token),
             "chat_id_configured": bool(tg_chat),
             "ready": tg_enabled and bool(tg_token) and bool(tg_chat),
+        },
+        "oncall": {
+            "enabled": oncall_enabled,
+            "webhook_configured": bool(oncall_url),
+            "ready": oncall_enabled and bool(oncall_url),
         },
         "ops_notify": {
             "enabled": rt.get_bool("OPS_NOTIFY_ENABLED", True),
@@ -963,6 +970,21 @@ def api_telegram_apply_branding(body: TelegramBrandingBody | None = None) -> dic
     return out
 
 
+class OncallTestBody(BaseModel):
+    message: str | None = None
+
+
+@app.post("/api/ops/oncall/test", dependencies=[Depends(require_ui_auth)])
+def api_oncall_test(body: OncallTestBody | None = None) -> dict[str, Any]:
+    from ops_notify import notify_oncall_test
+
+    body = body or OncallTestBody()
+    out = notify_oncall_test(_rt(), message=body.message)
+    if not out.get("ok"):
+        raise HTTPException(status_code=400, detail=out.get("error") or "oncall_test_failed")
+    return out
+
+
 @app.get("/api/outbox", dependencies=[Depends(require_ui_auth)])
 def api_outbox(
     status: str | None = None,
@@ -1031,6 +1053,66 @@ def api_outbox_patch(row_id: int, body: StatusBody) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="not found")
     row = _store().get_row(row_id)
     return {"ok": True, "item": row.__dict__ if row else None}
+
+
+class OutboxBulkBody(BaseModel):
+    ids: list[int] = Field(..., min_length=1, max_length=50)
+    action: Literal["skip", "stop", "send_now"]
+
+
+@app.post("/api/outbox/bulk", dependencies=[Depends(require_ui_auth)])
+def api_outbox_bulk(body: OutboxBulkBody) -> dict[str, Any]:
+    from modules.sequences import SequenceStore
+
+    store = _store()
+    seq = SequenceStore()
+    results: list[dict[str, Any]] = []
+    send_emails: list[str] = []
+
+    for row_id in body.ids:
+        row = store.get_row(int(row_id))
+        if not row:
+            results.append({"id": row_id, "ok": False, "error": "not_found"})
+            continue
+        if body.action == "skip":
+            ok = store.set_status(row.id, "skipped")
+            results.append({"id": row.id, "ok": ok, "action": "skip"})
+        elif body.action == "stop":
+            n = seq.stop(
+                email=row.email,
+                company_id=row.company_id or None,
+                reason="manual_bulk",
+            )
+            results.append({"id": row.id, "ok": True, "action": "stop", "stopped": n})
+        elif body.action == "send_now":
+            if row.status == "pending" and row.email:
+                send_emails.append(row.email)
+                results.append({"id": row.id, "ok": True, "action": "send_now", "queued": row.email})
+            else:
+                results.append({"id": row.id, "ok": False, "error": "not_pending"})
+
+    sent: list[dict[str, Any]] = []
+    if body.action == "send_now" and send_emails:
+        bitrix = _bitrix_or_none()
+        try:
+            for email in send_emails[:50]:
+                out = send_batch(
+                    store,
+                    limit=1,
+                    dry_run=False,
+                    bitrix=bitrix,
+                    only_email=email,
+                    settings=_rt(),
+                    tracking=_tracking_mod.store,
+                    deliverability=_deliver_mod.store,
+                )
+                sent.append({"email": email, "ok": bool(out.get("ok")), "detail": out})
+        finally:
+            if bitrix:
+                bitrix.close()
+
+    ok_n = sum(1 for r in results if r.get("ok"))
+    return {"ok": ok_n > 0, "action": body.action, "results": results, "sent": sent}
 
 
 @app.get("/api/replies", dependencies=[Depends(require_ui_auth)])

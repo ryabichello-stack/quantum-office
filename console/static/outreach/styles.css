@@ -1188,6 +1188,22 @@ button.small { height: 26px; font-size: 0.72rem; padding: 0 0.45rem; }
   flex: 0 0 auto;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
 }
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0.35rem 0 0.5rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 10px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+}
+.bulk-bar.hidden { display: none; }
+.cell-check { width: 2rem; text-align: center; }
+.peel-quality { margin-bottom: 0.85rem; }
+.dq-list { margin: 0.25rem 0 0; padding-left: 1.1rem; font-size: 0.88rem; }
+.dq-list .ok { color: #166534; }
+.dq-list .warn { color: #92400e; }
 .peel-away {
   position: fixed;
   inset: 0;
