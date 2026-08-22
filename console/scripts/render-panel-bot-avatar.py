@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render Quantum Panel bot avatar from official Quantum Labs brand assets."""
+"""Render Quantum Panel bot avatar — dark premium lockup from official brand mark."""
 
 from __future__ import annotations
 
@@ -15,47 +15,114 @@ MARK_SRC = BRAND / "logo-square.jpg"
 
 FONT_REG = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+FONT_LIGHT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
-BG = "#fafbfc"
-INK = "#0f1b24"
-ACCENT = "#e85a1a"
 SIZE = 512
+BG_TOP = (11, 18, 32)
+BG_BOTTOM = (5, 8, 16)
+WHITE = (245, 248, 255)
+SILVER = (168, 178, 196)
+
+
+def _dark_canvas() -> Image.Image:
+    canvas = Image.new("RGB", (SIZE, SIZE))
+    draw = ImageDraw.Draw(canvas)
+    for y in range(SIZE):
+        t = y / max(SIZE - 1, 1)
+        color = tuple(int(BG_TOP[i] * (1 - t) + BG_BOTTOM[i] * t) for i in range(3))
+        draw.line([(0, y), (SIZE, y)], fill=color)
+    return canvas
+
+
+def _add_glow(canvas: Image.Image, *, cx: int, cy: int, rx: int, ry: int) -> Image.Image:
+    layer = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    draw.ellipse(
+        (cx - rx, cy - ry, cx + rx, cy + ry),
+        fill=(72, 118, 255, 28),
+    )
+    draw.ellipse(
+        (cx - int(rx * 0.72), cy - int(ry * 0.72), cx + int(rx * 0.72), cy + int(ry * 0.72)),
+        fill=(140, 92, 255, 18),
+    )
+    base = canvas.convert("RGBA")
+    return Image.alpha_composite(base, layer).convert("RGB")
+
+
+def _white_mark(size_px: int) -> Image.Image:
+    """Official orbit-Q from logo-square → crisp white on transparent."""
+    src = Image.open(MARK_SRC).convert("L")
+    src = src.resize((size_px, size_px), Image.Resampling.LANCZOS)
+    out = Image.new("RGBA", (size_px, size_px), (0, 0, 0, 0))
+    sp = src.load()
+    op = out.load()
+    for y in range(size_px):
+        for x in range(size_px):
+            v = sp[x, y]
+            if v > 210:
+                continue
+            alpha = min(255, int(255 - v * 0.92))
+            op[x, y] = (*WHITE, alpha)
+    return out
 
 
 def _paste_mark(canvas: Image.Image, *, mark_px: int, top: int) -> None:
-    mark = Image.open(MARK_SRC).convert("RGBA")
-    mark = mark.resize((mark_px, mark_px), Image.Resampling.LANCZOS)
+    mark = _white_mark(mark_px)
     x = (SIZE - mark_px) // 2
-    canvas.paste(mark, (x, top), mark)
+    base = canvas.convert("RGBA")
+    base.paste(mark, (x, top), mark)
+    canvas.paste(base.convert("RGB"))
 
 
-def _draw_wordmark(draw: ImageDraw.ImageDraw, *, y: int, size: int) -> None:
-    font_q = ImageFont.truetype(FONT_REG, size)
-    font_p = ImageFont.truetype(FONT_BOLD, size)
-    q = "Quantum"
-    p = " Panel"
-    q_w = draw.textlength(q, font=font_q)
-    p_w = draw.textlength(p, font=font_p)
-    x = (SIZE - q_w - p_w) / 2
-    draw.text((x, y), q, fill=INK, font=font_q)
-    draw.text((x + q_w, y), p, fill=ACCENT, font=font_p)
+def _draw_spaced(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    *,
+    y: int,
+    font: ImageFont.FreeTypeFont,
+    fill: tuple[int, int, int],
+    tracking: float,
+) -> None:
+    chars = list(text)
+    widths = [draw.textlength(c, font=font) for c in chars]
+    total = sum(widths) + tracking * max(len(chars) - 1, 0)
+    x = (SIZE - total) / 2
+    for i, ch in enumerate(chars):
+        draw.text((x, y), ch, fill=fill, font=font)
+        x += widths[i] + tracking
+
+
+def _draw_lockup(draw: ImageDraw.ImageDraw) -> None:
+    font_quantum = ImageFont.truetype(FONT_BOLD, 46)
+    font_panel = ImageFont.truetype(FONT_LIGHT, 22)
+    _draw_spaced(draw, "QUANTUM", y=352, font=font_quantum, fill=WHITE, tracking=3.5)
+    _draw_spaced(draw, "PANEL", y=408, font=font_panel, fill=SILVER, tracking=14)
 
 
 def render_icon() -> None:
-    """Avatar with wordmark — readable in Telegram chat list."""
-    canvas = Image.new("RGB", (SIZE, SIZE), BG)
-    _paste_mark(canvas, mark_px=240, top=72)
+    """Telegram avatar — reference layout, official orbit mark."""
+    canvas = _dark_canvas()
+    mark_px, top = 196, 108
+    cy = top + mark_px // 2
+    canvas = _add_glow(canvas, cx=SIZE // 2, cy=cy, rx=118, ry=108)
+    _paste_mark(canvas, mark_px=mark_px, top=top)
     draw = ImageDraw.Draw(canvas)
-    _draw_wordmark(draw, y=338, size=38)
+    _draw_lockup(draw)
     canvas.save(OUT_ICON, optimize=True)
 
 
 def render_lockup() -> None:
-    """Spacious variant for docs / marketing."""
-    canvas = Image.new("RGB", (SIZE, SIZE), BG)
-    _paste_mark(canvas, mark_px=200, top=96)
+    """Slightly larger mark for docs / previews."""
+    canvas = _dark_canvas()
+    mark_px, top = 220, 88
+    cy = top + mark_px // 2
+    canvas = _add_glow(canvas, cx=SIZE // 2, cy=cy, rx=130, ry=118)
+    _paste_mark(canvas, mark_px=mark_px, top=top)
     draw = ImageDraw.Draw(canvas)
-    _draw_wordmark(draw, y=348, size=32)
+    font_quantum = ImageFont.truetype(FONT_BOLD, 42)
+    font_panel = ImageFont.truetype(FONT_LIGHT, 20)
+    _draw_spaced(draw, "QUANTUM", y=348, font=font_quantum, fill=WHITE, tracking=3)
+    _draw_spaced(draw, "PANEL", y=400, font=font_panel, fill=SILVER, tracking=12)
     canvas.save(OUT_LOCKUP, optimize=True)
 
 
