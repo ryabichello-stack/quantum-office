@@ -108,9 +108,26 @@ API: `POST /api/ops/notify`, `POST /api/ops/telegram/verify|discover|test|apply-
 | Риск | Митигация сейчас | Следующий шаг |
 |------|------------------|---------------|
 | Репутация `office@` | Warmup, caps, pause | Отдельный sending domain при росте |
-| Потеря ответов | IMAP + inbox + **push notify** | Telegram wizard в настройках |
-| Compliance | Unsub, suppression, **consent ledger** | Экспорт / legal hold |
+| Потеря ответов | IMAP + inbox + **push notify** | Inbox thread + reply из UI |
+| Compliance | Unsub, suppression, **consent ledger**, CSV export | Legal hold v2 (immutable) |
 | Один email/компания | Архитектура outbox | Multi-contact targeting |
+| CI / merge | pytest + sync workflow | `requirements.txt` в CI, merge PR #10 |
+
+---
+
+## Куда идём (Layer G+)
+
+**Цель:** не ESP и не Smartlead — **операторский пульт** одного ящика `office@` с телефонией и CRM в одном контуре.
+
+| Горизонт | Фокус |
+|----------|--------|
+| **G — Inbox** | Thread view, ответ из UI, assignee, связка с company card |
+| **G — Signals** | Звонок/ответ → сделка Bitrix; notify на каждый сигнал (не open) |
+| **G — Results** | Step funnel в UI, cohort export |
+| **H — Scale** | Multi-contact, отдельный sending domain, deliverability dashboard |
+| **Second Brain** | ADR без реализации до Accept — общая память голоса и текста |
+
+Принцип: **UI = движок** (окна, caps, pause), **сигнал > open**, **lean** (SQLite, один token, без ESP-фермы).
 
 ---
 
