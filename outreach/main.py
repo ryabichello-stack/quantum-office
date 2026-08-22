@@ -39,7 +39,8 @@ from modules.sequences import SequencesModule
 from modules.policy import PolicyModule
 from modules.replies import RepliesModule
 from outbox import OutboxStore
-from reply_watcher import ReplyWatchThread, check_replies, imap_configured
+from reply_watcher import ReplyWatchThread, check_replies, imap_configured, reply_watch_status
+from ops_center import build_ops_summary
 from runtime_settings import RuntimeSettings
 from sender import send_batch, send_one, smtp_configured
 from sync import sync_companies
@@ -820,6 +821,51 @@ def api_send_one(body: SendOneBody) -> dict[str, Any]:
 @app.get("/api/dashboard", dependencies=[Depends(require_ui_auth)])
 def api_dashboard() -> dict[str, Any]:
     return _status_payload()
+
+
+@app.get("/api/ops/summary", dependencies=[Depends(require_ui_auth)])
+def api_ops_summary() -> dict[str, Any]:
+    """Operator alerts + prioritized next actions."""
+    from callback_cta import recent_requests
+
+    rt = _rt()
+    store = _store()
+    seq = _sequences_mod.store
+    return build_ops_summary(
+        rt=rt,
+        deliverability=_deliver_mod.store,
+        reply_inbox=_replies_mod.store,
+        sequences=seq,
+        runner=_runner_mod,
+        reply_watch=reply_watch_status(),
+        callback_requests=recent_requests(limit=15),
+        queue={
+            "due": len(seq.list_due(50)),
+            "upcoming": len(seq.list_upcoming(50)),
+            "pending_first": int((store.counts() or {}).get("pending") or 0),
+        },
+        outbox_counts=(store.counts() or {}),
+    )
+
+
+@app.get("/api/ops/health", dependencies=[Depends(require_ui_auth)])
+def api_ops_health() -> dict[str, Any]:
+    """Deep health for operator alerts (IMAP, SMTP, Bitrix, mailbox pause)."""
+    rt = _rt()
+    paused, pause_reason = _deliver_mod.store.is_paused()
+    rw = reply_watch_status()
+    return {
+        "ok": True,
+        "smtp_configured": smtp_configured(),
+        "imap_configured": imap_configured(),
+        "bitrix_webhook_configured": bool(_webhook_url()),
+        "reply_watch": rw,
+        "mailbox_paused": paused,
+        "mailbox_pause_reason": pause_reason,
+        "run_state": (rt.get("OUTREACH_RUN_STATE", "stopped") or "stopped").lower(),
+        "outreach_enabled": rt.get_bool("OUTREACH_ENABLED", False),
+        "runner": _runner_mod.health(),
+    }
 
 
 @app.get("/api/outbox", dependencies=[Depends(require_ui_auth)])

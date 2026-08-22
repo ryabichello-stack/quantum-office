@@ -1119,6 +1119,82 @@ button.small { height: 26px; font-size: 0.72rem; padding: 0 0.45rem; }
   padding: 0.2rem 0.45rem;
 }
 
+.ops-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0 0 0.65rem;
+}
+.ops-alerts.hidden { display: none; }
+.ops-alert {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  font-size: 0.82rem;
+}
+.ops-alert.critical { border-color: rgba(180, 35, 24, 0.35); background: #fff5f4; }
+.ops-alert.warning { border-color: rgba(180, 83, 9, 0.35); background: #fff8ee; }
+.ops-alert.info { border-color: rgba(59, 130, 246, 0.25); background: #f5f9ff; }
+.ops-alert button { flex-shrink: 0; }
+
+.ops-actions {
+  margin: 0 0 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafbfd;
+}
+.ops-actions.hidden { display: none; }
+.ops-actions-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+.ops-actions-title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.ops-actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.ops-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  width: 100%;
+}
+.ops-action:hover { border-color: #94a3b8; }
+.ops-action.sev-high { border-left: 3px solid var(--danger); }
+.ops-action.sev-medium { border-left: 3px solid var(--warn); }
+.ops-action.sev-low { border-left: 3px solid var(--muted); }
+.ops-action-main { min-width: 0; }
+.ops-action-title { font-weight: 600; font-size: 0.82rem; }
+.ops-action-detail {
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.campaign-chain > summary { font-weight: 600; }
+
 @media (max-width: 860px) {
   .grid2 { grid-template-columns: 1fr; }
   .top { flex-direction: column; align-items: stretch; }

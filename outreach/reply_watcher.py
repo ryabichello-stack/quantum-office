@@ -12,6 +12,7 @@ import re
 import smtplib
 import threading
 import time
+from datetime import datetime, timezone
 from email.mime.text import MIMEText
 from email.utils import formataddr, make_msgid
 from typing import Any
@@ -665,6 +666,10 @@ def check_replies(
 class ReplyWatchThread(threading.Thread):
     """Daemon poller started from FastAPI lifespan."""
 
+    last_at: str | None = None
+    last_error: str | None = None
+    last_matched: int = 0
+
     def __init__(self, store: OutboxStore, webhook_url: str) -> None:
         super().__init__(daemon=True, name="ava-outreach-reply-watch")
         self.store = store
@@ -682,12 +687,30 @@ class ReplyWatchThread(threading.Thread):
                 bitrix = BitrixClient(self.webhook_url) if self.webhook_url else None
                 try:
                     report = check_replies(self.store, bitrix)
+                    ReplyWatchThread.last_at = datetime.now(timezone.utc).replace(
+                        microsecond=0
+                    ).isoformat()
+                    ReplyWatchThread.last_error = None
+                    ReplyWatchThread.last_matched = int(report.get("matched") or 0)
                     if report.get("matched"):
                         logger.info("reply watch matched=%s", report.get("matched"))
-                except Exception:  # noqa: BLE001
+                except Exception as exc:  # noqa: BLE001
+                    ReplyWatchThread.last_error = str(exc)[:500]
                     logger.exception("reply watch cycle failed")
                 finally:
                     if bitrix:
                         bitrix.close()
             self._stop.wait(interval)
         logger.info("reply watch stopped")
+
+
+def reply_watch_status() -> dict[str, Any]:
+    interval = int(os.getenv("REPLY_WATCH_INTERVAL_SECONDS", "120"))
+    return {
+        "enabled": _env_true("REPLY_WATCH_ENABLED", "true"),
+        "imap_configured": imap_configured(),
+        "interval_seconds": interval,
+        "last_at": ReplyWatchThread.last_at,
+        "last_error": ReplyWatchThread.last_error,
+        "last_matched": ReplyWatchThread.last_matched,
+    }

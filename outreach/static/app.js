@@ -480,6 +480,10 @@
       $("campaignStrip").textContent =
         `Активная отрасль: ${pack.title || packId} · ${steps} писем в цепочке · после правок — «Применить отрасль» и тест`;
     }
+    if ($("campaignChainSummary")) {
+      const steps = (pack.steps || []).length;
+      $("campaignChainSummary").textContent = `Цепочка писем (${steps} шагов)`;
+    }
     if ($("letterPdfMeta")) {
       $("letterPdfMeta").textContent = formatPresentationMeta(
         pack.presentation_meta,
@@ -575,6 +579,87 @@
     const dash = await api("/api/dashboard");
     renderStats(dash);
     setRunStateBadge(dash.run_state || (dash.runner && dash.runner.state) || "stopped");
+    await loadOpsSummary().catch(() => {});
+  }
+
+  function goToTab(tab) {
+    const btn = document.querySelector(`.tabs button[data-tab="${tab}"]`);
+    if (btn) btn.click();
+  }
+
+  function renderOpsAlerts(alerts) {
+    const box = $("opsAlerts");
+    if (!box) return;
+    const items = alerts || [];
+    if (!items.length) {
+      box.classList.add("hidden");
+      box.innerHTML = "";
+      return;
+    }
+    box.classList.remove("hidden");
+    box.innerHTML = items
+      .map(
+        (a) => `<div class="ops-alert ${escapeHtml(a.level || "info")}">
+          <div><strong>${escapeHtml(a.title || "")}</strong><br><span class="muted">${escapeHtml(a.detail || "")}</span></div>
+          ${a.tab ? `<button type="button" class="small btn-quiet" data-ops-tab="${escapeHtml(a.tab)}">Открыть</button>` : ""}
+        </div>`
+      )
+      .join("");
+    box.querySelectorAll("[data-ops-tab]").forEach((btn) => {
+      btn.addEventListener("click", () => goToTab(btn.dataset.opsTab));
+    });
+  }
+
+  function renderOpsActions(data) {
+    const section = $("opsActions");
+    const list = $("opsActionsList");
+    const meta = $("opsActionsMeta");
+    if (!section || !list) return;
+    const actions = (data && data.actions) || [];
+    const counts = (data && data.counts) || {};
+    if (!actions.length) {
+      section.classList.add("hidden");
+      list.innerHTML = "";
+      if (meta) meta.textContent = "";
+      return;
+    }
+    section.classList.remove("hidden");
+    if (meta) {
+      meta.textContent = `Всего ${actions.length} · входящие ${counts.inbox_unprocessed || 0}`;
+    }
+    list.innerHTML = actions
+      .map(
+        (a) => `<button type="button" class="ops-action sev-${escapeHtml(a.severity || "medium")}" data-ops-action="${escapeHtml(a.id || "")}" data-ops-tab="${escapeHtml(a.tab || "")}">
+          <span class="ops-action-main">
+            <div class="ops-action-title">${escapeHtml(a.title || "")}</div>
+            <div class="ops-action-detail">${escapeHtml(a.detail || "")}</div>
+          </span>
+          <span class="muted">→</span>
+        </button>`
+      )
+      .join("");
+    list.querySelectorAll("[data-ops-action]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tab = btn.dataset.opsTab;
+        if (tab) goToTab(tab);
+      });
+    });
+  }
+
+  async function loadOpsSummary() {
+    const data = await api("/api/ops/summary");
+    renderOpsAlerts(data.alerts || []);
+    renderOpsActions(data);
+    return data;
+  }
+
+  let opsPollTimer = null;
+  function startOpsPolling() {
+    if (opsPollTimer) clearInterval(opsPollTimer);
+    opsPollTimer = setInterval(() => {
+      if (document.hidden) return;
+      loadOpsSummary().catch(() => {});
+    }, 60000);
   }
 
   function fmtPct(v) {
@@ -2241,6 +2326,7 @@
       try {
         await api("/api/dashboard");
         showApp();
+        startOpsPolling();
         await loadDash();
         await loadSettingsIntoForms();
         await loadPacks();
@@ -2258,6 +2344,7 @@
       try {
         await api("/api/dashboard");
         showApp();
+        startOpsPolling();
         await loadDash();
         await loadSettingsIntoForms();
         await loadPacks();
