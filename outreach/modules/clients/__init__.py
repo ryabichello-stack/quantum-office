@@ -449,6 +449,17 @@ class ClientsStore:
             "companies_with_inn": int(with_inn),
         }
 
+    def get_company(self, bitrix_id: str) -> dict[str, Any] | None:
+        cid = (bitrix_id or "").strip()
+        if not cid:
+            return None
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM companies WHERE bitrix_id = ? LIMIT 1",
+                (cid,),
+            ).fetchone()
+        return dict(row) if row else None
+
     def list_emails(
         self,
         *,
@@ -921,3 +932,15 @@ class ClientsModule:
                     }
                 )
             return {"ok": True, "total": total, "items": enriched}
+
+        @router.get("/company/{company_id}")
+        def company_card(company_id: str) -> dict[str, Any]:
+            from company_card import build_company_card
+
+            out = build_company_card(company_id, clients=self.store)
+            if not out.get("ok"):
+                raise HTTPException(
+                    status_code=404,
+                    detail=out.get("error") or "company_not_found",
+                )
+            return out

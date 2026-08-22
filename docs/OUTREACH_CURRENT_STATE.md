@@ -29,7 +29,8 @@
 | **C** | ✅ | Праздники РФ, OOO-pause, TZ fairness, auto-geo после sync |
 | **D** | ✅ | Next actions + alerts, campaign collapse, CI pytest+sync |
 | **E** | ✅ | Push notify (email/Telegram), step analytics, consent ledger |
-| **F+** | 🔲 | Company drill-down, push to external on-call, full compliance export |
+| **F** | 🟡 | Company drill-down, on-call webhook, consent CSV export |
+| **F+** | 🔲 | Company data quality score, bulk queue actions, legal hold |
 
 ---
 
@@ -79,7 +80,14 @@
 API: `POST /api/ops/telegram/verify|discover|test|apply-branding`, статус в `GET /api/ops/health`.  
 `apply-branding`: `include_profile_photo=false` при сохранении настроек; `true` — кнопка «Применить брендинг».
 
-Статика: `outreach/static` → `console/static/outreach` (`?v=ops8`).
+Статика: `outreach/static` → `console/static/outreach` (`?v=ops9`).
+
+### Layer F (в работе)
+
+- `GET /api/modules/clients/company/{id}` — карточка компании (CRM + outbox + sequences + consent)
+- UI: клик по ID компании в **Очередь** / **Клиенты** → модальное окно
+- `GET /api/modules/consent/export` — CSV экспорт consent ledger
+- `OPS_NOTIFY_ONCALL_WEBHOOK_URL` — дублирование алертов на внешний webhook
 
 ---
 

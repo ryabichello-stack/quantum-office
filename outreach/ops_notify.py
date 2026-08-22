@@ -139,6 +139,38 @@ def _notify_telegram(*, text: str, bot_token: str, chat_id: str) -> None:
     raise RuntimeError(f"telegram HTTP {exc.code}") from exc
 
 
+def _notify_oncall_webhook(
+  *,
+  url: str,
+  event: str,
+  source: str,
+  title: str,
+  body: str,
+) -> None:
+  hook = (url or "").strip()
+  if not hook:
+    return
+  payload = json.dumps(
+    {
+      "event": event,
+      "source": source,
+      "title": title,
+      "body": body,
+      "brand": PANEL_BRAND,
+    },
+    ensure_ascii=False,
+  ).encode("utf-8")
+  req = request.Request(
+    hook,
+    data=payload,
+    headers={"Content-Type": "application/json"},
+    method="POST",
+  )
+  with request.urlopen(req, timeout=15) as resp:
+    if resp.status >= 400:
+      raise RuntimeError(f"oncall webhook HTTP {resp.status}")
+
+
 def _format_panel_subject(*, source: str, title: str) -> str:
   src = (source or "Panel").strip() or "Panel"
   return f"[{PANEL_BRAND} · {src}] {title}"
@@ -174,6 +206,8 @@ def notify_ops_event(
   chat_id = _cfg(settings, "OPS_NOTIFY_TELEGRAM_CHAT_ID", "").strip()
   tg_default = bool(bot_token and chat_id)
   tg_on = force_telegram or _cfg_bool(settings, "OPS_NOTIFY_TELEGRAM_ENABLED", tg_default)
+  oncall_url = _cfg(settings, "OPS_NOTIFY_ONCALL_WEBHOOK_URL", "").strip()
+  oncall_on = _cfg_bool(settings, "OPS_NOTIFY_ONCALL_ENABLED", bool(oncall_url))
 
   to_addr = (
     _cfg(settings, "OPS_NOTIFY_EMAIL", "")
@@ -182,7 +216,7 @@ def notify_ops_event(
     or os.getenv("MAIL_USERNAME", "")
   ).strip()
 
-  result: dict[str, Any] = {"ok": True, "event": event, "email": False, "telegram": False}
+  result: dict[str, Any] = {"ok": True, "event": event, "email": False, "telegram": False, "oncall": False}
   subject = _format_panel_subject(source=source, title=title)
 
   if email_on and to_addr:
@@ -205,7 +239,21 @@ def notify_ops_event(
       logger.warning("ops notify telegram failed: %s", exc)
       result["telegram_error"] = str(exc)[:300]
 
-  if result.get("email") or result.get("telegram"):
+  if oncall_on and oncall_url:
+    try:
+      _notify_oncall_webhook(
+        url=oncall_url,
+        event=event,
+        source=source,
+        title=title,
+        body=body,
+      )
+      result["oncall"] = True
+    except Exception as exc:  # noqa: BLE001
+      logger.warning("ops notify oncall webhook failed: %s", exc)
+      result["oncall_error"] = str(exc)[:300]
+
+  if result.get("email") or result.get("telegram") or result.get("oncall"):
     _notify_store().mark_sent(event_key)
   else:
     result["skipped"] = True

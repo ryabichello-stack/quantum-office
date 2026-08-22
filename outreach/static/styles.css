@@ -1188,6 +1188,52 @@ button.small { height: 26px; font-size: 0.72rem; padding: 0 0.45rem; }
   flex: 0 0 auto;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
 }
+.company-card-dialog {
+  border: none;
+  border-radius: 14px;
+  padding: 0;
+  max-width: min(920px, 96vw);
+  width: 100%;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+}
+.company-card-dialog::backdrop {
+  background: rgba(8, 8, 10, 0.45);
+}
+.company-card-panel {
+  margin: 0;
+  padding: 0;
+}
+.company-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem 0.35rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+.company-card-body {
+  padding: 0.85rem 1.1rem 1.1rem;
+  max-height: 70vh;
+  overflow: auto;
+}
+.company-card-grid {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.company-card-grid h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.92rem;
+}
+button.linkish {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #b45309;
+  cursor: pointer;
+  text-decoration: underline;
+  font: inherit;
+}
 .telegram-bot-info {
   margin: 0.35rem 0;
   padding: 0.4rem 0.55rem;

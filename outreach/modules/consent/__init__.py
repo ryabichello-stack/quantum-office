@@ -154,6 +154,16 @@ class ConsentLedgerStore:
       ).fetchall()
     return [dict(r) for r in rows], int(total)
 
+  def export_rows(
+    self,
+    *,
+    q: str | None = None,
+    status: str | None = None,
+    limit: int = 5000,
+  ) -> list[dict[str, Any]]:
+    items, _ = self.list_entries(q=q, status=status, limit=limit, offset=0)
+    return items
+
   def counts(self) -> dict[str, int]:
     with self.connect() as conn:
       total = int(conn.execute("SELECT COUNT(*) AS n FROM consent_ledger").fetchone()["n"])
@@ -231,7 +241,10 @@ class ConsentModule:
     return {"ok": True, **self.store.counts()}
 
   def register_routes(self, router: Any) -> None:
+    from fastapi import Response
     from pydantic import BaseModel, Field
+    import csv
+    import io
 
     class ConsentBody(BaseModel):
       email: str
@@ -249,6 +262,40 @@ class ConsentModule:
     ) -> dict[str, Any]:
       items, total = self.store.list_entries(q=q, status=status, limit=limit, offset=offset)
       return {"ok": True, "total": total, "items": items, "counts": self.store.counts()}
+
+    @router.get("/export")
+    def export_ledger(
+      q: str | None = None,
+      status: str | None = None,
+      limit: int = 5000,
+    ) -> Response:
+      rows = self.store.export_rows(q=q, status=status, limit=limit)
+      buf = io.StringIO()
+      writer = csv.DictWriter(
+        buf,
+        fieldnames=[
+          "id",
+          "email",
+          "company_id",
+          "status",
+          "source",
+          "reason",
+          "note",
+          "created_at",
+        ],
+        extrasaction="ignore",
+      )
+      writer.writeheader()
+      for row in rows:
+        writer.writerow(row)
+      body = buf.getvalue()
+      return Response(
+        content=body,
+        media_type="text/csv; charset=utf-8",
+        headers={
+          "Content-Disposition": 'attachment; filename="quantum-panel-consent-ledger.csv"'
+        },
+      )
 
     @router.post("/ledger")
     def add_entry(body: ConsentBody) -> dict[str, Any]:

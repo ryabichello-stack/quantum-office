@@ -72,6 +72,25 @@
     return data;
   }
 
+  async function downloadApi(path, filename) {
+    const res = await fetch(BASE + path, {
+      credentials: "same-origin",
+      headers: !EMBEDDED && token ? { "X-Outreach-Token": token } : {},
+    });
+    if (!res.ok) {
+      throw new Error(`export failed: ${res.status}`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename || "export.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   function setLogoPreview(url) {
     const img = $("letterLogoPreview");
     const meta = $("letterLogoMeta");
@@ -805,6 +824,78 @@
     return `<span class="integration-pill ${cls}"><span class="dot"></span>${escapeHtml(label)}</span>`;
   }
 
+  function companyLink(companyId, label) {
+    const cid = String(companyId || "").trim();
+    if (!cid) return `<span class="muted">—</span>`;
+    const text = escapeHtml(label || cid);
+    return `<button type="button" class="linkish company-open" data-company-id="${escapeHtml(cid)}">${text}</button>`;
+  }
+
+  async function openCompanyCard(companyId) {
+    const dlg = $("companyCardDialog");
+    const body = $("companyCardBody");
+    const title = $("companyCardTitle");
+    const meta = $("companyCardMeta");
+    const cid = String(companyId || "").trim();
+    if (!dlg || !cid) return;
+    if (title) title.textContent = `Компания ${cid}`;
+    if (meta) meta.textContent = "Загрузка…";
+    if (body) body.textContent = "Загрузка…";
+    dlg.showModal();
+    try {
+      const data = await api(`/api/modules/clients/company/${encodeURIComponent(cid)}`);
+      const c = data.company || {};
+      if (title) title.textContent = c.title || `Компания ${cid}`;
+      if (meta) {
+        meta.textContent = [
+          c.inn ? `ИНН ${c.inn}` : "",
+          c.city || "",
+          c.timezone || "",
+          c.director_greeting || c.director_name || "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+      }
+      const outboxRows = (data.outbox || [])
+        .map(
+          (r) =>
+            `<tr><td>${escapeHtml(r.email || "")}</td><td>${escapeHtml(r.status || "")}</td><td>${escapeHtml(
+              r.sent_at || ""
+            )}</td></tr>`
+        )
+        .join("");
+      const seqRows = (data.sequences || [])
+        .map(
+          (r) =>
+            `<tr><td>${escapeHtml(r.email || "")}</td><td>${escapeHtml(String(r.current_step || ""))}</td><td>${escapeHtml(
+              r.status || ""
+            )}</td></tr>`
+        )
+        .join("");
+      const consentRows = (data.consent || [])
+        .map(
+          (r) =>
+            `<tr><td>${escapeHtml(r.email || "")}</td><td>${escapeHtml(r.status || "")}</td><td>${escapeHtml(
+              r.reason || ""
+            )}</td></tr>`
+        )
+        .join("");
+      if (body) {
+        body.innerHTML = `
+          <div class="company-card-grid">
+            <section><h3>Контакты</h3>${(data.contacts || []).length ? `<ul>${(data.contacts || [])
+              .map((r) => `<li>${escapeHtml(r.display_name || "")} · ${escapeHtml(r.primary_email || "")}</li>`)
+              .join("")}</ul>` : `<p class="muted tight">Нет контактов</p>`}</section>
+            <section><h3>Очередь / отправки</h3>${outboxRows ? `<table><thead><tr><th>Email</th><th>Статус</th><th>Отправлено</th></tr></thead><tbody>${outboxRows}</tbody></table>` : `<p class="muted tight">Нет записей</p>`}</section>
+            <section><h3>Цепочки</h3>${seqRows ? `<table><thead><tr><th>Email</th><th>Шаг</th><th>Статус</th></tr></thead><tbody>${seqRows}</tbody></table>` : `<p class="muted tight">Нет цепочек</p>`}</section>
+            <section><h3>Consent</h3>${consentRows ? `<table><thead><tr><th>Email</th><th>Статус</th><th>Причина</th></tr></thead><tbody>${consentRows}</tbody></table>` : `<p class="muted tight">Нет записей</p>`}</section>
+          </div>`;
+      }
+    } catch (e) {
+      if (body) body.textContent = String(e);
+    }
+  }
+
   function renderIntegrationsStatus(health) {
     const box = $("integrationsStatus");
     if (!box || !health) return;
@@ -862,6 +953,8 @@
       OPS_NOTIFY_ON_POSITIVE_REPLY: $("opsNotifyOnReply").checked ? "true" : "false",
       OPS_NOTIFY_ON_MAILBOX_PAUSE: $("opsNotifyOnPause").checked ? "true" : "false",
       OPS_NOTIFY_ON_CALLBACK: $("opsNotifyOnCallback").checked ? "true" : "false",
+      OPS_NOTIFY_ONCALL_ENABLED: $("opsNotifyOncallEnabled").checked ? "true" : "false",
+      OPS_NOTIFY_ONCALL_WEBHOOK_URL: ($("opsNotifyOncallUrl").value || "").trim(),
     };
     const tokenVal = currentTelegramToken();
     if (tokenVal) payload.OPS_NOTIFY_TELEGRAM_BOT_TOKEN = tokenVal;
@@ -980,6 +1073,13 @@
     if ($("opsNotifyOnCallback")) {
       $("opsNotifyOnCallback").checked =
         String(s.OPS_NOTIFY_ON_CALLBACK || "true").toLowerCase() !== "false";
+    }
+    if ($("opsNotifyOncallEnabled")) {
+      $("opsNotifyOncallEnabled").checked =
+        String(s.OPS_NOTIFY_ONCALL_ENABLED || "false").toLowerCase() === "true";
+    }
+    if ($("opsNotifyOncallUrl")) {
+      $("opsNotifyOncallUrl").value = s.OPS_NOTIFY_ONCALL_WEBHOOK_URL || "";
     }
     if ($("localWindowsHint")) {
       const on = $("localWindowsEnabled") && $("localWindowsEnabled").checked;
@@ -1188,7 +1288,7 @@
         <td class="cell-city">${escapeHtml(r.city || "—")}</td>
         <td class="cell-tz">${escapeHtml(r.timezone || "—")}</td>
         <td class="cell-narrow">${escapeHtml(r.source || "")}</td>
-        <td class="cell-narrow">${escapeHtml(r.company_bitrix_id || "")}</td>
+        <td class="cell-narrow">${companyLink(r.company_bitrix_id, r.company_bitrix_id)}</td>
       </tr>`
       )
       .join("");
@@ -1271,6 +1371,7 @@
           <td>${r.id}</td>
           <td class="cell-wide">${escapeHtml(r.email)}</td>
           <td class="cell-wide">${escapeHtml(r.contact_name || r.director_greeting || "")}</td>
+          <td class="cell-narrow">${companyLink(r.company_id, r.company_id)}</td>
           <td class="cell-city">${fmtCity(r)}</td>
           <td class="cell-tz">${fmtTimezone(r)}</td>
           <td class="cell-win">${fmtWindow(r)}</td>
@@ -1280,7 +1381,7 @@
         </tr>`
             )
             .join("")
-        : `<tr><td colspan="9" class="muted">Нет строк по фильтру</td></tr>`;
+        : `<tr><td colspan="10" class="muted">Нет строк по фильтру</td></tr>`;
     }
   }
 
@@ -2561,6 +2662,20 @@
         }
       });
     }
+    if ($("consentExportBtn")) {
+      $("consentExportBtn").addEventListener("click", () =>
+        downloadApi("/api/modules/consent/export", "quantum-panel-consent-ledger.csv").catch((e) => {
+          if ($("consentLog")) $("consentLog").textContent = String(e);
+        })
+      );
+    }
+
+    document.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("[data-company-id]");
+      if (!btn || !btn.classList.contains("company-open")) return;
+      ev.preventDefault();
+      openCompanyCard(btn.getAttribute("data-company-id"));
+    });
 
     $("antibanSave").addEventListener("click", async () => {
       try {

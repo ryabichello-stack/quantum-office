@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops8" />
+  <link rel="stylesheet" href="styles.css?v=ops9" />
   <script>
     (function () {
       function parentBase() {
@@ -322,7 +322,7 @@
             <table>
               <thead>
                 <tr>
-                  <th>ID</th><th>Email</th><th>Кому</th><th>Город</th><th>TZ</th><th>Окно</th><th>Статус</th><th>Отправлено</th><th>Действия</th>
+                  <th>ID</th><th>Email</th><th>Кому</th><th>Компания</th><th>Город</th><th>TZ</th><th>Окно</th><th>Статус</th><th>Отправлено</th><th>Действия</th>
                 </tr>
               </thead>
               <tbody id="outboxBody"></tbody>
@@ -679,6 +679,17 @@
               <input id="opsNotifyOnCallback" type="checkbox" checked />
               Outreach: заявки «Заказать звонок»
             </label>
+            <details class="task-advanced" style="margin-top:0.45rem">
+              <summary>On-call webhook (Layer F)</summary>
+              <p class="muted tight">Дублировать алерты на внешний URL (Slack/PagerDuty/n8n). JSON: event, source, title, body.</p>
+              <label class="field check">
+                <input id="opsNotifyOncallEnabled" type="checkbox" />
+                Включить on-call webhook
+              </label>
+              <label class="field">Webhook URL
+                <input id="opsNotifyOncallUrl" type="url" placeholder="https://hooks.example/oncall" autocomplete="off" />
+              </label>
+            </details>
             <div class="actions" style="margin-top:0.35rem">
               <button type="button" id="opsNotifySave" class="primary">Сохранить уведомления</button>
             </div>
@@ -728,6 +739,7 @@
             <div class="actions wrap-actions">
               <button type="button" id="consentReloadBtn" class="btn-quiet">Обновить</button>
               <button type="button" id="consentImportBtn" class="btn-quiet">Импорт из suppression</button>
+              <button type="button" id="consentExportBtn" class="btn-quiet">Экспорт CSV</button>
             </div>
             <div class="table-wrap">
               <table>
@@ -797,6 +809,20 @@
       </section>
     </main>
   </div>
-  <script src="app.js?v=ops8"></script>
+
+  <dialog id="companyCardDialog" class="company-card-dialog">
+    <form method="dialog" class="company-card-panel">
+      <header class="company-card-head">
+        <div>
+          <h2 id="companyCardTitle">Компания</h2>
+          <p class="muted tight" id="companyCardMeta"></p>
+        </div>
+        <button type="submit" class="btn-quiet" aria-label="Закрыть">✕</button>
+      </header>
+      <div id="companyCardBody" class="company-card-body muted">Загрузка…</div>
+    </form>
+  </dialog>
+
+  <script src="app.js?v=ops9"></script>
 </body>
 </html>
