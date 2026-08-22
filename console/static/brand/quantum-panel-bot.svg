@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Quantum Panel">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0c1821"/>
+      <stop offset="100%" stop-color="#152536"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#e85a1a"/>
+      <stop offset="100%" stop-color="#f07a3f"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect x="96" y="120" width="320" height="272" rx="36" fill="#1a2d3d" stroke="#2a4155" stroke-width="4"/>
+  <rect x="128" y="156" width="256" height="12" rx="6" fill="url(#accent)"/>
+  <circle cx="168" cy="220" r="18" fill="#3d8f5f"/>
+  <circle cx="256" cy="220" r="18" fill="#e85a1a"/>
+  <circle cx="344" cy="220" r="18" fill="#3b82f6"/>
+  <rect x="128" y="268" width="112" height="16" rx="8" fill="#2a4155"/>
+  <rect x="128" y="304" width="200" height="16" rx="8" fill="#2a4155"/>
+  <rect x="128" y="340" width="160" height="16" rx="8" fill="#2a4155"/>
+  <rect x="272" y="268" width="112" height="88" rx="16" fill="#0f1b24" stroke="#e85a1a" stroke-width="3"/>
+  <path d="M304 312 L328 336 L360 296" fill="none" stroke="#e85a1a" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
