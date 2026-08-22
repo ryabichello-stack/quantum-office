@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -15,6 +16,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -102,8 +104,33 @@ MANGO_VPBX_API_BASE = os.getenv(
 ).rstrip("/")
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+PANEL_MONITOR_INTERVAL_SEC = int(os.getenv("PANEL_MONITOR_INTERVAL_SEC", "300"))
+_PANEL_MONITOR_STATE: dict[str, Any] = {"ready": False}
+_PANEL_MONITOR_LABELS = {
+    "ai_engine": "Голосовой AI (AVA)",
+    "text_bot": "Telegram-бот",
+    "outreach": "Bitrix / outreach",
+    "knowledge": "База знаний",
+    "calendar": "Календарь",
+    "conference": "Телемост",
+    "files": "Файлы",
+    "mailer": "Почта и welcome",
+    "sheets_campaign": "Кампания Sheets",
+}
 
-app = FastAPI(title="Quantum Labs Console", version="0.2.0")
+
+@asynccontextmanager
+async def _console_lifespan(_app: FastAPI):
+    task = asyncio.create_task(_panel_health_watcher())
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+app = FastAPI(title="Quantum Labs Console", version="0.2.0", lifespan=_console_lifespan)
 if STATIC_DIR.is_dir():
     app.mount("/assets", StaticFiles(directory=str(STATIC_DIR)), name="assets")
 
@@ -120,6 +147,141 @@ def _load_outreach_ui_token() -> str:
     except Exception as exc:
         logger.warning("read OUTREACH_UI_TOKEN failed: %s", exc)
     return ""
+
+
+def _panel_notify(
+    *,
+    event: str,
+    title: str,
+    body: str,
+    source: str = "Console",
+    dedup_key: str | None = None,
+    dedup_minutes: int = 30,
+) -> dict[str, Any] | None:
+    """Send operator alert via ava-outreach notify API."""
+    tok = _load_outreach_ui_token()
+    if not tok or not OUTREACH_BASE:
+        return None
+    payload = json.dumps(
+        {
+            "event": event,
+            "title": title,
+            "body": body,
+            "source": source,
+            "dedup_key": dedup_key,
+            "dedup_minutes": dedup_minutes,
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        f"{OUTREACH_BASE}/api/ops/notify",
+        data=payload,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "X-Outreach-Token": tok,
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        logger.warning("panel notify failed: %s", exc)
+        return None
+
+
+def _panel_monitor_snapshot() -> dict[str, Any]:
+    health = {
+        "ai_engine": _http_ok(ENGINE_HEALTH_URL),
+        "text_bot": _http_ok(TEXT_BOT_HEALTH_URL),
+        "outreach": _http_ok(OUTREACH_HEALTH_URL),
+        "knowledge": _http_ok(KNOWLEDGE_HEALTH_URL),
+        "calendar": _http_ok(CALENDAR_HEALTH_URL),
+        "conference": _http_ok(CONFERENCE_HEALTH_URL),
+        "files": _http_ok(FILES_HEALTH_URL),
+        "mailer": _http_ok(MAILER_HEALTH_URL),
+        "sheets_campaign": _http_ok(CAMPAIGN_HEALTH_URL),
+    }
+    rc_reg, reg_out = _run(["asterisk", "-rx", "pjsip show registrations"], timeout=10)
+    mango_registered = "Registered" in reg_out
+    inbound_line = _inbound_line_state()
+    robot_ok = bool(health["ai_engine"] and mango_registered and inbound_line["enabled"])
+    return {
+        "health": health,
+        "mango_registered": mango_registered,
+        "robot_ok": robot_ok,
+        "inbound_line_enabled": inbound_line["enabled"],
+    }
+
+
+def _panel_check_transitions(snapshot: dict[str, Any]) -> None:
+    prev = _PANEL_MONITOR_STATE
+    if not prev.get("ready"):
+        _PANEL_MONITOR_STATE.clear()
+        _PANEL_MONITOR_STATE.update(snapshot)
+        _PANEL_MONITOR_STATE["ready"] = True
+        return
+
+    if prev.get("robot_ok") and not snapshot.get("robot_ok"):
+        reasons = []
+        if not (snapshot.get("health") or {}).get("ai_engine"):
+            reasons.append("AI engine offline")
+        if not snapshot.get("mango_registered"):
+            reasons.append("Mango SIP не зарегистрирован")
+        if not snapshot.get("inbound_line_enabled"):
+            reasons.append("автолиния выключена")
+        _panel_notify(
+            event="robot_down",
+            title="Робот не готов к приёму",
+            body="Причины:\n" + ("\n".join(f"· {r}" for r in reasons) or "· проверьте Console"),
+            dedup_key="console:robot_down",
+            dedup_minutes=60,
+        )
+    elif not prev.get("robot_ok") and snapshot.get("robot_ok"):
+        _panel_notify(
+            event="robot_up",
+            title="Робот снова на приёме",
+            body="ИИ, SIP и автолиния в норме.",
+            dedup_key="console:robot_up",
+            dedup_minutes=30,
+        )
+
+    prev_health = prev.get("health") or {}
+    for sid, ok in (snapshot.get("health") or {}).items():
+        was = prev_health.get(sid)
+        if was is True and ok is False:
+            label = _PANEL_MONITOR_LABELS.get(sid, sid)
+            _panel_notify(
+                event=f"service_down:{sid}",
+                title=f"Сервис недоступен: {label}",
+                body=f"{label} не отвечает на health-check.",
+                dedup_key=f"console:service_down:{sid}",
+                dedup_minutes=60,
+            )
+        elif was is False and ok is True:
+            label = _PANEL_MONITOR_LABELS.get(sid, sid)
+            _panel_notify(
+                event=f"service_up:{sid}",
+                title=f"Сервис восстановлен: {label}",
+                body=f"{label} снова отвечает.",
+                dedup_key=f"console:service_up:{sid}",
+                dedup_minutes=30,
+            )
+
+    _PANEL_MONITOR_STATE.clear()
+    _PANEL_MONITOR_STATE.update(snapshot)
+    _PANEL_MONITOR_STATE["ready"] = True
+
+
+async def _panel_health_watcher() -> None:
+    await asyncio.sleep(45)
+    while True:
+        try:
+            snap = _panel_monitor_snapshot()
+            _panel_check_transitions(snap)
+        except Exception as exc:
+            logger.warning("panel health watcher failed: %s", exc)
+        await asyncio.sleep(max(60, PANEL_MONITOR_INTERVAL_SEC))
 
 
 # ---------------------------------------------------------------------------
@@ -1066,6 +1228,13 @@ def api_line_set(
     """Toggle inbound auto-answer line via Asterisk AstDB (no dialplan reload needed)."""
     _require_token(x_console_token)
     state = _inbound_line_set(bool(body.enabled))
+    _panel_notify(
+        event="inbound_line",
+        title="Автолиния " + ("включена" if state["enabled"] else "выключена"),
+        body="Оператор переключил гейт автолинии в Quantum Console.",
+        dedup_key=f"console:inbound_line:{int(bool(state['enabled']))}",
+        dedup_minutes=2,
+    )
     return {"ok": True, "inbound_line": state, "message": "Автолиния " + ("вкл" if state["enabled"] else "выкл")}
 
 

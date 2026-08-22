@@ -920,11 +920,16 @@
     const box = $("integrationsStatus");
     if (!box || !health) return;
     const tg = health.telegram || {};
+    const oncall = health.oncall || {};
     const pills = [
       pill(health.smtp_configured ? "ok" : "bad", "SMTP"),
       pill(health.imap_configured ? "ok" : "warn", "IMAP"),
       pill(health.bitrix_webhook_configured ? "ok" : "warn", "Bitrix"),
       pill(tg.ready ? "ok" : tg.token_configured ? "warn" : "bad", "Telegram"),
+      pill(
+        oncall.ready ? "ok" : oncall.webhook_configured ? "warn" : "bad",
+        "On-call"
+      ),
     ];
     box.innerHTML = pills.join("");
   }

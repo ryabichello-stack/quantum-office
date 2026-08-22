@@ -16,7 +16,7 @@
 
 **Объём:** ~1785 компаний, ~3121 контакт. **Лимит:** ~15 писем/день, один ящик.
 
-**Прод:** `ava-outreach.service` `:8012`, UI через Quantum Console `?v=ops4`.
+**Прод:** `ava-outreach.service` `:8012`, UI через Quantum Console `?v=ops13`.
 
 ---
 
@@ -58,11 +58,11 @@
 | Вкладка | Есть | Профи-уровень (ещё нет) |
 |---------|------|-------------------------|
 | **Кампания** | Pack, 5-step chain (collapse), брендинг, тест | Wizard, template versions, approval gate |
-| **Очередь** | Due + первые, TZ/окно, фильтры, row actions | Bulk, calendar view, company drill-down |
-| **Входящие** | Классификация, badges, «Готово» | Thread view, reply from UI, assignee |
-| **Результат** | Воронка, по дням, последние | Step conversion, cohort, export |
-| **Клиенты** | Sync+geo+rebuild (auto-geo), city/TZ table | Company card, data quality score |
-| **Настройки** | Окна, праздники, fairness, OOO, anti-ban | Deliverability dashboard, DNS check |
+| **Очередь** | Due + первые, TZ/окно, фильтры, row actions, **bulk**, **14-day calendar**, **company card** | Server-side calendar API, assignee |
+| **Входящие** | Классификация, badges, «Готово», company card | Thread view, reply from UI, assignee |
+| **Результат** | Воронка, по дням, последние, **step analytics API** | Cohort export, in-UI step funnel |
+| **Клиенты** | Sync+geo+rebuild (auto-geo), city/TZ table, **company card**, **data quality** | Bulk geo repair |
+| **Настройки** | Окна, праздники, fairness, OOO, anti-ban, **notify + on-call webhook** | Deliverability dashboard, DNS check |
 
 ### API оператора
 
@@ -76,11 +76,11 @@
 
 **Quantum Panel** — общий канал оператору (email + @Quantum_panel_bot) для всего центра управления.  
 Настройка: **Пульт Console** или Outreach → «Уведомления Quantum Panel».  
-Сейчас события Outreach помечаются как `Quantum Panel · Outreach`; Console/звонки — через `notify_panel_event()`.  
-API: `POST /api/ops/telegram/verify|discover|test|apply-branding`, статус в `GET /api/ops/health`.  
+Сейчас события Outreach помечаются как `Quantum Panel · Outreach`; Console/звонки — через `POST /api/ops/notify` (`notify_panel_event()`).  
+API: `POST /api/ops/notify`, `POST /api/ops/telegram/verify|discover|test|apply-branding`, статус в `GET /api/ops/health`.  
 `apply-branding`: `include_profile_photo=false` при сохранении настроек; `true` — кнопка «Применить брендинг».
 
-Статика: `outreach/static` → `console/static/outreach` (`?v=ops12`).
+Статика: `outreach/static` → `console/static/outreach` (`?v=ops13`).
 
 ### Layer F ✅
 

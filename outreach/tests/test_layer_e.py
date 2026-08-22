@@ -145,9 +145,11 @@ def test_panel_telegram_format():
     assert "Тест" in text
 
 
+@patch("ops_notify._notify_store")
 @patch("ops_notify._notify_telegram")
 @patch("ops_notify._notify_email")
-def test_notify_ops_event_panel_branding(mock_email, mock_tg):
+def test_notify_ops_event_panel_branding(mock_email, mock_tg, mock_store):
+    mock_store.return_value.should_send.return_value = True
     settings = MagicMock()
     settings.get.side_effect = lambda k, d="": {
         "OPS_NOTIFY_ENABLED": "true",
@@ -167,6 +169,34 @@ def test_notify_ops_event_panel_branding(mock_email, mock_tg):
     assert out.get("telegram") is True
     mock_tg.assert_called_once()
     assert PANEL_BRAND in mock_tg.call_args.kwargs["text"]
+    assert "Console" in mock_tg.call_args.kwargs["text"]
+
+
+@patch("ops_notify._notify_store")
+@patch("ops_notify._notify_telegram")
+@patch("ops_notify._notify_email")
+def test_notify_panel_event_api_shape(mock_email, mock_tg, mock_store):
+    mock_store.return_value.should_send.return_value = True
+    from ops_notify import notify_panel_event
+
+    settings = MagicMock()
+    settings.get.side_effect = lambda k, d="": {
+        "OPS_NOTIFY_ENABLED": "true",
+        "OPS_NOTIFY_EMAIL_ENABLED": "false",
+        "OPS_NOTIFY_TELEGRAM_ENABLED": "true",
+        "OPS_NOTIFY_TELEGRAM_BOT_TOKEN": "tok",
+        "OPS_NOTIFY_TELEGRAM_CHAT_ID": "1",
+    }.get(k, d)
+    out = notify_panel_event(
+        event="service_down",
+        title="Сервис недоступен",
+        body="ava-knowledge не отвечает",
+        source="Console",
+        settings=settings,
+        dedup_key="console:service:knowledge",
+    )
+    assert out.get("telegram") is True
+    mock_tg.assert_called_once()
     assert "Console" in mock_tg.call_args.kwargs["text"]
 
 

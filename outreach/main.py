@@ -974,6 +974,31 @@ class OncallTestBody(BaseModel):
     message: str | None = None
 
 
+class PanelNotifyBody(BaseModel):
+    event: str = Field(..., min_length=1, max_length=80)
+    title: str = Field(..., min_length=1, max_length=200)
+    body: str = Field(..., min_length=1, max_length=4000)
+    source: str = Field(default="Console", max_length=40)
+    dedup_key: str | None = Field(default=None, max_length=200)
+    dedup_minutes: int = Field(default=30, ge=1, le=1440)
+
+
+@app.post("/api/ops/notify", dependencies=[Depends(require_ui_auth)])
+def api_ops_notify(body: PanelNotifyBody) -> dict[str, Any]:
+    """Panel-wide operator alert from Console or other internal services."""
+    from ops_notify import notify_panel_event
+
+    return notify_panel_event(
+        event=body.event.strip(),
+        title=body.title.strip(),
+        body=body.body.strip(),
+        source=(body.source or "Console").strip() or "Console",
+        settings=_rt(),
+        dedup_key=(body.dedup_key or "").strip() or None,
+        dedup_minutes=body.dedup_minutes,
+    )
+
+
 @app.post("/api/ops/oncall/test", dependencies=[Depends(require_ui_auth)])
 def api_oncall_test(body: OncallTestBody | None = None) -> dict[str, Any]:
     from ops_notify import notify_oncall_test
