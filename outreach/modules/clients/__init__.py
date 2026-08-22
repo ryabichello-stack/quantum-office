@@ -908,4 +908,16 @@ class ClientsModule:
             offset: int = Query(default=0, ge=0),
         ) -> dict[str, Any]:
             items, total = self.store.list_emails(q=q, limit=limit, offset=offset)
-            return {"ok": True, "total": total, "items": items}
+            enriched: list[dict[str, Any]] = []
+            for row in items:
+                cid = str(row.get("company_bitrix_id") or row.get("bitrix_id") or "")
+                geo = company_geo_row(self.store, cid) if cid else {}
+                enriched.append(
+                    {
+                        **row,
+                        "city": geo.get("city") or "",
+                        "timezone": geo.get("timezone") or geo.get("timezone_raw") or "",
+                        "director_greeting": geo.get("director_greeting") or "",
+                    }
+                )
+            return {"ok": True, "total": total, "items": enriched}

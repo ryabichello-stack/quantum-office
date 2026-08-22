@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops1" />
+  <link rel="stylesheet" href="styles.css?v=ops2" />
   <script>
     (function () {
       function parentBase() {
@@ -79,6 +79,8 @@
             <h2 class="section-title">Задание на рассылку</h2>
             <p class="muted tight">Отрасль → цепочка писем → тест → Старт сверху → очередь уходит сама. Сводка — полоска над вкладками.</p>
           </div>
+
+          <div id="campaignStrip" class="campaign-strip muted tight">Загрузка кампании…</div>
 
           <fieldset class="task-mode pack-mode">
             <legend>Отрасль</legend>
@@ -262,6 +264,7 @@
           </fieldset>
 
           <div id="queueStats" class="stat-grid"></div>
+          <p class="muted tight" id="queueDeferHint"></p>
 
           <h3 class="section-title" style="font-size:1.05rem;margin-top:1rem">Сейчас к отправке — цепочка</h3>
           <p class="muted tight">Письма 2+, у которых подошёл срок (по дате первого письма + локальное окно).</p>
@@ -291,13 +294,21 @@
                 <option value="">Все</option>
               </select>
             </label>
+            <label class="field">Фильтр окна
+              <select id="outboxFilter">
+                <option value="">Все на странице</option>
+                <option value="in_window">В окне сейчас</option>
+                <option value="outside_window">Вне окна</option>
+                <option value="no_tz">Без timezone</option>
+              </select>
+            </label>
           </div>
           <p class="muted tight" id="outboxMeta"></p>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>ID</th><th>Email</th><th>Кому</th><th>Город</th><th>TZ</th><th>Окно</th><th>Статус</th><th>Отправлено</th><th></th>
+                  <th>ID</th><th>Email</th><th>Кому</th><th>Город</th><th>TZ</th><th>Окно</th><th>Статус</th><th>Отправлено</th><th>Действия</th>
                 </tr>
               </thead>
               <tbody id="outboxBody"></tbody>
@@ -430,7 +441,7 @@
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>Email</th><th>Имя</th><th>Источник</th><th>Bitrix</th><th>Компания</th></tr>
+                <tr><th>Email</th><th>Имя</th><th>Город</th><th>TZ</th><th>Источник</th><th>Компания</th></tr>
               </thead>
               <tbody id="clientsBody"></tbody>
             </table>
@@ -454,13 +465,6 @@
           </div>
           <p class="muted tight" id="reportMeta"></p>
           <div class="stat-grid" id="reportFunnel"></div>
-
-          <div class="report-panel">
-            <p class="report-panel-head">Отправки по дням</p>
-            <div class="report-panel-body">
-              <div id="dailyChart" class="bars"></div>
-            </div>
-          </div>
 
           <div class="report-panel">
             <p class="report-panel-head">Доли</p>
@@ -671,6 +675,6 @@
       </section>
     </main>
   </div>
-  <script src="app.js?v=ops1"></script>
+  <script src="app.js?v=ops2"></script>
 </body>
 </html>

@@ -8,13 +8,17 @@
     settings: "Настройки",
   };
   const hints = {
-    letter: "Отрасль, цепочка писем, тест и презентация",
-    outbox: "Очередь, пачки, Bitrix sync — после «Старт» в шапке",
+    letter: "Отрасль, цепочка, тест — затем Старт и Очередь",
+    outbox: "Пачки, окна по TZ, фильтры и действия по строке",
     inbox: "Классификация ответов и привязка к письмам",
-    report: "Воронка, динамика по дням, последние письма",
-    clients: "База Bitrix, обогащение DaData",
-    settings: "Лимиты, окно часов, защита ящика",
+    report: "Воронка, динамика, последние письма",
+    clients: "Bitrix → geo → очередь; список с городом и TZ",
+    settings: "Локальные окна, лимиты, anti-ban",
   };
+
+  let outboxItemsCache = [];
+  let outboxTotalCache = 0;
+  let lastBatchMeta = { deferred_window_count: null, at: null };
 
   function apiBase() {
     if (typeof window !== "undefined" && window.__QC_OUTREACH_API__) {
@@ -471,6 +475,11 @@
       $("packActiveMeta").textContent =
         `Выбрано: ${pack.title || packId} — ${pack.short || ""} · ${(pack.steps || []).length} писем`;
     }
+    if ($("campaignStrip")) {
+      const steps = (pack.steps || []).length;
+      $("campaignStrip").textContent =
+        `Активная отрасль: ${pack.title || packId} · ${steps} писем в цепочке · после правок — «Применить отрасль» и тест`;
+    }
     if ($("letterPdfMeta")) {
       $("letterPdfMeta").textContent = formatPresentationMeta(
         pack.presentation_meta,
@@ -926,14 +935,124 @@
     $("clientsBody").innerHTML = (data.items || [])
       .map(
         (r) => `<tr>
-        <td>${escapeHtml(r.email || "")}</td>
-        <td>${escapeHtml(r.display_name || "")}</td>
-        <td>${escapeHtml(r.source || "")}</td>
-        <td>${escapeHtml(r.bitrix_id || "")}</td>
-        <td>${escapeHtml(r.company_bitrix_id || "")}</td>
+        <td class="cell-wide">${escapeHtml(r.email || "")}</td>
+        <td class="cell-wide">${escapeHtml(r.display_name || r.director_greeting || "")}</td>
+        <td class="cell-city">${escapeHtml(r.city || "—")}</td>
+        <td class="cell-tz">${escapeHtml(r.timezone || "—")}</td>
+        <td class="cell-narrow">${escapeHtml(r.source || "")}</td>
+        <td class="cell-narrow">${escapeHtml(r.company_bitrix_id || "")}</td>
       </tr>`
       )
       .join("");
+  }
+
+  function inboxClassBadge(cls) {
+    const c = String(cls || "").toLowerCase();
+    const map = {
+      positive: "ok",
+      human: "ok",
+      interested: "ok",
+      negative: "bad",
+      unsub: "bad",
+      bounce: "bad",
+      ooo: "warn",
+      auto: "muted",
+      forward: "warn",
+    };
+    const tone = map[c] || "muted";
+    return `<span class="eng ${tone}">${escapeHtml(cls || "—")}</span>`;
+  }
+
+  function filterOutboxItems(items) {
+    const f = ($("outboxFilter") && $("outboxFilter").value) || "";
+    if (!f) return items;
+    if (f === "in_window") return items.filter((r) => r.in_window);
+    if (f === "outside_window") return items.filter((r) => !r.in_window);
+    if (f === "no_tz") return items.filter((r) => !r.timezone && !r.timezone_raw);
+    return items;
+  }
+
+  function outboxRowActions(r) {
+    if (r.status !== "pending") return `<span class="muted">—</span>`;
+    const email = escapeHtml(r.email || "");
+    const cid = escapeHtml(r.company_id || "");
+    return `<div class="row-actions">
+      <button type="button" class="small primary" data-action="send-now" data-id="${r.id}" data-email="${email}" title="Игнор локального окна">Сейчас</button>
+      <button type="button" class="small ghost" data-action="skip" data-id="${r.id}">Skip</button>
+      <button type="button" class="small ghost" data-action="stop" data-email="${email}" data-company="${cid}">Стоп</button>
+    </div>`;
+  }
+
+  function renderOutboxTable(items, total) {
+    const fmtCity = (r) => escapeHtml((r && r.city) || "—");
+    const fmtTimezone = (r) => {
+      const tz = ((r && r.timezone) || (r && r.timezone_raw) || "").trim();
+      return escapeHtml(tz || "—");
+    };
+    const fmtWindow = (r) => {
+      const label = ((r && r.window_label) || "").trim() || "—";
+      const cls = r && r.in_window ? "win-now" : "win-later";
+      return `<span class="win-badge ${cls}">${escapeHtml(label)}</span>`;
+    };
+    const filtered = filterOutboxItems(items);
+    const missingTz = items.filter((r) => !r.timezone && !r.timezone_raw).length;
+    const inWin = items.filter((r) => r.in_window).length;
+    const outWin = items.length - inWin;
+    const statusVal = ($("outboxStatus") && $("outboxStatus").value) || "";
+    if ($("outboxMeta")) {
+      let meta = `Показано ${filtered.length} из ${items.length} (всего ${total})`;
+      if (!statusVal || statusVal === "pending") {
+        meta += ` · в окне: ${inWin} · вне окна: ${outWin}`;
+      }
+      if (missingTz && statusVal === "pending") {
+        meta += ` · без TZ: ${missingTz}`;
+      }
+      $("outboxMeta").textContent = meta;
+    }
+    if ($("outboxBody")) {
+      $("outboxBody").innerHTML = filtered.length
+        ? filtered
+            .map(
+              (r) => `<tr>
+          <td>${r.id}</td>
+          <td class="cell-wide">${escapeHtml(r.email)}</td>
+          <td class="cell-wide">${escapeHtml(r.contact_name || r.director_greeting || "")}</td>
+          <td class="cell-city">${fmtCity(r)}</td>
+          <td class="cell-tz">${fmtTimezone(r)}</td>
+          <td class="cell-win">${fmtWindow(r)}</td>
+          <td class="cell-narrow">${escapeHtml(r.status)}</td>
+          <td class="cell-narrow">${escapeHtml(r.sent_at || "")}</td>
+          <td class="cell-actions">${outboxRowActions(r)}</td>
+        </tr>`
+            )
+            .join("")
+        : `<tr><td colspan="9" class="muted">Нет строк по фильтру</td></tr>`;
+    }
+  }
+
+  function captureBatchMeta(result) {
+    if (!result || result.deferred_window_count == null) return;
+    lastBatchMeta = {
+      deferred_window_count: result.deferred_window_count,
+      at: new Date().toISOString(),
+    };
+    updateQueueDeferHint();
+  }
+
+  function updateQueueDeferHint() {
+    const el = $("queueDeferHint");
+    if (!el) return;
+    const parts = [];
+    if (lastBatchMeta.deferred_window_count != null) {
+      parts.push(
+        `Последняя пачка: отложено по локальному окну — ${lastBatchMeta.deferred_window_count}`
+      );
+    }
+    el.textContent = parts.join(" · ");
+  }
+
+  function rerenderOutboxFromCache() {
+    renderOutboxTable(outboxItemsCache, outboxTotalCache);
   }
 
   async function loadQueueView() {
@@ -1021,50 +1140,15 @@
         : `<tr><td colspan="7" class="muted">Пока нет запланированных следующих шагов.</td></tr>`;
     }
 
-    // First-touch / outbox table (searchable; geo from API by company_id)
     const qs = new URLSearchParams({ limit: "100", offset: "0" });
     if (q) qs.set("q", q);
     if (status) qs.set("status", status);
     if (!q && status === "pending") qs.set("sort", "id_asc");
     const data = await api("/api/outbox?" + qs.toString());
-    const items = data.items || [];
-    const missingTz = items.filter((r) => !r.timezone && !r.timezone_raw).length;
-    const inWin = items.filter((r) => r.in_window).length;
-    if ($("outboxMeta")) {
-      let meta = `Показано ${items.length} из ${data.total}`;
-      if (items.length) {
-        meta += ` · в окне на этой странице: ${inWin}`;
-        const s = items[0];
-        meta += ` · пример: ${s.city || "—"} / ${s.timezone || s.timezone_raw || "—"} / ${s.window_label || "—"}`;
-      }
-      if (missingTz && status === "pending") {
-        meta += ` · без TZ: ${missingTz}`;
-      }
-      $("outboxMeta").textContent = meta;
-    }
-    if ($("outboxBody")) {
-      $("outboxBody").innerHTML = items
-        .map((r) => {
-          const actions = ["pending", "skipped", "failed"]
-            .map(
-              (st) =>
-                `<button type="button" class="small ghost" data-id="${r.id}" data-st="${st}">${st}</button>`
-            )
-            .join(" ");
-          return `<tr>
-          <td>${r.id}</td>
-          <td class="cell-wide">${escapeHtml(r.email)}</td>
-          <td class="cell-wide">${escapeHtml(r.contact_name || r.director_greeting || "")}</td>
-          <td class="cell-city">${fmtCity(r)}</td>
-          <td class="cell-tz">${fmtTimezone(r)}</td>
-          <td class="cell-win">${fmtWindow(r)}</td>
-          <td class="cell-narrow">${escapeHtml(r.status)}</td>
-          <td class="cell-narrow">${escapeHtml(r.sent_at || "")}</td>
-          <td class="cell-actions">${actions}</td>
-        </tr>`;
-        })
-        .join("");
-    }
+    outboxItemsCache = data.items || [];
+    outboxTotalCache = data.total != null ? data.total : outboxItemsCache.length;
+    renderOutboxTable(outboxItemsCache, outboxTotalCache);
+    updateQueueDeferHint();
   }
 
   async function loadOutbox() {
@@ -1101,7 +1185,7 @@
         return `<tr>
           <td>${escapeHtml(r.created_at || "")}</td>
           <td>${escapeHtml(r.from_email || "")}</td>
-          <td>${escapeHtml(r.classification || "")} (${Number(r.confidence || 0).toFixed(2)})</td>
+          <td>${inboxClassBadge(r.classification)} <span class="muted">(${Number(r.confidence || 0).toFixed(2)})</span></td>
           <td>${escapeHtml(r.subject || "")}</td>
           <td>${escapeHtml(r.company_id || "")}</td>
           <td>${btn}</td>
@@ -1472,7 +1556,12 @@
     });
     $("dryRunBtn").addEventListener("click", async () => {
       try {
-        logAction(await api("/send-batch", { method: "POST", body: JSON.stringify({ limit: 5, dry_run: true }) }));
+        const result = await api("/send-batch", {
+          method: "POST",
+          body: JSON.stringify({ limit: 5, dry_run: true }),
+        });
+        captureBatchMeta(result);
+        logAction(result);
       } catch (e) {
         logAction(String(e));
       }
@@ -1481,8 +1570,14 @@
       const n = Number($("sendN").value || 1);
       if (!confirm(`Отправить ${n} писем из очереди сейчас? Нужен статус «Идёт» (Старт).`)) return;
       try {
-        logAction(await api("/send-batch", { method: "POST", body: JSON.stringify({ limit: n, dry_run: false }) }));
+        const result = await api("/send-batch", {
+          method: "POST",
+          body: JSON.stringify({ limit: n, dry_run: false }),
+        });
+        captureBatchMeta(result);
+        logAction(result);
         await loadDash();
+        await loadOutbox();
       } catch (e) {
         logAction(String(e));
       }
@@ -1601,6 +1696,9 @@
     }
 
     $("outboxLoad").addEventListener("click", () => loadOutbox().catch(logAction));
+    if ($("outboxFilter")) {
+      $("outboxFilter").addEventListener("change", () => rerenderOutboxFromCache());
+    }
     if ($("queueRebuildNamesBtn")) {
       $("queueRebuildNamesBtn").addEventListener("click", async () => {
         try {
@@ -1642,13 +1740,37 @@
     }
     if ($("outboxBody")) {
       $("outboxBody").addEventListener("click", async (ev) => {
-        const btn = ev.target.closest("button[data-id]");
+        const btn = ev.target.closest("button[data-action]");
         if (!btn) return;
+        const action = btn.dataset.action;
         try {
-          await api("/api/outbox/" + btn.dataset.id, {
-            method: "PATCH",
-            body: JSON.stringify({ status: btn.dataset.st }),
-          });
+          if (action === "send-now") {
+            const email = btn.dataset.email || "";
+            if (!email) return;
+            if (!confirm(`Отправить сейчас ${email}? Игнорирует локальное окно.`)) return;
+            const result = await api("/send-batch", {
+              method: "POST",
+              body: JSON.stringify({ limit: 1, only_email: email, dry_run: false }),
+            });
+            captureBatchMeta(result);
+            logAction(result);
+          } else if (action === "skip") {
+            await api("/api/outbox/" + btn.dataset.id, {
+              method: "PATCH",
+              body: JSON.stringify({ status: "skipped" }),
+            });
+          } else if (action === "stop") {
+            await api("/api/modules/sequences/stop", {
+              method: "POST",
+              body: JSON.stringify({
+                email: btn.dataset.email || "",
+                company_id: btn.dataset.company || null,
+                reason: "manual",
+              }),
+            });
+          } else {
+            return;
+          }
           await loadOutbox();
         } catch (e) {
           logAction(String(e));
