@@ -18,15 +18,16 @@ fi
 
 API="https://api.telegram.org/bot${BOT_TOKEN}"
 
-SHORT_RU='Операторский пульт Quantum Labs: Outreach, звонки, сервисы и алерты центра управления.'
-DESC_RU='Quantum Panel — единый канал уведомлений центра управления Quantum Labs.
+SHORT_RU='Quantum Panel — операторский пульт Quantum Labs. Уведомления: Outreach, звонки, сервисы, алерты центра управления.'
+DESC_RU='Quantum Panel — операторский пульт Quantum Labs.
 
-Что приходит сюда:
+Единый Telegram-канал уведомлений центра управления:
 • Outreach — ответы на письма, пауза ящика, заявки «Перезвонить»
 • Console — статус сервисов и робота
 • Звонки и обзвоны
 
-Настройка: https://a.47z.ru/_quantum_console/ → Пульт → «Уведомления Quantum Panel»'
+Настройка: https://a.47z.ru/_quantum_console/
+Пульт → «Уведомления Quantum Panel»'
 
 curl -fsS -X POST "$API/setMyName" --data-urlencode "name=Quantum Panel" >/dev/null
 curl -fsS -X POST "$API/setMyShortDescription" \
