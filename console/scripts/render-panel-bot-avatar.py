@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Render Quantum Panel bot avatar — circular badge, large orbit mark."""
+"""Quantum Panel bot avatar — approved dark lockup + larger mark + soft circle disc.
+
+Base: ef831dc (the version that was «already close»). Only deltas:
+  • bigger official orbit mark
+  • soft circular substrate (no hard clip)
+  • same QUANTUM / PANEL typography
+"""
 
 from __future__ import annotations
 
@@ -18,37 +24,44 @@ FONT_LIGHT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 SIZE = 512
 CX = CY = SIZE // 2
-CIRCLE_R = 246  # full circle badge — Telegram crops to circle anyway
+BG_TOP = (11, 18, 32)
+BG_BOTTOM = (5, 8, 16)
 WHITE = (245, 248, 255)
 SILVER = (168, 178, 196)
-DISC_CENTER = (22, 30, 48)
-DISC_EDGE = (10, 14, 24)
-BG_OUTER = (5, 8, 14)
 
 
-def _outer_bg() -> Image.Image:
-    return Image.new("RGB", (SIZE, SIZE), BG_OUTER)
+def _dark_canvas() -> Image.Image:
+    canvas = Image.new("RGB", (SIZE, SIZE))
+    draw = ImageDraw.Draw(canvas)
+    for y in range(SIZE):
+        t = y / max(SIZE - 1, 1)
+        color = tuple(int(BG_TOP[i] * (1 - t) + BG_BOTTOM[i] * t) for i in range(3))
+        draw.line([(0, y), (SIZE, y)], fill=color)
+    return canvas
 
 
-def _draw_disc(draw: ImageDraw.ImageDraw) -> None:
-    """Circular substrate uniting logo + wordmark."""
-    x0, y0 = CX - CIRCLE_R, CY - CIRCLE_R
-    x1, y1 = CX + CIRCLE_R, CY + CIRCLE_R
-    # Soft radial fill (layered rings)
-    steps = 24
-    for i in range(steps, 0, -1):
-        t = i / steps
-        r = int(CIRCLE_R * t)
-        color = tuple(int(DISC_CENTER[j] * t + DISC_EDGE[j] * (1 - t)) for j in range(3))
-        draw.ellipse((CX - r, CY - r, CX + r, CY + r), fill=color)
-    # Hairline ring
-    draw.ellipse((x0, y0, x1, y1), outline=(255, 255, 255, 36), width=2)
-    draw.ellipse((x0 + 3, y0 + 3, x1 - 3, y1 - 3), outline=(255, 255, 255, 12), width=1)
+def _soft_circle_disc(canvas: Image.Image, *, radius: int) -> Image.Image:
+    """Gentle circular substrate — unifies mark + type, keeps approved dark bg."""
+    layer = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    x0, y0 = CX - radius, CY - radius
+    x1, y1 = CX + radius, CY + radius
+    draw.ellipse((x0, y0, x1, y1), fill=(20, 28, 44, 95))
+    draw.ellipse((x0, y0, x1, y1), outline=(255, 255, 255, 28), width=1)
+    base = canvas.convert("RGBA")
+    return Image.alpha_composite(base, layer).convert("RGB")
 
 
-def _logo_glow(draw: ImageDraw.ImageDraw, *, cy: int) -> None:
-    draw.ellipse((CX - 132, cy - 100, CX + 132, cy + 100), fill=(72, 118, 255, 22))
-    draw.ellipse((CX - 96, cy - 72, CX + 96, cy + 72), fill=(140, 92, 255, 14))
+def _add_glow(canvas: Image.Image, *, cx: int, cy: int, rx: int, ry: int) -> Image.Image:
+    layer = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    draw.ellipse((cx - rx, cy - ry, cx + rx, cy + ry), fill=(72, 118, 255, 28))
+    draw.ellipse(
+        (cx - int(rx * 0.72), cy - int(ry * 0.72), cx + int(rx * 0.72), cy + int(ry * 0.72)),
+        fill=(140, 92, 255, 18),
+    )
+    base = canvas.convert("RGBA")
+    return Image.alpha_composite(base, layer).convert("RGB")
 
 
 def _white_mark(size_px: int) -> Image.Image:
@@ -67,12 +80,12 @@ def _white_mark(size_px: int) -> Image.Image:
     return out
 
 
-def _paste_mark(base: Image.Image, *, mark_px: int, top: int) -> None:
+def _paste_mark(canvas: Image.Image, *, mark_px: int, top: int) -> None:
     mark = _white_mark(mark_px)
     x = (SIZE - mark_px) // 2
-    layer = base.convert("RGBA")
-    layer.paste(mark, (x, top), mark)
-    base.paste(layer.convert("RGB"))
+    base = canvas.convert("RGBA")
+    base.paste(mark, (x, top), mark)
+    canvas.paste(base.convert("RGB"))
 
 
 def _draw_spaced(
@@ -93,70 +106,30 @@ def _draw_spaced(
         x += widths[i] + tracking
 
 
-def _render(
-    *,
-    mark_px: int,
-    mark_top: int,
-    quantum_y: int,
-    panel_y: int,
-    quantum_size: int,
-    panel_size: int,
-    quantum_tracking: float,
-    panel_tracking: float,
-    out: Path,
-) -> None:
-    canvas = _outer_bg().convert("RGBA")
-    draw = ImageDraw.Draw(canvas)
-    _draw_disc(draw)
-    mark_cy = mark_top + mark_px // 2
-    _logo_glow(draw, cy=mark_cy)
-    _paste_mark(canvas, mark_px=mark_px, top=mark_top)
-
-    draw = ImageDraw.Draw(canvas)
-    font_q = ImageFont.truetype(FONT_BOLD, quantum_size)
-    font_p = ImageFont.truetype(FONT_LIGHT, panel_size)
-    _draw_spaced(draw, "QUANTUM", y=quantum_y, font=font_q, fill=WHITE, tracking=quantum_tracking)
-    _draw_spaced(draw, "PANEL", y=panel_y, font=font_p, fill=SILVER, tracking=panel_tracking)
-
-    # Clip to circle so square file = round badge
-    mask = Image.new("L", (SIZE, SIZE), 0)
-    ImageDraw.Draw(mask).ellipse(
-        (CX - CIRCLE_R, CY - CIRCLE_R, CX + CIRCLE_R, CY + CIRCLE_R),
-        fill=255,
-    )
-    outer = Image.new("RGBA", (SIZE, SIZE), (*BG_OUTER, 255))
-    outer.paste(canvas, (0, 0), mask)
-    outer.convert("RGB").save(out, optimize=True)
+def _draw_lockup(draw: ImageDraw.ImageDraw) -> None:
+    font_quantum = ImageFont.truetype(FONT_BOLD, 46)
+    font_panel = ImageFont.truetype(FONT_LIGHT, 22)
+    _draw_spaced(draw, "QUANTUM", y=352, font=font_quantum, fill=WHITE, tracking=3.5)
+    _draw_spaced(draw, "PANEL", y=408, font=font_panel, fill=SILVER, tracking=14)
 
 
 def render_icon() -> None:
-    """Telegram avatar — large mark inside circular badge."""
-    _render(
-        mark_px=268,
-        mark_top=44,
-        quantum_y=328,
-        panel_y=378,
-        quantum_size=44,
-        panel_size=21,
-        quantum_tracking=3.2,
-        panel_tracking=13,
-        out=OUT_ICON,
-    )
+    canvas = _dark_canvas()
+    canvas = _soft_circle_disc(canvas, radius=238)
+    mark_px, top = 232, 82
+    cy = top + mark_px // 2
+    canvas = _add_glow(canvas, cx=SIZE // 2, cy=cy, rx=128, ry=116)
+    _paste_mark(canvas, mark_px=mark_px, top=top)
+    draw = ImageDraw.Draw(canvas)
+    _draw_lockup(draw)
+    canvas.save(OUT_ICON, optimize=True)
 
 
 def render_lockup() -> None:
-    """Same badge, slightly more air around text."""
-    _render(
-        mark_px=255,
-        mark_top=52,
-        quantum_y=322,
-        panel_y=372,
-        quantum_size=42,
-        panel_size=20,
-        quantum_tracking=3,
-        panel_tracking=12,
-        out=OUT_LOCKUP,
-    )
+    """Alias — one canonical avatar."""
+    import shutil
+
+    shutil.copy2(OUT_ICON, OUT_LOCKUP)
 
 
 def main() -> None:
