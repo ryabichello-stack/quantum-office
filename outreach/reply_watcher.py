@@ -436,16 +436,34 @@ def check_replies(
                 "classification_confidence": classified.confidence,
             }
 
-            # Stop sequence / policy on actionable classes
+            # Stop / pause sequence / policy on actionable classes
             try:
                 from modules.sequences import SequenceStore
                 from modules.policy import ContactPolicyStore
 
+                seq = SequenceStore()
                 if classified.should_stop_sequence:
-                    SequenceStore().stop(
+                    seq.stop(
                         email=row.email or from_email,
                         company_id=row.company_id or None,
                         reason=classified.classification,
+                    )
+                elif getattr(classified, "should_pause_sequence", False):
+                    pause_days = 7
+                    try:
+                        from core.paths import SETTINGS_DB
+                        from runtime_settings import RuntimeSettings
+
+                        pause_days = RuntimeSettings(SETTINGS_DB).get_int(
+                            "OOO_PAUSE_DAYS", 7
+                        )
+                    except Exception:  # noqa: BLE001
+                        pause_days = 7
+                    seq.pause(
+                        email=row.email or from_email,
+                        company_id=row.company_id or None,
+                        reason=classified.classification,
+                        days=pause_days,
                     )
                 if classified.classification == "unsubscribe":
                     ContactPolicyStore().note_unsubscribe(row.company_id or "")

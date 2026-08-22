@@ -163,7 +163,7 @@ class SequenceStore:
         now = _iso(_utc_now())
         existing = self.get_by_email(em)
         if existing:
-            if existing.get("status") == "active":
+            if existing.get("status") in ("active", "paused"):
                 return existing
             # re-enroll only if stopped/completed and not do-not-contact reason
             if existing.get("stop_reason") in (
@@ -226,7 +226,7 @@ class SequenceStore:
                     """
                     UPDATE sequence_leads
                     SET status='stopped', stop_reason=?, next_action_at=NULL, updated_at=?
-                    WHERE lower(email)=lower(?) AND status='active'
+                    WHERE lower(email)=lower(?) AND status IN ('active', 'paused')
                     """,
                     (reason, now, email.strip()),
                 )
@@ -236,12 +236,96 @@ class SequenceStore:
                     """
                     UPDATE sequence_leads
                     SET status='stopped', stop_reason=?, next_action_at=NULL, updated_at=?
-                    WHERE company_id=? AND status='active'
+                    WHERE company_id=? AND status IN ('active', 'paused')
                     """,
                     (reason, now, company_id.strip()),
                 )
                 return int(cur.rowcount)
         return 0
+
+    def pause(
+        self,
+        *,
+        email: str | None = None,
+        company_id: str | None = None,
+        reason: str = "out_of_office",
+        days: int = 7,
+        settings: Any = None,
+    ) -> int:
+        """Pause active sequence until local B2B window after ``days`` calendar days."""
+        from geo_schedule import next_send_datetime
+
+        pause_days = max(1, min(int(days or 7), 60))
+        until = next_send_datetime(
+            _utc_now() + timedelta(days=pause_days),
+            None,
+            settings=settings,
+            prefer_preferred_days=True,
+        )
+        until_iso = _iso(until)
+        now = _iso(_utc_now())
+        with self.connect() as conn:
+            if email:
+                rows = conn.execute(
+                    """
+                    SELECT id, meta_json FROM sequence_leads
+                    WHERE lower(email)=lower(?) AND status IN ('active', 'paused')
+                    """,
+                    (email.strip(),),
+                ).fetchall()
+            elif company_id:
+                rows = conn.execute(
+                    """
+                    SELECT id, meta_json FROM sequence_leads
+                    WHERE company_id=? AND status IN ('active', 'paused')
+                    """,
+                    (company_id.strip(),),
+                ).fetchall()
+            else:
+                return 0
+            n = 0
+            for r in rows:
+                try:
+                    meta = json.loads(r["meta_json"] or "{}")
+                    if not isinstance(meta, dict):
+                        meta = {}
+                except Exception:  # noqa: BLE001
+                    meta = {}
+                meta["paused_until"] = until_iso
+                meta["pause_reason"] = reason
+                conn.execute(
+                    """
+                    UPDATE sequence_leads
+                    SET status='paused', stop_reason=?, next_action_at=?,
+                        meta_json=?, updated_at=?
+                    WHERE id=?
+                    """,
+                    (
+                        reason,
+                        until_iso,
+                        json.dumps(meta, ensure_ascii=False),
+                        now,
+                        r["id"],
+                    ),
+                )
+                n += 1
+            return n
+
+    def resume_due_pauses(self) -> int:
+        """Flip paused leads whose next_action_at has passed back to active."""
+        now = _iso(_utc_now())
+        with self.connect() as conn:
+            cur = conn.execute(
+                """
+                UPDATE sequence_leads
+                SET status='active', stop_reason=NULL, updated_at=?
+                WHERE status='paused'
+                  AND next_action_at IS NOT NULL
+                  AND next_action_at <= ?
+                """,
+                (now, now),
+            )
+            return int(cur.rowcount)
 
     def _pack_id_of(self, lead: dict[str, Any]) -> str:
         try:
@@ -342,6 +426,7 @@ class SequenceStore:
         return self.get(lead_id)
 
     def list_due(self, limit: int = 20) -> list[dict[str, Any]]:
+        self.resume_due_pauses()
         now = _iso(_utc_now())
         with self.connect() as conn:
             rows = conn.execute(

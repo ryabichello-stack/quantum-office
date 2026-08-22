@@ -121,7 +121,13 @@
 - **Стоп** — `POST /api/modules/sequences/stop`
 - После пачки: `deferred_window_count` в подсказке под статистикой
 
-Статика пульта и outreach должна совпадать: `scripts/sync-outreach-ui.sh` (`?v=ops2`).
+**Layer C (движок):**
+- Праздники РФ: `SCHEDULE_SKIP_RU_HOLIDAYS` — слоты не открываются 1–8 янв, 23 фев, 8 мар, 1/9 мая, 12 июн, 4 ноя (+ известные переносы)
+- Справедливость TZ: `SCHEDULE_TZ_FAIRNESS` = `rotate_daily` | `east_first` | `west_first`
+- OOO / автоответ: пауза цепочки (`status=paused`, `OOO_PAUSE_DAYS`, по умолчанию 7) вместо стопа; resume когда due
+- Sync Bitrix: автоматически `backfill-geo` перед rebuild очереди (`geo_backfill` в ответе `/sync`)
+
+Статика пульта и outreach должна совпадать: `scripts/sync-outreach-ui.sh` (`?v=ops3`).
 
 ---
 

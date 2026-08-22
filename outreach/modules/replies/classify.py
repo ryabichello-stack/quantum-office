@@ -16,12 +16,14 @@ class ReplyClass:
     should_notify: bool
     should_create_task: bool
     reason: str = ""
+    should_pause_sequence: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "classification": self.classification,
             "confidence": self.confidence,
             "should_stop_sequence": self.should_stop_sequence,
+            "should_pause_sequence": self.should_pause_sequence,
             "should_notify": self.should_notify,
             "should_create_task": self.should_create_task,
             "reason": self.reason,
@@ -73,11 +75,23 @@ def classify_reply(
         prec = (msg.get("Precedence") or "").strip().lower()
         xauto = (msg.get("X-Autoreply") or msg.get("X-Auto-Response-Suppress") or "").strip()
         if auto and auto not in ("no",):
-            return ReplyClass("automatic", 0.95, True, False, False, "Auto-Submitted")
+            return ReplyClass(
+                "automatic", 0.95, False, False, False, "Auto-Submitted", should_pause_sequence=True
+            )
         if prec in ("bulk", "junk", "list"):
-            return ReplyClass("automatic", 0.85, True, False, False, f"Precedence:{prec}")
+            return ReplyClass(
+                "automatic",
+                0.85,
+                False,
+                False,
+                False,
+                f"Precedence:{prec}",
+                should_pause_sequence=True,
+            )
         if xauto:
-            return ReplyClass("automatic", 0.9, True, False, False, "X-Autoreply")
+            return ReplyClass(
+                "automatic", 0.9, False, False, False, "X-Autoreply", should_pause_sequence=True
+            )
         ctype = (msg.get_content_type() or "").lower()
         if "multipart/report" in ctype or "delivery-status" in ctype:
             return ReplyClass("bounce", 0.95, True, False, False, "multipart/report")
@@ -85,7 +99,15 @@ def classify_reply(
     if _UNSUB.search(text):
         return ReplyClass("unsubscribe", 0.92, True, True, False, "unsub_keywords")
     if _OOO.search(text):
-        return ReplyClass("out_of_office", 0.88, False, False, False, "ooo_keywords")
+        return ReplyClass(
+            "out_of_office",
+            0.88,
+            False,
+            False,
+            False,
+            "ooo_keywords",
+            should_pause_sequence=True,
+        )
     if _NEGATIVE.search(text):
         return ReplyClass("negative", 0.8, True, True, True, "negative_keywords")
     if _FORWARD.search(text):

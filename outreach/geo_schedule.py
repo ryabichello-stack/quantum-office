@@ -35,6 +35,38 @@ DEFAULT_SLOTS = ((time(10, 0), time(11, 30)), (time(14, 30), time(16, 30)))
 DEFAULT_PREFERRED_WEEKDAYS = (1, 2, 3)  # Tue–Thu
 DEFAULT_ALLOWED_WEEKDAYS = (0, 1, 2, 3, 4)  # Mon–Fri
 
+# Fixed Russian public holidays (month, day). New Year block is inclusive.
+_RU_FIXED_HOLIDAYS: frozenset[tuple[int, int]] = frozenset(
+    {
+        (1, 1),
+        (1, 2),
+        (1, 3),
+        (1, 4),
+        (1, 5),
+        (1, 6),
+        (1, 7),
+        (1, 8),
+        (2, 23),
+        (3, 8),
+        (5, 1),
+        (5, 9),
+        (6, 12),
+        (11, 4),
+    }
+)
+# Extra observed / transferred days (production calendar), ISO YYYY-MM-DD.
+_RU_EXTRA_HOLIDAYS: frozenset[date] = frozenset(
+    {
+        date(2025, 5, 2),
+        date(2025, 12, 31),
+        date(2026, 1, 9),
+        date(2026, 5, 11),
+        date(2026, 11, 3),  # bridge before Nov 4 when useful
+        date(2027, 1, 9),
+        date(2027, 5, 10),
+    }
+)
+
 _UTC_OFFSET_RE = re.compile(
     r"^\s*(?:UTC|GMT)?\s*([+-])\s*(\d{1,2})(?::?(\d{2}))?\s*$",
     re.IGNORECASE,
@@ -266,7 +298,17 @@ def _cfg_bool(settings: Any, key: str, default: bool = True) -> bool:
     return default
 
 
+def is_russian_public_holiday(d: date) -> bool:
+    """True for fixed RU holidays and a small set of known transfer days."""
+    if (d.month, d.day) in _RU_FIXED_HOLIDAYS:
+        return True
+    return d in _RU_EXTRA_HOLIDAYS
+
+
 def schedule_config(settings: Any = None) -> dict[str, Any]:
+    fairness = (_cfg(settings, "SCHEDULE_TZ_FAIRNESS", "rotate_daily") or "rotate_daily").strip().lower()
+    if fairness not in ("east_first", "west_first", "rotate_daily"):
+        fairness = "rotate_daily"
     return {
         "enabled": _cfg_bool(settings, "SCHEDULE_LOCAL_WINDOWS", True),
         "slots": parse_slots(_cfg(settings, "SCHEDULE_SLOTS", "")),
@@ -283,6 +325,8 @@ def schedule_config(settings: Any = None) -> dict[str, Any]:
             or DEFAULT_IANA
         ),
         "prefer_tue_thu": _cfg_bool(settings, "SCHEDULE_PREFER_TUE_THU", True),
+        "skip_ru_holidays": _cfg_bool(settings, "SCHEDULE_SKIP_RU_HOLIDAYS", True),
+        "tz_fairness": fairness,
     }
 
 
@@ -300,6 +344,8 @@ def in_send_window(
     cfg = schedule_config(settings)
     if not cfg["enabled"]:
         return True
+    if cfg["skip_ru_holidays"] and is_russian_public_holiday(local_dt.date()):
+        return False
     wd = local_dt.weekday()
     allowed = cfg["allowed_weekdays"]
     preferred = cfg["preferred_weekdays"]
@@ -319,7 +365,7 @@ def window_rank(
     *,
     settings: Any = None,
 ) -> float:
-    """Higher = better candidate right now (preferred day, earlier in slot, east TZ)."""
+    """Higher = better candidate right now (preferred day, earlier in slot, TZ fairness)."""
     if not in_send_window(local_dt, settings=settings):
         return -1.0
     cfg = schedule_config(settings)
@@ -335,9 +381,20 @@ def window_rank(
             elapsed = (t.hour * 60 + t.minute) - (slot.start.hour * 60 + slot.start.minute)
             score += max(0.0, 30.0 - elapsed / 2.0)
             break
-    # East-first: larger UTC offset → slightly higher (their morning comes first)
     utcoff = local_dt.utcoffset() or timedelta(0)
-    score += utcoff.total_seconds() / 3600.0
+    offset_h = utcoff.total_seconds() / 3600.0
+    fairness = cfg.get("tz_fairness") or "rotate_daily"
+    if fairness == "west_first":
+        score -= offset_h
+    elif fairness == "rotate_daily":
+        # Alternate east/west preference by UTC date so far-east does not starve west.
+        if local_dt.astimezone(timezone.utc).date().toordinal() % 2 == 1:
+            score += offset_h
+        else:
+            score -= offset_h
+    else:
+        # east_first (legacy)
+        score += offset_h
     return score
 
 
@@ -361,10 +418,14 @@ def next_send_datetime(
     if prefer_preferred_days and cfg["prefer_tue_thu"]:
         day_sets.append(preferred)
     day_sets.append(allowed)
+    skip_holidays = bool(cfg.get("skip_ru_holidays"))
 
     for day_set in day_sets:
         cur_date = local.date()
         for _ in range(max(1, limit_days)):
+            if skip_holidays and is_russian_public_holiday(cur_date):
+                cur_date = cur_date + timedelta(days=1)
+                continue
             if cur_date.weekday() in day_set:
                 for slot in cfg["slots"]:
                     candidate = datetime.combine(cur_date, slot.start, tzinfo=tz)

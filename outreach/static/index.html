@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops2" />
+  <link rel="stylesheet" href="styles.css?v=ops3" />
   <script>
     (function () {
       function parentBase() {
@@ -391,12 +391,12 @@
           <div id="clientsStats" class="stat-grid"></div>
           <div id="clientsGeoStats" class="stat-grid"></div>
           <div class="task-actions" style="border-top:0;padding-top:0">
-            <button type="button" id="clientsSyncBtn" class="primary">1. Скачать из Bitrix</button>
-            <button type="button" class="btn-quiet" id="clientsBackfillGeoBtn">2. Дотянуть geo / ФИО</button>
+            <button type="button" id="clientsSyncBtn" class="primary">1. Скачать из Bitrix (+ geo)</button>
+            <button type="button" class="btn-quiet" id="clientsBackfillGeoBtn">2. Дотянуть geo / ФИО снова</button>
             <button type="button" class="btn-quiet" id="clientsRebuildBtn">3. Обновить очередь</button>
             <button type="button" class="btn-quiet" id="clientsReloadBtn">Обновить список</button>
           </div>
-          <p class="muted tight">После добавления компаний в Bitrix: sync → geo → очередь. Без geo письмо уйдёт по default TZ (Москва).</p>
+            <p class="muted tight">После добавления компаний в Bitrix: sync сам тянет geo/ФИО и обновляет очередь. Кнопка 2 — ручной повтор.</p>
           <pre id="clientsLog" class="log"></pre>
 
           <details class="task-advanced">
@@ -528,6 +528,10 @@
               <input id="preferTueThu" type="checkbox" checked />
               Предпочитать вт–чт при планировании следующего шага
             </label>
+            <label class="field check">
+              <input id="skipRuHolidays" type="checkbox" checked />
+              Пропускать праздники РФ (Новый год, 23 фев, 8 мар, майские…)
+            </label>
             <div class="task-grid">
               <label class="field full">Слоты (местное время)
                 <input id="localSlots" type="text" placeholder="10:00-11:30,14:30-16:30" />
@@ -541,8 +545,18 @@
               <label class="field">Default TZ (если нет geo)
                 <input id="localDefaultTz" type="text" placeholder="Europe/Moscow" />
               </label>
+              <label class="field">Справедливость TZ
+                <select id="tzFairness">
+                  <option value="rotate_daily">Чередовать восток/запад по дням</option>
+                  <option value="east_first">Сначала восток</option>
+                  <option value="west_first">Сначала запад</option>
+                </select>
+              </label>
+              <label class="field">Пауза OOO, дней
+                <input id="oooPauseDays" type="number" min="1" max="60" value="7" />
+              </label>
             </div>
-            <p class="muted tight" id="localWindowsHint">Письмо уходит, когда у получателя сейчас один из слотов. Без timezone — default TZ.</p>
+            <p class="muted tight" id="localWindowsHint">Письмо уходит, когда у получателя сейчас один из слотов. Без timezone — default TZ. OOO/автоответ — пауза цепочки, не стоп.</p>
             <div class="actions" style="margin-top:0.35rem">
               <button type="button" id="localWindowsSave" class="primary">Сохранить окна</button>
             </div>
@@ -675,6 +689,6 @@
       </section>
     </main>
   </div>
-  <script src="app.js?v=ops2"></script>
+  <script src="app.js?v=ops3"></script>
 </body>
 </html>

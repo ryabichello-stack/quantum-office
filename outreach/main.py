@@ -685,8 +685,8 @@ def status() -> dict[str, Any]:
 
 
 @app.post("/sync", dependencies=[Depends(require_ui_auth)])
-def api_sync() -> dict[str, Any]:
-    """Sync Bitrix → local clients DB, then refresh outbox from local mirror."""
+def api_sync(skip_geo: bool = False) -> dict[str, Any]:
+    """Sync Bitrix → local clients DB, auto geo/ФИО backfill, then refresh outbox."""
     client = _bitrix_or_none()
     if client is None:
         raise HTTPException(
@@ -699,10 +699,15 @@ def api_sync() -> dict[str, Any]:
         )
     try:
         clients_report = sync_from_bitrix(_clients_mod.store, client)
+        geo_report: dict[str, Any] = {"ok": True, "skipped": True}
+        if not skip_geo:
+            geo_report = backfill_company_geo_and_fio(_clients_mod.store)
+            geo_report["stats"] = geo_stats(_clients_mod.store)
         outbox_report = rebuild_outbox_from_clients(_clients_mod.store, _store())
         return {
             "ok": bool(clients_report.get("ok")),
             "clients": clients_report,
+            "geo_backfill": geo_report,
             "outbox_rebuild": outbox_report,
         }
     finally:
@@ -1383,11 +1388,14 @@ def cli_main(argv: list[str] | None = None) -> int:
         try:
             _clients_mod.store.init_db()
             clients_report = sync_from_bitrix(_clients_mod.store, client)
+            geo_report = backfill_company_geo_and_fio(_clients_mod.store)
+            geo_report["stats"] = geo_stats(_clients_mod.store)
             outbox_report = rebuild_outbox_from_clients(_clients_mod.store, _store())
             _print(
                 {
                     "ok": bool(clients_report.get("ok")),
                     "clients": clients_report,
+                    "geo_backfill": geo_report,
                     "outbox_rebuild": outbox_report,
                 }
             )

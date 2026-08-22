@@ -740,6 +740,10 @@
       $("preferTueThu").checked =
         String(s.SCHEDULE_PREFER_TUE_THU || "true").toLowerCase() !== "false";
     }
+    if ($("skipRuHolidays")) {
+      $("skipRuHolidays").checked =
+        String(s.SCHEDULE_SKIP_RU_HOLIDAYS || "true").toLowerCase() !== "false";
+    }
     if ($("localSlots")) {
       $("localSlots").value = s.SCHEDULE_SLOTS || "10:00-11:30,14:30-16:30";
     }
@@ -751,6 +755,15 @@
     }
     if ($("localDefaultTz")) {
       $("localDefaultTz").value = s.SCHEDULE_DEFAULT_TIMEZONE || "Europe/Moscow";
+    }
+    if ($("tzFairness")) {
+      const fair = (s.SCHEDULE_TZ_FAIRNESS || "rotate_daily").trim() || "rotate_daily";
+      $("tzFairness").value = ["east_first", "west_first", "rotate_daily"].includes(fair)
+        ? fair
+        : "rotate_daily";
+    }
+    if ($("oooPauseDays")) {
+      $("oooPauseDays").value = s.OOO_PAUSE_DAYS || "7";
     }
     if ($("localWindowsHint")) {
       const on = $("localWindowsEnabled") && $("localWindowsEnabled").checked;
@@ -950,14 +963,20 @@
     const c = String(cls || "").toLowerCase();
     const map = {
       positive: "ok",
+      positive_interest: "ok",
       human: "ok",
+      human_unclassified: "ok",
       interested: "ok",
       negative: "bad",
       unsub: "bad",
+      unsubscribe: "bad",
       bounce: "bad",
       ooo: "warn",
+      out_of_office: "warn",
       auto: "muted",
+      automatic: "muted",
       forward: "warn",
+      forwarded: "warn",
     };
     const tone = map[c] || "muted";
     return `<span class="eng ${tone}">${escapeHtml(cls || "—")}</span>`;
@@ -1456,9 +1475,15 @@
     });
     $("clientsSyncBtn").addEventListener("click", async () => {
       try {
-        $("clientsLog").textContent = "Скачиваю Bitrix…";
+        $("clientsLog").textContent = "Скачиваю Bitrix + geo/ФИО…";
         const data = await api("/sync", { method: "POST", body: "{}" });
-        $("clientsLog").textContent = JSON.stringify(data, null, 2);
+        const geo = data.geo_backfill || {};
+        const stats = geo.stats || {};
+        $("clientsLog").textContent =
+          JSON.stringify(data, null, 2) +
+          (stats.with_timezone != null
+            ? `\n\nGeo: TZ ${stats.with_timezone}/${stats.companies || "?"} · updated ${geo.updated || 0}`
+            : "");
         await loadClients();
         await loadDash();
       } catch (e) {
@@ -2114,10 +2139,13 @@
             SCHEDULE_LOCAL_WINDOWS: $("localWindowsEnabled").checked ? "true" : "false",
             SCHEDULE_FOLLOWUPS_FIRST: $("followupsFirst").checked ? "true" : "false",
             SCHEDULE_PREFER_TUE_THU: $("preferTueThu").checked ? "true" : "false",
+            SCHEDULE_SKIP_RU_HOLIDAYS: $("skipRuHolidays") && $("skipRuHolidays").checked ? "true" : "false",
             SCHEDULE_SLOTS: ($("localSlots").value || "").trim() || "10:00-11:30,14:30-16:30",
             SCHEDULE_ALLOWED_WEEKDAYS: ($("localAllowedDays").value || "").trim() || "0,1,2,3,4",
             SCHEDULE_PREFERRED_WEEKDAYS: ($("localPreferredDays").value || "").trim() || "1,2,3",
             SCHEDULE_DEFAULT_TIMEZONE: ($("localDefaultTz").value || "").trim() || "Europe/Moscow",
+            SCHEDULE_TZ_FAIRNESS: ($("tzFairness") && $("tzFairness").value) || "rotate_daily",
+            OOO_PAUSE_DAYS: String(($("oooPauseDays") && $("oooPauseDays").value) || "7"),
           };
           logAction(await api("/api/settings", { method: "PUT", body: JSON.stringify({ settings: payload }) }));
           await loadSettingsIntoForms();
