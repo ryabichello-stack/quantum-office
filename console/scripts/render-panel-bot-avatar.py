@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Quantum Panel bot avatar — approved dark lockup + larger mark + soft circle disc.
+"""Quantum Panel bot avatar — approved final lockup.
 
-Base: ef831dc (the version that was «already close»). Only deltas:
-  • bigger official orbit mark
-  • soft circular substrate (no hard clip)
-  • same QUANTUM / PANEL typography
+Orange orbit mark · white QUANTUM · orange PANEL · deep black background.
 """
 
 from __future__ import annotations
 
+import random
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -23,48 +21,24 @@ FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_LIGHT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 SIZE = 512
-CX = CY = SIZE // 2
-BG_TOP = (11, 18, 32)
-BG_BOTTOM = (5, 8, 16)
-WHITE = (245, 248, 255)
-SILVER = (168, 178, 196)
+WHITE = (255, 255, 255)
+ORANGE = (216, 106, 58)  # copper-orange, brand-adjacent
+BG = (8, 8, 10)
 
 
-def _dark_canvas() -> Image.Image:
-    canvas = Image.new("RGB", (SIZE, SIZE))
-    draw = ImageDraw.Draw(canvas)
+def _bg() -> Image.Image:
+    canvas = Image.new("RGB", (SIZE, SIZE), BG)
+    px = canvas.load()
+    rng = random.Random(42)
     for y in range(SIZE):
-        t = y / max(SIZE - 1, 1)
-        color = tuple(int(BG_TOP[i] * (1 - t) + BG_BOTTOM[i] * t) for i in range(3))
-        draw.line([(0, y), (SIZE, y)], fill=color)
+        for x in range(SIZE):
+            n = rng.randint(-3, 3)
+            v = max(0, min(255, BG[0] + n))
+            px[x, y] = (v, v, v + 1)
     return canvas
 
 
-def _soft_circle_disc(canvas: Image.Image, *, radius: int) -> Image.Image:
-    """Gentle circular substrate — unifies mark + type, keeps approved dark bg."""
-    layer = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(layer)
-    x0, y0 = CX - radius, CY - radius
-    x1, y1 = CX + radius, CY + radius
-    draw.ellipse((x0, y0, x1, y1), fill=(20, 28, 44, 95))
-    draw.ellipse((x0, y0, x1, y1), outline=(255, 255, 255, 28), width=1)
-    base = canvas.convert("RGBA")
-    return Image.alpha_composite(base, layer).convert("RGB")
-
-
-def _add_glow(canvas: Image.Image, *, cx: int, cy: int, rx: int, ry: int) -> Image.Image:
-    layer = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(layer)
-    draw.ellipse((cx - rx, cy - ry, cx + rx, cy + ry), fill=(72, 118, 255, 28))
-    draw.ellipse(
-        (cx - int(rx * 0.72), cy - int(ry * 0.72), cx + int(rx * 0.72), cy + int(ry * 0.72)),
-        fill=(140, 92, 255, 18),
-    )
-    base = canvas.convert("RGBA")
-    return Image.alpha_composite(base, layer).convert("RGB")
-
-
-def _white_mark(size_px: int) -> Image.Image:
+def _colored_mark(size_px: int, color: tuple[int, int, int]) -> Image.Image:
     src = Image.open(MARK_SRC).convert("L")
     src = src.resize((size_px, size_px), Image.Resampling.LANCZOS)
     out = Image.new("RGBA", (size_px, size_px), (0, 0, 0, 0))
@@ -75,17 +49,17 @@ def _white_mark(size_px: int) -> Image.Image:
             v = sp[x, y]
             if v > 210:
                 continue
-            alpha = min(255, int(255 - v * 0.92))
-            op[x, y] = (*WHITE, alpha)
+            alpha = min(255, int(255 - v * 0.9))
+            op[x, y] = (*color, alpha)
     return out
 
 
 def _paste_mark(canvas: Image.Image, *, mark_px: int, top: int) -> None:
-    mark = _white_mark(mark_px)
+    mark = _colored_mark(mark_px, ORANGE)
     x = (SIZE - mark_px) // 2
-    base = canvas.convert("RGBA")
-    base.paste(mark, (x, top), mark)
-    canvas.paste(base.convert("RGB"))
+    layer = canvas.convert("RGBA")
+    layer.paste(mark, (x, top), mark)
+    canvas.paste(layer.convert("RGB"))
 
 
 def _draw_spaced(
@@ -107,26 +81,21 @@ def _draw_spaced(
 
 
 def _draw_lockup(draw: ImageDraw.ImageDraw) -> None:
-    font_quantum = ImageFont.truetype(FONT_BOLD, 46)
-    font_panel = ImageFont.truetype(FONT_LIGHT, 22)
-    _draw_spaced(draw, "QUANTUM", y=352, font=font_quantum, fill=WHITE, tracking=3.5)
-    _draw_spaced(draw, "PANEL", y=408, font=font_panel, fill=SILVER, tracking=14)
+    font_quantum = ImageFont.truetype(FONT_BOLD, 48)
+    font_panel = ImageFont.truetype(FONT_LIGHT, 20)
+    _draw_spaced(draw, "QUANTUM", y=348, font=font_quantum, fill=WHITE, tracking=4)
+    _draw_spaced(draw, "PANEL", y=404, font=font_panel, fill=ORANGE, tracking=16)
 
 
 def render_icon() -> None:
-    canvas = _dark_canvas()
-    canvas = _soft_circle_disc(canvas, radius=238)
-    mark_px, top = 232, 82
-    cy = top + mark_px // 2
-    canvas = _add_glow(canvas, cx=SIZE // 2, cy=cy, rx=128, ry=116)
-    _paste_mark(canvas, mark_px=mark_px, top=top)
+    canvas = _bg()
+    _paste_mark(canvas, mark_px=240, top=72)
     draw = ImageDraw.Draw(canvas)
     _draw_lockup(draw)
     canvas.save(OUT_ICON, optimize=True)
 
 
 def render_lockup() -> None:
-    """Alias — one canonical avatar."""
     import shutil
 
     shutil.copy2(OUT_ICON, OUT_LOCKUP)
@@ -138,7 +107,6 @@ def main() -> None:
     render_icon()
     render_lockup()
     print(f"wrote {OUT_ICON}")
-    print(f"wrote {OUT_LOCKUP}")
 
 
 if __name__ == "__main__":
