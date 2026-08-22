@@ -410,3 +410,58 @@ def any_russian_window_open(
         if in_send_window(local, settings=settings):
             return True
     return False
+
+
+def window_status(
+    tz_name: str | None,
+    *,
+    settings: Any = None,
+    now_utc: datetime | None = None,
+) -> dict[str, Any]:
+    """Operator-facing status: in window now / next local slot.
+
+    Returns keys: in_window, label, next_slot_at (UTC ISO), next_slot_local,
+    timezone (resolved IANA).
+    """
+    cfg = schedule_config(settings)
+    resolved = iana_from_utc_offset(tz_name or "") or cfg["default_timezone"]
+    now = now_utc or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    local = now.astimezone(zoneinfo_for(resolved))
+
+    if not cfg["enabled"]:
+        return {
+            "in_window": True,
+            "label": "окна выкл.",
+            "next_slot_at": None,
+            "next_slot_local": None,
+            "timezone": resolved,
+        }
+
+    if in_send_window(local, settings=settings):
+        return {
+            "in_window": True,
+            "label": "сейчас",
+            "next_slot_at": now.replace(microsecond=0).isoformat(),
+            "next_slot_local": local.strftime("%a %H:%M"),
+            "timezone": resolved,
+        }
+
+    nxt = next_send_datetime(now, resolved, settings=settings)
+    nxt_local = nxt.astimezone(zoneinfo_for(resolved))
+    # Compact RU-friendly: «вт 10:00» / «завтра 14:30»
+    wd = ("пн", "вт", "ср", "чт", "пт", "сб", "вс")[nxt_local.weekday()]
+    if nxt_local.date() == local.date():
+        when = f"сегодня {nxt_local.strftime('%H:%M')}"
+    elif nxt_local.date() == local.date() + timedelta(days=1):
+        when = f"завтра {nxt_local.strftime('%H:%M')}"
+    else:
+        when = f"{wd} {nxt_local.strftime('%H:%M')}"
+    return {
+        "in_window": False,
+        "label": when,
+        "next_slot_at": nxt.replace(microsecond=0).isoformat(),
+        "next_slot_local": nxt_local.strftime("%Y-%m-%d %H:%M"),
+        "timezone": resolved,
+    }

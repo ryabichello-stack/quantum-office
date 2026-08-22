@@ -825,13 +825,18 @@ def api_outbox(
     offset: int = Query(default=0, ge=0),
     sort: str = Query(default="", description="id_asc for queue order"),
 ) -> dict[str, Any]:
+    from geo_schedule import window_status
+
     rows, total = _store().list_outbox(
         status=status, q=q, limit=limit, offset=offset, sort=sort or None
     )
     clients = _clients_mod.store
+    rt = _rt()
     items: list[dict[str, Any]] = []
     for r in rows:
         geo = company_geo_row(clients, r.company_id or "")
+        tz = geo.get("timezone") or geo.get("timezone_raw") or ""
+        win = window_status(tz, settings=rt)
         items.append(
             {
                 "id": r.id,
@@ -848,9 +853,13 @@ def api_outbox(
                 "updated_at": r.updated_at,
                 "city": geo.get("city") or "",
                 "region": geo.get("region") or "",
-                "timezone": geo.get("timezone") or "",
+                "timezone": geo.get("timezone") or win.get("timezone") or "",
                 "timezone_raw": geo.get("timezone_raw") or "",
                 "director_greeting": geo.get("director_greeting") or "",
+                "in_window": bool(win.get("in_window")),
+                "window_label": win.get("label") or "",
+                "next_slot_at": win.get("next_slot_at"),
+                "next_slot_local": win.get("next_slot_local"),
             }
         )
     return {

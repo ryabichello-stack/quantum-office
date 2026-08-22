@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=tz4" />
+  <link rel="stylesheet" href="styles.css?v=ops1" />
   <script>
     (function () {
       function parentBase() {
@@ -269,7 +269,7 @@
             <table>
               <thead>
                 <tr>
-                  <th>Шаг</th><th>Когда</th><th>Кому</th><th>Город / TZ</th><th>Тема / label</th>
+                  <th>Шаг</th><th>Когда</th><th>Кому</th><th>Город</th><th>TZ</th><th>Окно</th><th>Тема</th>
                 </tr>
               </thead>
               <tbody id="queueDueBody"></tbody>
@@ -297,7 +297,7 @@
             <table>
               <thead>
                 <tr>
-                  <th>ID</th><th>Email</th><th>Кому</th><th>Город</th><th>TZ</th><th>Статус</th><th>Отправлено</th><th></th>
+                  <th>ID</th><th>Email</th><th>Кому</th><th>Город</th><th>TZ</th><th>Окно</th><th>Статус</th><th>Отправлено</th><th></th>
                 </tr>
               </thead>
               <tbody id="outboxBody"></tbody>
@@ -310,7 +310,7 @@
               <table>
                 <thead>
                   <tr>
-                    <th>Шаг</th><th>План</th><th>Кому</th><th>TZ</th><th>Label</th>
+                    <th>Шаг</th><th>План</th><th>Кому</th><th>Город</th><th>TZ</th><th>Окно</th><th>Label</th>
                   </tr>
                 </thead>
                 <tbody id="queueUpcomingBody"></tbody>
@@ -378,11 +378,14 @@
             <p class="muted tight">Локальное зеркало Bitrix. Рассылка может идти из этой базы.</p>
           </div>
           <div id="clientsStats" class="stat-grid"></div>
+          <div id="clientsGeoStats" class="stat-grid"></div>
           <div class="task-actions" style="border-top:0;padding-top:0">
-            <button type="button" id="clientsSyncBtn" class="primary">Скачать из Bitrix</button>
-            <button type="button" class="btn-quiet" id="clientsRebuildBtn">Обновить очередь</button>
+            <button type="button" id="clientsSyncBtn" class="primary">1. Скачать из Bitrix</button>
+            <button type="button" class="btn-quiet" id="clientsBackfillGeoBtn">2. Дотянуть geo / ФИО</button>
+            <button type="button" class="btn-quiet" id="clientsRebuildBtn">3. Обновить очередь</button>
             <button type="button" class="btn-quiet" id="clientsReloadBtn">Обновить список</button>
           </div>
+          <p class="muted tight">После добавления компаний в Bitrix: sync → geo → очередь. Без geo письмо уйдёт по default TZ (Москва).</p>
           <pre id="clientsLog" class="log"></pre>
 
           <details class="task-advanced">
@@ -502,10 +505,44 @@
       <!-- ========== НАСТРОЙКИ (защита + окно + лимиты) ========== -->
       <section id="tab-settings" class="panel">
         <div class="surface task-form">
-          <div class="task-intro">
+          <div class="task-intro compact-intro">
             <h2 class="section-title">Настройки рассылки</h2>
-            <p class="muted tight">Лимиты, окно часов и защита ящика. Массовая отправка — кнопками Старт / Пауза / Стоп сверху.</p>
+            <p class="muted tight">Локальные B2B-окна у получателя — главный режим. Старт / Пауза / Стоп — в шапке.</p>
           </div>
+
+          <fieldset class="task-mode">
+            <legend>Локальные окна (по timezone получателя)</legend>
+            <label class="field check">
+              <input id="localWindowsEnabled" type="checkbox" checked />
+              Отправлять только в локальные слоты получателя
+            </label>
+            <label class="field check">
+              <input id="followupsFirst" type="checkbox" checked />
+              Сначала due follow-up, затем новые первые письма
+            </label>
+            <label class="field check">
+              <input id="preferTueThu" type="checkbox" checked />
+              Предпочитать вт–чт при планировании следующего шага
+            </label>
+            <div class="task-grid">
+              <label class="field full">Слоты (местное время)
+                <input id="localSlots" type="text" placeholder="10:00-11:30,14:30-16:30" />
+              </label>
+              <label class="field">Дни разрешены (0=пн…6=вс)
+                <input id="localAllowedDays" type="text" placeholder="0,1,2,3,4" />
+              </label>
+              <label class="field">Дни предпочт. (вт–чт = 1,2,3)
+                <input id="localPreferredDays" type="text" placeholder="1,2,3" />
+              </label>
+              <label class="field">Default TZ (если нет geo)
+                <input id="localDefaultTz" type="text" placeholder="Europe/Moscow" />
+              </label>
+            </div>
+            <p class="muted tight" id="localWindowsHint">Письмо уходит, когда у получателя сейчас один из слотов. Без timezone — default TZ.</p>
+            <div class="actions" style="margin-top:0.35rem">
+              <button type="button" id="localWindowsSave" class="primary">Сохранить окна</button>
+            </div>
+          </fieldset>
 
           <div class="task-grid">
             <label class="field">Писем в сутки
@@ -541,18 +578,19 @@
           </label>
           <p class="muted tight" id="settingsMeta"></p>
           <div class="task-actions">
-            <button type="button" id="settingsSave" class="primary">Сохранить настройки</button>
+            <button type="button" id="settingsSave" class="primary">Сохранить лимиты</button>
           </div>
 
           <details class="task-advanced">
-            <summary>Окно часов</summary>
+            <summary>Устаревшее: глобальное окно по Москве</summary>
+            <p class="muted tight">Используется только если локальные окна выключены. Не путать с слотами выше.</p>
             <label class="field check">
               <input id="schedEnabled" type="checkbox" disabled />
               Авто (зеркало Старта — только чтение)
             </label>
             <label class="field check">
               <input id="runRespectWindow" type="checkbox" />
-              Учитывать окно часов при Старт
+              Учитывать это окно при Старт (legacy)
             </label>
             <div class="task-grid">
               <label class="field">С часа
@@ -572,7 +610,7 @@
               </label>
             </div>
             <div class="actions" style="margin-top:0.45rem">
-              <button type="button" id="schedSave" class="primary">Сохранить окно</button>
+              <button type="button" id="schedSave" class="primary">Сохранить legacy-окно</button>
             </div>
           </details>
 
@@ -633,6 +671,6 @@
       </section>
     </main>
   </div>
-  <script src="app.js?v=tz4"></script>
+  <script src="app.js?v=ops1"></script>
 </body>
 </html>

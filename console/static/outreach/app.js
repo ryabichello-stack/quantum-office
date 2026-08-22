@@ -533,15 +533,19 @@
     if (!box) return;
     const c = (dash.outbox && dash.outbox.counts) || {};
     const e = dash.engagement || {};
+    const geo = (dash.clients && dash.clients.geo) || {};
     const st = (dash.run_state || (dash.runner && dash.runner.state) || "stopped").toLowerCase();
     const stLabel = { playing: "Идёт", paused: "Пауза", stopped: "Стоп" }[st] || st;
     const stCls = st in { playing: 1, paused: 1, stopped: 1 } ? st : "stopped";
+    const withTz = geo.with_timezone != null ? geo.with_timezone : "—";
+    const companies = geo.companies != null ? geo.companies : "—";
     const items = [
       ["Очередь", c.pending || 0],
       ["Сегодня", dash.outbox ? dash.outbox.sent_today : 0],
       ["Отправлено", e.sent || c.sent || 0],
       ["Открыто", e.opened || 0],
       ["Ответы", e.replied || c.replied || 0],
+      ["Geo TZ", `${withTz}/${companies}`],
     ];
     box.innerHTML =
       items
@@ -715,6 +719,37 @@
     $("schedBatch").value = s.SCHEDULE_BATCH_SIZE || 1;
     $("schedTick").value = s.SCHEDULE_TICK_SECONDS || 300;
 
+    if ($("localWindowsEnabled")) {
+      $("localWindowsEnabled").checked =
+        String(s.SCHEDULE_LOCAL_WINDOWS || "true").toLowerCase() !== "false";
+    }
+    if ($("followupsFirst")) {
+      $("followupsFirst").checked =
+        String(s.SCHEDULE_FOLLOWUPS_FIRST || "true").toLowerCase() !== "false";
+    }
+    if ($("preferTueThu")) {
+      $("preferTueThu").checked =
+        String(s.SCHEDULE_PREFER_TUE_THU || "true").toLowerCase() !== "false";
+    }
+    if ($("localSlots")) {
+      $("localSlots").value = s.SCHEDULE_SLOTS || "10:00-11:30,14:30-16:30";
+    }
+    if ($("localAllowedDays")) {
+      $("localAllowedDays").value = s.SCHEDULE_ALLOWED_WEEKDAYS || "0,1,2,3,4";
+    }
+    if ($("localPreferredDays")) {
+      $("localPreferredDays").value = s.SCHEDULE_PREFERRED_WEEKDAYS || "1,2,3";
+    }
+    if ($("localDefaultTz")) {
+      $("localDefaultTz").value = s.SCHEDULE_DEFAULT_TIMEZONE || "Europe/Moscow";
+    }
+    if ($("localWindowsHint")) {
+      const on = $("localWindowsEnabled") && $("localWindowsEnabled").checked;
+      $("localWindowsHint").textContent = on
+        ? `Слоты: ${$("localSlots").value || "—"}. Без timezone у компании → ${$("localDefaultTz").value || "Europe/Moscow"}.`
+        : "Локальные окна выключены — используется legacy-окно по Москве (ниже).";
+    }
+
     $("setEnabled").checked = String(s.OUTREACH_ENABLED).toLowerCase() === "true" || s.OUTREACH_ENABLED === "1";
     setRunStateBadge(s.OUTREACH_RUN_STATE || "stopped");
     $("setDaily").value = s.OUTREACH_DAILY_LIMIT || 20;
@@ -819,6 +854,21 @@
     ]
       .map(([l, n]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`)
       .join("");
+    try {
+      const geo = await api("/api/modules/clients/geo");
+      if ($("clientsGeoStats")) {
+        $("clientsGeoStats").innerHTML = [
+          ["С городом", geo.with_city || 0],
+          ["С timezone", geo.with_timezone || 0],
+          ["С обращением", geo.with_director_greeting || 0],
+          ["Всего компаний", geo.companies || 0],
+        ]
+          .map(([l, n]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`)
+          .join("");
+      }
+    } catch (_) {
+      /* ignore */
+    }
     const last = st.last_sync;
     if (last) {
       $("clientsLog").textContent = JSON.stringify(last.report || last, null, 2);
@@ -908,6 +958,7 @@
         <div class="stat"><div class="n">${c.followups_due || 0}</div><div class="l">Due цепочка</div></div>
         <div class="stat"><div class="n">${c.followups_upcoming || 0}</div><div class="l">Скоро</div></div>
         <div class="stat"><div class="n">${c.first_touch_pending_total != null ? c.first_touch_pending_total : (c.first_touch_pending || 0)}</div><div class="l">Первые</div></div>
+        <div class="stat"><div class="n">${c.first_touch_in_window != null ? c.first_touch_in_window : "—"}</div><div class="l">В окне сейчас</div></div>
         <div class="stat"><div class="n">${(c.sequences && c.sequences.active) || 0}</div><div class="l">Активных цепочек</div></div>`;
     }
 
@@ -915,6 +966,11 @@
     const fmtTimezone = (r) => {
       const tz = ((r && r.timezone) || (r && r.timezone_raw) || "").trim();
       return escapeHtml(tz || "—");
+    };
+    const fmtWindow = (r) => {
+      const label = ((r && r.window_label) || "").trim() || "—";
+      const cls = r && r.in_window ? "win-now" : "win-later";
+      return `<span class="win-badge ${cls}">${escapeHtml(label)}</span>`;
     };
     const fmtWhen = (iso) => {
       if (!iso) return "сейчас";
@@ -938,11 +994,12 @@
             <td class="cell-wide">${escapeHtml(r.contact_name || "—")}<br><span class="muted">${escapeHtml(r.email || "")}</span></td>
             <td class="cell-city">${fmtCity(r)}</td>
             <td class="cell-tz">${fmtTimezone(r)}</td>
+            <td class="cell-win">${fmtWindow(r)}</td>
             <td class="cell-wide">${escapeHtml(r.next_subject || "")}</td>
           </tr>`
             )
             .join("")
-        : `<tr><td colspan="5" class="muted">Нет due follow-up — сегодня уйдут только новые первые письма (если Старт).</td></tr>`;
+        : `<tr><td colspan="7" class="muted">Нет due follow-up — сегодня уйдут только новые первые письма (если Старт).</td></tr>`;
     }
 
     if ($("queueUpcomingBody")) {
@@ -956,11 +1013,12 @@
             <td>${escapeHtml(r.contact_name || "")}<br><span class="muted">${escapeHtml(r.email || "")}</span></td>
             <td class="cell-city">${fmtCity(r)}</td>
             <td class="cell-tz">${fmtTimezone(r)}</td>
+            <td class="cell-win">${fmtWindow(r)}</td>
             <td>${escapeHtml(r.next_label || "")}</td>
           </tr>`
             )
             .join("")
-        : `<tr><td colspan="5" class="muted">Пока нет запланированных следующих шагов.</td></tr>`;
+        : `<tr><td colspan="7" class="muted">Пока нет запланированных следующих шагов.</td></tr>`;
     }
 
     // First-touch / outbox table (searchable; geo from API by company_id)
@@ -971,11 +1029,13 @@
     const data = await api("/api/outbox?" + qs.toString());
     const items = data.items || [];
     const missingTz = items.filter((r) => !r.timezone && !r.timezone_raw).length;
+    const inWin = items.filter((r) => r.in_window).length;
     if ($("outboxMeta")) {
       let meta = `Показано ${items.length} из ${data.total}`;
       if (items.length) {
+        meta += ` · в окне на этой странице: ${inWin}`;
         const s = items[0];
-        meta += ` · пример: ${s.city || "—"} / ${s.timezone || s.timezone_raw || "—"}`;
+        meta += ` · пример: ${s.city || "—"} / ${s.timezone || s.timezone_raw || "—"} / ${s.window_label || "—"}`;
       }
       if (missingTz && status === "pending") {
         meta += ` · без TZ: ${missingTz}`;
@@ -997,6 +1057,7 @@
           <td class="cell-wide">${escapeHtml(r.contact_name || r.director_greeting || "")}</td>
           <td class="cell-city">${fmtCity(r)}</td>
           <td class="cell-tz">${fmtTimezone(r)}</td>
+          <td class="cell-win">${fmtWindow(r)}</td>
           <td class="cell-narrow">${escapeHtml(r.status)}</td>
           <td class="cell-narrow">${escapeHtml(r.sent_at || "")}</td>
           <td class="cell-actions">${actions}</td>
@@ -1332,6 +1393,22 @@
         $("clientsLog").textContent = String(e);
       }
     });
+    if ($("clientsBackfillGeoBtn")) {
+      $("clientsBackfillGeoBtn").addEventListener("click", async () => {
+        try {
+          $("clientsLog").textContent = "Дотягиваю city / timezone / ФИО…";
+          const data = await api("/api/modules/clients/backfill-geo", {
+            method: "POST",
+            body: "{}",
+          });
+          $("clientsLog").textContent = JSON.stringify(data, null, 2);
+          await loadClients();
+          await loadDash();
+        } catch (e) {
+          $("clientsLog").textContent = String(e);
+        }
+      });
+    }
     $("clientsReloadBtn").addEventListener("click", () => loadClients().catch((e) => ($("clientsLog").textContent = String(e))));
     $("dadataLookupBtn").addEventListener("click", () =>
       dadataLookup(false).catch((e) => ($("dadataLog").textContent = String(e)))
@@ -1907,6 +1984,27 @@
         logAction(String(e));
       }
     });
+
+    if ($("localWindowsSave")) {
+      $("localWindowsSave").addEventListener("click", async () => {
+        try {
+          const payload = {
+            SCHEDULE_LOCAL_WINDOWS: $("localWindowsEnabled").checked ? "true" : "false",
+            SCHEDULE_FOLLOWUPS_FIRST: $("followupsFirst").checked ? "true" : "false",
+            SCHEDULE_PREFER_TUE_THU: $("preferTueThu").checked ? "true" : "false",
+            SCHEDULE_SLOTS: ($("localSlots").value || "").trim() || "10:00-11:30,14:30-16:30",
+            SCHEDULE_ALLOWED_WEEKDAYS: ($("localAllowedDays").value || "").trim() || "0,1,2,3,4",
+            SCHEDULE_PREFERRED_WEEKDAYS: ($("localPreferredDays").value || "").trim() || "1,2,3",
+            SCHEDULE_DEFAULT_TIMEZONE: ($("localDefaultTz").value || "").trim() || "Europe/Moscow",
+          };
+          logAction(await api("/api/settings", { method: "PUT", body: JSON.stringify({ settings: payload }) }));
+          await loadSettingsIntoForms();
+          await loadDash();
+        } catch (e) {
+          logAction(String(e));
+        }
+      });
+    }
 
     $("settingsSave").addEventListener("click", async () => {
       try {

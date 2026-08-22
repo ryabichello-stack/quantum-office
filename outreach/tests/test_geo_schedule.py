@@ -60,6 +60,22 @@ def test_snap_followup_absolute_from_anchor():
     assert local.hour == 10 and local.minute == 0
 
 
+def test_window_status_now_and_later():
+    from geo_schedule import window_status
+
+    # Tuesday 10:15 Moscow → in window
+    now = datetime(2026, 8, 18, 7, 15, tzinfo=timezone.utc)  # 10:15 MSK
+    st = window_status("Europe/Moscow", now_utc=now)
+    assert st["in_window"] is True
+    assert st["label"] == "сейчас"
+
+    # Tuesday 21:00 Moscow → next morning
+    night = datetime(2026, 8, 18, 18, 0, tzinfo=timezone.utc)
+    st2 = window_status("Europe/Moscow", now_utc=night)
+    assert st2["in_window"] is False
+    assert "10:00" in st2["label"] or "завтра" in st2["label"] or "ср" in st2["label"]
+
+
 def test_next_send_from_evening_goes_next_slot_or_day():
     evening = datetime(2026, 8, 18, 18, 0, tzinfo=timezone.utc)  # Tue 21:00 MSK
     nxt = next_send_datetime(evening, "Europe/Moscow")

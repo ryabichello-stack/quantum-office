@@ -552,22 +552,40 @@ class SequencesModule:
                 due_limit=limit_n,
                 upcoming_limit=limit_n,
             )
-            # Enrich follow-ups with geo
+            # Enrich follow-ups with geo + window status
+            from geo_schedule import window_status
+            from core.paths import SETTINGS_DB
+            from runtime_settings import RuntimeSettings
+
+            rt = RuntimeSettings(SETTINGS_DB)
             for bucket in ("followups_due", "followups_upcoming"):
                 for item in snap.get(bucket) or []:
-                    if item.get("timezone"):
-                        continue
-                    geo = company_geo_row(clients, str(item.get("company_id") or ""))
-                    item["timezone"] = geo.get("timezone") or ""
-                    item["city"] = geo.get("city") or ""
-                    if not item.get("contact_name") and geo.get("director_greeting"):
-                        item["contact_name"] = geo["director_greeting"]
+                    if not item.get("timezone"):
+                        geo = company_geo_row(clients, str(item.get("company_id") or ""))
+                        item["timezone"] = geo.get("timezone") or ""
+                        item["city"] = geo.get("city") or ""
+                        if not item.get("contact_name") and geo.get("director_greeting"):
+                            item["contact_name"] = geo["director_greeting"]
+                    win = window_status(item.get("timezone") or "", settings=rt)
+                    item["in_window"] = bool(win.get("in_window"))
+                    item["window_label"] = win.get("label") or ""
+                    item["next_slot_at"] = win.get("next_slot_at")
+                    item["next_slot_local"] = win.get("next_slot_local")
+            for item in first_touch:
+                win = window_status(item.get("timezone") or "", settings=rt)
+                item["in_window"] = bool(win.get("in_window"))
+                item["window_label"] = win.get("label") or ""
+                item["next_slot_at"] = win.get("next_slot_at")
+                item["next_slot_local"] = win.get("next_slot_local")
             # pending total (not just page)
             try:
                 pending_total = int(outbox.counts().get("pending") or 0)
             except Exception:  # noqa: BLE001
                 pending_total = len(first_touch)
             snap["counts"]["first_touch_pending_total"] = pending_total
+            snap["counts"]["first_touch_in_window"] = sum(
+                1 for x in first_touch if x.get("in_window")
+            )
             return snap
 
         @router.get("/packs")
