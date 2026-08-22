@@ -1,23 +1,19 @@
 (() => {
   const titles = {
     letter: "Кампания",
-    dash: "Рассылка",
-    outbox: "Очередь и цепочки",
-    replies: "Ответы",
+    outbox: "Очередь",
     inbox: "Входящие",
+    report: "Результат",
     clients: "Клиенты",
-    report: "Отчёт",
     settings: "Настройки",
   };
   const hints = {
-    letter: "Отрасль, письмо, цепочка и презентация",
-    dash: "Старт рассылки, тест себе и пачка из очереди",
-    outbox: "Due follow-up → затем первые письма; у каждого своя дата цепочки",
-    replies: "Ответы на отправленные письма",
-    inbox: "Классификация входящих",
-    clients: "База Bitrix и обогащение",
-    report: "Воронка доставки и чтения",
-    settings: "Лимиты, окно часов и защита ящика",
+    letter: "Отрасль, цепочка писем, тест и презентация",
+    outbox: "Очередь, пачки, Bitrix sync — после «Старт» в шапке",
+    inbox: "Классификация ответов и привязка к письмам",
+    report: "Воронка, динамика по дням, последние письма",
+    clients: "База Bitrix, обогащение DaData",
+    settings: "Лимиты, окно часов, защита ящика",
   };
 
   function apiBase() {
@@ -208,8 +204,9 @@
   }
 
   function logAction(obj) {
-    $("actionLog").textContent =
-      typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+    const el = $("actionLog") || $("queueLog");
+    if (!el) return;
+    el.textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
   }
 
   function setRunStateBadge(state) {
@@ -517,36 +514,48 @@
     }
   }
 
-  function renderStats(dash) {
-    const c = (dash.outbox && dash.outbox.counts) || {};
-    const e = dash.engagement || {};
-    const items = [
-      ["Очередь", c.pending || 0],
-      ["Отправлено", e.sent || c.sent || 0],
-      ["Доставлено≈", e.delivered ?? "—"],
-      ["Открыто", e.opened || 0],
-      ["Не открыто", e.not_opened || 0],
-      ["Bounce", e.bounced || c.bounced || 0],
-      ["Ответы", e.replied || c.replied || 0],
-      ["Сегодня", dash.outbox ? dash.outbox.sent_today : 0],
-    ];
-    $("statGrid").innerHTML = items
-      .map(
-        ([l, n]) =>
-          `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`
-      )
-      .join("");
-
-    const daily = dash.daily || [];
-    const max = Math.max(1, ...daily.map((d) => d.sent || 0));
-    $("dailyChart").innerHTML = daily.length
+  function renderDailyChart(daily, targetId) {
+    const box = $(targetId || "dailyChart");
+    if (!box) return;
+    const max = Math.max(1, ...(daily || []).map((d) => d.sent || 0));
+    box.innerHTML = (daily || []).length
       ? daily
           .map((d) => {
             const pct = Math.round(((d.sent || 0) / max) * 100);
             return `<div class="bar-row"><span>${d.day}</span><div class="bar"><span style="width:${pct}%"></span></div><span>${d.sent}</span></div>`;
           })
           .join("")
-      : `<p class="muted">Пока нет отправок</p>`;
+      : `<p class="muted tight">Пока нет отправок</p>`;
+  }
+
+  function renderHeaderKpi(dash) {
+    const box = $("headerKpi");
+    if (!box) return;
+    const c = (dash.outbox && dash.outbox.counts) || {};
+    const e = dash.engagement || {};
+    const st = (dash.run_state || (dash.runner && dash.runner.state) || "stopped").toLowerCase();
+    const stLabel = { playing: "Идёт", paused: "Пауза", stopped: "Стоп" }[st] || st;
+    const stCls = st in { playing: 1, paused: 1, stopped: 1 } ? st : "stopped";
+    const items = [
+      ["Очередь", c.pending || 0],
+      ["Сегодня", dash.outbox ? dash.outbox.sent_today : 0],
+      ["Отправлено", e.sent || c.sent || 0],
+      ["Открыто", e.opened || 0],
+      ["Ответы", e.replied || c.replied || 0],
+    ];
+    box.innerHTML =
+      items
+        .map(
+          ([l, n]) =>
+            `<div class="kpi-item"><span class="kpi-n">${n}</span><span class="kpi-l">${l}</span></div>`
+        )
+        .join("") +
+      `<div class="kpi-item kpi-state ${stCls}"><span class="kpi-n">${stLabel}</span><span class="kpi-l">Статус</span></div>`;
+  }
+
+  function renderStats(dash) {
+    renderHeaderKpi(dash);
+    renderDailyChart(dash.daily || [], "dailyChart");
   }
 
   async function loadDash() {
@@ -573,7 +582,11 @@
 
   async function loadReport() {
     const days = Number($("reportDays").value || 14);
-    const data = await api(`/api/modules/analytics/report?days=${days}&recent_limit=50`);
+    const [data, dash] = await Promise.all([
+      api(`/api/modules/analytics/report?days=${days}&recent_limit=50`),
+      api("/api/dashboard"),
+    ]);
+    renderDailyChart(dash.daily || [], "dailyChart");
     const f = data.funnel || {};
     const r = data.rates || {};
     $("reportMeta").textContent =
@@ -735,8 +748,8 @@
     } else if ($("letterPdfMeta") && s.OUTREACH_PRESENTATION_PDF) {
       $("letterPdfMeta").textContent = `Файл презентации: ${s.OUTREACH_PRESENTATION_PDF}`;
     }
-    if (!$("oneTo").value && s.MAIL_USERNAME) {
-      $("oneTo").value = s.MAIL_USERNAME;
+    if (!$("letterTestTo").value && s.MAIL_USERNAME) {
+      $("letterTestTo").value = s.MAIL_USERNAME;
     }
     refreshSignatureLive();
   }
@@ -892,10 +905,10 @@
     const c = queue.counts || {};
     if ($("queueStats")) {
       $("queueStats").innerHTML = `
-        <div class="stat"><span>Due цепочка</span><strong>${c.followups_due || 0}</strong></div>
-        <div class="stat"><span>Скоро (цепочка)</span><strong>${c.followups_upcoming || 0}</strong></div>
-        <div class="stat"><span>Первые письма</span><strong>${c.first_touch_pending_total != null ? c.first_touch_pending_total : (c.first_touch_pending || 0)}</strong></div>
-        <div class="stat"><span>Активных цепочек</span><strong>${(c.sequences && c.sequences.active) || 0}</strong></div>`;
+        <div class="stat"><div class="n">${c.followups_due || 0}</div><div class="l">Due цепочка</div></div>
+        <div class="stat"><div class="n">${c.followups_upcoming || 0}</div><div class="l">Скоро</div></div>
+        <div class="stat"><div class="n">${c.first_touch_pending_total != null ? c.first_touch_pending_total : (c.first_touch_pending || 0)}</div><div class="l">Первые</div></div>
+        <div class="stat"><div class="n">${(c.sequences && c.sequences.active) || 0}</div><div class="l">Активных цепочек</div></div>`;
     }
 
     const fmtTz = (r) => {
@@ -921,11 +934,11 @@
         ? due
             .map(
               (r) => `<tr>
-            <td><strong>${r.next_step || "—"}</strong><br><span class="muted">${escapeHtml(r.next_label || "")}</span></td>
-            <td>${fmtWhen(r.next_action_at)}</td>
-            <td>${escapeHtml(r.contact_name || "—")}<br><span class="muted">${escapeHtml(r.email || "")}</span></td>
+            <td class="cell-narrow"><strong>${r.next_step || "—"}</strong><br><span class="muted">${escapeHtml(r.next_label || "")}</span></td>
+            <td class="cell-narrow">${fmtWhen(r.next_action_at)}</td>
+            <td class="cell-wide">${escapeHtml(r.contact_name || "—")}<br><span class="muted">${escapeHtml(r.email || "")}</span></td>
             <td>${fmtTz(r)}</td>
-            <td>${escapeHtml(r.next_subject || "")}</td>
+            <td class="cell-wide">${escapeHtml(r.next_subject || "")}</td>
           </tr>`
             )
             .join("")
@@ -973,12 +986,12 @@
             .join(" ");
           return `<tr>
           <td>${r.id}</td>
-          <td>${escapeHtml(r.email)}</td>
-          <td>${escapeHtml(r.contact_name || g.director_greeting || "")}</td>
+          <td class="cell-wide">${escapeHtml(r.email)}</td>
+          <td class="cell-wide">${escapeHtml(r.contact_name || g.director_greeting || "")}</td>
           <td>${fmtTz({ city: g.city, timezone: g.timezone })}</td>
-          <td>${escapeHtml(r.status)}</td>
-          <td>${escapeHtml(r.sent_at || "")}</td>
-          <td>${actions}</td>
+          <td class="cell-narrow">${escapeHtml(r.status)}</td>
+          <td class="cell-narrow">${escapeHtml(r.sent_at || "")}</td>
+          <td class="cell-actions">${actions}</td>
         </tr>`;
         })
         .join("");
@@ -986,7 +999,7 @@
   }
 
   async function loadOutbox() {
-    return loadQueueView();
+    await Promise.all([loadQueueView(), loadDash()]);
   }
 
   async function loadReplies() {
@@ -1008,8 +1021,8 @@
     const data = await api("/api/modules/replies/inbox?" + q + "&limit=80");
     const c = data.counts || {};
     $("inboxStats").innerHTML = `
-      <div class="stat"><span>Всего</span><strong>${c.total || 0}</strong></div>
-      <div class="stat"><span>Необработанные</span><strong>${c.unprocessed || 0}</strong></div>`;
+      <div class="stat"><div class="n">${c.total || 0}</div><div class="l">Всего</div></div>
+      <div class="stat"><div class="n">${c.unprocessed || 0}</div><div class="l">Необработано</div></div>`;
     $("inboxBody").innerHTML = (data.items || [])
       .map((r) => {
         const btn =
@@ -1028,7 +1041,57 @@
       .join("");
   }
 
+  function activeTabName() {
+    const btn = document.querySelector(".tabs button.active");
+    return (btn && btn.dataset.tab) || "letter";
+  }
+
+  function refreshActiveTab() {
+    const tab = activeTabName();
+    if (tab === "clients") loadClients().catch((e) => ($("clientsLog").textContent = String(e)));
+    else if (tab === "outbox") loadOutbox().catch(logAction);
+    else if (tab === "inbox") {
+      const view = document.querySelector(".sub-tab.active");
+      if (view && view.dataset.inboxView === "replies") loadReplies().catch(logAction);
+      else loadInbox(true).catch(logAction);
+    } else if (tab === "report") loadReport().catch(logAction);
+    else if (tab === "settings") {
+      loadSettingsIntoForms()
+        .then(() => loadAntiban())
+        .catch((e) => {
+          if ($("antibanLog")) $("antibanLog").textContent = String(e);
+          logAction(e);
+        });
+    } else if (tab === "letter") {
+      loadSettingsIntoForms()
+        .then(() => loadPacks())
+        .catch(logAction);
+    }
+  }
+
+  function bindInboxSubTabs() {
+    document.querySelectorAll(".sub-tab[data-inbox-view]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".sub-tab[data-inbox-view]").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        const view = btn.dataset.inboxView;
+        const classified = $("inboxViewClassified");
+        const replies = $("inboxViewReplies");
+        if (view === "replies") {
+          if (classified) classified.hidden = true;
+          if (replies) replies.hidden = false;
+          loadReplies().catch(logAction);
+        } else {
+          if (classified) classified.hidden = false;
+          if (replies) replies.hidden = true;
+          loadInbox(true).catch(logAction);
+        }
+      });
+    });
+  }
+
   function bindTabs() {
+    bindInboxSubTabs();
     document.querySelectorAll(".tabs button").forEach((btn) => {
       btn.addEventListener("click", () => {
         document.querySelectorAll(".tabs button").forEach((b) => b.classList.remove("active"));
@@ -1040,7 +1103,6 @@
         if ($("pageHint")) $("pageHint").textContent = hints[tab] || "";
         if (tab === "clients") loadClients().catch((e) => ($("clientsLog").textContent = String(e)));
         if (tab === "outbox") loadOutbox().catch(logAction);
-        if (tab === "replies") loadReplies().catch(logAction);
         if (tab === "report") loadReport().catch(logAction);
         if (tab === "settings") {
           loadSettingsIntoForms()
@@ -1050,12 +1112,16 @@
               logAction(e);
             });
         }
-        if (tab === "letter" || tab === "dash") {
+        if (tab === "letter") {
           loadSettingsIntoForms()
-            .then(() => (tab === "letter" ? loadPacks() : loadDash()))
+            .then(() => loadPacks())
             .catch(logAction);
         }
-        if (tab === "inbox") loadInbox(true).catch(logAction);
+        if (tab === "inbox") {
+          const sub = document.querySelector('.sub-tab[data-inbox-view="classified"]');
+          if (sub) sub.click();
+          else loadInbox(true).catch(logAction);
+        }
       });
     });
   }
@@ -1198,7 +1264,9 @@
     }
 
     $("refreshBtn").addEventListener("click", () => {
-      loadDash().catch(logAction);
+      loadDash()
+        .then(() => refreshActiveTab())
+        .catch(logAction);
     });
 
     async function runControl(action) {
@@ -1221,11 +1289,6 @@
       runControl("stop");
     });
 
-    if ($("gotoCampaignBtn")) {
-      $("gotoCampaignBtn").addEventListener("click", () => {
-        document.querySelector('.tabs button[data-tab="letter"]')?.click();
-      });
-    }
     if ($("gotoCallBtn")) {
       $("gotoCallBtn").addEventListener("click", () => requestParentCall({}));
     }
@@ -1377,7 +1440,6 @@
       const to =
         (data.results && data.results[0] && data.results[0].email) ||
         ($("letterTestTo") && $("letterTestTo").value) ||
-        ($("oneTo") && $("oneTo").value) ||
         "";
       const pdf = attached.length ? `Вложение: ${attached.join(", ")}` : "Без PDF";
       const used = data.oneshot_today != null ? ` · тестов сегодня: ${data.oneshot_today}/${data.oneshot_daily_limit || 25}` : "";
@@ -1388,8 +1450,8 @@
     }
 
     async function doSendOne(dry, opts = {}) {
-      const toEl = opts.toId ? $(opts.toId) : $("oneTo");
-      const nameEl = opts.nameId ? $(opts.nameId) : $("oneName");
+      const toEl = opts.toId ? $(opts.toId) : $("letterTestTo");
+      const nameEl = opts.nameId ? $(opts.nameId) : $("letterTestName");
       const logEl = opts.logId ? $(opts.logId) : null;
       const to = ((toEl && toEl.value) || "").trim();
       if (!to) {
@@ -1434,8 +1496,6 @@
         logAction(String(e));
       }
     }
-    $("oneDryBtn").addEventListener("click", () => doSendOne(true));
-    $("oneSendBtn").addEventListener("click", () => doSendOne(false));
     if ($("letterTestSendBtn")) {
       $("letterTestDryBtn").addEventListener("click", () =>
         doSendOne(true, {
