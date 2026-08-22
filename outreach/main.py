@@ -23,6 +23,7 @@ from core.registry import AppContext, ModuleRegistry
 from modules.clients import (
     ClientsModule,
     backfill_company_geo_and_fio,
+    company_geo_row,
     geo_stats,
     rebuild_outbox_from_clients,
     sync_from_bitrix,
@@ -822,20 +823,22 @@ def api_outbox(
     q: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    sort: str = Query(default="", description="id_asc for queue order"),
 ) -> dict[str, Any]:
-    rows, total = _store().list_outbox(status=status, q=q, limit=limit, offset=offset)
-    return {
-        "ok": True,
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-        "items": [
+    rows, total = _store().list_outbox(
+        status=status, q=q, limit=limit, offset=offset, sort=sort or None
+    )
+    clients = _clients_mod.store
+    items: list[dict[str, Any]] = []
+    for r in rows:
+        geo = company_geo_row(clients, r.company_id or "")
+        items.append(
             {
                 "id": r.id,
                 "email": r.email,
                 "company_id": r.company_id,
                 "contact_id": r.contact_id,
-                "contact_name": r.contact_name,
+                "contact_name": r.contact_name or geo.get("director_greeting") or "",
                 "status": r.status,
                 "attempts": r.attempts,
                 "last_error": r.last_error,
@@ -843,9 +846,19 @@ def api_outbox(
                 "deal_id": r.deal_id,
                 "created_at": r.created_at,
                 "updated_at": r.updated_at,
+                "city": geo.get("city") or "",
+                "region": geo.get("region") or "",
+                "timezone": geo.get("timezone") or "",
+                "timezone_raw": geo.get("timezone_raw") or "",
+                "director_greeting": geo.get("director_greeting") or "",
             }
-            for r in rows
-        ],
+        )
+    return {
+        "ok": True,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": items,
     }
 
 

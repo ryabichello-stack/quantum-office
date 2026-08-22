@@ -894,7 +894,7 @@
 
     let queue = { first_touch: [], followups_due: [], followups_upcoming: [], counts: {}, send_order_ru: "" };
     try {
-      queue = await api("/api/modules/sequences/queue?limit=50");
+      queue = await api("/api/modules/sequences/queue?limit=100");
     } catch (e) {
       logAction(e);
     }
@@ -912,10 +912,14 @@
     }
 
     const fmtTz = (r) => {
-      const city = r.city || "";
-      const tz = r.timezone || "";
-      if (city && tz) return escapeHtml(city) + "<br><span class='muted'>" + escapeHtml(tz) + "</span>";
-      return escapeHtml(city || tz || "—");
+      const city = (r && r.city) || "";
+      const tz = (r && r.timezone) || "";
+      const tzRaw = (r && r.timezone_raw) || "";
+      const label = tz || tzRaw;
+      if (city && label) {
+        return escapeHtml(city) + "<br><span class='muted'>" + escapeHtml(label) + "</span>";
+      }
+      return escapeHtml(city || label || "—");
     };
     const fmtWhen = (iso) => {
       if (!iso) return "сейчас";
@@ -962,22 +966,23 @@
         : `<tr><td colspan="5" class="muted">Пока нет запланированных следующих шагов.</td></tr>`;
     }
 
-    // First-touch / outbox table (searchable)
-    const qs = new URLSearchParams({ limit: "80", offset: "0" });
+    // First-touch / outbox table (searchable; geo from API by company_id)
+    const qs = new URLSearchParams({ limit: "100", offset: "0" });
     if (q) qs.set("q", q);
     if (status) qs.set("status", status);
+    if (!q && status === "pending") qs.set("sort", "id_asc");
     const data = await api("/api/outbox?" + qs.toString());
-    const geoByEmail = {};
-    (queue.first_touch || []).forEach((r) => {
-      if (r.email) geoByEmail[String(r.email).toLowerCase()] = r;
-    });
+    const missingTz = (data.items || []).filter((r) => !r.timezone && !r.timezone_raw).length;
     if ($("outboxMeta")) {
-      $("outboxMeta").textContent = `Показано ${data.items.length} из ${data.total}`;
+      let meta = `Показано ${data.items.length} из ${data.total}`;
+      if (missingTz && (!status || status === "pending")) {
+        meta += ` · без TZ: ${missingTz} (нужен backfill geo или company_id)`;
+      }
+      $("outboxMeta").textContent = meta;
     }
     if ($("outboxBody")) {
       $("outboxBody").innerHTML = data.items
         .map((r) => {
-          const g = geoByEmail[String(r.email || "").toLowerCase()] || {};
           const actions = ["pending", "skipped", "failed"]
             .map(
               (st) =>
@@ -987,8 +992,8 @@
           return `<tr>
           <td>${r.id}</td>
           <td class="cell-wide">${escapeHtml(r.email)}</td>
-          <td class="cell-wide">${escapeHtml(r.contact_name || g.director_greeting || "")}</td>
-          <td>${fmtTz({ city: g.city, timezone: g.timezone })}</td>
+          <td class="cell-wide">${escapeHtml(r.contact_name || r.director_greeting || "")}</td>
+          <td class="cell-tz">${fmtTz(r)}</td>
           <td class="cell-narrow">${escapeHtml(r.status)}</td>
           <td class="cell-narrow">${escapeHtml(r.sent_at || "")}</td>
           <td class="cell-actions">${actions}</td>

@@ -853,6 +853,16 @@ button.small { height: 26px; font-size: 0.72rem; padding: 0 0.45rem; }
   white-space: nowrap;
   width: 1%;
 }
+.table-wrap td.cell-tz {
+  max-width: 9rem;
+  min-width: 5.5rem;
+  white-space: normal;
+  line-height: 1.35;
+}
+.table-wrap td.cell-tz .muted {
+  font-size: 0.72rem;
+  display: block;
+}
 .table-wrap th {
   font-size: 0.7rem;
   text-transform: uppercase;

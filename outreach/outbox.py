@@ -467,6 +467,7 @@ class OutboxStore:
         q: str | None = None,
         limit: int = 50,
         offset: int = 0,
+        sort: str | None = None,
     ) -> tuple[list[OutboxRow], int]:
         clauses: list[str] = []
         params: list[Any] = []
@@ -480,6 +481,7 @@ class OutboxStore:
             like = f"%{q.strip().lower()}%"
             params.extend([like, like, f"%{q.strip()}%"])
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        order = "id ASC" if (sort or "").strip().lower() in {"id_asc", "queue"} else "updated_at DESC, id DESC"
         with self.connect() as conn:
             total = conn.execute(
                 f"SELECT COUNT(*) AS n FROM outbox{where}", params
@@ -487,7 +489,7 @@ class OutboxStore:
             rows = conn.execute(
                 f"""
                 SELECT * FROM outbox{where}
-                ORDER BY updated_at DESC, id DESC
+                ORDER BY {order}
                 LIMIT ? OFFSET ?
                 """,
                 [*params, limit, offset],
