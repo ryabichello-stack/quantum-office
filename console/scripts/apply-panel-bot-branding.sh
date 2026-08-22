@@ -4,6 +4,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IMG="${1:-$ROOT/static/brand/quantum-panel-bot-512.png}"
+LOCKUP="${ROOT}/static/brand/quantum-panel-bot-lockup-512.png"
 
 if [[ -z "${BOT_TOKEN:-}" ]]; then
   if [[ -f /opt/ava-outreach/data/settings.db ]]; then
@@ -18,16 +19,16 @@ fi
 
 API="https://api.telegram.org/bot${BOT_TOKEN}"
 
-SHORT_RU='Quantum Panel — операторский пульт Quantum Labs. Уведомления: Outreach, звонки, сервисы, алерты центра управления.'
-DESC_RU='Quantum Panel — операторский пульт Quantum Labs.
+SHORT_RU='Quantum Panel — операторский центр Quantum Labs. Outreach, телефония, сервисы.'
+DESC_RU='Quantum Panel
 
-Единый Telegram-канал уведомлений центра управления:
-• Outreach — ответы на письма, пауза ящика, заявки «Перезвонить»
-• Console — статус сервисов и робота
-• Звонки и обзвоны
+Операторский центр управления Quantum Labs — один канал для важных событий.
 
-Настройка: https://a.47z.ru/_quantum_console/
-Пульт → «Уведомления Quantum Panel»'
+Outreach · ответы и заявки на звонок
+Console · статус робота и сервисов
+Телефония · звонки и обзвоны
+
+a.47z.ru/_quantum_console'
 
 curl -fsS -X POST "$API/setMyName" --data-urlencode "name=Quantum Panel" >/dev/null
 curl -fsS -X POST "$API/setMyShortDescription" \
@@ -41,8 +42,15 @@ if [[ -f "$IMG" && -n "${NOTIFY_CHAT_ID:-}" ]]; then
   curl -fsS -X POST "$API/sendPhoto" \
     -F "chat_id=${NOTIFY_CHAT_ID}" \
     -F "photo=@${IMG}" \
-    --form-string "caption=Логотип Quantum Panel. Чтобы установить аватар бота: @BotFather → /setuserpic → @Quantum_panel_bot → отправьте это фото." \
+    --form-string "caption=Quantum Panel — аватар (символ, без текста).\n\n@BotFather → /setuserpic → @Quantum_panel_bot → это фото.\n\nИмя «Quantum Panel» Telegram покажет рядом с иконкой." \
     >/dev/null
+  if [[ -f "$LOCKUP" ]]; then
+    curl -fsS -X POST "$API/sendPhoto" \
+      -F "chat_id=${NOTIFY_CHAT_ID}" \
+      -F "photo=@${LOCKUP}" \
+      --form-string "caption=Полный lockup с типографикой (для превью / документов)." \
+      >/dev/null
+  fi
   echo "OK: logo sent to chat ${NOTIFY_CHAT_ID}"
 elif [[ -f "$IMG" ]]; then
   echo "Tip: NOTIF_CHAT_ID=963782 $0  # send logo + BotFather hint"

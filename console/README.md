@@ -45,14 +45,14 @@ ssh root@HOST 'bash /tmp/quantum-console-src/scripts/install_prod.sh'
 
 ## Telegram @Quantum_panel_bot
 
-Логотип: `static/brand/quantum-panel-bot-512.png` (и `.svg`).  
-Имя и описание бота — через Bot API:
+Premium identity in `static/brand/` — icon (avatar) + typographic lockup.  
+Apple-style: **symbol on icon**, name «Quantum Panel» shown by Telegram beside it.
 
 ```bash
-BOT_TOKEN=... ./scripts/apply-panel-bot-branding.sh
+NOTIFY_CHAT_ID=963782 BOT_TOKEN=... ./scripts/apply-panel-bot-branding.sh
 ```
 
-Аватар (круглая иконка в Telegram) — только через @BotFather → `/setuserpic` → выбрать бота → загрузить PNG.
+Avatar: @BotFather → `/setuserpic` → `quantum-panel-bot-512.png`.
 
 ## Пути на проде
 
