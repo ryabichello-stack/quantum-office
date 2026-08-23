@@ -5,8 +5,6 @@ and inbound identity resolution (Accept R1/R2: local Account + Bitrix ref,
 data in outreach modules.db).
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import re

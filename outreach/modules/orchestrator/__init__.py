@@ -4,8 +4,6 @@ Does not replace SequenceStore; enrolls accounts/emails into versioned journeys
 and applies global guardrails + stop-on-reply.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import sqlite3

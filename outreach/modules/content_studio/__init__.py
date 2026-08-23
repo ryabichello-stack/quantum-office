@@ -3,8 +3,6 @@
 Does not auto-publish. Wraps existing industry packs as templates.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import sqlite3

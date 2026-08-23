@@ -4,8 +4,6 @@ Capability registry + source adapters. No browser automation.
 Stubs for VK/OK/TenChat/LinkedIn return import_only/manual only.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import sqlite3

@@ -3,8 +3,6 @@
 Signals are stored for operator review; never triggers cold DM.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import sqlite3
