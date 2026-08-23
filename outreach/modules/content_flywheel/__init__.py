@@ -287,7 +287,11 @@ class ContentFlywheelStore:
         news = self.get_news(news_id)
         if not news:
             return None
-        analysis = analyze_news_themes(title=news.get("title") or "", body=news.get("body") or "")
+        analysis = analyze_news_themes(
+            title=news.get("title") or "",
+            body=news.get("body") or "",
+            tenant_id=self.tenant_id,
+        )
         now = _utc_now()
         with self.connect() as conn:
             conn.execute(
@@ -710,14 +714,66 @@ class ContentFlywheelModule:
 
         @router.get("/themes")
         def themes() -> dict[str, Any]:
-            from modules.content_flywheel.thematic import THEME_TAXONOMY, theme_min_score
+            from modules.content_flywheel.theme_config import (
+                load_theme_config,
+                min_score_for_tenant,
+                taxonomy_from_config,
+            )
 
+            cfg = load_theme_config(self.store.tenant_id)
             return {
                 "ok": True,
-                "lens": "macro_financial_money_flows",
-                "min_score": theme_min_score(),
-                "taxonomy": THEME_TAXONOMY,
+                "config": cfg,
+                "lens": cfg.get("lens_id"),
+                "lens_label": cfg.get("lens_label"),
+                "min_score": min_score_for_tenant(self.store.tenant_id),
+                "taxonomy": taxonomy_from_config(cfg),
             }
+
+        @router.get("/themes/config")
+        def themes_config() -> dict[str, Any]:
+            from modules.content_flywheel.theme_config import load_theme_config
+
+            return {"ok": True, "config": load_theme_config(self.store.tenant_id)}
+
+        class ThemeConfigBody(BaseModel):
+            lens_id: str = "custom"
+            lens_label: str = "Контент-тематика"
+            brand_short: str = ""
+            min_score: float = 0.35
+            score_cap: float = 4.0
+            high_tier_threshold: float = 0.65
+            low_tier_threshold: float = 0.15
+            off_topic_message: str = ""
+            default_hook_prefix: str = ""
+            preset: str | None = None
+            themes: list[dict[str, Any]] = Field(default_factory=list)
+
+        @router.put("/themes/config")
+        def put_themes_config(payload: ThemeConfigBody) -> dict[str, Any]:
+            from modules.content_flywheel.theme_config import save_theme_config
+
+            cfg = save_theme_config(self.store.tenant_id, payload.model_dump())
+            return {"ok": True, "config": cfg}
+
+        @router.get("/themes/presets")
+        def theme_presets() -> dict[str, Any]:
+            from modules.content_flywheel.theme_config import list_presets
+
+            return {"ok": True, "items": list_presets()}
+
+        class ApplyPresetBody(BaseModel):
+            preset_id: str = Field(..., min_length=1)
+
+        @router.post("/themes/apply-preset")
+        def apply_theme_preset(payload: ApplyPresetBody) -> dict[str, Any]:
+            from modules.content_flywheel.theme_config import apply_preset
+
+            try:
+                cfg = apply_preset(self.store.tenant_id, payload.preset_id)
+            except FileNotFoundError as exc:
+                raise HTTPException(404, str(exc)) from exc
+            return {"ok": True, "config": cfg}
 
         @router.post("/news/{news_id}/analyze")
         def analyze_news(news_id: str) -> dict[str, Any]:

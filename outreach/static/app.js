@@ -2474,6 +2474,111 @@
     await Promise.all([loadSpChannels(), loadSpPosts()]);
   }
 
+  let fwThemeDraft = [];
+
+  function renderFwThemeRows() {
+    const box = $("fwThemeList");
+    if (!box) return;
+    const themes = fwThemeDraft || [];
+    if (!themes.length) {
+      box.innerHTML = `<p class="muted tight">Добавьте хотя бы одну тему с ключевыми словами.</p>`;
+      return;
+    }
+    box.innerHTML = themes
+      .map(
+        (t, idx) => `<div class="fw-theme-row" data-theme-idx="${idx}">
+          <input type="text" class="fw-theme-id" value="${escapeHtml(t.id || "")}" placeholder="id" title="id" />
+          <input type="text" class="fw-theme-label" value="${escapeHtml(t.label || "")}" placeholder="Название темы" />
+          <input type="text" class="fw-theme-keywords" value="${escapeHtml((t.keywords || []).join(", "))}" placeholder="ключевые, слова" />
+          <button type="button" class="small btn-quiet" data-theme-remove="${idx}">×</button>
+        </div>`
+      )
+      .join("");
+    box.querySelectorAll("[data-theme-remove]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const i = Number(btn.getAttribute("data-theme-remove"));
+        fwThemeDraft.splice(i, 1);
+        renderFwThemeRows();
+      });
+    });
+  }
+
+  function collectFwThemeDraft() {
+    const box = $("fwThemeList");
+    if (!box) return [];
+    return Array.from(box.querySelectorAll(".fw-theme-row")).map((row, idx) => {
+      const id = (row.querySelector(".fw-theme-id") && row.querySelector(".fw-theme-id").value) || `theme_${idx + 1}`;
+      const label = (row.querySelector(".fw-theme-label") && row.querySelector(".fw-theme-label").value) || id;
+      const kwRaw = (row.querySelector(".fw-theme-keywords") && row.querySelector(".fw-theme-keywords").value) || "";
+      const keywords = kwRaw
+        .split(/[,;]+/)
+        .map((k) => k.trim())
+        .filter(Boolean);
+      return { id: id.trim(), label: label.trim(), keywords, weight: 1.0 };
+    });
+  }
+
+  async function loadFwThemePresets() {
+    const data = await api("/api/modules/content_flywheel/themes/presets");
+    const sel = $("fwThemePreset");
+    if (!sel) return;
+    const items = data.items || [];
+    sel.innerHTML =
+      `<option value="">— выбрать пресет —</option>` +
+      items.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.lens_label || p.id)}</option>`).join("");
+  }
+
+  async function loadFwThemes() {
+    const data = await api("/api/modules/content_flywheel/themes/config");
+    const cfg = data.config || {};
+    if ($("fwThemeLens")) $("fwThemeLens").value = cfg.lens_label || "";
+    if ($("fwThemeBrand")) $("fwThemeBrand").value = cfg.brand_short || "";
+    if ($("fwThemeMinScore")) $("fwThemeMinScore").value = cfg.min_score != null ? cfg.min_score : 0.35;
+    fwThemeDraft = (cfg.themes || []).map((t) => ({
+      id: t.id || "",
+      label: t.label || "",
+      keywords: t.keywords || [],
+      weight: t.weight || 1.0,
+    }));
+    renderFwThemeRows();
+  }
+
+  async function saveFwThemes() {
+    const themes = collectFwThemeDraft();
+    if (!themes.length) throw new Error("Добавьте хотя бы одну тему");
+    const payload = {
+      lens_id: "custom",
+      lens_label: (($("fwThemeLens") && $("fwThemeLens").value) || "").trim() || "Контент-тематика",
+      brand_short: (($("fwThemeBrand") && $("fwThemeBrand").value) || "").trim(),
+      min_score: parseFloat(($("fwThemeMinScore") && $("fwThemeMinScore").value) || "0.35") || 0.35,
+      themes,
+    };
+    const data = await api("/api/modules/content_flywheel/themes/config", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+    logAction(data);
+    fwThemeDraft = (data.config && data.config.themes) || themes;
+    renderFwThemeRows();
+  }
+
+  async function applyFwThemePreset() {
+    const presetId = ($("fwThemePreset") && $("fwThemePreset").value) || "";
+    if (!presetId) throw new Error("Выберите пресет");
+    const data = await api("/api/modules/content_flywheel/themes/apply-preset", {
+      method: "POST",
+      body: JSON.stringify({ preset_id: presetId }),
+    });
+    logAction(data);
+    await loadFwThemes();
+  }
+
+  function addFwThemeRow() {
+    fwThemeDraft = collectFwThemeDraft();
+    fwThemeDraft.push({ id: `theme_${fwThemeDraft.length + 1}`, label: "", keywords: [], weight: 1.0 });
+    renderFwThemeRows();
+  }
+
   async function loadFlywheelSlots() {
     const data = await api("/api/modules/content_flywheel/slots");
     const box = $("fwSlots");
@@ -2581,6 +2686,10 @@
         const imgs = (p.image_options || []).length;
         const vid = (p.video_brief && p.video_brief.format) === "talking_head";
         const kb = (p.kb_context && p.kb_context.citations) || [];
+        const theme = p.theme_context || {};
+        const themeLine = theme.primary_label
+          ? `<p class="muted tight fw-theme">Тема: ${escapeHtml(theme.primary_label)} · ${Math.round((theme.theme_score || 0) * 100)}%</p>`
+          : "";
         const kbLine = kb.length
           ? `<p class="muted tight fw-kb">KB: ${kb
               .slice(0, 2)
@@ -2654,6 +2763,8 @@
   async function loadFlywheelTab() {
     await Promise.all([
       loadFlywheelSlots(),
+      loadFwThemePresets(),
+      loadFwThemes(),
       loadFwSources(),
       loadFwNews(),
       loadFwProposals(),
@@ -3128,6 +3239,15 @@
     }
     if ($("fwNewsListBtn")) {
       $("fwNewsListBtn").addEventListener("click", () => loadFwNews().catch(logAction));
+    }
+    if ($("fwThemeSaveBtn")) {
+      $("fwThemeSaveBtn").addEventListener("click", () => saveFwThemes().catch(logAction));
+    }
+    if ($("fwThemeAddBtn")) {
+      $("fwThemeAddBtn").addEventListener("click", () => addFwThemeRow());
+    }
+    if ($("fwThemeApplyPresetBtn")) {
+      $("fwThemeApplyPresetBtn").addEventListener("click", () => applyFwThemePreset().catch(logAction));
     }
     const adv = $("letterAdvanced");
     if (adv) {

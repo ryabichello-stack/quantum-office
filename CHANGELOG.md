@@ -83,6 +83,8 @@
 - 2026-08-23 (cont.8): Social Publish (TG/VK/IG/YT posts, images, repost); UI ops23
 - 2026-08-23 (cont.9): Content Flywheel MVP; UI ops24
 - 2026-08-23 (cont.10): KB enrich (Second Brain + product profile) in posts; ops25
+- 2026-08-23 (cont.11): thematic macro-financial analysis per news; ops26
+- 2026-08-23 (cont.12): tenant-defined content themes (any niche) + UI editor; ops27
 
 ## [0.2.0] — 2026-08-20
 

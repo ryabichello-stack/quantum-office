@@ -1591,6 +1591,16 @@ button.linkish {
 .fw-memory { max-height: 140px; overflow: auto; }
 .fw-theme { color: var(--ok); font-weight: 500; }
 .fw-kb { font-size: 0.78rem; line-height: 1.35; margin: 0.25rem 0; color: var(--accent-strong); }
+.fw-theme-panel { margin: 0.65rem 0; border-top: 1px solid var(--border); padding-top: 0.5rem; }
+.fw-theme-panel summary { cursor: pointer; list-style: none; }
+.fw-theme-list { display: flex; flex-direction: column; gap: 0.35rem; margin: 0.5rem 0; max-height: 200px; overflow: auto; }
+.fw-theme-row {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr 1.2fr auto;
+  gap: 0.3rem;
+  align-items: center;
+}
+.fw-theme-row input { font-size: 0.78rem; padding: 0.25rem 0.35rem; }
 
 .inbox-enrichment {
   margin: 0 1.1rem 0.65rem; padding: 0.7rem 0.8rem;

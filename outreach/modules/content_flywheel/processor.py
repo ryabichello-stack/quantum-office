@@ -38,13 +38,6 @@ def use_product_kb() -> bool:
     }
 
 
-def theme_min_score() -> float:
-    try:
-        return float(os.getenv("FLYWHEEL_THEME_MIN_SCORE") or "0.35")
-    except ValueError:
-        return 0.35
-
-
 def avatar_profile() -> str:
     return (os.getenv("FLYWHEEL_AVATAR_PROFILE") or "quantum-host-v1").strip()
 
@@ -134,19 +127,23 @@ def process_news_item(
     body = news.get("body") or ""
     combined = f"{title}\n{body}"
 
+    from modules.content_flywheel.theme_config import min_score_for_tenant
     from modules.content_flywheel.thematic import analyze_news_themes, build_thematic_brief
 
+    tenant_id = getattr(store, "tenant_id", "quantum-labs")
     analysis = news.get("analysis") or {}
     if not analysis.get("theme_score") and hasattr(store, "analyze_news_item"):
         refreshed = store.analyze_news_item(news_id)
         if refreshed:
             news = refreshed
-            analysis = news.get("analysis") or analyze_news_themes(title=title, body=body)
+            analysis = news.get("analysis") or analyze_news_themes(
+                title=title, body=body, tenant_id=tenant_id
+            )
     elif not analysis:
-        analysis = analyze_news_themes(title=title, body=body)
+        analysis = analyze_news_themes(title=title, body=body, tenant_id=tenant_id)
 
     theme_score = float(analysis.get("theme_score") or 0)
-    if theme_score < theme_min_score() and not force:
+    if theme_score < min_score_for_tenant(tenant_id) and not force:
         store.set_news_status(news_id, "skipped_theme")
         return {
             "ok": True,

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops26" />
+  <link rel="stylesheet" href="styles.css?v=ops27" />
   <script>
     (function () {
       function parentBase() {
@@ -662,6 +662,30 @@
                 <div id="fwSourceList" class="sp-channel-list"><p class="muted tight">Нет источников</p></div>
                 <p class="ros-pane-title" style="margin-top:0.75rem">Слоты сегодня</p>
                 <div id="fwSlots" class="fw-slots muted tight">…</div>
+                <details class="fw-theme-panel" open>
+                  <summary class="ros-pane-title">Тематика (ниша)</summary>
+                  <p class="muted tight">Задайте свои темы и ключевые слова — флайвил фильтрует новости и формулирует угол публикации под вашу нишу.</p>
+                  <label class="field">Линза
+                    <input id="fwThemeLens" type="text" placeholder="Например: B2B SaaS, недвижимость, финтех…" />
+                  </label>
+                  <label class="field">Бренд (коротко)
+                    <input id="fwThemeBrand" type="text" placeholder="опционально" />
+                  </label>
+                  <label class="field">Порог релевантности (0–1)
+                    <input id="fwThemeMinScore" type="number" min="0" max="1" step="0.05" value="0.35" />
+                  </label>
+                  <label class="field">Пресет
+                    <select id="fwThemePreset"><option value="">— выбрать —</option></select>
+                  </label>
+                  <div class="task-actions ros-actions">
+                    <button type="button" id="fwThemeApplyPresetBtn" class="btn-quiet small">Применить пресет</button>
+                  </div>
+                  <div id="fwThemeList" class="fw-theme-list"></div>
+                  <div class="task-actions ros-actions">
+                    <button type="button" id="fwThemeAddBtn" class="btn-quiet small">+ Тема</button>
+                    <button type="button" id="fwThemeSaveBtn" class="primary small">Сохранить</button>
+                  </div>
+                </details>
                 <div class="task-actions ros-actions">
                   <button type="button" id="fwRunCycleBtn" class="primary">Run cycle</button>
                 </div>
@@ -1168,6 +1192,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=ops26"></script>
+  <script src="app.js?v=ops27"></script>
 </body>
 </html>

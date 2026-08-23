@@ -57,21 +57,36 @@ flowchart LR
 | Video | `modules/video_studio` | private + talking-head meta |
 | Listen stub | `radar/owned_listen` | расширяется под news body |
 
-## 2. Thematic lens (primary)
+## 2. Thematic lens (primary, tenant-defined)
 
-**Единая БД новостей** (`flywheel_news`) + автоматический анализ каждой записи:
+**Единая БД новостей** (`flywheel_news`) + автоматический анализ каждой записи по **тематике арендатора** — универсально для любой ниши (не только финтех).
 
 | Поле | Смысл |
 |------|--------|
-| `theme_score` | 0..1 релевантность денежным потокам / макро-финансам |
-| `theme_tags` | money_flows, mass_payouts, banking_rates, lending, … |
-| `analysis_json` | editorial_hook, tier (high/medium/low/off_topic) |
+| `theme_score` | 0..1 релевантность заданным темам |
+| `theme_tags` | id тем из `content_theme.json` |
+| `analysis_json` | editorial_hook, tier (high/medium/low/off_topic), lens_label |
 
-Новости с `theme_score < FLYWHEEL_THEME_MIN_SCORE` → `skipped_theme` (не в слоты).
+Конфиг тем (порядок загрузки):
 
-**Угол публикации** строится из macro-financial hook, не из сырой новости.
+1. `{DATA_DIR}/tenants/{tenant_id}/content_theme.json` — runtime-редактирование из UI
+2. `outreach/config/tenants/{tenant_id}/content_theme.json` — seed в репозитории
+3. Пресет `generic` — минимальный fallback
 
-Модуль: `modules/content_flywheel/thematic.py`
+Пресеты: `outreach/config/theme_presets/` (`generic`, `fintech-money-flows`, …).
+
+Новости с `theme_score < min_score` → `skipped_theme` (не в слоты).  
+`min_score` берётся из конфига; env `FLYWHEEL_THEME_MIN_SCORE` переопределяет.
+
+**Угол публикации** строится из hook темы арендатора, не из сырой новости.
+
+Модули: `modules/content_flywheel/theme_config.py`, `thematic.py`
+
+API:
+
+- `GET /themes` — конфиг + taxonomy
+- `GET/PUT /themes/config` — чтение/сохранение
+- `GET /themes/presets`, `POST /themes/apply-preset`
 
 ## 3. Knowledge loop (optional layer)
 
@@ -120,7 +135,8 @@ FLYWHEEL_AVATAR_PROFILE=quantum-host-v1
 3. **Очередь** — новости → Process → proposal с 2 картинками
 4. **Слоты** — сегодня 10:00 / 14:00 / 18:00 — approve → репост
 5. **Память** — последние углы / темы (anti-dup)
-6. **Видео** — talking-head brief для YouTube Reels / IG
+6. **Тематика** — линза, темы, ключевые слова (любая ниша); пресеты
+7. **Видео** — talking-head brief для YouTube Reels / IG
 
 ## Этапы после MVP
 
