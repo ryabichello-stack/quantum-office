@@ -59,7 +59,7 @@
 |---------|------|-------------------------|
 | **Кампания** | Pack, 5-step chain (collapse), брендинг, тест | Wizard, template versions, approval gate |
 | **Очередь** | Due + первые, TZ/окно, фильтры, row actions, **bulk**, **14-day calendar API**, **company card** | Assignee |
-| **Входящие** | Классификация, badges, «Готово», company card | Thread view, reply from UI, assignee |
+| **Входящие** | Классификация, badges, «Готово», company card, **thread + reply** | Assignee |
 | **Результат** | Воронка, по дням, последние, **step analytics API** | Cohort export, in-UI step funnel |
 | **Клиенты** | Sync+geo+rebuild (auto-geo), city/TZ table, **company card**, **data quality** | Bulk geo repair |
 | **Настройки** | Окна, праздники, fairness, OOO, anti-ban, **notify + on-call webhook** | Deliverability dashboard, DNS check |
@@ -91,6 +91,12 @@ API: `POST /api/ops/notify`, `POST /api/ops/telegram/verify|discover|test|apply-
 - **Календарь очереди** — `GET /api/modules/sequences/calendar?days=14` (МСК), UI во вкладке «Очередь»
 - **Consent export** — `created_from` / `created_to`, `legal_hold` snapshot
 
+### Layer G2 🟡 (inbox)
+
+- `GET /api/modules/replies/inbox/{id}/thread` — переписка (outreach + входящие + ответы оператора)
+- `POST /api/modules/replies/inbox/{id}/reply` — ответ с `office@` (In-Reply-To / References)
+- UI: клик по строке во «Входящие» → боковая панель + форма ответа
+
 ---
 
 ## Что намеренно не делаем (lean)
@@ -108,7 +114,7 @@ API: `POST /api/ops/notify`, `POST /api/ops/telegram/verify|discover|test|apply-
 | Риск | Митигация сейчас | Следующий шаг |
 |------|------------------|---------------|
 | Репутация `office@` | Warmup, caps, pause | Отдельный sending domain при росте |
-| Потеря ответов | IMAP + inbox + **push notify** | Inbox thread + reply из UI |
+| Потеря ответов | IMAP + inbox + **push notify** + **thread/reply UI** | Assignee |
 | Compliance | Unsub, suppression, **consent ledger**, CSV export | Legal hold v2 (immutable) |
 | Один email/компания | Архитектура outbox | Multi-contact targeting |
 | CI / merge | pytest + sync workflow | `requirements.txt` в CI, merge PR #10 |
