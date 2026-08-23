@@ -1514,6 +1514,73 @@ button.linkish {
 }
 .ros-access-card .ros-pane-title { margin-bottom: 0.25rem; }
 
+.ros-split-triple {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(240px, 1.2fr) minmax(260px, 1.3fr);
+  gap: 0.85rem;
+}
+@media (max-width: 1100px) {
+  .ros-split-triple { grid-template-columns: 1fr; }
+}
+.sp-channel-list {
+  margin-top: 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 220px;
+  overflow: auto;
+}
+.sp-channel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+.sp-channel-pick { flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+.sp-platform-picks {
+  margin: 0.5rem 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem 0.5rem;
+}
+.sp-platform-badge {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: rgba(13, 143, 122, 0.12);
+  color: var(--ok);
+}
+.sp-platform-badge.sp-instagram { background: rgba(193, 53, 132, 0.12); color: #9b2c6f; }
+.sp-platform-badge.sp-vk { background: rgba(39, 103, 178, 0.12); color: #2767b2; }
+.sp-platform-badge.sp-youtube { background: rgba(180, 35, 24, 0.1); color: var(--danger); }
+.sp-thumbs { display: flex; gap: 0.45rem; margin: 0.45rem 0; }
+.sp-thumb-wrap { display: block; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
+.sp-thumb { width: 88px; height: 88px; object-fit: cover; display: block; background: #0b1f2a; }
+.sp-variant { margin: 0.35rem 0; font-size: 0.82rem; }
+.sp-variant-text {
+  margin: 0.35rem 0 0;
+  padding: 0.45rem;
+  background: #f6f8fa;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  font-size: 0.78rem;
+  max-height: 120px;
+  overflow: auto;
+}
+.sp-brief { margin: 0.25rem 0; }
+.sp-post-card .ros-card-actions { flex-wrap: wrap; }
+
 .inbox-enrichment {
   margin: 0 1.1rem 0.65rem; padding: 0.7rem 0.8rem;
   border: 1px solid var(--line); border-radius: 10px;

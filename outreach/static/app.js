@@ -16,7 +16,7 @@
     report: "Воронка, динамика, последние письма",
     clients: "Bitrix → geo → очередь; список с городом и TZ",
     lpr: "Комитет ЛПР: поиск, покрытие ролей, approve / task",
-    studio: "Контент, Radar и видео — с ручным утверждением",
+    studio: "Контент, соцсети, Radar и видео — с ручным утверждением",
     settings: "Локальные окна, лимиты, anti-ban",
   };
 
@@ -2149,12 +2149,15 @@
         btn.classList.add("active");
         const view = btn.dataset.studioView;
         const content = $("studioViewContent");
+        const social = $("studioViewSocial");
         const radar = $("studioViewRadar");
         const video = $("studioViewVideo");
         if (content) content.hidden = view !== "content";
+        if (social) social.hidden = view !== "social";
         if (radar) radar.hidden = view !== "radar";
         if (video) video.hidden = view !== "video";
         if (view === "content") loadContentDrafts().catch(logAction);
+        if (view === "social") loadSocialPublishTab().catch(logAction);
         if (view === "radar") loadRadarSignals().catch(logAction);
         if (view === "video") loadVideoDrafts().catch(logAction);
       });
@@ -2167,6 +2170,7 @@
     const active = document.querySelector(".sub-tab[data-studio-view].active");
     const view = (active && active.dataset.studioView) || "content";
     if (view === "content") await loadContentDrafts();
+    else if (view === "social") await loadSocialPublishTab();
     else if (view === "radar") await loadRadarSignals();
     else await loadVideoDrafts();
   }
@@ -2186,6 +2190,8 @@
       "radarIngestBtn",
       "radarOwnedPollBtn",
       "videoDraftBtn",
+      "spChannelAddBtn",
+      "spPostCreateBtn",
     ].forEach((id) => {
       const el = $(id);
       if (el) el.disabled = !studioWrite;
@@ -2255,6 +2261,202 @@
     logAction(data);
     await loadRadarSignals();
     return data;
+  }
+
+  const SP_TENANT = "quantum-labs";
+
+  function spImageUrl(img) {
+    if (!img || !img.filename) return "";
+    return `${BASE}/api/modules/social_publish/images/${SP_TENANT}/${encodeURIComponent(img.filename)}`;
+  }
+
+  function selectedSpPlatforms() {
+    return Array.from(document.querySelectorAll('input[name="spPlatform"]:checked')).map((el) => el.value);
+  }
+
+  function renderSpChannels(items) {
+    const box = $("spChannelList");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Каналов пока нет.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map(
+        (ch) => `<div class="sp-channel-row">
+          <label class="check tight sp-channel-pick">
+            <input type="checkbox" name="spRepostChannel" value="${escapeHtml(ch.id)}" checked />
+            <span class="sp-platform-badge sp-${escapeHtml(ch.platform)}">${escapeHtml(ch.platform)}</span>
+            <span>${escapeHtml(ch.title || ch.handle)}</span>
+            <span class="muted tight">${escapeHtml(ch.handle || "")}</span>
+          </label>
+          <button type="button" class="small btn-quiet" data-sp-del-ch="${escapeHtml(ch.id)}">×</button>
+        </div>`
+      )
+      .join("");
+    box.querySelectorAll("[data-sp-del-ch]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        deleteSpChannel(btn.getAttribute("data-sp-del-ch")).catch(logAction)
+      );
+    });
+  }
+
+  async function loadSpChannels() {
+    const data = await api("/api/modules/social_publish/channels");
+    renderSpChannels(data.items || []);
+    return data.items || [];
+  }
+
+  async function addSpChannel() {
+    const platform = ($("spChannelPlatform") && $("spChannelPlatform").value) || "telegram";
+    const title = (($("spChannelTitle") && $("spChannelTitle").value) || "").trim();
+    const handle = (($("spChannelHandle") && $("spChannelHandle").value) || "").trim();
+    if (!handle) throw new Error("Укажите handle канала");
+    await api("/api/modules/social_publish/channels", {
+      method: "POST",
+      body: JSON.stringify({ platform, title, handle, enabled: true }),
+    });
+    if ($("spChannelTitle")) $("spChannelTitle").value = "";
+    if ($("spChannelHandle")) $("spChannelHandle").value = "";
+    await loadSpChannels();
+  }
+
+  async function deleteSpChannel(id) {
+    if (!id) return;
+    await api(`/api/modules/social_publish/channels/${encodeURIComponent(id)}`, { method: "DELETE" });
+    await loadSpChannels();
+  }
+
+  function renderSpVariantPreview(variants) {
+    const keys = Object.keys(variants || {});
+    if (!keys.length) return "";
+    return keys
+      .map((k) => {
+        const v = variants[k] || {};
+        const text = (v.text || v.caption || "").slice(0, 160);
+        return `<details class="sp-variant"><summary>${escapeHtml(k)}</summary><pre class="sp-variant-text">${escapeHtml(text)}</pre></details>`;
+      })
+      .join("");
+  }
+
+  function renderSpPostCards(items) {
+    const box = $("spPostCards");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Создайте пост слева.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map((p) => {
+        const imgs = (p.images || []).slice(0, 2);
+        const thumbs = imgs
+          .map(
+            (img) =>
+              `<a href="${escapeHtml(spImageUrl(img))}" target="_blank" rel="noopener" class="sp-thumb-wrap"><img class="sp-thumb" src="${escapeHtml(spImageUrl(img))}" alt="" /></a>`
+          )
+          .join("");
+        const plats = (p.platforms || []).map((x) => `<span class="sp-platform-badge sp-${escapeHtml(x)}">${escapeHtml(x)}</span>`).join("");
+        let actions = "";
+        if (p.status === "approved") {
+          actions = `<button type="button" class="small primary" data-sp-repost="${escapeHtml(p.id)}">Репост в каналы</button>
+            <button type="button" class="small btn-quiet" data-sp-regen="${escapeHtml(p.id)}">Новые картинки</button>`;
+        } else if (p.status === "published") {
+          actions = `<span class="muted tight">опубликовано (stub/queue)</span>`;
+        } else {
+          actions = `<button type="button" class="small primary" data-sp-approve="${escapeHtml(p.id)}">Утвердить</button>
+            <button type="button" class="small btn-quiet" data-sp-reject="${escapeHtml(p.id)}">Отклонить</button>
+            <button type="button" class="small btn-quiet" data-sp-regen="${escapeHtml(p.id)}">Картинки</button>`;
+        }
+        return `<article class="ros-card sp-post-card">
+          <div class="ros-card-head">
+            <div>
+              <div class="ros-card-title">${escapeHtml(p.title || "Пост")}</div>
+              <div class="muted tight">${plats}</div>
+            </div>
+            ${statusChip(p.status)}
+          </div>
+          <p class="muted tight sp-brief">${escapeHtml((p.brief || "").slice(0, 140))}</p>
+          <div class="sp-thumbs">${thumbs}</div>
+          ${renderSpVariantPreview(p.variants)}
+          <div class="ros-card-actions">${actions}</div>
+        </article>`;
+      })
+      .join("");
+    box.querySelectorAll("[data-sp-approve]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setSpPostStatus(btn.getAttribute("data-sp-approve"), "approved").catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-sp-reject]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setSpPostStatus(btn.getAttribute("data-sp-reject"), "rejected").catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-sp-regen]").forEach((btn) => {
+      btn.addEventListener("click", () => regenSpImages(btn.getAttribute("data-sp-regen")).catch(logAction));
+    });
+    box.querySelectorAll("[data-sp-repost]").forEach((btn) => {
+      btn.addEventListener("click", () => repostSpPost(btn.getAttribute("data-sp-repost")).catch(logAction));
+    });
+  }
+
+  async function loadSpPosts() {
+    const data = await api("/api/modules/social_publish/posts?limit=30");
+    renderSpPostCards(data.items || []);
+    return data.items || [];
+  }
+
+  async function createSpPost() {
+    const title = (($("spPostTitle") && $("spPostTitle").value) || "").trim();
+    const brief = (($("spPostBrief") && $("spPostBrief").value) || "").trim();
+    if (!title || !brief) throw new Error("Заголовок и текст обязательны");
+    await api("/api/modules/social_publish/posts", {
+      method: "POST",
+      body: JSON.stringify({
+        title,
+        brief,
+        link: ($("spPostLink") && $("spPostLink").value) || "",
+        platforms: selectedSpPlatforms(),
+        generate_images: true,
+      }),
+    });
+    if ($("spPostBrief")) $("spPostBrief").value = "";
+    await loadSpPosts();
+  }
+
+  async function setSpPostStatus(id, status) {
+    await api(`/api/modules/social_publish/posts/${encodeURIComponent(id)}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
+    await loadSpPosts();
+  }
+
+  async function regenSpImages(id) {
+    await api(`/api/modules/social_publish/posts/${encodeURIComponent(id)}/generate-images`, {
+      method: "POST",
+      body: "{}",
+    });
+    await loadSpPosts();
+  }
+
+  async function repostSpPost(id) {
+    const picked = Array.from(document.querySelectorAll('input[name="spRepostChannel"]:checked')).map(
+      (el) => el.value
+    );
+    if (!picked.length) throw new Error("Выберите каналы для репоста (слева)");
+    const data = await api(`/api/modules/social_publish/posts/${encodeURIComponent(id)}/repost`, {
+      method: "POST",
+      body: JSON.stringify({ channel_ids: picked }),
+    });
+    logAction(data);
+    await loadSpPosts();
+  }
+
+  async function loadSocialPublishTab() {
+    await Promise.all([loadSpChannels(), loadSpPosts()]);
   }
 
   function renderContentCards(items) {
@@ -2697,6 +2899,18 @@
     }
     if ($("videoListBtn")) {
       $("videoListBtn").addEventListener("click", () => loadVideoDrafts().catch(logAction));
+    }
+    if ($("spChannelAddBtn")) {
+      $("spChannelAddBtn").addEventListener("click", () => addSpChannel().catch(logAction));
+    }
+    if ($("spChannelListBtn")) {
+      $("spChannelListBtn").addEventListener("click", () => loadSpChannels().catch(logAction));
+    }
+    if ($("spPostCreateBtn")) {
+      $("spPostCreateBtn").addEventListener("click", () => createSpPost().catch(logAction));
+    }
+    if ($("spPostListBtn")) {
+      $("spPostListBtn").addEventListener("click", () => loadSpPosts().catch(logAction));
     }
     const adv = $("letterAdvanced");
     if (adv) {

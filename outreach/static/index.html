@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops22" />
+  <link rel="stylesheet" href="styles.css?v=ops23" />
   <script>
     (function () {
       function parentBase() {
@@ -538,7 +538,7 @@
         <div class="surface task-form">
           <div class="task-intro compact-intro">
             <h2 class="section-title">Студия</h2>
-            <p class="muted tight">Контент, сигналы рынка и видео — всё с ручным утверждением.</p>
+            <p class="muted tight">Контент, соцсети, сигналы рынка и видео — с ручным утверждением.</p>
             <div id="studioMetaBar" class="ros-meta-bar" aria-live="polite">
               <span id="studioRoleChip" class="ros-chip">роль…</span>
               <span id="studioUsageChip" class="ros-chip muted-chip">usage…</span>
@@ -546,8 +546,68 @@
           </div>
           <div class="sub-tabs" role="tablist" aria-label="Студия">
             <button type="button" class="sub-tab active" data-studio-view="content">Контент</button>
+            <button type="button" class="sub-tab" data-studio-view="social">Соцсети</button>
             <button type="button" class="sub-tab" data-studio-view="radar">Radar</button>
             <button type="button" class="sub-tab" data-studio-view="video">Видео</button>
+          </div>
+
+          <div id="studioViewSocial" hidden>
+            <div class="ros-split ros-split-triple">
+              <div class="ros-pane">
+                <p class="ros-pane-title">Канал</p>
+                <label class="field">Платформа
+                  <select id="spChannelPlatform">
+                    <option value="telegram">Telegram</option>
+                    <option value="vk">VKontakte</option>
+                    <option value="instagram">Instagram</option>
+                    <option value="youtube">YouTube</option>
+                  </select>
+                </label>
+                <label class="field">Название
+                  <input id="spChannelTitle" type="text" placeholder="Quantum Labs News" />
+                </label>
+                <label class="field">Handle / ID
+                  <input id="spChannelHandle" type="text" placeholder="@channel или club123" />
+                </label>
+                <div class="task-actions ros-actions">
+                  <button type="button" id="spChannelAddBtn" class="primary">Добавить канал</button>
+                  <button type="button" id="spChannelListBtn" class="btn-quiet">Обновить</button>
+                </div>
+                <div id="spChannelList" class="sp-channel-list">
+                  <p class="muted tight">Каналов пока нет.</p>
+                </div>
+              </div>
+              <div class="ros-pane">
+                <p class="ros-pane-title">Пост для всех платформ</p>
+                <label class="field">Заголовок
+                  <input id="spPostTitle" type="text" placeholder="Выплаты для ломбардов за 48 часов" />
+                </label>
+                <label class="field">Текст / бриф
+                  <textarea id="spPostBrief" rows="4" placeholder="Оффер, факты, CTA…"></textarea>
+                </label>
+                <label class="field">Ссылка (опц.)
+                  <input id="spPostLink" type="url" placeholder="https://quantumlabs.ru" />
+                </label>
+                <fieldset class="sp-platform-picks">
+                  <legend>Платформы</legend>
+                  <label class="check tight"><input type="checkbox" name="spPlatform" value="telegram" checked /> Telegram</label>
+                  <label class="check tight"><input type="checkbox" name="spPlatform" value="vk" checked /> VK</label>
+                  <label class="check tight"><input type="checkbox" name="spPlatform" value="instagram" checked /> Instagram</label>
+                  <label class="check tight"><input type="checkbox" name="spPlatform" value="youtube" checked /> YouTube</label>
+                </fieldset>
+                <div class="task-actions ros-actions">
+                  <button type="button" id="spPostCreateBtn" class="primary">Сгенерировать посты + картинки</button>
+                  <button type="button" id="spPostListBtn" class="btn-quiet">Обновить</button>
+                </div>
+                <p class="muted tight">Тексты и SVG-карточки — draft. Репост только после approve.</p>
+              </div>
+              <div class="ros-pane">
+                <p class="ros-pane-title">Черновики и репосты</p>
+                <div id="spPostCards" class="ros-cards">
+                  <p class="muted tight">Создайте пост слева.</p>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div id="studioViewContent">
@@ -1058,6 +1118,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=ops22"></script>
+  <script src="app.js?v=ops23"></script>
 </body>
 </html>

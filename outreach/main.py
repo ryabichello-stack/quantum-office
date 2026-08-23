@@ -45,6 +45,7 @@ from modules.orchestrator import OrchestratorModule
 from modules.content_studio import ContentStudioModule
 from modules.radar import RadarModule
 from modules.video_studio import VideoStudioModule
+from modules.social_publish import SocialPublishModule
 from modules.rbac import RbacModule, attach_principal, rbac_enabled
 from outbox import OutboxStore
 from reply_watcher import ReplyWatchThread, check_replies, imap_configured, reply_watch_status
@@ -106,6 +107,7 @@ _orchestrator_mod = OrchestratorModule()
 _content_studio_mod = ContentStudioModule()
 _radar_mod = RadarModule()
 _video_studio_mod = VideoStudioModule()
+_social_publish_mod = SocialPublishModule()
 _rbac_mod = RbacModule()
 _registry.register(_tracking_mod)
 _registry.register(_deliver_mod)
@@ -125,6 +127,7 @@ _registry.register(_orchestrator_mod)
 _registry.register(_content_studio_mod)
 _registry.register(_radar_mod)
 _registry.register(_video_studio_mod)
+_registry.register(_social_publish_mod)
 _registry.register(_rbac_mod)
 _app_ctx: AppContext | None = None
 

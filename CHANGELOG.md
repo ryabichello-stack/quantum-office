@@ -16,6 +16,8 @@
 - **Owned-page listen stub** (`radar/owned_listen`): `OWNED_TG_CHANNELS` / `OWNED_VK_GROUPS` → Radar signals via `POST /api/modules/radar/owned/poll` (never auto-outreach)
 - **YouTube Data API client skeleton** (`video_studio/youtube_client.py`): private-only upload path via `YOUTUBE_CLIENT_SECRETS` / `YOUTUBE_TOKEN_PATH`
 - UI ops22: роль + usage в Студии/Настройках; кнопка Owned poll; gate write-кнопок при RBAC
+- **Social Publish** (`modules/social_publish`): каналы TG/VK/Instagram/YouTube, мультиплатформенные посты + SVG-картинки, репост после approve (`SOCIAL_PUBLISH_ENABLED`)
+- UI ops23: вкладка Студия → «Соцсети» (каналы, генерация, репост)
 - **AI Revenue OS Stage 0** — architecture pack in `docs/architecture/` (AS_IS, TARGET, GAP, DATA_MAPPING, SOCIAL_CAPABILITY_MATRIX, MIGRATION_PLAN, BACKLOG)
 - **Stage 1 data core** (`outreach/modules/accounts`): Account / Person / Employment / ContactPoint / Lead / `domain_events`; lifecycle `NEW`…`BLACKLISTED`; SoT local + Bitrix company id (Accept R1/R2)
 - **Slice A inbound**: IMAP reply → resolve Account/Person/Lead + `message.received` / `message.classified`; Console call watcher → `call.completed` via `/api/modules/accounts/resolve-inbound`
@@ -74,6 +76,7 @@
 - 2026-08-23 (cont.5): API v1, Bitrix lead sync, cluster merge UI, tenant bootstrap, ops21
 - 2026-08-23 (cont.6): usage metering lite on prod
 - 2026-08-23 (cont.7): RBAC module + owned listen + YouTube client skeleton; UI ops22 on prod
+- 2026-08-23 (cont.8): Social Publish (TG/VK/IG/YT posts, images, repost); UI ops23
 
 ## [0.2.0] — 2026-08-20
 

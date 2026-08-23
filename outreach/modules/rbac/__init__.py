@@ -72,6 +72,7 @@ _WRITE_RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^/api/modules/content_studio/"), PERM_STUDIO_WRITE),
     (re.compile(r"^/api/modules/radar/"), PERM_STUDIO_WRITE),
     (re.compile(r"^/api/modules/video_studio/"), PERM_STUDIO_WRITE),
+    (re.compile(r"^/api/modules/social_publish/"), PERM_STUDIO_WRITE),
     (re.compile(r"^/api/ops/"), PERM_SEND),
     (re.compile(r"^/api/callback-cta/"), PERM_SETTINGS),
 ]
