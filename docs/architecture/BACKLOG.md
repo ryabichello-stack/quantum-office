@@ -77,9 +77,9 @@
 
 | ID | Item | Status |
 |----|------|--------|
-| C1 | Content Studio MVP (objection → draft) | ✅ API |
-| R1 | Intent Radar ingest + verify | ✅ API |
-| V1 | Video Studio | pending |
+| C1 | Content Studio MVP (objection → draft) | ✅ API + UI Студия |
+| R1 | Intent Radar ingest + verify | ✅ API + UI Студия |
+| V1 | Video Studio | ✅ scaffold + UI (YouTube later) |
 | T1 | Multi-tenant onboarding | pending |
 | T2 | RBAC / usage metering | pending |
 

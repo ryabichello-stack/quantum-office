@@ -6,6 +6,7 @@
     report: "Результат",
     clients: "Клиенты",
     lpr: "ЛПР",
+    studio: "Студия",
     settings: "Настройки",
   };
   const hints = {
@@ -14,7 +15,8 @@
     inbox: "Классификация ответов и привязка к письмам",
     report: "Воронка, динамика, последние письма",
     clients: "Bitrix → geo → очередь; список с городом и TZ",
-    lpr: "Поиск ЛПР: clients + DaData + import, coverage matrix",
+    lpr: "Комитет ЛПР: поиск, покрытие ролей, approve / task",
+    studio: "Контент, Radar и видео — с ручным утверждением",
     settings: "Локальные окна, лимиты, anti-ban",
   };
 
@@ -1933,70 +1935,95 @@
 
   let lprLastRunId = null;
 
+  function statusChip(st) {
+    const s = String(st || "proposed");
+    const map = {
+      proposed: "chip-neutral",
+      approved: "chip-ok",
+      rejected: "chip-bad",
+      cluster_pending: "chip-warn",
+      draft: "chip-neutral",
+      pending_approval: "chip-warn",
+      new: "chip-neutral",
+      uploaded_private: "chip-ok",
+    };
+    return `<span class="ros-chip ${map[s] || "chip-neutral"}">${escapeHtml(s)}</span>`;
+  }
+
   function renderLprCoverage(coverage) {
     const el = $("lprCoverage");
     if (!el) return;
     const roles = (coverage && coverage.roles) || [];
     const missing = (coverage && coverage.missing_roles) || [];
     if (!roles.length) {
-      el.textContent = "";
+      el.innerHTML = `<p class="muted tight">Покрытие появится после поиска.</p>`;
       return;
     }
     el.innerHTML =
+      `<div class="lpr-coverage-row">` +
       roles
         .map(
           (r) =>
-            `<span class="lpr-role ${r.covered ? "ok" : "miss"}">${escapeHtml(
+            `<span class="lpr-role ${r.covered ? "ok" : "miss"}"><span class="lpr-role-id">${escapeHtml(
               r.role_id || ""
-            )}${r.covered ? " ✓" : " —"}</span>`
+            )}</span>${r.covered ? " покрыта" : " нет"}</span>`
         )
-        .join(" ") +
+        .join("") +
+      `</div>` +
       (missing.length
-        ? `<div class="muted tight">Не покрыто: ${escapeHtml(missing.join(", "))}</div>`
-        : "");
+        ? `<p class="muted tight" style="margin-top:0.4rem">Не хватает: ${escapeHtml(missing.join(", "))}</p>`
+        : `<p class="muted tight" style="margin-top:0.4rem">Минимальный комитет закрыт.</p>`);
   }
 
   function renderLprCandidates(items) {
-    const body = $("lprBody");
-    if (!body) return;
-    body.innerHTML = (items || [])
+    const box = $("lprCards");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Кандидатов нет — уточните company id или добавьте import.</p>`;
+      return;
+    }
+    box.innerHTML = list
       .map((c) => {
         const st = c.status || "proposed";
+        const link = c.profile_url
+          ? `<a class="ros-link" href="${escapeHtml(c.profile_url)}" target="_blank" rel="noopener">профиль</a>`
+          : "";
         const actions =
           st === "rejected"
-            ? ""
-            : `<button type="button" class="small btn-quiet" data-lpr-approve="${escapeHtml(
-                c.id
-              )}">OK</button>
-               <button type="button" class="small btn-quiet" data-lpr-reject="${escapeHtml(
-                 c.id
-               )}">Reject</button>
-               <button type="button" class="small btn-quiet" data-lpr-task="${escapeHtml(
-                 c.id
-               )}">Task</button>`;
-        return `<tr>
-          <td>${escapeHtml(c.full_name || "")}${
+            ? `<span class="muted tight">отклонён</span>`
+            : `<div class="ros-card-actions">
+                <button type="button" class="small primary" data-lpr-approve="${escapeHtml(c.id)}">Утвердить</button>
+                <button type="button" class="small btn-quiet" data-lpr-reject="${escapeHtml(c.id)}">Отклонить</button>
+                <button type="button" class="small btn-quiet" data-lpr-task="${escapeHtml(c.id)}">Task</button>
+              </div>`;
+        return `<article class="ros-card">
+          <div class="ros-card-head">
+            <div>
+              <div class="ros-card-title">${escapeHtml(c.full_name || "Без имени")}${
           c.cluster_id ? ' <span class="badge">cluster</span>' : ""
-        }</td>
-          <td>${escapeHtml(c.role_guess || "")}</td>
-          <td>${escapeHtml(c.source || "")}</td>
-          <td>${Number(c.score || 0).toFixed(2)}</td>
-          <td>${escapeHtml(st)}</td>
-          <td>${actions}</td>
-        </tr>`;
+        }</div>
+              <div class="muted tight">${escapeHtml(c.role_guess || "роль ?")} · ${escapeHtml(
+          c.source || ""
+        )} · score ${Number(c.score || 0).toFixed(2)} ${link}</div>
+            </div>
+            ${statusChip(st)}
+          </div>
+          ${actions}
+        </article>`;
       })
       .join("");
-    body.querySelectorAll("[data-lpr-approve]").forEach((btn) => {
+    box.querySelectorAll("[data-lpr-approve]").forEach((btn) => {
       btn.addEventListener("click", () =>
         setLprStatus(btn.getAttribute("data-lpr-approve"), "approved").catch(logAction)
       );
     });
-    body.querySelectorAll("[data-lpr-reject]").forEach((btn) => {
+    box.querySelectorAll("[data-lpr-reject]").forEach((btn) => {
       btn.addEventListener("click", () =>
         setLprStatus(btn.getAttribute("data-lpr-reject"), "rejected").catch(logAction)
       );
     });
-    body.querySelectorAll("[data-lpr-task]").forEach((btn) => {
+    box.querySelectorAll("[data-lpr-task]").forEach((btn) => {
       btn.addEventListener("click", () =>
         createLprTask(btn.getAttribute("data-lpr-task")).catch(logAction)
       );
@@ -2016,8 +2043,8 @@
       method: "POST",
       body: JSON.stringify({ candidate_id: id, draft_text: "", action_type: "open_profile" }),
     });
-    if ($("lprLog")) {
-      $("lprLog").textContent = JSON.stringify(data, null, 2);
+    if ($("lprMeta")) {
+      $("lprMeta").textContent = `Task создан · ${((data.task || {}).profile_url) || "без URL"}`;
     }
   }
 
@@ -2028,14 +2055,14 @@
   }
 
   async function loadLprTab() {
-    if ($("lprLog") && !$("lprLog").textContent) {
-      $("lprLog").textContent = "Укажите company id / import и нажмите «Искать».";
+    if ($("lprMeta") && !$("lprMeta").textContent) {
+      $("lprMeta").textContent = "Укажите company id или import и нажмите «Найти кандидатов».";
     }
   }
 
   async function runLprSearch() {
     const imports = [];
-    const webUrl = ($("lprWebUrl") && $("lprWebUrl").value || "").trim();
+    const webUrl = (($("lprWebUrl") && $("lprWebUrl").value) || "").trim();
     if (webUrl) {
       imports.push({
         source: "web_import",
@@ -2043,7 +2070,7 @@
         full_name: ($("lprWebName") && $("lprWebName").value) || "",
       });
     }
-    const tg = ($("lprTgUser") && $("lprTgUser").value || "").trim().replace(/^@/, "");
+    const tg = (($("lprTgUser") && $("lprTgUser").value) || "").trim().replace(/^@/, "");
     if (tg) {
       imports.push({
         source: "telegram",
@@ -2052,13 +2079,13 @@
       });
     }
     const payload = {
-      bitrix_company_id: ($("lprCompanyId") && $("lprCompanyId").value || "").trim() || null,
-      company_title: ($("lprCompanyTitle") && $("lprCompanyTitle").value || "").trim(),
-      inn: ($("lprInn") && $("lprInn").value || "").trim() || null,
+      bitrix_company_id: (($("lprCompanyId") && $("lprCompanyId").value) || "").trim() || null,
+      company_title: (($("lprCompanyTitle") && $("lprCompanyTitle").value) || "").trim(),
+      inn: (($("lprInn") && $("lprInn").value) || "").trim() || null,
       sources: ["clients", "dadata", "web_import", "telegram"],
       imports,
     };
-    if ($("lprLog")) $("lprLog").textContent = "Поиск…";
+    if ($("lprMeta")) $("lprMeta").textContent = "Ищем…";
     const data = await api("/api/modules/social/search", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -2066,29 +2093,277 @@
     lprLastRunId = (data.run && data.run.id) || null;
     renderLprCoverage(data.coverage);
     renderLprCandidates(data.candidates || []);
-    if ($("lprLog")) {
-      $("lprLog").textContent = JSON.stringify(
-        {
-          run_id: lprLastRunId,
-          cost: data.run && data.run.cost_estimate,
-          candidates: (data.candidates || []).length,
-          missing: (data.coverage && data.coverage.missing_roles) || [],
-        },
-        null,
-        2
-      );
+    if ($("lprMeta")) {
+      const n = (data.candidates || []).length;
+      const miss = ((data.coverage && data.coverage.missing_roles) || []).length;
+      $("lprMeta").textContent = `${n} кандидат(ов) · cost ${
+        (data.run && data.run.cost_estimate) || 0
+      } · незакрытых ролей: ${miss}`;
     }
   }
 
   async function loadLprCaps() {
     const data = await api("/api/modules/social/capabilities");
-    if ($("lprLog")) $("lprLog").textContent = JSON.stringify(data, null, 2);
+    const items = data.items || [];
+    if ($("lprMeta")) {
+      $("lprMeta").textContent = items
+        .map((c) => `${c.source_id}${c.search ? " (search)" : " (import)"}`)
+        .join(" · ");
+    }
   }
+
+  function bindStudioSubTabs() {
+    document.querySelectorAll(".sub-tab[data-studio-view]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".sub-tab[data-studio-view]").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        const view = btn.dataset.studioView;
+        const content = $("studioViewContent");
+        const radar = $("studioViewRadar");
+        const video = $("studioViewVideo");
+        if (content) content.hidden = view !== "content";
+        if (radar) radar.hidden = view !== "radar";
+        if (video) video.hidden = view !== "video";
+        if (view === "content") loadContentDrafts().catch(logAction);
+        if (view === "radar") loadRadarSignals().catch(logAction);
+        if (view === "video") loadVideoDrafts().catch(logAction);
+      });
+    });
+  }
+
+  async function loadStudioTab() {
+    bindStudioSubTabs();
+    const active = document.querySelector(".sub-tab[data-studio-view].active");
+    const view = (active && active.dataset.studioView) || "content";
+    if (view === "content") await loadContentDrafts();
+    else if (view === "radar") await loadRadarSignals();
+    else await loadVideoDrafts();
+  }
+
+  function renderContentCards(items) {
+    const box = $("csCards");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Пока пусто — создайте черновик слева.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map((d) => {
+        const letters = ((d.body && d.body.letters) || []).length;
+        const actions =
+          d.status === "approved"
+            ? `<span class="muted tight">утверждён</span>`
+            : `<button type="button" class="small primary" data-cs-approve="${escapeHtml(d.id)}">Утвердить</button>
+               <button type="button" class="small btn-quiet" data-cs-reject="${escapeHtml(d.id)}">Отклонить</button>`;
+        return `<article class="ros-card">
+          <div class="ros-card-head">
+            <div>
+              <div class="ros-card-title">${escapeHtml(d.title || "Черновик")}</div>
+              <div class="muted tight">${escapeHtml(d.industry_pack || "")} · ${letters} писем · ${escapeHtml(
+          (d.objection || "").slice(0, 80)
+        )}</div>
+            </div>
+            ${statusChip(d.status)}
+          </div>
+          <div class="ros-card-actions">${actions}</div>
+        </article>`;
+      })
+      .join("");
+    box.querySelectorAll("[data-cs-approve]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setContentStatus(btn.getAttribute("data-cs-approve"), "approved").catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-cs-reject]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setContentStatus(btn.getAttribute("data-cs-reject"), "rejected").catch(logAction)
+      );
+    });
+  }
+
+  async function setContentStatus(id, status) {
+    await api(`/api/modules/content_studio/drafts/${encodeURIComponent(id)}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
+    await loadContentDrafts();
+  }
+
+  async function loadContentDrafts() {
+    const data = await api("/api/modules/content_studio/drafts?limit=30");
+    renderContentCards(data.items || []);
+  }
+
+  async function createContentDraft() {
+    const objection = (($("csObjection") && $("csObjection").value) || "").trim();
+    if (!objection) throw new Error("Укажите возражение");
+    await api("/api/modules/content_studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({
+        objection,
+        industry_pack: ($("csPack") && $("csPack").value) || "lombards",
+      }),
+    });
+    if ($("csObjection")) $("csObjection").value = "";
+    await loadContentDrafts();
+  }
+
+  function renderRadarCards(items) {
+    const box = $("radarCards");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Сигналов пока нет.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map((s) => {
+        return `<article class="ros-card">
+          <div class="ros-card-head">
+            <div>
+              <div class="ros-card-title">${escapeHtml(s.company_title || s.signal_type || "Сигнал")}</div>
+              <div class="muted tight">${escapeHtml(s.signal_type || "")} · score ${Number(
+          s.score || 0
+        ).toFixed(2)} · ${escapeHtml((s.summary || "").slice(0, 100))}</div>
+            </div>
+            ${statusChip(s.status)}
+          </div>
+          <div class="ros-card-actions">
+            <button type="button" class="small primary" data-radar-verify="${escapeHtml(s.id)}">Проверить</button>
+            <button type="button" class="small btn-quiet" data-radar-dismiss="${escapeHtml(s.id)}">Скрыть</button>
+          </div>
+        </article>`;
+      })
+      .join("");
+    box.querySelectorAll("[data-radar-verify]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-radar-verify");
+        const data = await api(`/api/modules/radar/signals/${encodeURIComponent(id)}/verify`, {
+          method: "POST",
+          body: "{}",
+        });
+        btn.textContent = (data.suggested_action || "ok").replace(/_/g, " ");
+      });
+    });
+    box.querySelectorAll("[data-radar-dismiss]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        await api(`/api/modules/radar/signals/${encodeURIComponent(btn.getAttribute("data-radar-dismiss"))}/status`, {
+          method: "POST",
+          body: JSON.stringify({ status: "dismissed" }),
+        });
+        await loadRadarSignals();
+      });
+    });
+  }
+
+  async function loadRadarSignals() {
+    const data = await api("/api/modules/radar/signals?limit=40");
+    renderRadarCards(data.items || []);
+  }
+
+  async function ingestRadarSignal() {
+    const summary = (($("radarSummary") && $("radarSummary").value) || "").trim();
+    if (!summary) throw new Error("Укажите краткое описание");
+    await api("/api/modules/radar/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        signal_type: ($("radarType") && $("radarType").value) || "manual",
+        company_title: ($("radarCompany") && $("radarCompany").value) || "",
+        summary,
+        score: Number(($("radarScore") && $("radarScore").value) || 0.5),
+      }),
+    });
+    if ($("radarSummary")) $("radarSummary").value = "";
+    await loadRadarSignals();
+  }
+
+  function renderVideoCards(items) {
+    const box = $("videoCards");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Создайте первый черновик слева.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map((d) => {
+        const actions =
+          d.status === "approved"
+            ? `<button type="button" class="small primary" data-video-upload="${escapeHtml(d.id)}">Private upload</button>`
+            : d.status === "uploaded_private"
+              ? `<span class="muted tight">private queue</span>`
+              : `<button type="button" class="small primary" data-video-approve="${escapeHtml(d.id)}">Утвердить</button>
+                 <button type="button" class="small btn-quiet" data-video-reject="${escapeHtml(d.id)}">Отклонить</button>`;
+        return `<article class="ros-card">
+          <div class="ros-card-head">
+            <div>
+              <div class="ros-card-title">${escapeHtml(d.title || "Video")}</div>
+              <div class="muted tight">${escapeHtml((d.brief || "").slice(0, 100))}</div>
+            </div>
+            ${statusChip(d.status)}
+          </div>
+          <div class="ros-card-actions">${actions}</div>
+        </article>`;
+      })
+      .join("");
+    box.querySelectorAll("[data-video-approve]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setVideoStatus(btn.getAttribute("data-video-approve"), "approved").catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-video-reject]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setVideoStatus(btn.getAttribute("data-video-reject"), "rejected").catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-video-upload]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        await api(
+          `/api/modules/video_studio/drafts/${encodeURIComponent(btn.getAttribute("data-video-upload"))}/queue-private-upload`,
+          { method: "POST", body: "{}" }
+        );
+        await loadVideoDrafts();
+      });
+    });
+  }
+
+  async function setVideoStatus(id, status) {
+    await api(`/api/modules/video_studio/drafts/${encodeURIComponent(id)}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
+    await loadVideoDrafts();
+  }
+
+  async function loadVideoDrafts() {
+    const data = await api("/api/modules/video_studio/drafts?limit=30");
+    renderVideoCards(data.items || []);
+  }
+
+  async function createVideoDraft() {
+    const title = (($("videoTitle") && $("videoTitle").value) || "").trim();
+    if (!title) throw new Error("Укажите название");
+    await api("/api/modules/video_studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({
+        title,
+        brief: ($("videoBrief") && $("videoBrief").value) || "",
+        script_text: ($("videoScript") && $("videoScript").value) || "",
+      }),
+    });
+    if ($("videoTitle")) $("videoTitle").value = "";
+    if ($("videoBrief")) $("videoBrief").value = "";
+    if ($("videoScript")) $("videoScript").value = "";
+    await loadVideoDrafts();
+  }
+
 
   function refreshActiveTab() {
     const tab = activeTabName();
     if (tab === "clients") loadClients().catch((e) => ($("clientsLog").textContent = String(e)));
-    else if (tab === "lpr") loadLprTab().catch((e) => { if ($("lprLog")) $("lprLog").textContent = String(e); });
+    else if (tab === "lpr") loadLprTab().catch((e) => { if ($("lprMeta")) $("lprMeta").textContent = String(e); });
+    else if (tab === "studio") loadStudioTab().catch(logAction);
     else if (tab === "outbox") loadOutbox().catch(logAction);
     else if (tab === "inbox") {
       const view = document.querySelector(".sub-tab.active");
@@ -2142,7 +2417,8 @@
         $("pageTitle").textContent = titles[tab] || tab;
         if ($("pageHint")) $("pageHint").textContent = hints[tab] || "";
         if (tab === "clients") loadClients().catch((e) => ($("clientsLog").textContent = String(e)));
-        if (tab === "lpr") loadLprTab().catch((e) => { if ($("lprLog")) $("lprLog").textContent = String(e); });
+        if (tab === "lpr") loadLprTab().catch((e) => { if ($("lprMeta")) $("lprMeta").textContent = String(e); });
+        if (tab === "studio") loadStudioTab().catch(logAction);
         if (tab === "outbox") loadOutbox().catch(logAction);
         if (tab === "report") loadReport().catch(logAction);
         if (tab === "settings") {
@@ -2276,13 +2552,31 @@
     bindInnerWheelScroll();
     if ($("lprSearchBtn")) {
       $("lprSearchBtn").addEventListener("click", () => runLprSearch().catch((e) => {
-        if ($("lprLog")) $("lprLog").textContent = String(e);
+        if ($("lprMeta")) $("lprMeta").textContent = String(e);
       }));
     }
     if ($("lprCapsBtn")) {
       $("lprCapsBtn").addEventListener("click", () => loadLprCaps().catch((e) => {
-        if ($("lprLog")) $("lprLog").textContent = String(e);
+        if ($("lprMeta")) $("lprMeta").textContent = String(e);
       }));
+    }
+    if ($("csDraftBtn")) {
+      $("csDraftBtn").addEventListener("click", () => createContentDraft().catch(logAction));
+    }
+    if ($("csListBtn")) {
+      $("csListBtn").addEventListener("click", () => loadContentDrafts().catch(logAction));
+    }
+    if ($("radarIngestBtn")) {
+      $("radarIngestBtn").addEventListener("click", () => ingestRadarSignal().catch(logAction));
+    }
+    if ($("radarListBtn")) {
+      $("radarListBtn").addEventListener("click", () => loadRadarSignals().catch(logAction));
+    }
+    if ($("videoDraftBtn")) {
+      $("videoDraftBtn").addEventListener("click", () => createVideoDraft().catch(logAction));
+    }
+    if ($("videoListBtn")) {
+      $("videoListBtn").addEventListener("click", () => loadVideoDrafts().catch(logAction));
     }
     const adv = $("letterAdvanced");
     if (adv) {
@@ -3261,61 +3555,6 @@
         });
       });
     }
-    if ($("csDraftBtn")) {
-      $("csDraftBtn").addEventListener("click", async () => {
-        try {
-          const data = await api("/api/modules/content_studio/drafts", {
-            method: "POST",
-            body: JSON.stringify({
-              objection: ($("csObjection") && $("csObjection").value) || "",
-              industry_pack: ($("csPack") && $("csPack").value) || "lombards",
-            }),
-          });
-          if ($("csLog")) $("csLog").textContent = JSON.stringify(data, null, 2);
-        } catch (e) {
-          if ($("csLog")) $("csLog").textContent = String(e);
-        }
-      });
-    }
-    if ($("csListBtn")) {
-      $("csListBtn").addEventListener("click", async () => {
-        try {
-          const data = await api("/api/modules/content_studio/drafts?limit=20");
-          if ($("csLog")) $("csLog").textContent = JSON.stringify(data, null, 2);
-        } catch (e) {
-          if ($("csLog")) $("csLog").textContent = String(e);
-        }
-      });
-    }
-    if ($("radarIngestBtn")) {
-      $("radarIngestBtn").addEventListener("click", async () => {
-        try {
-          const data = await api("/api/modules/radar/signals", {
-            method: "POST",
-            body: JSON.stringify({
-              signal_type: ($("radarType") && $("radarType").value) || "manual",
-              company_title: ($("radarCompany") && $("radarCompany").value) || "",
-              summary: ($("radarSummary") && $("radarSummary").value) || "",
-              score: Number(($("radarScore") && $("radarScore").value) || 0.5),
-            }),
-          });
-          if ($("radarLog")) $("radarLog").textContent = JSON.stringify(data, null, 2);
-        } catch (e) {
-          if ($("radarLog")) $("radarLog").textContent = String(e);
-        }
-      });
-    }
-    if ($("radarListBtn")) {
-      $("radarListBtn").addEventListener("click", async () => {
-        try {
-          const data = await api("/api/modules/radar/signals?limit=30");
-          if ($("radarLog")) $("radarLog").textContent = JSON.stringify(data, null, 2);
-        } catch (e) {
-          if ($("radarLog")) $("radarLog").textContent = String(e);
-        }
-      });
-    }
-
     document.addEventListener("click", (ev) => {
       const btn = ev.target.closest("[data-company-id]");
       if (!btn || !btn.classList.contains("company-open")) return;

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops19" />
+  <link rel="stylesheet" href="styles.css?v=ops20" />
   <script>
     (function () {
       function parentBase() {
@@ -67,6 +67,7 @@
       <button type="button" data-tab="report">Результат</button>
       <button type="button" data-tab="clients">Клиенты</button>
       <button type="button" data-tab="lpr">ЛПР</button>
+      <button type="button" data-tab="studio">Студия</button>
       <button type="button" data-tab="settings">Настройки</button>
     </nav>
 
@@ -480,53 +481,167 @@
       <!-- ========== ЛПР / Social search ========== -->
       <section id="tab-lpr" class="panel">
         <div class="surface task-form">
-          <div class="task-intro">
-            <h2 class="section-title">Поиск ЛПР</h2>
-            <p class="muted tight">Клиенты + DaData + ручной import. Кластеры — только с approve. Без auto-DM.</p>
+          <div class="task-intro compact-intro">
+            <h2 class="section-title">Комитет ЛПР</h2>
+            <p class="muted tight">Найдите лиц, принимающих решения. Кластеры — только с approve. Без auto-DM.</p>
           </div>
-          <div class="task-grid">
-            <label class="field">Bitrix company id
-              <input id="lprCompanyId" type="text" placeholder="12345" />
-            </label>
-            <label class="field">Название компании
-              <input id="lprCompanyTitle" type="text" placeholder="Ломбард …" />
-            </label>
-            <label class="field">ИНН (опц.)
-              <input id="lprInn" type="text" placeholder="7707083893" maxlength="12" />
-            </label>
-          </div>
-          <details class="task-advanced" open>
-            <summary>Ручной import (URL / Telegram)</summary>
-            <div class="task-grid">
-              <label class="field">Web profile URL
-                <input id="lprWebUrl" type="url" placeholder="https://…" />
-              </label>
-              <label class="field">ФИО (web)
-                <input id="lprWebName" type="text" placeholder="Иван Петров" />
-              </label>
-              <label class="field">Telegram @username
-                <input id="lprTgUser" type="text" placeholder="boss_lombard" />
-              </label>
-              <label class="field">ФИО (TG)
-                <input id="lprTgName" type="text" placeholder="Босс" />
-              </label>
+
+          <div class="ros-split">
+            <div class="ros-pane">
+              <p class="ros-pane-title">Компания</p>
+              <div class="task-grid">
+                <label class="field">Bitrix company id
+                  <input id="lprCompanyId" type="text" placeholder="12345" autocomplete="off" />
+                </label>
+                <label class="field">Название
+                  <input id="lprCompanyTitle" type="text" placeholder="Ломбард …" />
+                </label>
+                <label class="field">ИНН
+                  <input id="lprInn" type="text" placeholder="7707083893" maxlength="12" />
+                </label>
+              </div>
+              <p class="ros-pane-title" style="margin-top:0.85rem">Ручной import</p>
+              <div class="task-grid">
+                <label class="field">Web URL
+                  <input id="lprWebUrl" type="url" placeholder="https://…" />
+                </label>
+                <label class="field">ФИО (web)
+                  <input id="lprWebName" type="text" placeholder="Иван Петров" />
+                </label>
+                <label class="field">Telegram
+                  <input id="lprTgUser" type="text" placeholder="@boss" />
+                </label>
+                <label class="field">ФИО (TG)
+                  <input id="lprTgName" type="text" placeholder="Босс" />
+                </label>
+              </div>
+              <div class="task-actions ros-actions">
+                <button type="button" id="lprSearchBtn" class="primary">Найти кандидатов</button>
+                <button type="button" class="btn-quiet" id="lprCapsBtn">Источники</button>
+              </div>
+              <p class="muted tight" id="lprMeta"></p>
             </div>
-          </details>
-          <div class="task-actions" style="border-top:0;padding-top:0.5rem">
-            <button type="button" id="lprSearchBtn" class="primary">Искать</button>
-            <button type="button" class="btn-quiet" id="lprCapsBtn">Capabilities</button>
+            <div class="ros-pane">
+              <p class="ros-pane-title">Покрытие ролей</p>
+              <div id="lprCoverage" class="lpr-coverage"></div>
+              <p class="ros-pane-title" style="margin-top:0.85rem">Кандидаты</p>
+              <div id="lprCards" class="ros-cards">
+                <p class="muted tight">Запустите поиск — появятся карточки кандидатов.</p>
+              </div>
+            </div>
           </div>
-          <pre id="lprLog" class="log"></pre>
-          <div id="lprCoverage" class="lpr-coverage muted tight"></div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Имя</th><th>Роль</th><th>Источник</th><th>Score</th><th>Статус</th><th></th>
-                </tr>
-              </thead>
-              <tbody id="lprBody"></tbody>
-            </table>
+        </div>
+      </section>
+
+      <!-- ========== СТУДИЯ: Content / Radar / Video ========== -->
+      <section id="tab-studio" class="panel">
+        <div class="surface task-form">
+          <div class="task-intro compact-intro">
+            <h2 class="section-title">Студия</h2>
+            <p class="muted tight">Контент, сигналы рынка и видео — всё с ручным утверждением.</p>
+          </div>
+          <div class="sub-tabs" role="tablist" aria-label="Студия">
+            <button type="button" class="sub-tab active" data-studio-view="content">Контент</button>
+            <button type="button" class="sub-tab" data-studio-view="radar">Radar</button>
+            <button type="button" class="sub-tab" data-studio-view="video">Видео</button>
+          </div>
+
+          <div id="studioViewContent">
+            <div class="ros-split">
+              <div class="ros-pane">
+                <p class="ros-pane-title">Возражение → черновик</p>
+                <label class="field">Возражение клиента
+                  <textarea id="csObjection" rows="3" placeholder="Уже есть банк / дорого / не сейчас…"></textarea>
+                </label>
+                <label class="field">Отраслевой пакет
+                  <select id="csPack">
+                    <option value="lombards">Ломбарды</option>
+                    <option value="mfo">МФО</option>
+                    <option value="trade_in">Trade-in</option>
+                    <option value="gig">Гиг</option>
+                    <option value="scrap">Вторсырьё</option>
+                  </select>
+                </label>
+                <div class="task-actions ros-actions">
+                  <button type="button" id="csDraftBtn" class="primary">Собрать черновик</button>
+                  <button type="button" id="csListBtn" class="btn-quiet">Обновить список</button>
+                </div>
+                <p class="muted tight">Статус всегда APPROVAL_REQUIRED до вашей кнопки «Утвердить».</p>
+              </div>
+              <div class="ros-pane">
+                <p class="ros-pane-title">Черновики</p>
+                <div id="csCards" class="ros-cards">
+                  <p class="muted tight">Пока пусто — создайте черновик слева.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="studioViewRadar" hidden>
+            <div class="ros-split">
+              <div class="ros-pane">
+                <p class="ros-pane-title">Новый сигнал</p>
+                <div class="task-grid">
+                  <label class="field">Тип
+                    <input id="radarType" type="text" placeholder="hiring_payments" list="radarTypeHints" />
+                    <datalist id="radarTypeHints">
+                      <option value="hiring_payments"></option>
+                      <option value="competitor_switch"></option>
+                      <option value="expansion"></option>
+                      <option value="manual"></option>
+                    </datalist>
+                  </label>
+                  <label class="field">Компания
+                    <input id="radarCompany" type="text" />
+                  </label>
+                  <label class="field">Score
+                    <input id="radarScore" type="number" min="0" max="1" step="0.05" value="0.7" />
+                  </label>
+                </div>
+                <label class="field">Кратко
+                  <textarea id="radarSummary" rows="3" placeholder="Ищет интегратора выплат…"></textarea>
+                </label>
+                <div class="task-actions ros-actions">
+                  <button type="button" id="radarIngestBtn" class="primary">Записать</button>
+                  <button type="button" id="radarListBtn" class="btn-quiet">Обновить</button>
+                </div>
+                <p class="muted tight">Сигналы не запускают рассылку сами — только подсказки оператору.</p>
+              </div>
+              <div class="ros-pane">
+                <p class="ros-pane-title">Очередь сигналов</p>
+                <div id="radarCards" class="ros-cards">
+                  <p class="muted tight">Сигналов пока нет.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="studioViewVideo" hidden>
+            <div class="ros-split">
+              <div class="ros-pane">
+                <p class="ros-pane-title">Видео-черновик</p>
+                <label class="field">Название
+                  <input id="videoTitle" type="text" placeholder="Выплаты для ломбардов — 60 сек" />
+                </label>
+                <label class="field">Бриф
+                  <textarea id="videoBrief" rows="3" placeholder="Для кого, оффер, тон…"></textarea>
+                </label>
+                <label class="field">Сценарий (опц.)
+                  <textarea id="videoScript" rows="4" placeholder="Оставьте пустым — соберём каркас из брифа"></textarea>
+                </label>
+                <div class="task-actions ros-actions">
+                  <button type="button" id="videoDraftBtn" class="primary">Создать private draft</button>
+                  <button type="button" id="videoListBtn" class="btn-quiet">Обновить</button>
+                </div>
+                <p class="muted tight">YouTube private upload — после approve. Публикация вручную.</p>
+              </div>
+              <div class="ros-pane">
+                <p class="ros-pane-title">Черновики видео</p>
+                <div id="videoCards" class="ros-cards">
+                  <p class="muted tight">Создайте первый черновик слева.</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -834,48 +949,6 @@
           </details>
 
           <details class="task-advanced">
-            <summary>Content Studio (возражение → черновик)</summary>
-            <p class="muted tight">APPROVAL_REQUIRED — не публикуется само. Берёт каркас отраслевого пакета.</p>
-            <div class="task-grid">
-              <label class="field">Возражение
-                <input id="csObjection" type="text" placeholder="уже есть банк / дорого" />
-              </label>
-              <label class="field">Пакет
-                <input id="csPack" type="text" value="lombards" />
-              </label>
-            </div>
-            <div class="actions wrap-actions">
-              <button type="button" id="csDraftBtn" class="primary">Создать черновик</button>
-              <button type="button" id="csListBtn" class="btn-quiet">Список</button>
-            </div>
-            <pre id="csLog" class="log"></pre>
-          </details>
-
-          <details class="task-advanced">
-            <summary>Intent Radar (сигналы)</summary>
-            <p class="muted tight">Только учёт сигналов — без auto-outreach.</p>
-            <div class="task-grid">
-              <label class="field">Тип
-                <input id="radarType" type="text" placeholder="hiring_payments" />
-              </label>
-              <label class="field">Компания
-                <input id="radarCompany" type="text" />
-              </label>
-              <label class="field">Кратко
-                <input id="radarSummary" type="text" placeholder="ищет интегратора выплат" />
-              </label>
-              <label class="field">Score 0–1
-                <input id="radarScore" type="number" min="0" max="1" step="0.05" value="0.7" />
-              </label>
-            </div>
-            <div class="actions wrap-actions">
-              <button type="button" id="radarIngestBtn" class="primary">Записать сигнал</button>
-              <button type="button" id="radarListBtn" class="btn-quiet">Список</button>
-            </div>
-            <pre id="radarLog" class="log"></pre>
-          </details>
-
-          <details class="task-advanced">
             <summary>Защита ящика (anti-ban)</summary>
             <div id="antibanStats" class="stat-grid"></div>
             <label class="field check">
@@ -974,6 +1047,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=ops19"></script>
+  <script src="app.js?v=ops20"></script>
 </body>
 </html>

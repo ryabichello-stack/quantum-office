@@ -1437,6 +1437,61 @@ button.linkish {
   color: #5c4f42;
 }
 
+
+.lpr-coverage { margin: 0; }
+.lpr-coverage-row { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.lpr-role {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  padding: 0.28rem 0.55rem; border-radius: 8px; border: 1px solid #d9e2ea;
+  font-size: 0.78rem; background: #f7fafc; color: var(--ink);
+}
+.lpr-role-id { font-weight: 600; }
+.lpr-role.ok { border-color: rgba(13, 143, 122, 0.35); background: rgba(13, 143, 122, 0.08); }
+.lpr-role.miss { border-color: rgba(180, 35, 24, 0.28); background: rgba(180, 35, 24, 0.06); }
+
+.ros-split {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.95fr) minmax(280px, 1.15fr);
+  gap: 1rem; align-items: start;
+}
+@media (max-width: 900px) { .ros-split { grid-template-columns: 1fr; } }
+.ros-pane {
+  padding: 0.85rem 0.9rem; border: 1px solid var(--line);
+  border-radius: var(--radius); background: rgba(255, 255, 255, 0.55);
+}
+.ros-pane-title {
+  margin: 0 0 0.55rem; font-size: 0.72rem; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+}
+.ros-actions { border-top: 0; padding-top: 0.65rem; margin-top: 0.35rem; }
+.ros-cards { display: flex; flex-direction: column; gap: 0.55rem; max-height: 520px; overflow: auto; }
+.ros-card {
+  padding: 0.7rem 0.75rem; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface-solid); box-shadow: 0 1px 0 rgba(15, 27, 36, 0.03);
+}
+.ros-card-head { display: flex; justify-content: space-between; gap: 0.65rem; align-items: flex-start; }
+.ros-card-title { font-weight: 600; font-size: 0.92rem; letter-spacing: -0.01em; }
+.ros-card-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.55rem; }
+.ros-chip {
+  display: inline-block; padding: 0.12rem 0.45rem; border-radius: 999px;
+  font-size: 0.68rem; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap;
+}
+.chip-neutral { background: #edf2f6; color: var(--muted); }
+.chip-ok { background: rgba(13, 143, 122, 0.12); color: var(--ok); }
+.chip-warn { background: rgba(180, 83, 9, 0.12); color: var(--warn); }
+.chip-bad { background: rgba(180, 35, 24, 0.1); color: var(--danger); }
+.ros-link { color: var(--accent-strong); text-decoration: none; font-weight: 500; }
+.ros-link:hover { text-decoration: underline; }
+
+.inbox-enrichment {
+  margin: 0 1.1rem 0.65rem; padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: linear-gradient(180deg, #fff, #f7fafc);
+  font-size: 0.86rem; line-height: 1.45;
+}
+.inbox-enrichment .inbox-next-action { margin-top: 0.35rem; }
+.inbox-enrichment .badge { margin-left: 0.25rem; font-size: 0.72rem; vertical-align: middle; }
+
 .ops-actions {
   margin: 0 0 0.85rem;
   padding: 0.65rem 0.75rem;
