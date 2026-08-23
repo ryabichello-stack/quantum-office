@@ -3261,6 +3261,60 @@
         });
       });
     }
+    if ($("csDraftBtn")) {
+      $("csDraftBtn").addEventListener("click", async () => {
+        try {
+          const data = await api("/api/modules/content_studio/drafts", {
+            method: "POST",
+            body: JSON.stringify({
+              objection: ($("csObjection") && $("csObjection").value) || "",
+              industry_pack: ($("csPack") && $("csPack").value) || "lombards",
+            }),
+          });
+          if ($("csLog")) $("csLog").textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+          if ($("csLog")) $("csLog").textContent = String(e);
+        }
+      });
+    }
+    if ($("csListBtn")) {
+      $("csListBtn").addEventListener("click", async () => {
+        try {
+          const data = await api("/api/modules/content_studio/drafts?limit=20");
+          if ($("csLog")) $("csLog").textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+          if ($("csLog")) $("csLog").textContent = String(e);
+        }
+      });
+    }
+    if ($("radarIngestBtn")) {
+      $("radarIngestBtn").addEventListener("click", async () => {
+        try {
+          const data = await api("/api/modules/radar/signals", {
+            method: "POST",
+            body: JSON.stringify({
+              signal_type: ($("radarType") && $("radarType").value) || "manual",
+              company_title: ($("radarCompany") && $("radarCompany").value) || "",
+              summary: ($("radarSummary") && $("radarSummary").value) || "",
+              score: Number(($("radarScore") && $("radarScore").value) || 0.5),
+            }),
+          });
+          if ($("radarLog")) $("radarLog").textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+          if ($("radarLog")) $("radarLog").textContent = String(e);
+        }
+      });
+    }
+    if ($("radarListBtn")) {
+      $("radarListBtn").addEventListener("click", async () => {
+        try {
+          const data = await api("/api/modules/radar/signals?limit=30");
+          if ($("radarLog")) $("radarLog").textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+          if ($("radarLog")) $("radarLog").textContent = String(e);
+        }
+      });
+    }
 
     document.addEventListener("click", (ev) => {
       const btn = ev.target.closest("[data-company-id]");
