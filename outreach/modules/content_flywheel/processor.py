@@ -61,7 +61,16 @@ def build_image_options(
             }
         )
     out_dir = store._images_root() / store.tenant_id / "flywheel"
-    gen = write_social_card(out_dir, post_id=post_id, title=title, subtitle=brief[:200], variant="square")
+    from modules.content_flywheel.theme_config import brand_for_tenant
+
+    gen = write_social_card(
+        out_dir,
+        post_id=post_id,
+        title=title,
+        subtitle=brief[:200],
+        variant="square",
+        brand=brand_for_tenant(getattr(store, "tenant_id", "default")) or None,
+    )
     options.append(
         {
             "kind": "generated",
@@ -83,6 +92,9 @@ def talking_head_brief(
     thematic_hook: str = "",
     product_paragraph: str = "",
     citations: list[dict[str, Any]] | None = None,
+    lens_label: str = "",
+    brand_short: str = "",
+    video_intro: str = "",
 ) -> dict[str, Any]:
     profile = avatar_profile()
     angle = (thematic_hook or body)[:500]
@@ -91,11 +103,16 @@ def talking_head_brief(
         kb_line = f"\n\nПо продуктам: {product_paragraph[:280]}"
     elif citations:
         kb_line = "\n\n" + " ".join((c.get("note") or "")[:80] for c in citations[:2])
-    script = (
-        f"Привет! Коротко о денежных потоках и рынке: {title}.\n\n"
-        f"{angle}{kb_line}\n\n"
-        f"Quantum Labs — платёжная инфраструктура. Подробности на сайте."
-    )
+    intro = (video_intro or "Коротко по теме:").strip()
+    lens = (lens_label or "").strip()
+    if lens:
+        intro = f"{intro} ({lens})"
+    script = f"Привет! {intro} {title}.\n\n{angle}{kb_line}"
+    brand = (brand_short or "").strip()
+    if brand:
+        script = f"{script}\n\n{brand} — подробности на сайте."
+    else:
+        script = f"{script}\n\nПодробности — в описании."
     return {
         "format": "talking_head",
         "avatar_profile": profile,
@@ -127,10 +144,15 @@ def process_news_item(
     body = news.get("body") or ""
     combined = f"{title}\n{body}"
 
-    from modules.content_flywheel.theme_config import min_score_for_tenant
+    from modules.content_flywheel.theme_config import (
+        brand_for_tenant,
+        hashtags_for_tenant,
+        min_score_for_tenant,
+        video_intro_for_tenant,
+    )
     from modules.content_flywheel.thematic import analyze_news_themes, build_thematic_brief
 
-    tenant_id = getattr(store, "tenant_id", "quantum-labs")
+    tenant_id = getattr(store, "tenant_id", "default")
     analysis = news.get("analysis") or {}
     if not analysis.get("theme_score") and hasattr(store, "analyze_news_item"):
         refreshed = store.analyze_news_item(news_id)
@@ -214,6 +236,7 @@ def process_news_item(
         brief=brief,
         link=news.get("link") or "",
         product_footer=product_footer,
+        hashtags=hashtags_for_tenant(tenant_id),
     )
     image_options = build_image_options(
         store,
@@ -229,6 +252,9 @@ def process_news_item(
         thematic_hook=analysis.get("editorial_hook") or "",
         product_paragraph=product_footer,
         citations=kb_ctx.get("citations") or [],
+        lens_label=analysis.get("lens_label") or "",
+        brand_short=brand_for_tenant(tenant_id),
+        video_intro=video_intro_for_tenant(tenant_id),
     )
 
     proposal = store.create_proposal(

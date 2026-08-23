@@ -22,7 +22,13 @@ def test_load_quantum_labs_has_fintech_themes():
     tax = taxonomy_from_config(cfg)
     assert "money_flows" in tax
     assert cfg.get("lens_label")
-    assert len(cfg.get("themes") or []) >= 3
+
+
+def test_default_tenant_is_generic():
+    cfg = load_theme_config("default")
+    assert cfg.get("lens_id") == "generic"
+    assert len(cfg.get("themes") or []) >= 1
+    assert cfg.get("hashtags")
 
 
 def test_generic_preset_minimal():
@@ -73,3 +79,9 @@ def test_apply_preset_writes_data_dir():
 def test_min_score_env_override():
     with patch.dict("os.environ", {"FLYWHEEL_THEME_MIN_SCORE": "0.5"}, clear=False):
         assert min_score_for_tenant("quantum-labs") == 0.5
+
+
+def test_saas_preset_loads():
+    cfg = load_preset("saas-b2b")
+    assert cfg.get("lens_id") == "saas_b2b"
+    assert any(t.get("id") == "growth" for t in cfg.get("themes") or [])

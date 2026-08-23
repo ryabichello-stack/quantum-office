@@ -73,7 +73,9 @@ flowchart LR
 2. `outreach/config/tenants/{tenant_id}/content_theme.json` — seed в репозитории
 3. Пресет `generic` — минимальный fallback
 
-Пресеты: `outreach/config/theme_presets/` (`generic`, `fintech-money-flows`, …).
+Пресеты: `outreach/config/theme_presets/` — `generic` (default), `saas-b2b`, `real-estate`, `ecommerce`, `fintech-money-flows`, …
+
+Env: `OUTREACH_TENANT_ID=default` (greenfield) или `quantum-labs` (текущий прод Quantum Labs).
 
 Новости с `theme_score < min_score` → `skipped_theme` (не в слоты).  
 `min_score` берётся из конфига; env `FLYWHEEL_THEME_MIN_SCORE` переопределяет.

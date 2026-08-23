@@ -1,0 +1,43 @@
+{
+  "lens_id": "saas_b2b",
+  "lens_label": "B2B SaaS и продукт",
+  "brand_short": "",
+  "min_score": 0.35,
+  "score_cap": 4.0,
+  "high_tier_threshold": 0.65,
+  "low_tier_threshold": 0.15,
+  "off_topic_message": "Новость вне продуктовой и отраслевой повестки.",
+  "default_hook_prefix": "С точки зрения B2B-продукта",
+  "hashtags": ["#saas", "#b2b", "#продукт", "#стартап"],
+  "video_intro": "Коротко о продукте и рынке:",
+  "themes": [
+    {
+      "id": "product",
+      "label": "Продукт и фичи",
+      "hook_prefix": "Для продуктовой команды",
+      "keywords": ["релиз", "фич", "roadmap", "продукт", "ux", "onboarding"],
+      "weight": 1.2
+    },
+    {
+      "id": "growth",
+      "label": "Рост и метрики",
+      "hook_prefix": "В логике роста",
+      "keywords": ["arr", "mrr", "churn", "рост", "конверси", "воронк"],
+      "weight": 1.1
+    },
+    {
+      "id": "enterprise",
+      "label": "Enterprise-продажи",
+      "hook_prefix": "Для enterprise-сегмента",
+      "keywords": ["enterprise", "b2b", "сделк", "пилот", "внедрен"],
+      "weight": 1.0
+    },
+    {
+      "id": "competition",
+      "label": "Конкуренты и рынок",
+      "hook_prefix": "На фоне рынка",
+      "keywords": ["конкурент", "рынок", "ниш", "аналог", "замен"],
+      "weight": 1.0
+    }
+  ]
+}

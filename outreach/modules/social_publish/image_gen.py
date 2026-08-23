@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import os
 import re
 from pathlib import Path
 
@@ -17,12 +18,12 @@ def render_social_card_svg(
     *,
     title: str,
     subtitle: str = "",
-    brand: str = "Quantum Labs",
+    brand: str | None = None,
     accent: str = "#0d8f7a",
 ) -> str:
     title_esc = html.escape((title or "Post")[:120])
     sub_esc = html.escape((subtitle or "")[:280])
-    brand_esc = html.escape(brand)
+    brand_esc = html.escape((brand or os.getenv("OUTREACH_COMPANY_NAME") or "Brand").strip())
     lines: list[str] = []
     if sub_esc:
         words = sub_esc.split()
@@ -66,11 +67,12 @@ def write_social_card(
     title: str,
     subtitle: str = "",
     variant: str = "square",
+    brand: str | None = None,
 ) -> dict[str, str]:
     out_dir.mkdir(parents=True, exist_ok=True)
     fname = f"{post_id[:8]}-{_slug(title)}-{variant}.svg"
     path = out_dir / fname
-    svg = render_social_card_svg(title=title, subtitle=subtitle)
+    svg = render_social_card_svg(title=title, subtitle=subtitle, brand=brand)
     path.write_text(svg, encoding="utf-8")
     return {
         "variant": variant,

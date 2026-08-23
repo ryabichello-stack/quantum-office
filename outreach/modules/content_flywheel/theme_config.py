@@ -10,13 +10,14 @@ from pathlib import Path
 from typing import Any
 
 from core.paths import DATA_DIR
+from core.tenant import DEFAULT_TENANT_ID
 
 logger = logging.getLogger("ava-outreach.content_flywheel.theme_config")
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 PRESETS_DIR = PACKAGE_ROOT / "config" / "theme_presets"
 TENANTS_DIR = PACKAGE_ROOT / "config" / "tenants"
-DEFAULT_TENANT = "quantum-labs"
+DEFAULT_TENANT = DEFAULT_TENANT_ID
 
 
 def _tenant_data_path(tenant_id: str) -> Path:
@@ -98,6 +99,8 @@ def _normalize_config(raw: dict[str, Any], *, tenant_id: str) -> dict[str, Any]:
         "low_tier_threshold": _float(raw.get("low_tier_threshold"), 0.15),
         "off_topic_message": (raw.get("off_topic_message") or "Новость вне заданной тематики.").strip()[:500],
         "default_hook_prefix": (raw.get("default_hook_prefix") or "В контексте вашей темы").strip()[:200],
+        "hashtags": [str(h).strip() for h in (raw.get("hashtags") or []) if str(h).strip()][:12],
+        "video_intro": (raw.get("video_intro") or "Коротко по теме:").strip()[:200],
         "themes": themes,
     }
 
@@ -182,3 +185,15 @@ def build_keyword_rules(config: dict[str, Any]) -> list[tuple[str, str, float]]:
         for kw in theme.get("keywords") or []:
             rules.append((str(kw), tid, weight))
     return rules
+
+
+def brand_for_tenant(tenant_id: str = DEFAULT_TENANT) -> str:
+    return (load_theme_config(tenant_id).get("brand_short") or "").strip()
+
+
+def hashtags_for_tenant(tenant_id: str = DEFAULT_TENANT) -> list[str]:
+    return list(load_theme_config(tenant_id).get("hashtags") or [])
+
+
+def video_intro_for_tenant(tenant_id: str = DEFAULT_TENANT) -> str:
+    return (load_theme_config(tenant_id).get("video_intro") or "Коротко по теме:").strip()

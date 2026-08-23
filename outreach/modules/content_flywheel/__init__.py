@@ -14,6 +14,7 @@ from typing import Any, Iterator
 from core.paths import DATA_DIR, MODULES_DB
 from core.registry import AppContext
 
+from core.tenant import DEFAULT_TENANT_ID
 from modules.content_flywheel.ingest import default_source_handles, flywheel_enabled, poll_watch_sources
 from modules.content_flywheel.memory import content_hash
 from modules.content_flywheel.processor import approve_proposal, process_news_item
@@ -21,7 +22,7 @@ from modules.content_flywheel.slots import slots_for_day
 
 logger = logging.getLogger("ava-outreach.content_flywheel")
 
-DEFAULT_TENANT = "quantum-labs"
+DEFAULT_TENANT = DEFAULT_TENANT_ID
 BRAIN_INBOX = DATA_DIR / "flywheel" / "brain_inbox"
 
 

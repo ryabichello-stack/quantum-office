@@ -1,4 +1,6 @@
 {
+  "tenant_id": "default",
+  "preset": "generic",
   "lens_id": "generic",
   "lens_label": "Ваша тематика",
   "brand_short": "",
@@ -15,7 +17,7 @@
       "id": "core",
       "label": "Основная тема",
       "hook_prefix": "С точки зрения основной темы",
-      "keywords": ["рынок", "отрасль", "тренд"],
+      "keywords": ["рынок", "отрасль", "тренд", "компани"],
       "weight": 1.0
     }
   ]

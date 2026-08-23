@@ -2534,6 +2534,9 @@
     if ($("fwThemeLens")) $("fwThemeLens").value = cfg.lens_label || "";
     if ($("fwThemeBrand")) $("fwThemeBrand").value = cfg.brand_short || "";
     if ($("fwThemeMinScore")) $("fwThemeMinScore").value = cfg.min_score != null ? cfg.min_score : 0.35;
+    if ($("fwThemeHashtags")) {
+      $("fwThemeHashtags").value = (cfg.hashtags || []).join(", ");
+    }
     fwThemeDraft = (cfg.themes || []).map((t) => ({
       id: t.id || "",
       label: t.label || "",
@@ -2551,6 +2554,10 @@
       lens_label: (($("fwThemeLens") && $("fwThemeLens").value) || "").trim() || "Контент-тематика",
       brand_short: (($("fwThemeBrand") && $("fwThemeBrand").value) || "").trim(),
       min_score: parseFloat(($("fwThemeMinScore") && $("fwThemeMinScore").value) || "0.35") || 0.35,
+      hashtags: (($("fwThemeHashtags") && $("fwThemeHashtags").value) || "")
+        .split(/[,;]+/)
+        .map((h) => h.trim())
+        .filter(Boolean),
       themes,
     };
     const data = await api("/api/modules/content_flywheel/themes/config", {

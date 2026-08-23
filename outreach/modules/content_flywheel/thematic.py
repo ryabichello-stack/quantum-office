@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from core.tenant import DEFAULT_TENANT_ID
 from modules.content_flywheel.theme_config import (
     _keyword_matches,
     build_keyword_rules,
@@ -13,7 +14,7 @@ from modules.content_flywheel.theme_config import (
     taxonomy_from_config,
 )
 
-DEFAULT_TENANT = "quantum-labs"
+DEFAULT_TENANT = DEFAULT_TENANT_ID
 
 
 def _normalize(text: str) -> str:

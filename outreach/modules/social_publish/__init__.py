@@ -18,13 +18,14 @@ from typing import Any, Iterator
 from core.paths import MODULES_DB
 from core.registry import AppContext
 
+from core.tenant import DEFAULT_TENANT_ID
 from modules.social_publish.adapters import publish_to_channel
 from modules.social_publish.image_gen import write_social_card
 from modules.social_publish.post_templates import PLATFORMS, variants_from_brief
 
 logger = logging.getLogger("ava-outreach.social_publish")
 
-DEFAULT_TENANT = "quantum-labs"
+DEFAULT_TENANT = DEFAULT_TENANT_ID
 
 
 def _images_root(db_path: Path) -> Path:
@@ -221,7 +222,7 @@ class SocialPublishStore:
     ) -> dict[str, Any]:
         now = _utc_now()
         pid = _new_id()
-        title = (title or "Пост Quantum Labs").strip()[:200]
+        title = (title or "Новый пост").strip()[:200]
         brief_raw = (brief or "").strip()[:4000]
         kb_ctx: dict[str, Any] = kb_context or {}
         if use_kb and not kb_ctx:
@@ -240,16 +241,26 @@ class SocialPublishStore:
         product_footer = kb_ctx.get("product_paragraph") or ""
         selected = [p.strip().lower() for p in (platforms or list(PLATFORMS)) if p.strip()]
         selected = [p for p in selected if p in PLATFORMS] or list(PLATFORMS)
+        hashtags: list[str] = []
+        brand = ""
+        try:
+            from modules.content_flywheel.theme_config import brand_for_tenant, hashtags_for_tenant
+
+            hashtags = hashtags_for_tenant(self.tenant_id)
+            brand = brand_for_tenant(self.tenant_id)
+        except Exception:  # noqa: BLE001
+            pass
         variants = variants_from_brief(
             title=title,
             brief=brief,
             platforms=selected,
             link=link,
             product_footer=product_footer,
+            hashtags=hashtags,
         )
         images: list[dict[str, Any]] = []
         if generate_images:
-            images = self._generate_images(pid, title=title, brief=brief)
+            images = self._generate_images(pid, title=title, brief=brief, brand=brand or None)
         with self.connect() as conn:
             conn.execute(
                 """
@@ -281,10 +292,21 @@ class SocialPublishStore:
             pass
         return self.get_post(pid) or {"id": pid}
 
-    def _generate_images(self, post_id: str, *, title: str, brief: str) -> list[dict[str, Any]]:
+    def _generate_images(
+        self,
+        post_id: str,
+        *,
+        title: str,
+        brief: str,
+        brand: str | None = None,
+    ) -> list[dict[str, Any]]:
         out_dir = _images_root(self.db_path) / self.tenant_id
-        square = write_social_card(out_dir, post_id=post_id, title=title, subtitle=brief, variant="square")
-        story = write_social_card(out_dir, post_id=post_id, title=title, subtitle=brief[:120], variant="story")
+        square = write_social_card(
+            out_dir, post_id=post_id, title=title, subtitle=brief, variant="square", brand=brand
+        )
+        story = write_social_card(
+            out_dir, post_id=post_id, title=title, subtitle=brief[:120], variant="story", brand=brand
+        )
         return [square, story]
 
     def get_post(self, post_id: str) -> dict[str, Any] | None:

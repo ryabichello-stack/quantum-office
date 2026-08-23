@@ -43,11 +43,10 @@ def poll_watch_sources(*, handles: dict[str, list[str]] | None = None) -> list[d
                 "platform": "telegram",
                 "handle": handle,
                 "external_id": f"tg-stub-{handle}-{now[:10]}",
-                "title": f"Рынок выплат: тренд из {handle}",
+                "title": f"Отраслевой тренд из {handle}",
                 "body": (
                     f"Краткая выжимка (stub) из канала {handle}. "
-                    "Ломбарды и МФО ускоряют цифровые выплаты; "
-                    "инфраструктура без посредника — ключевой запрос недели."
+                    "Обсуждают изменения на рынке, спрос и ключевые тренды недели."
                 ),
                 "image_url": "",
                 "link": "",
@@ -61,10 +60,10 @@ def poll_watch_sources(*, handles: dict[str, list[str]] | None = None) -> list[d
                 "platform": "vk",
                 "handle": handle,
                 "external_id": f"vk-stub-{handle}-{now[:10]}",
-                "title": f"Новость VK {handle}: регуляторика и выплаты",
+                "title": f"Новость VK {handle}: обзор отрасли",
                 "body": (
                     f"Stub-пост из сообщества {handle}. "
-                    "Обсуждают сроки зачисления и прозрачность комиссий для B2B."
+                    "Краткий обзор событий и их влияния на бизнес в нише."
                 ),
                 "image_url": "",
                 "link": "",

@@ -33,7 +33,7 @@ def test_slots_default_three_per_day():
 def test_flywheel_ingest_process_approve():
     with tempfile.TemporaryDirectory() as tmp:
         db = Path(tmp) / "m.db"
-        store = ContentFlywheelStore(db)
+        store = ContentFlywheelStore(db, tenant_id="quantum-labs")
         news = store.ingest_news(
             platform="telegram",
             handle="@news",
