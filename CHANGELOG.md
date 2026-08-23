@@ -58,6 +58,7 @@
 - 2026-08-23: `ava-outreach` + `quantum-console` на `5.35.86.62` (Stage 1 accounts + Slice A enrichment + Slice B social); asterisk/mailer не трогали
 - 2026-08-23 (cont.): ЛПР UI, send guards, SB citations, orchestrator scaffold — redeploy outreach
 - 2026-08-23 (cont.2): content_studio + radar modules + orchestrator body-param fix
+- 2026-08-23 (cont.3): FastAPI JSON body fix; sync 300 accounts from clients; POST APIs verified
 
 ## [0.2.0] — 2026-08-20
 

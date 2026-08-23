@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops18" />
+  <link rel="stylesheet" href="styles.css?v=ops19" />
   <script>
     (function () {
       function parentBase() {
@@ -834,6 +834,48 @@
           </details>
 
           <details class="task-advanced">
+            <summary>Content Studio (возражение → черновик)</summary>
+            <p class="muted tight">APPROVAL_REQUIRED — не публикуется само. Берёт каркас отраслевого пакета.</p>
+            <div class="task-grid">
+              <label class="field">Возражение
+                <input id="csObjection" type="text" placeholder="уже есть банк / дорого" />
+              </label>
+              <label class="field">Пакет
+                <input id="csPack" type="text" value="lombards" />
+              </label>
+            </div>
+            <div class="actions wrap-actions">
+              <button type="button" id="csDraftBtn" class="primary">Создать черновик</button>
+              <button type="button" id="csListBtn" class="btn-quiet">Список</button>
+            </div>
+            <pre id="csLog" class="log"></pre>
+          </details>
+
+          <details class="task-advanced">
+            <summary>Intent Radar (сигналы)</summary>
+            <p class="muted tight">Только учёт сигналов — без auto-outreach.</p>
+            <div class="task-grid">
+              <label class="field">Тип
+                <input id="radarType" type="text" placeholder="hiring_payments" />
+              </label>
+              <label class="field">Компания
+                <input id="radarCompany" type="text" />
+              </label>
+              <label class="field">Кратко
+                <input id="radarSummary" type="text" placeholder="ищет интегратора выплат" />
+              </label>
+              <label class="field">Score 0–1
+                <input id="radarScore" type="number" min="0" max="1" step="0.05" value="0.7" />
+              </label>
+            </div>
+            <div class="actions wrap-actions">
+              <button type="button" id="radarIngestBtn" class="primary">Записать сигнал</button>
+              <button type="button" id="radarListBtn" class="btn-quiet">Список</button>
+            </div>
+            <pre id="radarLog" class="log"></pre>
+          </details>
+
+          <details class="task-advanced">
             <summary>Защита ящика (anti-ban)</summary>
             <div id="antibanStats" class="stat-grid"></div>
             <label class="field check">
@@ -932,6 +974,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=ops18"></script>
+  <script src="app.js?v=ops19"></script>
 </body>
 </html>
