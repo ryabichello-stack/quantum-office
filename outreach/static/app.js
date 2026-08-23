@@ -561,7 +561,7 @@
       : `<p class="muted tight">Пока нет отправок</p>`;
   }
 
-  function renderHeaderKpi(dash) {
+  function renderHeaderKpi(dash, health) {
     const box = $("headerKpi");
     if (!box) return;
     const c = (dash.outbox && dash.outbox.counts) || {};
@@ -572,6 +572,10 @@
     const stCls = st in { playing: 1, paused: 1, stopped: 1 } ? st : "stopped";
     const withTz = geo.with_timezone != null ? geo.with_timezone : "—";
     const companies = geo.companies != null ? geo.companies : "—";
+    const tg = (health && health.telegram) || {};
+    const oncall = (health && health.oncall) || {};
+    const tgLabel = tg.ready ? "TG ✓" : tg.token_configured ? "TG …" : "TG —";
+    const oncallLabel = oncall.ready ? "On-call ✓" : oncall.webhook_configured ? "On-call …" : "On-call —";
     const items = [
       ["Очередь", c.pending || 0],
       ["Сегодня", dash.outbox ? dash.outbox.sent_today : 0],
@@ -587,17 +591,22 @@
             `<div class="kpi-item"><span class="kpi-n">${n}</span><span class="kpi-l">${l}</span></div>`
         )
         .join("") +
-      `<div class="kpi-item kpi-state ${stCls}"><span class="kpi-n">${stLabel}</span><span class="kpi-l">Статус</span></div>`;
+      `<div class="kpi-item kpi-state ${stCls}"><span class="kpi-n">${stLabel}</span><span class="kpi-l">Статус</span></div>` +
+      `<div class="kpi-item kpi-pill ${tg.ready ? "ok" : "warn"}"><span class="kpi-n">${tgLabel}</span><span class="kpi-l">Panel</span></div>` +
+      `<div class="kpi-item kpi-pill ${oncall.ready ? "ok" : "warn"}"><span class="kpi-n">${oncallLabel}</span><span class="kpi-l">Ops</span></div>`;
   }
 
-  function renderStats(dash) {
-    renderHeaderKpi(dash);
+  function renderStats(dash, health) {
+    renderHeaderKpi(dash, health);
     renderDailyChart(dash.daily || [], "dailyChart");
   }
 
   async function loadDash() {
-    const dash = await api("/api/dashboard");
-    renderStats(dash);
+    const [dash, health] = await Promise.all([
+      api("/api/dashboard"),
+      api("/api/ops/health").catch(() => ({})),
+    ]);
+    renderStats(dash, health);
     setRunStateBadge(dash.run_state || (dash.runner && dash.runner.state) || "stopped");
     await loadOpsSummary().catch(() => {});
   }
@@ -766,7 +775,9 @@
               <span>Шаг ${s.step}</span>
               <div class="seq-step-bar"><i style="width:${Math.round(((s.reached || 0) / seqMax) * 100)}%"></i></div>
               <b>${s.reached || 0}</b>
-              <span class="muted">${s.pct_of_total != null ? s.pct_of_total + "%" : ""}</span>
+              <span class="muted">${s.pct_of_total != null ? s.pct_of_total + "% всего" : ""}${
+                s.pct_from_prev != null ? ` · ${s.pct_from_prev}% от шаг ${(s.step || 1) - 1 || 1}` : ""
+              }</span>
             </div>`
             )
             .join("") +

@@ -98,6 +98,44 @@ def test_sequence_step_report_empty():
     assert len(report["steps"]) == 3
 
 
+def test_sequence_step_report_pct_from_prev():
+    class FakeSeq:
+        @staticmethod
+        def connect():
+            class Ctx:
+                def __enter__(self):
+                    conn = sqlite3.connect(":memory:")
+                    conn.row_factory = sqlite3.Row
+                    conn.execute(
+                        """
+                        CREATE TABLE sequence_leads (
+                          id INTEGER PRIMARY KEY,
+                          current_step INTEGER,
+                          status TEXT
+                        )
+                        """
+                    )
+                    conn.execute(
+                        "INSERT INTO sequence_leads(current_step, status) VALUES (2, 'active')"
+                    )
+                    conn.execute(
+                        "INSERT INTO sequence_leads(current_step, status) VALUES (1, 'active')"
+                    )
+                    self._conn = conn
+                    return conn
+
+                def __exit__(self, *a):
+                    self._conn.close()
+
+            return Ctx()
+
+    report = build_sequence_step_report(FakeSeq(), max_steps=2)
+    assert report["total_sequences"] == 2
+    assert report["steps"][0]["reached"] == 2
+    assert report["steps"][1]["reached"] == 1
+    assert report["steps"][1]["pct_from_prev"] == 50.0
+
+
 def test_resolve_bot_token_prefers_argument():
     settings = MagicMock()
     settings.get.return_value = "stored-token"

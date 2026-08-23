@@ -60,7 +60,7 @@
 | **Кампания** | Pack, 5-step chain (collapse), брендинг, тест | Wizard, template versions, approval gate |
 | **Очередь** | Due + первые, TZ/окно, фильтры, row actions, **bulk**, **14-day calendar API**, **company card** | Assignee |
 | **Входящие** | Классификация, badges, «Готово», company card, **thread + reply** | Assignee |
-| **Результат** | Воронка, по дням, последние, **step analytics API** | Cohort export, in-UI step funnel |
+| **Результат** | Воронка, по дням, последние, **step funnel + conversion %** | Cohort export |
 | **Клиенты** | Sync+geo+rebuild (auto-geo), city/TZ table, **company card**, **data quality** | Bulk geo repair |
 | **Настройки** | Окна, праздники, fairness, OOO, anti-ban, **notify + on-call webhook** | Deliverability dashboard, DNS check |
 
@@ -128,8 +128,8 @@ API: `POST /api/ops/notify`, `POST /api/ops/telegram/verify|discover|test|apply-
 | Горизонт | Фокус |
 |----------|--------|
 | **G — Inbox** | 🟡 | Thread view + reply из UI (Layer G2) |
-| **G — Signals** | Звонок/ответ → сделка Bitrix; notify на каждый сигнал (не open) |
-| **G — Results** | Step funnel в UI, cohort export |
+| **G — Signals** | 🟡 | Call notify (Console watcher), callback notify |
+| **G — Results** | 🟡 | Step funnel + conversion %, KPI TG/on-call pills |
 | **H — Scale** | Multi-contact, отдельный sending domain, deliverability dashboard |
 | **Second Brain** | ADR без реализации до Accept — общая память голоса и текста |
 

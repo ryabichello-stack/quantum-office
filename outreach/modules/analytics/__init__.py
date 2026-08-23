@@ -31,6 +31,7 @@ def build_sequence_step_report(seq_store: Any, *, max_steps: int = 5) -> dict[st
             "SELECT status, COUNT(*) AS n FROM sequence_leads GROUP BY status"
         ):
             status_counts[str(row["status"])] = int(row["n"])
+        prev_reached: int | None = None
         for step in range(1, max(1, max_steps) + 1):
             reached = int(
                 conn.execute(
@@ -38,13 +39,20 @@ def build_sequence_step_report(seq_store: Any, *, max_steps: int = 5) -> dict[st
                     (step,),
                 ).fetchone()["n"]
             )
+            pct_from_prev = (
+                round(100.0 * reached / prev_reached, 1)
+                if prev_reached and prev_reached > 0
+                else None
+            )
             steps_out.append(
                 {
                     "step": step,
                     "reached": reached,
                     "pct_of_total": round(100.0 * reached / total, 1) if total else None,
+                    "pct_from_prev": pct_from_prev,
                 }
             )
+            prev_reached = reached
     return {
         "total_sequences": total,
         "status_counts": status_counts,

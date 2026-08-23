@@ -105,7 +105,9 @@ MANGO_VPBX_API_BASE = os.getenv(
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 PANEL_MONITOR_INTERVAL_SEC = int(os.getenv("PANEL_MONITOR_INTERVAL_SEC", "300"))
+PANEL_CALL_WATCH_INTERVAL_SEC = int(os.getenv("PANEL_CALL_WATCH_INTERVAL_SEC", "45"))
 _PANEL_MONITOR_STATE: dict[str, Any] = {"ready": False}
+_CALL_NOTIFY_STATE: dict[str, Any] = {"ready": False, "watermark": ""}
 _PANEL_MONITOR_LABELS = {
     "ai_engine": "Голосовой AI (AVA)",
     "text_bot": "Telegram-бот",
@@ -121,13 +123,15 @@ _PANEL_MONITOR_LABELS = {
 
 @asynccontextmanager
 async def _console_lifespan(_app: FastAPI):
-    task = asyncio.create_task(_panel_health_watcher())
+    health_task = asyncio.create_task(_panel_health_watcher())
+    call_task = asyncio.create_task(_panel_call_watcher())
     yield
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    for task in (health_task, call_task):
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title="Quantum Labs Console", version="0.2.0", lifespan=_console_lifespan)
@@ -282,6 +286,70 @@ async def _panel_health_watcher() -> None:
         except Exception as exc:
             logger.warning("panel health watcher failed: %s", exc)
         await asyncio.sleep(max(60, PANEL_MONITOR_INTERVAL_SEC))
+
+
+async def _panel_call_watcher() -> None:
+    await asyncio.sleep(90)
+    while True:
+        try:
+            _panel_check_new_calls()
+        except Exception as exc:
+            logger.warning("panel call watcher failed: %s", exc)
+        await asyncio.sleep(max(30, PANEL_CALL_WATCH_INTERVAL_SEC))
+
+
+def _panel_check_new_calls() -> None:
+    """Notify operator when a call completes (inbound or outbound)."""
+    if not CALL_HISTORY_DB.is_file():
+        return
+    conn = sqlite3.connect(str(CALL_HISTORY_DB))
+    conn.row_factory = sqlite3.Row
+    try:
+        if not _CALL_NOTIFY_STATE.get("ready"):
+            row = conn.execute(
+                "SELECT MAX(start_time) AS m FROM call_records"
+            ).fetchone()
+            _CALL_NOTIFY_STATE["watermark"] = (row["m"] if row else None) or ""
+            _CALL_NOTIFY_STATE["ready"] = True
+            return
+
+        wm = str(_CALL_NOTIFY_STATE.get("watermark") or "")
+        rows = conn.execute(
+            """
+            SELECT call_id, caller_number, caller_name, start_time, end_time,
+                   duration_seconds, context_name, outcome
+            FROM call_records
+            WHERE start_time > ?
+              AND end_time IS NOT NULL AND TRIM(end_time) != ''
+            ORDER BY start_time ASC
+            LIMIT 50
+            """,
+            (wm,),
+        ).fetchall()
+        for r in rows:
+            ctx = (r["context_name"] or "default").strip() or "default"
+            inbound = ctx == "default"
+            label = "Входящий" if inbound else "Исходящий"
+            phone = (r["caller_number"] or "—").strip()
+            name = (r["caller_name"] or phone or "—").strip()
+            dur = int(r["duration_seconds"] or 0)
+            outcome = (r["outcome"] or "—").strip()
+            _panel_notify(
+                event="call_completed",
+                title=f"{label} звонок: {name}",
+                body=(
+                    f"Номер: {phone}\n"
+                    f"Длительность: {dur} с\n"
+                    f"Исход: {outcome}\n"
+                    f"Контекст: {ctx}\n"
+                    f"call_id: {r['call_id']}"
+                ),
+                dedup_key=f"console:call:{r['call_id']}",
+                dedup_minutes=10,
+            )
+            _CALL_NOTIFY_STATE["watermark"] = r["start_time"] or wm
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -2336,6 +2404,14 @@ def api_outbound_callback(
     code, resp = _mango_api_post("/commands/callback", payload)
     result = resp.get("result") if isinstance(resp, dict) else None
     ok = code == 200 and str(result) in {"1000", "1000.0", 1000}
+    if ok:
+        _panel_notify(
+            event="outbound_callback",
+            title=f"Исходящий callback: {phone}",
+            body=f"Mango callback запущен.\nExtension: {extension}\nЛиния: {line}",
+            dedup_key=f"console:callback:{cmd_id}",
+            dedup_minutes=5,
+        )
     return {
         "ok": ok,
         "mode": "mango_api_callback",

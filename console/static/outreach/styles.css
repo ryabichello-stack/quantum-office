@@ -241,6 +241,15 @@ body.embedded .app { padding-top: 0.35rem; }
   border-color: rgba(180, 83, 9, 0.3);
 }
 .kpi-item.kpi-state.stopped .kpi-n { color: var(--muted); }
+.kpi-item.kpi-pill.ok {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+.kpi-item.kpi-pill.warn {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+.kpi-item.kpi-pill .kpi-n { font-size: 0.78rem; }
 
 .sub-tabs {
   display: flex;
