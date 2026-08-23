@@ -47,6 +47,10 @@
 - Отраслевые пакеты: финал писем через `{signature}` вместо жёсткой подписи; HTML — `{logo_header}` + корректный `{phone_line}`
 - Accept R5: Social Intelligence живёт в `outreach/modules/social` (не отдельный сервис до нагрузки)
 
+### Deployed
+
+- 2026-08-23: `ava-outreach` + `quantum-console` на `5.35.86.62` (Stage 1 accounts + Slice A enrichment + Slice B social); asterisk/mailer не трогали
+
 ## [0.2.0] — 2026-08-20
 
 ### Added
