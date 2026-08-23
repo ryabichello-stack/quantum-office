@@ -48,17 +48,17 @@
 
 ## Epic 3 — Slice B LPR search
 
-| ID | Item | Depends |
-|----|------|---------|
-| B1 | `SocialSourceAdapter` + capability registry | D2 |
-| B2 | Adapters: clients, dadata, web_import, telegram | B1 |
-| B3 | Stub adapters vk/ok/tenchat/linkedin (import/manual) | B1 |
-| B4 | LPRSearchRun + CandidateProfile scoring | B2 |
-| B5 | IdentityCluster + approve/reject/merge UI | B4 |
-| B6 | Committee coverage matrix UI | B4,D7 |
-| B7 | SocialActionTask | B5 |
-| B8 | Cost accounting per search run | B4 |
-| B9 | E2E tests B1–B6 | B5–B7 |
+| ID | Item | Depends | Status |
+|----|------|---------|--------|
+| B1 | `SocialSourceAdapter` + capability registry | D2 | ✅ |
+| B2 | Adapters: clients, dadata, web_import, telegram | B1 | ✅ |
+| B3 | Stub adapters vk/ok/tenchat/linkedin (import/manual) | B1 | ✅ |
+| B4 | LPRSearchRun + CandidateProfile scoring | B2 | ✅ |
+| B5 | IdentityCluster + approve/reject API (UI later) | B4 | ✅ API |
+| B6 | Committee coverage matrix | B4,D7 | ✅ |
+| B7 | SocialActionTask | B5 | ✅ API |
+| B8 | Cost accounting per search run | B4 | ✅ |
+| B9 | E2E tests B1–B6 | B5–B7 | 🟡 unit |
 
 ---
 

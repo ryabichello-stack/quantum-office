@@ -130,15 +130,15 @@ Intent-first monitoring, cold auto-DM, LinkedIn unofficial scrapers.
 
 - [x] Stage 0 docs (AS_IS, TARGET, GAP, MIGRATION)
 - [ ] Merge outreach PR #10
-- [ ] Этап 1.1–1.5 data foundations
-- [ ] Slice A implementation
+- [x] Этап 1.1–1.5 data foundations (accounts module)
+- [x] Slice A implementation (resolve + enrichment + next_action)
 
 ### P1 — первый продаваемый контур
 
-- [ ] Slice B MVP adapters + verification UI
-- [ ] DecisionRoleTemplate for Quantum Labs tenant
-- [ ] SocialActionTask in Panel
-- [ ] Lead/Opportunity local + Bitrix adapter
+- [x] Slice B MVP adapters + verification API (UI later)
+- [x] DecisionRoleTemplate for Quantum Labs tenant
+- [x] SocialActionTask API (Panel UI later)
+- [x] Lead local (+ Bitrix adapter later)
 - [ ] Second Brain citations in suggested reply
 
 ### P2
@@ -166,7 +166,7 @@ Intent-first monitoring, cold auto-DM, LinkedIn unofficial scrapers.
 | R2 | Где хранить Account DB? | `outreach/data` / modules.db | **Accepted** — `MODULES_DB` |
 | R3 | LLM для inbox classification сейчас? | Сначала rules | **Accepted** |
 | R4 | Порядок: Slice A до или после merge #10? | После merge / поверх ветки G3 | **Accepted** — branch `cursor/revenue-os-stage1-9b51` |
-| R5 | Отдельный сервис `social-intel`? | Нет до нагрузки | Pending Slice B |
+| R5 | Отдельный сервис `social-intel`? | Нет до нагрузки | **Accepted** — `modules/social` in outreach |
 | R6 | ADR Second Brain Accept? | Переиспользовать brain_platform | Pending |
 
 ### Stage 1 shipped (this branch)
