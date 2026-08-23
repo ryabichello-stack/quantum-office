@@ -81,7 +81,7 @@
 | R1 | Intent Radar ingest + verify | ✅ API + UI Студия |
 | V1 | Video Studio | ✅ scaffold + UI + upload queue flag |
 | T1 | Multi-tenant onboarding | 🟡 bootstrap from seed package |
-| T2 | RBAC / usage metering | pending |
+| T2 | RBAC / usage metering | 🟡 usage lite; RBAC pending |
 
 См. этапы 5–8 в MIGRATION_PLAN.
 
