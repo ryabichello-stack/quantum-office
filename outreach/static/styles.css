@@ -1589,6 +1589,7 @@ button.linkish {
   font-size: 0.84rem;
 }
 .fw-memory { max-height: 140px; overflow: auto; }
+.fw-theme { color: var(--ok); font-weight: 500; }
 .fw-kb { font-size: 0.78rem; line-height: 1.35; margin: 0.25rem 0; color: var(--accent-strong); }
 
 .inbox-enrichment {

@@ -38,14 +38,14 @@ def test_flywheel_ingest_process_approve():
             platform="telegram",
             handle="@news",
             title="ЦБ обсуждает выплаты",
-            body="Ломбарды ускоряют цифровые выплаты клиентам.",
+            body="Ломбарды ускоряют массовые выплаты и оборот денежных потоков клиентам.",
         )
         assert not news.get("duplicate")
         dup = store.ingest_news(
             platform="telegram",
             handle="@news",
             title="ЦБ обсуждает выплаты",
-            body="Ломбарды ускоряют цифровые выплаты клиентам.",
+            body="Ломбарды ускоряют массовые выплаты и оборот денежных потоков клиентам.",
         )
         assert dup.get("duplicate") or dup["id"] == news["id"]
 

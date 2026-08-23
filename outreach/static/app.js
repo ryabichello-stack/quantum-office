@@ -2528,7 +2528,9 @@
       .map(
         (n) => `<div class="fw-news-row">
           <div><strong>${escapeHtml((n.title || "").slice(0, 60))}</strong>
-          <span class="muted tight"> · ${escapeHtml(n.status)} · kb:${escapeHtml(n.kb_status || "")}</span></div>
+          <span class="muted tight"> · ${escapeHtml(n.status)} · theme ${Math.round((n.theme_score || 0) * 100)}%</span>
+          ${(n.theme_tags || []).slice(0, 2).map((t) => `<span class="ros-chip">${escapeHtml(t)}</span>`).join(" ")}
+          </div>
           <button type="button" class="small btn-quiet" data-fw-process="${escapeHtml(n.id)}">Process</button>
         </div>`
       )
@@ -2595,6 +2597,7 @@
             <div class="muted tight">слот ${escapeHtml(p.slot_key || "")} · ${imgs} img · ${vid ? "talking-head" : ""}</div></div>
             ${statusChip(p.status)}
           </div>
+          ${themeLine}
           ${kbLine}
           <div class="ros-card-actions">${actions}</div>
         </article>`;

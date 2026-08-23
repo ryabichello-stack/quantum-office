@@ -19,7 +19,7 @@
 - **Social Publish** (`modules/social_publish`): каналы TG/VK/Instagram/YouTube, мультиплатформенные посты + SVG-картинки, репост после approve (`SOCIAL_PUBLISH_ENABLED`)
 - UI ops23: вкладка Студия → «Соцсети» (каналы, генерация, репост)
 - **Content Flywheel** (`modules/content_flywheel`): parse news → KB inbox → dedup memory → editorial slots (3×/day) → proposals → social post + talking-head video brief
-- **KB enrich** (`knowledge_enrich.py`): Second Brain + `product_profile.json` → предметный контекст в постах/видео
+- **Thematic analysis** (`content_flywheel/thematic`): macro-financial / money-flows lens per news; min score gate; product KB optional (`FLYWHEEL_USE_PRODUCT_KB`)
 - UI ops24: вкладка «Флайвил» (sources, poll, run-cycle, approve)
 - Архитектура: `docs/architecture/CONTENT_FLYWHEEL.md`
 - **AI Revenue OS Stage 0** — architecture pack in `docs/architecture/` (AS_IS, TARGET, GAP, DATA_MAPPING, SOCIAL_CAPABILITY_MATRIX, MIGRATION_PLAN, BACKLOG)
@@ -82,6 +82,7 @@
 - 2026-08-23 (cont.7): RBAC module + owned listen + YouTube client skeleton; UI ops22 on prod
 - 2026-08-23 (cont.8): Social Publish (TG/VK/IG/YT posts, images, repost); UI ops23
 - 2026-08-23 (cont.9): Content Flywheel MVP; UI ops24
+- 2026-08-23 (cont.10): KB enrich (Second Brain + product profile) in posts; ops25
 
 ## [0.2.0] — 2026-08-20
 

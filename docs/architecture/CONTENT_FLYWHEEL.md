@@ -57,7 +57,23 @@ flowchart LR
 | Video | `modules/video_studio` | private + talking-head meta |
 | Listen stub | `radar/owned_listen` | расширяется под news body |
 
-## 2. Knowledge loop
+## 2. Thematic lens (primary)
+
+**Единая БД новостей** (`flywheel_news`) + автоматический анализ каждой записи:
+
+| Поле | Смысл |
+|------|--------|
+| `theme_score` | 0..1 релевантность денежным потокам / макро-финансам |
+| `theme_tags` | money_flows, mass_payouts, banking_rates, lending, … |
+| `analysis_json` | editorial_hook, tier (high/medium/low/off_topic) |
+
+Новости с `theme_score < FLYWHEEL_THEME_MIN_SCORE` → `skipped_theme` (не в слоты).
+
+**Угол публикации** строится из macro-financial hook, не из сырой новости.
+
+Модуль: `modules/content_flywheel/thematic.py`
+
+## 3. Knowledge loop (optional layer)
 
 | Direction | Mechanism |
 |-----------|-----------|

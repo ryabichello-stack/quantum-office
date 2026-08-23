@@ -138,8 +138,20 @@ class ContentFlywheelStore:
             )
             self._ensure_columns(
                 conn,
+                "flywheel_news",
+                {
+                    "theme_score": "REAL NOT NULL DEFAULT 0",
+                    "theme_tags_json": "TEXT NOT NULL DEFAULT '[]'",
+                    "analysis_json": "TEXT NOT NULL DEFAULT '{}'",
+                },
+            )
+            self._ensure_columns(
+                conn,
                 "editorial_proposals",
-                {"kb_context_json": "TEXT NOT NULL DEFAULT '{}'"},
+                {
+                    "kb_context_json": "TEXT NOT NULL DEFAULT '{}'",
+                    "theme_context_json": "TEXT NOT NULL DEFAULT '{}'",
+                },
             )
 
     def _ensure_columns(self, conn: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
@@ -264,7 +276,36 @@ class ContentFlywheelStore:
                     now,
                 ),
             )
-        return self.get_news(nid) or {"id": nid}
+        row = self.get_news(nid) or {"id": nid}
+        if not row.get("duplicate"):
+            row = self.analyze_news_item(nid) or row
+        return row
+
+    def analyze_news_item(self, news_id: str) -> dict[str, Any] | None:
+        from modules.content_flywheel.thematic import analyze_news_themes
+
+        news = self.get_news(news_id)
+        if not news:
+            return None
+        analysis = analyze_news_themes(title=news.get("title") or "", body=news.get("body") or "")
+        now = _utc_now()
+        with self.connect() as conn:
+            conn.execute(
+                """
+                UPDATE flywheel_news
+                SET theme_score = ?, theme_tags_json = ?, analysis_json = ?, updated_at = ?
+                WHERE id = ? AND tenant_id = ?
+                """,
+                (
+                    float(analysis.get("theme_score") or 0),
+                    json.dumps(analysis.get("theme_tags") or [], ensure_ascii=False),
+                    json.dumps(analysis, ensure_ascii=False),
+                    now,
+                    news_id,
+                    self.tenant_id,
+                ),
+            )
+        return self.get_news(news_id)
 
     def poll_and_ingest(self) -> dict[str, Any]:
         handles = self.source_handles_map()
@@ -309,6 +350,14 @@ class ContentFlywheelStore:
             out["raw"] = json.loads(out.get("raw_json") or "{}")
         except json.JSONDecodeError:
             out["raw"] = {}
+        try:
+            out["theme_tags"] = json.loads(out.get("theme_tags_json") or "[]")
+        except json.JSONDecodeError:
+            out["theme_tags"] = []
+        try:
+            out["analysis"] = json.loads(out.get("analysis_json") or "{}")
+        except json.JSONDecodeError:
+            out["analysis"] = {}
         return out
 
     def list_news(self, *, status: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
@@ -423,6 +472,7 @@ class ContentFlywheelStore:
         image_options: list[dict[str, Any]],
         video_brief: dict[str, Any],
         kb_context: dict[str, Any] | None = None,
+        theme_context: dict[str, Any] | None = None,
         dedup_score: float = 0.0,
     ) -> dict[str, Any]:
         now = _utc_now()
@@ -433,8 +483,9 @@ class ContentFlywheelStore:
                 INSERT INTO editorial_proposals(
                     id, tenant_id, news_id, slot_key, slot_at, title, brief,
                     angle_fingerprint, status, variants_json, image_options_json,
-                    video_brief_json, kb_context_json, dedup_score, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)
+                    video_brief_json, kb_context_json, theme_context_json,
+                    dedup_score, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     pid,
@@ -449,6 +500,7 @@ class ContentFlywheelStore:
                     json.dumps(image_options, ensure_ascii=False),
                     json.dumps(video_brief, ensure_ascii=False),
                     json.dumps(kb_context or {}, ensure_ascii=False),
+                    json.dumps(theme_context or {}, ensure_ascii=False),
                     float(dedup_score),
                     now,
                     now,
@@ -463,6 +515,7 @@ class ContentFlywheelStore:
             ("image_options_json", []),
             ("video_brief_json", {}),
             ("kb_context_json", {}),
+            ("theme_context_json", {}),
         ):
             field = key.replace("_json", "")
             try:
@@ -654,6 +707,24 @@ class ContentFlywheelModule:
         @router.get("/memory")
         def memory(limit: int = Query(40, ge=1, le=200)) -> dict[str, Any]:
             return {"ok": True, "items": self.store.list_memory(limit=limit)}
+
+        @router.get("/themes")
+        def themes() -> dict[str, Any]:
+            from modules.content_flywheel.thematic import THEME_TAXONOMY, theme_min_score
+
+            return {
+                "ok": True,
+                "lens": "macro_financial_money_flows",
+                "min_score": theme_min_score(),
+                "taxonomy": THEME_TAXONOMY,
+            }
+
+        @router.post("/news/{news_id}/analyze")
+        def analyze_news(news_id: str) -> dict[str, Any]:
+            row = self.store.analyze_news_item(news_id)
+            if not row:
+                raise HTTPException(404, "not_found")
+            return {"ok": True, "news": row, "analysis": row.get("analysis")}
 
         @router.get("/kb/enrich")
         def kb_enrich(title: str = "", body: str = "") -> dict[str, Any]:

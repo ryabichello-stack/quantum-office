@@ -28,6 +28,23 @@ def auto_kb() -> bool:
     }
 
 
+def use_product_kb() -> bool:
+    """Optional second layer: product/company facts from Second Brain."""
+    return (os.getenv("FLYWHEEL_USE_PRODUCT_KB") or "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def theme_min_score() -> float:
+    try:
+        return float(os.getenv("FLYWHEEL_THEME_MIN_SCORE") or "0.35")
+    except ValueError:
+        return 0.35
+
+
 def avatar_profile() -> str:
     return (os.getenv("FLYWHEEL_AVATAR_PROFILE") or "quantum-host-v1").strip()
 
@@ -70,20 +87,21 @@ def talking_head_brief(
     title: str,
     body: str,
     news_id: str,
+    thematic_hook: str = "",
     product_paragraph: str = "",
     citations: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     profile = avatar_profile()
+    angle = (thematic_hook or body)[:500]
     kb_line = ""
     if product_paragraph:
-        kb_line = f"\n\nПо продуктам Quantum Labs: {product_paragraph[:350]}"
+        kb_line = f"\n\nПо продуктам: {product_paragraph[:280]}"
     elif citations:
-        kb_line = "\n\n" + " ".join((c.get("note") or "")[:100] for c in citations[:2])
+        kb_line = "\n\n" + " ".join((c.get("note") or "")[:80] for c in citations[:2])
     script = (
-        f"Привет! Коротко о главном: {title}.\n\n"
-        f"{body[:500]}{kb_line}\n\n"
-        f"Quantum Labs — платёжная инфраструктура для ломбардов и МФО. "
-        f"Подробности на сайте."
+        f"Привет! Коротко о денежных потоках и рынке: {title}.\n\n"
+        f"{angle}{kb_line}\n\n"
+        f"Quantum Labs — платёжная инфраструктура. Подробности на сайте."
     )
     return {
         "format": "talking_head",
@@ -115,6 +133,31 @@ def process_news_item(
     title = news.get("title") or ""
     body = news.get("body") or ""
     combined = f"{title}\n{body}"
+
+    from modules.content_flywheel.thematic import analyze_news_themes, build_thematic_brief
+
+    analysis = news.get("analysis") or {}
+    if not analysis.get("theme_score") and hasattr(store, "analyze_news_item"):
+        refreshed = store.analyze_news_item(news_id)
+        if refreshed:
+            news = refreshed
+            analysis = news.get("analysis") or analyze_news_themes(title=title, body=body)
+    elif not analysis:
+        analysis = analyze_news_themes(title=title, body=body)
+
+    theme_score = float(analysis.get("theme_score") or 0)
+    if theme_score < theme_min_score() and not force:
+        store.set_news_status(news_id, "skipped_theme")
+        return {
+            "ok": True,
+            "skipped": True,
+            "reason": "low_theme_relevance",
+            "theme_score": theme_score,
+            "theme_tier": analysis.get("theme_tier"),
+            "analysis": analysis,
+            "news_id": news_id,
+        }
+
     memory = store.list_memory(limit=80)
     similar = find_similar(combined, memory, threshold=dedup_threshold())
     if similar and not force:
@@ -148,16 +191,27 @@ def process_news_item(
     if not slot:
         return {"ok": False, "error": "no_open_slot"}
 
-    from knowledge_enrich import enrich_content_brief
-
-    kb_ctx = enrich_content_brief(
+    brief = build_thematic_brief(
         title=title,
-        body=body[:2000],
+        body=body,
+        analysis=analysis,
         link=news.get("link") or "",
-        tenant_id=getattr(store, "tenant_id", "quantum-labs"),
     )
-    brief = kb_ctx.get("brief_enriched") or body[:2000]
-    product_footer = kb_ctx.get("product_paragraph") or ""
+    product_footer = ""
+    kb_ctx: dict[str, Any] = {"enabled": False, "layer": "product_optional"}
+    if use_product_kb():
+        from knowledge_enrich import enrich_content_brief
+
+        kb_ctx = enrich_content_brief(
+            title=title,
+            body=brief[:2000],
+            link=news.get("link") or "",
+            tenant_id=getattr(store, "tenant_id", "quantum-labs"),
+        )
+        kb_ctx["layer"] = "product_kb"
+        brief = kb_ctx.get("brief_enriched") or brief
+        product_footer = kb_ctx.get("product_paragraph") or ""
+
     variants = variants_from_brief(
         title=title,
         brief=brief,
@@ -175,6 +229,7 @@ def process_news_item(
         title=title,
         body=body,
         news_id=news_id,
+        thematic_hook=analysis.get("editorial_hook") or "",
         product_paragraph=product_footer,
         citations=kb_ctx.get("citations") or [],
     )
@@ -190,6 +245,7 @@ def process_news_item(
         image_options=image_options,
         video_brief=video_brief,
         kb_context=kb_ctx,
+        theme_context=analysis,
         dedup_score=0.0,
     )
     store.set_news_status(news_id, "processed")
@@ -200,6 +256,7 @@ def process_news_item(
         "slot": slot,
         "proposal": proposal,
         "similar_checked": len(memory),
+        "theme_analysis": analysis,
         "kb_context": kb_ctx,
         "auto_outreach": False,
     }
