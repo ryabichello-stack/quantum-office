@@ -25,7 +25,7 @@
 | D2 | `tenant_id` default + enforced filters | D1 | S | ✅ accounts module |
 | D3 | Account facade + lifecycle enum | D1 | M | ✅ |
 | D4 | Person + Employment + ContactPoint | D3 | M | ✅ |
-| D5 | Consent ↔ BLACKLISTED mapping | D3 | S | 🟡 via resolve unsubscribe |
+| D5 | Consent ↔ BLACKLISTED mapping | D3 | S | ✅ resolve + send_guards + suppress |
 | D6 | Event envelope + writers reply/call | D2 | M | ✅ |
 | D7 | Tenant config package quantum-labs | D1 | S | ✅ |
 | D8 | Company timeline API | D3,D6 | M | ✅ account timeline |
@@ -40,7 +40,7 @@
 | A2 | Account/Person resolve on inbound | D3,D4 | ✅ |
 | A3 | Inbox enrichment panel (account side) | A2 | ✅ peel-away panel |
 | A4 | Suggested next action (meeting/task/reply) | A2 | ✅ rules-first |
-| A5 | Optional SB-cited reply draft (approval) | knowledge | 🟡 stub + APPROVAL_REQUIRED |
+| A5 | Optional SB-cited reply draft (approval) | knowledge | ✅ best-effort brain/knowledge |
 | A6 | Local Lead record + Bitrix adapter | D3 | ✅ local Lead |
 | A7 | E2E tests A1–A5 from MIGRATION_PLAN | A1–A6 | 🟡 unit tests |
 
@@ -54,9 +54,9 @@
 | B2 | Adapters: clients, dadata, web_import, telegram | B1 | ✅ |
 | B3 | Stub adapters vk/ok/tenchat/linkedin (import/manual) | B1 | ✅ |
 | B4 | LPRSearchRun + CandidateProfile scoring | B2 | ✅ |
-| B5 | IdentityCluster + approve/reject API (UI later) | B4 | ✅ API |
-| B6 | Committee coverage matrix | B4,D7 | ✅ |
-| B7 | SocialActionTask | B5 | ✅ API |
+| B5 | IdentityCluster + approve/reject API (UI later) | B4 | ✅ API + UI |
+| B6 | Committee coverage matrix | B4,D7 | ✅ API + UI |
+| B7 | SocialActionTask | B5 | ✅ API + UI |
 | B8 | Cost accounting per search run | B4 | ✅ |
 | B9 | E2E tests B1–B6 | B5–B7 | 🟡 unit |
 
@@ -64,12 +64,12 @@
 
 ## Epic 4 — Orchestrator
 
-| ID | Item |
-|----|------|
-| O1 | JourneyDefinition versioning wrapping sequences |
-| O2 | Global guardrails (consent, quiet hours, caps) |
-| O3 | Approval / MANUAL_TASK nodes |
-| O4 | Dry-run mode |
+| ID | Item | Status |
+|----|------|--------|
+| O1 | JourneyDefinition versioning wrapping sequences | ✅ scaffold |
+| O2 | Global guardrails (consent, quiet hours, caps) | 🟡 consent+blacklist in send_guards; quiet hours via existing windows |
+| O3 | Approval / MANUAL_TASK nodes | ✅ in journey JSON |
+| O4 | Dry-run mode | ✅ `/dry-run` |
 
 ---
 

@@ -19,6 +19,10 @@
 - API: `/api/modules/accounts/*`, `/meta/enrichment`, `/meta/suggest-next`, `/meta/events`, `/meta/leads`
 - Tenant seed: `outreach/config/tenants/quantum-labs/` (product / ICP / roles / channel policy)
 - **Slice B scaffold** (`outreach/modules/social`): SocialSourceAdapter registry (clients, dadata, web_import, telegram + stubs vk/ok/tenchat/linkedin); `LPRSearchRun` / candidates / score / identity cluster (APPROVAL_REQUIRED); coverage matrix; `SocialActionTask` without auto-DM; API `/api/modules/social/*`
+- **ЛПР UI** — вкладка «ЛПР» в Outreach (search / coverage / approve-reject / task)
+- **Send guards** — единый gate: suppression + consent DNC + Account `BLACKLISTED` перед send
+- **Second Brain citations** в suggested reply (best-effort `KNOWLEDGE_BASE` / `/api/brain/search` → fallback `/api/knowledge/query`)
+- **Orchestrator scaffold** (`modules/orchestrator`): journey definitions, enroll, dry-run, stop-on-reply + sequence stop
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
 - Юридический футер + «Отписаться» / List-Unsubscribe в шаблонах; презентация PDF на 1-м письме
 - API `GET/POST /api/packs` (+ apply) и вкладка «Кампания» в UI (Console embed + standalone)
@@ -50,6 +54,7 @@
 ### Deployed
 
 - 2026-08-23: `ava-outreach` + `quantum-console` на `5.35.86.62` (Stage 1 accounts + Slice A enrichment + Slice B social); asterisk/mailer не трогали
+- 2026-08-23 (cont.): ЛПР UI, send guards, SB citations, orchestrator scaffold — redeploy outreach
 
 ## [0.2.0] — 2026-08-20
 

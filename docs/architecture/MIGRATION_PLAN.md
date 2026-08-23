@@ -139,11 +139,11 @@ Intent-first monitoring, cold auto-DM, LinkedIn unofficial scrapers.
 - [x] DecisionRoleTemplate for Quantum Labs tenant
 - [x] SocialActionTask API (Panel UI later)
 - [x] Lead local (+ Bitrix adapter later)
-- [ ] Second Brain citations in suggested reply
+- [x] Second Brain citations in suggested reply
 
 ### P2
 
-- [ ] Revenue Orchestrator journeys (wrap sequences)
+- [x] Revenue Orchestrator journeys (wrap sequences) — scaffold
 - [ ] Intent-first signals
 - [ ] Owned-page listening (Telegram/VK when capable)
 - [ ] Content Studio MVP
