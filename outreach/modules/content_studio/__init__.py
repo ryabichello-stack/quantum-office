@@ -168,6 +168,11 @@ class ContentStudioStore:
                     now,
                 ),
             )
+        try:
+            from usage_meter import UsageMeter
+            UsageMeter(self.db_path, tenant_id=self.tenant_id).incr("content_drafts")
+        except Exception:
+            pass
         return self.get(did) or {"id": did}
 
     def get(self, draft_id: str) -> dict[str, Any] | None:

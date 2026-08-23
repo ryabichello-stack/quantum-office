@@ -389,6 +389,13 @@ async def v1_tenant_bootstrap(request: Request) -> dict[str, Any]:
         raise HTTPException(500, str(exc)) from exc
 
 
+@app.get("/api/v1/usage", dependencies=[Depends(require_ui_auth)])
+def v1_usage(days: int = 14) -> dict[str, Any]:
+    from usage_meter import UsageMeter
+
+    return UsageMeter().snapshot(days=days)
+
+
 # --- public ---
 
 

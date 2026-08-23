@@ -54,7 +54,7 @@
 | B2 | Adapters: clients, dadata, web_import, telegram | B1 | ✅ |
 | B3 | Stub adapters vk/ok/tenchat/linkedin (import/manual) | B1 | ✅ |
 | B4 | LPRSearchRun + CandidateProfile scoring | B2 | ✅ |
-| B5 | IdentityCluster + approve/reject API (UI later) | B4 | ✅ API + UI |
+| B5 | IdentityCluster + approve/reject/merge | B4 | ✅ API + UI merge |
 | B6 | Committee coverage matrix | B4,D7 | ✅ API + UI |
 | B7 | SocialActionTask | B5 | ✅ API + UI |
 | B8 | Cost accounting per search run | B4 | ✅ |
@@ -79,8 +79,8 @@
 |----|------|--------|
 | C1 | Content Studio MVP (objection → draft) | ✅ API + UI Студия |
 | R1 | Intent Radar ingest + verify | ✅ API + UI Студия |
-| V1 | Video Studio | ✅ scaffold + UI (YouTube later) |
-| T1 | Multi-tenant onboarding | pending |
+| V1 | Video Studio | ✅ scaffold + UI + upload queue flag |
+| T1 | Multi-tenant onboarding | 🟡 bootstrap from seed package |
 | T2 | RBAC / usage metering | pending |
 
 См. этапы 5–8 в MIGRATION_PLAN.

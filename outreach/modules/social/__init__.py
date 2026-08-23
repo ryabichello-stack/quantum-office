@@ -207,6 +207,12 @@ class SocialStore:
                 )
 
         coverage = build_coverage(clustered, role_list)
+        try:
+            from usage_meter import UsageMeter
+            UsageMeter(self.db_path, tenant_id=self.tenant_id).incr("lpr_search_runs")
+            UsageMeter(self.db_path, tenant_id=self.tenant_id).incr("lpr_candidates", float(len(clustered)))
+        except Exception:
+            pass
         return {
             "ok": True,
             "run": self.get_run(run_id),

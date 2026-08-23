@@ -66,6 +66,7 @@
 - 2026-08-23 (cont.2): content_studio + radar modules + orchestrator body-param fix
 - 2026-08-23 (cont.3): FastAPI JSON body fix; sync 300 accounts from clients; POST APIs verified
 - 2026-08-23 (cont.4): UI ops20 ЛПР+Студия; Video Studio scaffold; acceptance tests
+- 2026-08-23 (cont.5): API v1, Bitrix lead sync, cluster merge UI, tenant bootstrap, ops21
 
 ## [0.2.0] — 2026-08-20
 
