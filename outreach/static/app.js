@@ -1989,14 +1989,20 @@
         const link = c.profile_url
           ? `<a class="ros-link" href="${escapeHtml(c.profile_url)}" target="_blank" rel="noopener">профиль</a>`
           : "";
-        const actions =
-          st === "rejected"
-            ? `<span class="muted tight">отклонён</span>`
-            : `<div class="ros-card-actions">
+        let actions = "";
+        if (st === "rejected" || st === "merged") {
+          actions = `<span class="muted tight">${escapeHtml(st)}</span>`;
+        } else {
+          const mergeBtn = c.cluster_id
+            ? `<button type="button" class="small btn-quiet" data-lpr-merge="${escapeHtml(c.cluster_id)}" data-lpr-keep="${escapeHtml(c.id)}">Слить кластер сюда</button>`
+            : "";
+          actions = `<div class="ros-card-actions">
                 <button type="button" class="small primary" data-lpr-approve="${escapeHtml(c.id)}">Утвердить</button>
                 <button type="button" class="small btn-quiet" data-lpr-reject="${escapeHtml(c.id)}">Отклонить</button>
                 <button type="button" class="small btn-quiet" data-lpr-task="${escapeHtml(c.id)}">Task</button>
+                ${mergeBtn}
               </div>`;
+        }
         return `<article class="ros-card">
           <div class="ros-card-head">
             <div>
@@ -2028,6 +2034,25 @@
         createLprTask(btn.getAttribute("data-lpr-task")).catch(logAction)
       );
     });
+    box.querySelectorAll("[data-lpr-merge]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        mergeLprCluster(
+          btn.getAttribute("data-lpr-merge"),
+          btn.getAttribute("data-lpr-keep")
+        ).catch(logAction)
+      );
+    });
+  }
+
+  async function mergeLprCluster(clusterId, keepId) {
+    const data = await api(`/api/modules/social/clusters/${encodeURIComponent(clusterId)}/merge`, {
+      method: "POST",
+      body: JSON.stringify({ keep_candidate_id: keepId }),
+    });
+    if ($("lprMeta")) {
+      $("lprMeta").textContent = `Кластер слит · остался 1 кандидат · merged ${data.merged_count || 0}`;
+    }
+    if (lprLastRunId) await reloadLprRun(lprLastRunId);
   }
 
   async function setLprStatus(id, status) {

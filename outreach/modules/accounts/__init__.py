@@ -1177,3 +1177,15 @@ class AccountsModule:
             if not acc:
                 raise HTTPException(404, "account_not_found")
             return {"ok": True, "account": acc}
+
+        class LeadSyncBody(BaseModel):
+            dry_run: bool = False
+
+        @router.post("/meta/leads/{lead_id}/sync-bitrix")
+        def sync_lead_bitrix(lead_id: str, payload: LeadSyncBody) -> dict[str, Any]:
+            from bitrix_leads import sync_lead_id_to_bitrix
+
+            out = sync_lead_id_to_bitrix(lead_id, dry_run=payload.dry_run)
+            if not out.get("ok") and out.get("error") == "lead_not_found":
+                raise HTTPException(404, "lead_not_found")
+            return out

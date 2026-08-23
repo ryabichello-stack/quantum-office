@@ -356,6 +356,38 @@ _registry.mount_routes(
     app, prefix="/api/modules", dependencies=[Depends(require_ui_auth)]
 )
 
+from api_v1 import build_v1_router
+
+app.include_router(build_v1_router(require_auth=require_ui_auth))
+
+
+@app.get("/api/v1/tenants", dependencies=[Depends(require_ui_auth)])
+def v1_tenants() -> dict[str, Any]:
+    from tenant_bootstrap import list_tenants
+
+    return {"ok": True, "items": list_tenants()}
+
+
+@app.post("/api/v1/tenants/bootstrap", dependencies=[Depends(require_ui_auth)])
+async def v1_tenant_bootstrap(request: Request) -> dict[str, Any]:
+    from fastapi import HTTPException
+    from tenant_bootstrap import bootstrap_tenant
+
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    tid = str(body.get("tenant_id") or "").strip()
+    force = bool(body.get("force") or False)
+    try:
+        return bootstrap_tenant(tid, force=force)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(500, str(exc)) from exc
+
 
 # --- public ---
 

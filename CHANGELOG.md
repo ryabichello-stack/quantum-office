@@ -27,6 +27,10 @@
 - **Intent Radar MVP** (`modules/radar`): ingest signals + verify suggest action (never auto-outreach)
 - **Video Studio MVP** (`modules/video_studio`): private draft + approve → queue private upload (YouTube stub)
 - **UI ops20**: вкладки ЛПР (карточки + покрытие) и Студия (Контент / Radar / Видео)
+- **API v1 facade** `/api/v1/accounts|people|conversations|leads` (+ tenant bootstrap)
+- **Bitrix Lead sync adapter** (`bitrix_leads.py`, `POST .../leads/{id}/sync-bitrix`)
+- **Identity cluster merge** (`POST /social/clusters/{id}/merge` + кнопка в ЛПР UI)
+- **YouTube private upload queue** flag `YOUTUBE_UPLOAD_ENABLED` (без auto-publish)
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
 - Юридический футер + «Отписаться» / List-Unsubscribe в шаблонах; презентация PDF на 1-м письме
 - API `GET/POST /api/packs` (+ apply) и вкладка «Кампания» в UI (Console embed + standalone)
@@ -61,6 +65,7 @@
 - 2026-08-23 (cont.): ЛПР UI, send guards, SB citations, orchestrator scaffold — redeploy outreach
 - 2026-08-23 (cont.2): content_studio + radar modules + orchestrator body-param fix
 - 2026-08-23 (cont.3): FastAPI JSON body fix; sync 300 accounts from clients; POST APIs verified
+- 2026-08-23 (cont.4): UI ops20 ЛПР+Студия; Video Studio scaffold; acceptance tests
 
 ## [0.2.0] — 2026-08-20
 

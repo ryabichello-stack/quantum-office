@@ -41,8 +41,8 @@
 | A3 | Inbox enrichment panel (account side) | A2 | ✅ peel-away panel |
 | A4 | Suggested next action (meeting/task/reply) | A2 | ✅ rules-first |
 | A5 | Optional SB-cited reply draft (approval) | knowledge | ✅ best-effort brain/knowledge |
-| A6 | Local Lead record + Bitrix adapter | D3 | ✅ local Lead |
-| A7 | E2E tests A1–A5 from MIGRATION_PLAN | A1–A6 | 🟡 unit tests |
+| A6 | Local Lead record + Bitrix adapter | D3 | ✅ local + sync-bitrix adapter |
+| A7 | E2E tests A1–A5 from MIGRATION_PLAN | A1–A6 | ✅ acceptance unit flows |
 
 ---
 
@@ -58,7 +58,7 @@
 | B6 | Committee coverage matrix | B4,D7 | ✅ API + UI |
 | B7 | SocialActionTask | B5 | ✅ API + UI |
 | B8 | Cost accounting per search run | B4 | ✅ |
-| B9 | E2E tests B1–B6 | B5–B7 | 🟡 unit |
+| B9 | E2E tests B1–B6 | B5–B7 | ✅ acceptance unit |
 
 ---
 

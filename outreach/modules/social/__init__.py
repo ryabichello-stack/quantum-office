@@ -371,6 +371,51 @@ class SocialStore:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def merge_cluster(
+        self, cluster_id: str, *, keep_candidate_id: str
+    ) -> dict[str, Any]:
+        """Approve identity merge: keep one candidate, mark siblings merged."""
+        cid = (cluster_id or "").strip()
+        keep = (keep_candidate_id or "").strip()
+        if not cid or not keep:
+            raise ValueError("cluster_id and keep_candidate_id required")
+        members = [
+            c
+            for c in self.list_candidates(limit=500)
+            if (c.get("cluster_id") or "") == cid
+        ]
+        if not members:
+            raise ValueError("cluster_not_found")
+        if keep not in {m["id"] for m in members}:
+            raise ValueError("keep_candidate_not_in_cluster")
+        now = _utc_now()
+        with self.connect() as conn:
+            for m in members:
+                ev = dict(m.get("evidence") or {})
+                if m["id"] == keep:
+                    status = "approved"
+                else:
+                    status = "merged"
+                    ev["merged_into"] = keep
+                    ev["approval_required"] = False
+                conn.execute(
+                    """
+                    UPDATE lpr_candidates
+                    SET status = ?, evidence_json = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (status, json.dumps(ev, ensure_ascii=False), now, m["id"]),
+                )
+        kept = next(
+            (c for c in self.list_candidates(limit=500) if c["id"] == keep), None
+        )
+        return {
+            "ok": True,
+            "cluster_id": cid,
+            "kept": kept,
+            "merged_count": max(0, len(members) - 1),
+        }
+
 
 class SocialModule:
     name = "social"
@@ -507,6 +552,18 @@ class SocialModule:
             if not row:
                 raise HTTPException(404, "task_not_found")
             return {"ok": True, "task": row}
+
+        class MergeBody(BaseModel):
+            keep_candidate_id: str = Field(..., min_length=2)
+
+        @router.post("/clusters/{cluster_id}/merge")
+        def merge_cluster(cluster_id: str, payload: MergeBody) -> dict[str, Any]:
+            try:
+                return self.store.merge_cluster(
+                    cluster_id, keep_candidate_id=payload.keep_candidate_id
+                )
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
 
 
 # re-export helpers for tests

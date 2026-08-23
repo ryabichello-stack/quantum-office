@@ -180,7 +180,9 @@ class VideoStudioStore:
         return self.get(draft_id)
 
     def queue_private_upload(self, draft_id: str) -> dict[str, Any]:
-        """Mark as ready for private YouTube upload — does not call YouTube yet."""
+        """Mark as ready for private YouTube upload — optional real API later."""
+        import os
+
         row = self.get(draft_id)
         if not row:
             return {"ok": False, "error": "not_found"}
@@ -192,12 +194,35 @@ class VideoStudioStore:
                 "error": "approval_required",
                 "message": "Сначала утвердите черновик (APPROVAL_REQUIRED)",
             }
+        yt_enabled = (os.getenv("YOUTUBE_UPLOAD_ENABLED") or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
         updated = self.set_status(draft_id, "uploaded_private")
+        youtube_id = None
+        note = "Заглушка: private YouTube upload (YOUTUBE_UPLOAD_ENABLED=false)"
+        if yt_enabled:
+            # Placeholder for real Google API client — never auto-publish
+            youtube_id = f"private-pending-{draft_id[:8]}"
+            note = (
+                "Очередь private upload принята. Реальный YouTube Data API "
+                "подключается через YOUTUBE_CLIENT_SECRETS (ещё не wired)."
+            )
+            with self.connect() as conn:
+                conn.execute(
+                    "UPDATE video_drafts SET youtube_id = ? WHERE id = ?",
+                    (youtube_id, draft_id),
+                )
+            updated = self.get(draft_id)
         return {
             "ok": True,
             "draft": updated,
-            "youtube_upload": False,
-            "note": "Заглушка: private YouTube upload подключится на следующем шаге",
+            "youtube_upload": bool(yt_enabled),
+            "youtube_id": youtube_id,
+            "visibility": "private",
+            "note": note,
         }
 
 
