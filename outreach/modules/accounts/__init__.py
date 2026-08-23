@@ -943,18 +943,33 @@ def suggested_reply_draft(
         ),
     }
     body = bodies.get(action, bodies["operator_reply"])
+    citations: list[dict[str, Any]] = [
+        {
+            "source": "tenant_config",
+            "ref": "config/tenants/quantum-labs/product_profile.json",
+            "note": "Product framing for Quantum Labs / Payouts",
+            "approval_required": True,
+        }
+    ]
+    try:
+        from knowledge_client import fetch_reply_citations
+
+        query = "Quantum Labs выплаты ломбарды преимущества"
+        if classification == "positive_interest":
+            query = "Quantum Labs payouts meeting value proposition lombards"
+        elif classification == "negative":
+            query = "Quantum Labs soft close polite"
+        kb = fetch_reply_citations(query=query, limit=3)
+        if kb:
+            citations = kb + citations[:1]
+    except Exception:  # noqa: BLE001
+        pass
     return {
         "approval_required": True,
         "status": "draft",
         "action": action,
         "body": body,
-        "citations": [
-            {
-                "source": "tenant_config",
-                "ref": "config/tenants/quantum-labs/product_profile.json",
-                "note": "Second Brain claim cite — Stage 2 wiring",
-            }
-        ],
+        "citations": citations,
         "classification": classification,
     }
 

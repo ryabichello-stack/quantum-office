@@ -1397,6 +1397,29 @@ button.linkish {
   font-size: 0.72rem;
   vertical-align: middle;
 }
+.lpr-coverage {
+  margin: 0.35rem 0 0.65rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.55rem;
+  align-items: center;
+}
+.lpr-role {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 6px;
+  border: 1px solid #e0d5c4;
+  font-size: 0.78rem;
+  background: #faf7f2;
+}
+.lpr-role.ok {
+  border-color: #b7d4bc;
+  background: #eef7f0;
+}
+.lpr-role.miss {
+  border-color: #e0c4c4;
+  background: #faf0f0;
+}
 .inbox-reply-bar textarea {
   width: 100%;
   margin: 0.35rem 0 0.55rem;

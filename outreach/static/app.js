@@ -5,6 +5,7 @@
     inbox: "Входящие",
     report: "Результат",
     clients: "Клиенты",
+    lpr: "ЛПР",
     settings: "Настройки",
   };
   const hints = {
@@ -13,6 +14,7 @@
     inbox: "Классификация ответов и привязка к письмам",
     report: "Воронка, динамика, последние письма",
     clients: "Bitrix → geo → очередь; список с городом и TZ",
+    lpr: "Поиск ЛПР: clients + DaData + import, coverage matrix",
     settings: "Локальные окна, лимиты, anti-ban",
   };
 
@@ -956,6 +958,15 @@
       bits.push(
         `<div class="muted tight">Черновик ответа · APPROVAL_REQUIRED (не отправляется автоматически)</div>`
       );
+      const cites = draft.citations || [];
+      if (cites.length) {
+        bits.push(
+          `<div class="muted tight">Цитаты: ${cites
+            .slice(0, 3)
+            .map((c) => escapeHtml((c.source || "") + " · " + (c.ref || "")))
+            .join("; ")}</div>`
+        );
+      }
       activeInboxDraft = draft.body;
       if (draftBtn) draftBtn.hidden = false;
     } else if (draftBtn) {
@@ -1920,9 +1931,164 @@
     return (btn && btn.dataset.tab) || "letter";
   }
 
+  let lprLastRunId = null;
+
+  function renderLprCoverage(coverage) {
+    const el = $("lprCoverage");
+    if (!el) return;
+    const roles = (coverage && coverage.roles) || [];
+    const missing = (coverage && coverage.missing_roles) || [];
+    if (!roles.length) {
+      el.textContent = "";
+      return;
+    }
+    el.innerHTML =
+      roles
+        .map(
+          (r) =>
+            `<span class="lpr-role ${r.covered ? "ok" : "miss"}">${escapeHtml(
+              r.role_id || ""
+            )}${r.covered ? " ✓" : " —"}</span>`
+        )
+        .join(" ") +
+      (missing.length
+        ? `<div class="muted tight">Не покрыто: ${escapeHtml(missing.join(", "))}</div>`
+        : "");
+  }
+
+  function renderLprCandidates(items) {
+    const body = $("lprBody");
+    if (!body) return;
+    body.innerHTML = (items || [])
+      .map((c) => {
+        const st = c.status || "proposed";
+        const actions =
+          st === "rejected"
+            ? ""
+            : `<button type="button" class="small btn-quiet" data-lpr-approve="${escapeHtml(
+                c.id
+              )}">OK</button>
+               <button type="button" class="small btn-quiet" data-lpr-reject="${escapeHtml(
+                 c.id
+               )}">Reject</button>
+               <button type="button" class="small btn-quiet" data-lpr-task="${escapeHtml(
+                 c.id
+               )}">Task</button>`;
+        return `<tr>
+          <td>${escapeHtml(c.full_name || "")}${
+          c.cluster_id ? ' <span class="badge">cluster</span>' : ""
+        }</td>
+          <td>${escapeHtml(c.role_guess || "")}</td>
+          <td>${escapeHtml(c.source || "")}</td>
+          <td>${Number(c.score || 0).toFixed(2)}</td>
+          <td>${escapeHtml(st)}</td>
+          <td>${actions}</td>
+        </tr>`;
+      })
+      .join("");
+    body.querySelectorAll("[data-lpr-approve]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setLprStatus(btn.getAttribute("data-lpr-approve"), "approved").catch(logAction)
+      );
+    });
+    body.querySelectorAll("[data-lpr-reject]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setLprStatus(btn.getAttribute("data-lpr-reject"), "rejected").catch(logAction)
+      );
+    });
+    body.querySelectorAll("[data-lpr-task]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        createLprTask(btn.getAttribute("data-lpr-task")).catch(logAction)
+      );
+    });
+  }
+
+  async function setLprStatus(id, status) {
+    await api(`/api/modules/social/candidates/${encodeURIComponent(id)}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
+    if (lprLastRunId) await reloadLprRun(lprLastRunId);
+  }
+
+  async function createLprTask(id) {
+    const data = await api("/api/modules/social/tasks", {
+      method: "POST",
+      body: JSON.stringify({ candidate_id: id, draft_text: "", action_type: "open_profile" }),
+    });
+    if ($("lprLog")) {
+      $("lprLog").textContent = JSON.stringify(data, null, 2);
+    }
+  }
+
+  async function reloadLprRun(runId) {
+    const data = await api(`/api/modules/social/runs/${encodeURIComponent(runId)}`);
+    renderLprCoverage(data.coverage);
+    renderLprCandidates(data.candidates || []);
+  }
+
+  async function loadLprTab() {
+    if ($("lprLog") && !$("lprLog").textContent) {
+      $("lprLog").textContent = "Укажите company id / import и нажмите «Искать».";
+    }
+  }
+
+  async function runLprSearch() {
+    const imports = [];
+    const webUrl = ($("lprWebUrl") && $("lprWebUrl").value || "").trim();
+    if (webUrl) {
+      imports.push({
+        source: "web_import",
+        profile_url: webUrl,
+        full_name: ($("lprWebName") && $("lprWebName").value) || "",
+      });
+    }
+    const tg = ($("lprTgUser") && $("lprTgUser").value || "").trim().replace(/^@/, "");
+    if (tg) {
+      imports.push({
+        source: "telegram",
+        username: tg,
+        full_name: ($("lprTgName") && $("lprTgName").value) || "",
+      });
+    }
+    const payload = {
+      bitrix_company_id: ($("lprCompanyId") && $("lprCompanyId").value || "").trim() || null,
+      company_title: ($("lprCompanyTitle") && $("lprCompanyTitle").value || "").trim(),
+      inn: ($("lprInn") && $("lprInn").value || "").trim() || null,
+      sources: ["clients", "dadata", "web_import", "telegram"],
+      imports,
+    };
+    if ($("lprLog")) $("lprLog").textContent = "Поиск…";
+    const data = await api("/api/modules/social/search", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    lprLastRunId = (data.run && data.run.id) || null;
+    renderLprCoverage(data.coverage);
+    renderLprCandidates(data.candidates || []);
+    if ($("lprLog")) {
+      $("lprLog").textContent = JSON.stringify(
+        {
+          run_id: lprLastRunId,
+          cost: data.run && data.run.cost_estimate,
+          candidates: (data.candidates || []).length,
+          missing: (data.coverage && data.coverage.missing_roles) || [],
+        },
+        null,
+        2
+      );
+    }
+  }
+
+  async function loadLprCaps() {
+    const data = await api("/api/modules/social/capabilities");
+    if ($("lprLog")) $("lprLog").textContent = JSON.stringify(data, null, 2);
+  }
+
   function refreshActiveTab() {
     const tab = activeTabName();
     if (tab === "clients") loadClients().catch((e) => ($("clientsLog").textContent = String(e)));
+    else if (tab === "lpr") loadLprTab().catch((e) => { if ($("lprLog")) $("lprLog").textContent = String(e); });
     else if (tab === "outbox") loadOutbox().catch(logAction);
     else if (tab === "inbox") {
       const view = document.querySelector(".sub-tab.active");
@@ -1976,6 +2142,7 @@
         $("pageTitle").textContent = titles[tab] || tab;
         if ($("pageHint")) $("pageHint").textContent = hints[tab] || "";
         if (tab === "clients") loadClients().catch((e) => ($("clientsLog").textContent = String(e)));
+        if (tab === "lpr") loadLprTab().catch((e) => { if ($("lprLog")) $("lprLog").textContent = String(e); });
         if (tab === "outbox") loadOutbox().catch(logAction);
         if (tab === "report") loadReport().catch(logAction);
         if (tab === "settings") {
@@ -2107,6 +2274,16 @@
     bindTabs();
     bindContactIcons();
     bindInnerWheelScroll();
+    if ($("lprSearchBtn")) {
+      $("lprSearchBtn").addEventListener("click", () => runLprSearch().catch((e) => {
+        if ($("lprLog")) $("lprLog").textContent = String(e);
+      }));
+    }
+    if ($("lprCapsBtn")) {
+      $("lprCapsBtn").addEventListener("click", () => loadLprCaps().catch((e) => {
+        if ($("lprLog")) $("lprLog").textContent = String(e);
+      }));
+    }
     const adv = $("letterAdvanced");
     if (adv) {
       adv.addEventListener("toggle", () => {

@@ -637,6 +637,30 @@ def check_replies(
                             "confidence": classified.confidence,
                         },
                     )
+                if classified.classification == "unsubscribe" or (
+                    resolved.get("account") or {}
+                ).get("lifecycle_status") == "BLACKLISTED":
+                    try:
+                        from modules.deliverability import DeliverabilityStore
+
+                        DeliverabilityStore().add_suppression(
+                            from_email, reason="unsubscribe", source="accounts-resolve"
+                        )
+                    except Exception:  # noqa: BLE001
+                        logger.debug("blacklist suppress failed", exc_info=True)
+                try:
+                    from modules.orchestrator import OrchestratorStore
+
+                    orch = OrchestratorStore().on_inbound_reply(
+                        email=from_email,
+                        company_id=row.company_id or None,
+                        account_id=item.get("account_id"),
+                        classification=classified.classification,
+                        stop_sequences=bool(classified.should_stop_sequence),
+                    )
+                    item["orchestrator"] = orch
+                except Exception:  # noqa: BLE001
+                    logger.debug("orchestrator on reply failed", exc_info=True)
             except Exception:  # noqa: BLE001
                 logger.debug("accounts resolve on reply failed", exc_info=True)
 

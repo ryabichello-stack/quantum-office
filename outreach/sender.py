@@ -1002,12 +1002,24 @@ def _send_due_sequence_steps(
                 seq.stop(email=email, reason=f"policy:{why}")
                 out.append({"email": email, "status": "skipped", "reason": f"policy:{why}"})
                 continue
-        if deliverability is not None:
-            reason = deliverability.is_suppressed(email)
-            if reason:
-                seq.stop(email=email, reason=f"suppressed:{reason}")
-                out.append({"email": email, "status": "skipped", "reason": f"suppressed:{reason}"})
+        try:
+            from send_guards import check_send_allowed
+
+            ok_g, why_g = check_send_allowed(
+                email, company_id=company_id, deliverability=deliverability
+            )
+            if not ok_g:
+                seq.stop(email=email, reason=why_g)
+                out.append({"email": email, "status": "skipped", "reason": why_g})
                 continue
+        except Exception:  # noqa: BLE001
+            if deliverability is not None:
+                reason = deliverability.is_suppressed(email)
+                if reason:
+                    seq.stop(email=email, reason=f"suppressed:{reason}")
+                    out.append({"email": email, "status": "skipped", "reason": f"suppressed:{reason}"})
+                    continue
+        if deliverability is not None:
             paused, pause_reason = deliverability.is_paused()
             if paused:
                 out.append(
@@ -1226,13 +1238,24 @@ def send_one(
                 "oneshot_today": used,
                 "processed": 0,
             }
-        reason = deliverability.is_suppressed(to_email)
-        if reason:
-            return {
-                "ok": False,
-                "error": f"suppressed:{reason}",
-                "processed": 0,
-            }
+    if not dry_run:
+        try:
+            from send_guards import check_send_allowed
+
+            ok_g, why_g = check_send_allowed(
+                to_email, company_id=None, deliverability=deliverability
+            )
+            if not ok_g:
+                return {"ok": False, "error": why_g, "processed": 0}
+        except Exception:  # noqa: BLE001
+            if deliverability is not None:
+                reason = deliverability.is_suppressed(to_email)
+                if reason:
+                    return {
+                        "ok": False,
+                        "error": f"suppressed:{reason}",
+                        "processed": 0,
+                    }
 
     if not dry_run and not smtp_configured():
         return {"ok": False, "error": "SMTP not configured (MAIL_*)", "processed": 0}
