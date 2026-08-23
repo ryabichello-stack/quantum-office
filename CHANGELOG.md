@@ -12,6 +12,10 @@
 
 ### Added
 
+- **RBAC** (`modules/rbac`): roles owner/ops/analyst/viewer; `OUTREACH_RBAC_ENABLED` + `OUTREACH_ROLE_TOKENS`; `GET /api/v1/me`; write-path permission gates
+- **Owned-page listen stub** (`radar/owned_listen`): `OWNED_TG_CHANNELS` / `OWNED_VK_GROUPS` → Radar signals via `POST /api/modules/radar/owned/poll` (never auto-outreach)
+- **YouTube Data API client skeleton** (`video_studio/youtube_client.py`): private-only upload path via `YOUTUBE_CLIENT_SECRETS` / `YOUTUBE_TOKEN_PATH`
+- UI ops22: роль + usage в Студии/Настройках; кнопка Owned poll; gate write-кнопок при RBAC
 - **AI Revenue OS Stage 0** — architecture pack in `docs/architecture/` (AS_IS, TARGET, GAP, DATA_MAPPING, SOCIAL_CAPABILITY_MATRIX, MIGRATION_PLAN, BACKLOG)
 - **Stage 1 data core** (`outreach/modules/accounts`): Account / Person / Employment / ContactPoint / Lead / `domain_events`; lifecycle `NEW`…`BLACKLISTED`; SoT local + Bitrix company id (Accept R1/R2)
 - **Slice A inbound**: IMAP reply → resolve Account/Person/Lead + `message.received` / `message.classified`; Console call watcher → `call.completed` via `/api/modules/accounts/resolve-inbound`

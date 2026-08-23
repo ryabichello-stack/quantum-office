@@ -264,3 +264,20 @@ class RadarModule:
             if not out.get("ok"):
                 raise HTTPException(404, out.get("error") or "not_found")
             return out
+
+        @router.get("/owned/status")
+        def owned_status() -> dict[str, Any]:
+            from modules.radar.owned_listen import configured_sources, is_enabled
+
+            return {
+                "ok": True,
+                "enabled": is_enabled(),
+                "sources": configured_sources(),
+                "auto_outreach": False,
+            }
+
+        @router.post("/owned/poll")
+        def owned_poll(dry_run: bool = False) -> dict[str, Any]:
+            from modules.radar.owned_listen import poll_owned_pages
+
+            return poll_owned_pages(dry_run=dry_run)

@@ -45,6 +45,7 @@ from modules.orchestrator import OrchestratorModule
 from modules.content_studio import ContentStudioModule
 from modules.radar import RadarModule
 from modules.video_studio import VideoStudioModule
+from modules.rbac import RbacModule, attach_principal, rbac_enabled
 from outbox import OutboxStore
 from reply_watcher import ReplyWatchThread, check_replies, imap_configured, reply_watch_status
 from ops_center import build_ops_summary
@@ -105,6 +106,7 @@ _orchestrator_mod = OrchestratorModule()
 _content_studio_mod = ContentStudioModule()
 _radar_mod = RadarModule()
 _video_studio_mod = VideoStudioModule()
+_rbac_mod = RbacModule()
 _registry.register(_tracking_mod)
 _registry.register(_deliver_mod)
 _registry.register(_runner_mod)
@@ -123,6 +125,7 @@ _registry.register(_orchestrator_mod)
 _registry.register(_content_studio_mod)
 _registry.register(_radar_mod)
 _registry.register(_video_studio_mod)
+_registry.register(_rbac_mod)
 _app_ctx: AppContext | None = None
 
 
@@ -338,17 +341,36 @@ def _extract_token(request: Request, authorization: str | None, x_token: str | N
     return ""
 
 
+def _token_accepted(got: str) -> bool:
+    """Accept primary UI token or any OUTREACH_ROLE_TOKENS entry."""
+    got = (got or "").strip()
+    if not got:
+        return False
+    expected = (os.getenv("OUTREACH_UI_TOKEN") or "").strip()
+    if not expected:
+        expected = _ensure_ui_token()
+    if secrets.compare_digest(got, expected):
+        return True
+    if not rbac_enabled():
+        return False
+    from modules.rbac import parse_role_tokens
+
+    for mapped in parse_role_tokens():
+        if secrets.compare_digest(got, mapped):
+            return True
+    return False
+
+
 async def require_ui_auth(
     request: Request,
     authorization: str | None = Header(default=None),
     x_outreach_token: str | None = Header(default=None, alias="X-Outreach-Token"),
 ) -> None:
-    expected = (os.getenv("OUTREACH_UI_TOKEN") or "").strip()
-    if not expected:
-        expected = _ensure_ui_token()
     got = _extract_token(request, authorization, x_outreach_token)
-    if not got or not secrets.compare_digest(got, expected):
+    if not got or not _token_accepted(got):
         raise HTTPException(status_code=401, detail="Unauthorized — set OUTREACH_UI_TOKEN")
+    attach_principal(request, got)
+
 
 
 # Module routes (independent feature APIs) — after auth helper exists
@@ -394,6 +416,16 @@ def v1_usage(days: int = 14) -> dict[str, Any]:
     from usage_meter import UsageMeter
 
     return UsageMeter().snapshot(days=days)
+
+
+@app.get("/api/v1/me", dependencies=[Depends(require_ui_auth)])
+def v1_me(request: Request) -> dict[str, Any]:
+    principal = getattr(request.state, "principal", None)
+    if principal is None:
+        from modules.rbac import Principal
+
+        principal = Principal(role="owner", token_label="ui")
+    return {"ok": True, **principal.to_dict()}
 
 
 # --- public ---

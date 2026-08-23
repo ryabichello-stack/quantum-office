@@ -23,6 +23,9 @@
   let outboxItemsCache = [];
   let outboxTotalCache = 0;
   let lastBatchMeta = { deferred_window_count: null, at: null };
+  let accessPrincipal = null;
+  let usageSnapshot = null;
+
 
   function apiBase() {
     if (typeof window !== "undefined" && window.__QC_OUTREACH_API__) {
@@ -1191,7 +1194,9 @@
   }
 
   async function loadSettingsIntoForms() {
+    await loadAccessMeta().catch(() => {});
     const data = await api("/api/settings");
+
     settingsCache = data.settings || {};
     const s = settingsCache;
     $("letterSubject").value = s.OUTREACH_SUBJECT || "";
@@ -2158,11 +2163,98 @@
 
   async function loadStudioTab() {
     bindStudioSubTabs();
+    await loadAccessMeta().catch(() => {});
     const active = document.querySelector(".sub-tab[data-studio-view].active");
     const view = (active && active.dataset.studioView) || "content";
     if (view === "content") await loadContentDrafts();
     else if (view === "radar") await loadRadarSignals();
     else await loadVideoDrafts();
+  }
+
+  function canWrite(perm) {
+    if (!accessPrincipal || !accessPrincipal.rbac_enabled) return true;
+    const perms = accessPrincipal.permissions || [];
+    return perms.indexOf(perm) >= 0;
+  }
+
+  function applyAccessGates() {
+    const studioWrite = canWrite("studio.write");
+    const settingsWrite = canWrite("outreach.settings");
+    const sendWrite = canWrite("outreach.send");
+    [
+      "csDraftBtn",
+      "radarIngestBtn",
+      "radarOwnedPollBtn",
+      "videoDraftBtn",
+    ].forEach((id) => {
+      const el = $(id);
+      if (el) el.disabled = !studioWrite;
+    });
+    const saveBtn = $("saveSettingsBtn");
+    if (saveBtn) saveBtn.disabled = !settingsWrite;
+    ["startBtn", "pauseBtn", "stopBtn"].forEach((id) => {
+      const el = $(id);
+      if (el) el.disabled = !sendWrite && accessPrincipal && accessPrincipal.rbac_enabled;
+    });
+  }
+
+  function renderAccessUi() {
+    const role = (accessPrincipal && accessPrincipal.role) || "owner";
+    const rbac = !!(accessPrincipal && accessPrincipal.rbac_enabled);
+    const perms = (accessPrincipal && accessPrincipal.permissions) || [];
+    if ($("studioRoleChip")) {
+      $("studioRoleChip").textContent = rbac ? `роль: ${role}` : `роль: ${role} (rbac off)`;
+    }
+    if ($("studioUsageChip")) {
+      const items = (usageSnapshot && usageSnapshot.items) || [];
+      const today = new Date().toISOString().slice(0, 10);
+      const todayRows = items.filter((r) => r.day === today);
+      const total = todayRows.reduce((s, r) => s + (Number(r.value) || 0), 0);
+      $("studioUsageChip").textContent = todayRows.length
+        ? `usage сегодня: ${total}`
+        : "usage: нет данных";
+    }
+    if ($("settingsRoleLine")) {
+      $("settingsRoleLine").textContent = rbac
+        ? `Роль «${role}» · RBAC включён`
+        : `Роль «${role}» · RBAC выключен (все = owner)`;
+    }
+    if ($("settingsPermLine")) {
+      $("settingsPermLine").textContent = perms.length
+        ? `Права: ${perms.join(", ")}`
+        : "";
+    }
+    if ($("settingsUsageLine")) {
+      const items = (usageSnapshot && usageSnapshot.items) || [];
+      $("settingsUsageLine").textContent = items.length
+        ? `Метрики: ${items
+            .slice(0, 6)
+            .map((r) => `${r.day} ${r.metric}=${r.value}`)
+            .join(" · ")}`
+        : "Метрики usage пока пусты";
+    }
+    applyAccessGates();
+  }
+
+  async function loadAccessMeta() {
+    const [me, usage] = await Promise.all([
+      api("/api/v1/me"),
+      api("/api/v1/usage?days=7"),
+    ]);
+    accessPrincipal = me;
+    usageSnapshot = usage;
+    renderAccessUi();
+    return me;
+  }
+
+  async function pollOwnedPages() {
+    const data = await api("/api/modules/radar/owned/poll", {
+      method: "POST",
+      body: "{}",
+    });
+    logAction(data);
+    await loadRadarSignals();
+    return data;
   }
 
   function renderContentCards(items) {
@@ -2596,6 +2688,9 @@
     }
     if ($("radarListBtn")) {
       $("radarListBtn").addEventListener("click", () => loadRadarSignals().catch(logAction));
+    }
+    if ($("radarOwnedPollBtn")) {
+      $("radarOwnedPollBtn").addEventListener("click", () => pollOwnedPages().catch(logAction));
     }
     if ($("videoDraftBtn")) {
       $("videoDraftBtn").addEventListener("click", () => createVideoDraft().catch(logAction));

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops21" />
+  <link rel="stylesheet" href="styles.css?v=ops22" />
   <script>
     (function () {
       function parentBase() {
@@ -539,6 +539,10 @@
           <div class="task-intro compact-intro">
             <h2 class="section-title">Студия</h2>
             <p class="muted tight">Контент, сигналы рынка и видео — всё с ручным утверждением.</p>
+            <div id="studioMetaBar" class="ros-meta-bar" aria-live="polite">
+              <span id="studioRoleChip" class="ros-chip">роль…</span>
+              <span id="studioUsageChip" class="ros-chip muted-chip">usage…</span>
+            </div>
           </div>
           <div class="sub-tabs" role="tablist" aria-label="Студия">
             <button type="button" class="sub-tab active" data-studio-view="content">Контент</button>
@@ -604,8 +608,9 @@
                 <div class="task-actions ros-actions">
                   <button type="button" id="radarIngestBtn" class="primary">Записать</button>
                   <button type="button" id="radarListBtn" class="btn-quiet">Обновить</button>
+                  <button type="button" id="radarOwnedPollBtn" class="btn-quiet">Owned poll</button>
                 </div>
-                <p class="muted tight">Сигналы не запускают рассылку сами — только подсказки оператору.</p>
+                <p class="muted tight">Сигналы не запускают рассылку сами — только подсказки оператору. Owned poll — TG/VK stub.</p>
               </div>
               <div class="ros-pane">
                 <p class="ros-pane-title">Очередь сигналов</p>
@@ -715,6 +720,12 @@
           <div class="task-intro compact-intro">
             <h2 class="section-title">Настройки рассылки</h2>
             <p class="muted tight">Локальные B2B-окна у получателя — главный режим. Старт / Пауза / Стоп — в шапке.</p>
+            <div id="settingsAccessCard" class="ros-access-card">
+              <p class="ros-pane-title">Доступ</p>
+              <p id="settingsRoleLine" class="muted tight">Загрузка роли…</p>
+              <p id="settingsPermLine" class="muted tight"></p>
+              <p id="settingsUsageLine" class="muted tight"></p>
+            </div>
           </div>
 
           <fieldset class="task-mode">
@@ -1047,6 +1058,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=ops21"></script>
+  <script src="app.js?v=ops22"></script>
 </body>
 </html>
