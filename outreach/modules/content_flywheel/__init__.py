@@ -244,6 +244,18 @@ class ContentFlywheelStore:
         now = _utc_now()
         ch = content_hash(f"{title}\n{body}")
         with self.connect() as conn:
+            if external_id:
+                existing_ext = conn.execute(
+                    """
+                    SELECT id FROM flywheel_news
+                    WHERE tenant_id = ? AND platform = ? AND external_id = ?
+                    """,
+                    (self.tenant_id, platform, external_id),
+                ).fetchone()
+                if existing_ext:
+                    out = self.get_news(existing_ext["id"]) or {"id": existing_ext["id"]}
+                    out["duplicate"] = True
+                    return out
             existing = conn.execute(
                 "SELECT id FROM flywheel_news WHERE tenant_id = ? AND content_hash = ?",
                 (self.tenant_id, ch),
@@ -700,6 +712,25 @@ class ContentFlywheelModule:
         @router.get("/sources")
         def list_sources() -> dict[str, Any]:
             return {"ok": True, "items": self.store.list_sources()}
+
+        @router.get("/telegram/preview")
+        def telegram_preview(
+            handle: str = Query(..., min_length=1),
+            limit: int = Query(5, ge=1, le=15),
+        ) -> dict[str, Any]:
+            from modules.content_flywheel.tg_fetch import fetch_channel_posts, normalize_channel_handle
+
+            channel = normalize_channel_handle(handle)
+            if not channel:
+                raise HTTPException(400, "invalid_handle")
+            items = fetch_channel_posts(handle, limit=limit)
+            return {
+                "ok": True,
+                "channel": channel,
+                "count": len(items),
+                "items": items,
+                "note": "Public channels via t.me/s preview",
+            }
 
         @router.delete("/sources/{source_id}")
         def del_source(source_id: str) -> dict[str, Any]:

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from modules.content_flywheel.rss_fetch import fetch_feed_items
+from modules.content_flywheel.tg_fetch import fetch_channel_posts, tg_item_limit
 
 
 def _split_csv(raw: str) -> list[str]:
@@ -38,7 +39,7 @@ def default_source_handles() -> dict[str, list[str]]:
 
 
 def poll_watch_sources(*, handles: dict[str, list[str]] | None = None) -> list[dict[str, Any]]:
-    """Poll configured sources. RSS uses real fetch; TG/VK remain stub until API wired."""
+    """Poll configured sources. RSS + TG public channels use real fetch; VK remains stub."""
     if not flywheel_enabled():
         return []
     handles = handles or default_source_handles()
@@ -62,22 +63,21 @@ def poll_watch_sources(*, handles: dict[str, list[str]] | None = None) -> list[d
             )
 
     for handle in handles.get("telegram") or []:
-        items.append(
-            {
-                "platform": "telegram",
-                "handle": handle,
-                "external_id": f"tg-stub-{handle}-{now[:10]}",
-                "title": f"Отраслевой тренд из {handle}",
-                "body": (
-                    f"Краткая выжимка (stub) из канала {handle}. "
-                    "Обсуждают изменения на рынке, спрос и ключевые тренды недели."
-                ),
-                "image_url": "",
-                "link": "",
-                "published_at": now,
-                "raw": {"mode": "stub", "polled_at": now},
-            }
-        )
+        for row in fetch_channel_posts(handle, limit=tg_item_limit()):
+            items.append(
+                {
+                    "platform": "telegram",
+                    "handle": handle,
+                    "external_id": row.get("external_id") or "",
+                    "title": row.get("title") or "",
+                    "body": row.get("body") or "",
+                    "image_url": row.get("image_url") or "",
+                    "link": row.get("link") or "",
+                    "published_at": row.get("published_at") or now,
+                    "raw": row.get("raw") or {"mode": "tg_public", "handle": handle},
+                }
+            )
+
     for handle in handles.get("vk") or []:
         items.append(
             {

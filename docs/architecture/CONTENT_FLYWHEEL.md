@@ -93,6 +93,16 @@ API:
 - `GET /themes/presets`, `POST /themes/apply-preset`
 - `POST /themes/reanalyze` — переанализ новостей после смены тематики
 
+### Telegram sources
+
+Публичные каналы (`@channel`, `t.me/channel`) — реальный парсер через preview `t.me/s/{channel}`:
+- UI: **Флайвил → Источники → Telegram**
+- Env: `FLYWHEEL_SOURCE_TG=@channel1,@channel2`, `FLYWHEEL_TG_LIMIT=8`
+- Preview API: `GET /telegram/preview?handle=@channel`
+- Дедуп по `external_id` (channel/message_id)
+
+Приватные каналы без public preview пока не поддерживаются (нужен bot admin + отдельный collector).
+
 ### RSS sources
 
 Любая отрасль может подключить RSS/Atom: UI **Флайвил → Источники → RSS** или `FLYWHEEL_SOURCE_RSS=url1,url2`.
@@ -155,7 +165,7 @@ FLYWHEEL_AVATAR_PROFILE=quantum-host-v1
 
 1. ~~RSS ingest~~ ✅ `rss_fetch.py` + sources UI
 2. ~~LLM angle extraction~~ ✅ optional `FLYWHEEL_LLM_ANGLE`
-3. Реальный TG/VK parser (Bot API / VK wall.get)
+3. ~~Реальный TG parser~~ ✅ public channels `t.me/s` (`tg_fetch.py`); VK — позже
 4. DALL-E / Flux для картинок
-5. HeyGen / Synthesia talking-head render
+5. HeyGen / Synthesia talking-head render (отложено)
 6. ~~Cron `run-cycle`~~ ✅ `FLYWHEEL_AUTO_CYCLE` background thread

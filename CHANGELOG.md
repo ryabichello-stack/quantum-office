@@ -87,6 +87,7 @@
 - 2026-08-23 (cont.12): tenant-defined content themes (any niche) + UI editor; ops27
 - 2026-08-23 (cont.13): default tenant generic, industry presets, neutral post/video templates; ops28
 - 2026-08-23 (cont.14): RSS ingest, optional LLM angle, flywheel auto-cycle; ops29
+- 2026-08-23 (cont.15): real Telegram public channel parser (t.me/s); ops30
 
 ## [0.2.0] — 2026-08-20
 
