@@ -252,6 +252,9 @@ def send_email(
     message_id: str | None = None,
     unsubscribe_url: str | None = None,
     attachments: list[Path] | None = None,
+    in_reply_to: str | None = None,
+    references: str | None = None,
+    include_list_unsubscribe: bool = True,
 ) -> str:
     """Send one message. Returns Message-ID (without angle brackets).
 
@@ -305,12 +308,20 @@ def send_email(
     msg["Subject"] = subject
     msg["Reply-To"] = reply
     msg["Message-ID"] = mid_header
-    unsub_parts = [f"<mailto:{unsubscribe_mailto}?subject=unsubscribe>"]
-    if unsubscribe_url:
-        unsub_parts.insert(0, f"<{unsubscribe_url}>")
-    msg["List-Unsubscribe"] = ", ".join(unsub_parts)
-    if unsubscribe_url:
-        msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+    if in_reply_to:
+        irt = in_reply_to.strip()
+        if not irt.startswith("<"):
+            irt = f"<{irt.strip('<>')}>"
+        msg["In-Reply-To"] = irt
+    if references:
+        msg["References"] = references.strip()
+    if include_list_unsubscribe:
+        unsub_parts = [f"<mailto:{unsubscribe_mailto}?subject=unsubscribe>"]
+        if unsubscribe_url:
+            unsub_parts.insert(0, f"<{unsubscribe_url}>")
+        msg["List-Unsubscribe"] = ", ".join(unsub_parts)
+        if unsubscribe_url:
+            msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
     # Stable From identity (anti-ban): never rotate From; tracking goes to Reply-To / Message-ID.
     if outreach_id:
         msg["X-Outreach-Id"] = outreach_id

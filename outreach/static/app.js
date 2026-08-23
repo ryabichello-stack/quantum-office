@@ -841,6 +841,105 @@
     document.body.classList.remove("peel-away-open");
   }
 
+  let activeInboxThreadId = null;
+
+  function closeInboxThread() {
+    const peel = $("inboxThreadPeelAway");
+    if (!peel) return;
+    peel.classList.remove("is-open");
+    window.setTimeout(() => {
+      if (!peel.classList.contains("is-open")) peel.hidden = true;
+    }, 260);
+    document.body.classList.remove("peel-away-open");
+    activeInboxThreadId = null;
+    if ($("inboxReplyBody")) $("inboxReplyBody").value = "";
+    if ($("inboxReplyStatus")) $("inboxReplyStatus").textContent = "";
+  }
+
+  function renderInboxThreadMessages(messages) {
+    return (messages || [])
+      .map((m) => {
+        const dir = m.direction === "outbound" ? "outbound" : "inbound";
+        const who =
+          dir === "outbound"
+            ? `Мы → ${escapeHtml(m.to || "")}`
+            : escapeHtml(m.from || m.to || "");
+        const kind =
+          m.kind === "operator"
+            ? "оператор"
+            : m.kind === "outreach"
+              ? "outreach"
+              : m.classification
+                ? escapeHtml(m.classification)
+                : "ответ";
+        return `<article class="thread-msg ${dir}">
+          <div class="thread-msg-head"><span>${who} · ${kind}</span><span>${escapeHtml(m.at || "")}</span></div>
+          <div class="thread-msg-subject muted">${escapeHtml(m.subject || "")}</div>
+          <div class="thread-msg-body">${escapeHtml(m.body || "")}</div>
+        </article>`;
+      })
+      .join("");
+  }
+
+  async function openInboxThread(inboxId) {
+    const peel = $("inboxThreadPeelAway");
+    const title = $("inboxThreadTitle");
+    const meta = $("inboxThreadMeta");
+    const body = $("inboxThreadBody");
+    if (!peel || !inboxId) return;
+    activeInboxThreadId = inboxId;
+    peel.hidden = false;
+    requestAnimationFrame(() => peel.classList.add("is-open"));
+    document.body.classList.add("peel-away-open");
+    if (title) title.textContent = "Переписка";
+    if (meta) meta.textContent = "Загрузка…";
+    if (body) body.innerHTML = "<p class='muted tight'>Загрузка…</p>";
+    try {
+      const data = await api(`/api/modules/replies/inbox/${encodeURIComponent(inboxId)}/thread`);
+      if (title) title.textContent = data.subject || "Переписка";
+      if (meta) {
+        meta.textContent = [
+          data.peer_email || "",
+          data.classification ? `класс: ${data.classification}` : "",
+          data.company_id ? `company ${data.company_id}` : "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+      }
+      if (body) {
+        body.innerHTML = `<div class="inbox-thread-messages">${renderInboxThreadMessages(
+          data.messages
+        )}</div>`;
+      }
+    } catch (e) {
+      if (body) body.textContent = String(e);
+    }
+  }
+
+  async function sendInboxThreadReply() {
+    if (!activeInboxThreadId) return;
+    const text = ($("inboxReplyBody") && $("inboxReplyBody").value || "").trim();
+    const markDone = !($("inboxReplyMarkDone") && !$("inboxReplyMarkDone").checked);
+    const status = $("inboxReplyStatus");
+    if (!text) {
+      if (status) status.textContent = "Введите текст ответа";
+      return;
+    }
+    if (status) status.textContent = "Отправка…";
+    try {
+      await api(`/api/modules/replies/inbox/${encodeURIComponent(activeInboxThreadId)}/reply`, {
+        method: "POST",
+        body: JSON.stringify({ body: text, mark_done: markDone }),
+      });
+      if ($("inboxReplyBody")) $("inboxReplyBody").value = "";
+      if (status) status.textContent = "Отправлено";
+      await openInboxThread(activeInboxThreadId);
+      await loadInbox(true);
+    } catch (e) {
+      if (status) status.textContent = String(e);
+    }
+  }
+
   async function openCompanyCard(companyId) {
     const peel = $("companyPeelAway");
     const body = $("companyCardBody");
@@ -1714,7 +1813,7 @@
           r.processed == 0
             ? `<button type="button" data-inbox-id="${r.id}">Готово</button>`
             : "";
-        return `<tr>
+        return `<tr class="inbox-row" data-inbox-open="${r.id}" style="cursor:pointer">
           <td>${escapeHtml(r.created_at || "")}</td>
           <td>${escapeHtml(r.from_email || "")}</td>
           <td>${inboxClassBadge(r.classification)} <span class="muted">(${Number(r.confidence || 0).toFixed(2)})</span></td>
@@ -2264,16 +2363,23 @@
       });
       $("inboxBody").addEventListener("click", async (ev) => {
         const btn = ev.target.closest("button[data-inbox-id]");
-        if (!btn) return;
-        try {
-          await api("/api/modules/replies/inbox/" + btn.dataset.inboxId + "/processed", {
-            method: "POST",
-            body: "{}",
-          });
-          await loadInbox(true);
-        } catch (e) {
-          logAction(String(e));
+        if (btn) {
+          ev.stopPropagation();
+          try {
+            await api("/api/modules/replies/inbox/" + btn.dataset.inboxId + "/processed", {
+              method: "POST",
+              body: "{}",
+            });
+            await loadInbox(true);
+          } catch (e) {
+            logAction(String(e));
+          }
+          return;
         }
+        const row = ev.target.closest("tr[data-inbox-open]");
+        if (!row) return;
+        if (ev.target.closest(".company-open")) return;
+        openInboxThread(row.dataset.inboxOpen).catch(logAction);
       });
     }
     if ($("outboxBody")) {
@@ -2902,8 +3008,22 @@
     if ($("companyPeelBackdrop")) {
       $("companyPeelBackdrop").addEventListener("click", closeCompanyCard);
     }
+    if ($("inboxThreadClose")) {
+      $("inboxThreadClose").addEventListener("click", closeInboxThread);
+    }
+    if ($("inboxThreadBackdrop")) {
+      $("inboxThreadBackdrop").addEventListener("click", closeInboxThread);
+    }
+    if ($("inboxReplySend")) {
+      $("inboxReplySend").addEventListener("click", () => sendInboxThreadReply().catch(logAction));
+    }
     document.addEventListener("keydown", (ev) => {
       const peel = $("companyPeelAway");
+      const thread = $("inboxThreadPeelAway");
+      if (ev.key === "Escape" && thread && thread.classList.contains("is-open")) {
+        closeInboxThread();
+        return;
+      }
       if (ev.key === "Escape" && peel && peel.classList.contains("is-open")) closeCompanyCard();
     });
 

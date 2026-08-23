@@ -121,7 +121,7 @@ API: `POST /api/ops/notify`, `POST /api/ops/telegram/verify|discover|test|apply-
 
 | Горизонт | Фокус |
 |----------|--------|
-| **G — Inbox** | Thread view, ответ из UI, assignee, связка с company card |
+| **G — Inbox** | 🟡 | Thread view + reply из UI (Layer G2) |
 | **G — Signals** | Звонок/ответ → сделка Bitrix; notify на каждый сигнал (не open) |
 | **G — Results** | Step funnel в UI, cohort export |
 | **H — Scale** | Multi-contact, отдельный sending domain, deliverability dashboard |

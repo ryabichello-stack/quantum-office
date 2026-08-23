@@ -1331,7 +1331,62 @@ button.linkish {
   background: #eef6ff;
   font-size: 0.82rem;
 }
-.telegram-bot-info.hidden { display: none; }
+.peel-away-panel-wide {
+  width: min(560px, 100vw);
+}
+.inbox-thread-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-bottom: 0.5rem;
+}
+.thread-msg {
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.88rem;
+  border: 1px solid #e8e0d4;
+}
+.thread-msg.inbound {
+  background: #fffaf3;
+  border-color: #f0dfc8;
+}
+.thread-msg.outbound {
+  background: #f4f8ff;
+  border-color: #d5e3f7;
+}
+.thread-msg-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.78rem;
+  color: #6b5c4f;
+}
+.thread-msg-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.inbox-reply-bar {
+  border-top: 1px solid #e8e0d4;
+  padding: 0.75rem 1.1rem 1rem;
+  background: #faf7f2;
+}
+.inbox-reply-bar textarea {
+  width: 100%;
+  margin: 0.35rem 0 0.55rem;
+  font: inherit;
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid #d9cfc0;
+  resize: vertical;
+}
+.check-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: #5c4f42;
+}
 
 .ops-actions {
   margin: 0 0 0.85rem;

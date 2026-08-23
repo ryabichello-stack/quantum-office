@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops13" />
+  <link rel="stylesheet" href="styles.css?v=ops15" />
   <script>
     (function () {
       function parentBase() {
@@ -836,6 +836,30 @@
     </main>
   </div>
 
+  <div id="inboxThreadPeelAway" class="peel-away" hidden>
+    <button type="button" class="peel-away-backdrop" id="inboxThreadBackdrop" aria-label="Закрыть переписку"></button>
+    <aside class="peel-away-panel peel-away-panel-wide" role="dialog" aria-modal="true" aria-labelledby="inboxThreadTitle">
+      <header class="peel-away-head">
+        <div>
+          <p class="peel-away-kicker">Входящие · переписка</p>
+          <h2 id="inboxThreadTitle">Thread</h2>
+          <p class="muted tight" id="inboxThreadMeta"></p>
+        </div>
+        <button type="button" class="btn-quiet" id="inboxThreadClose" aria-label="Закрыть">✕</button>
+      </header>
+      <div id="inboxThreadBody" class="peel-away-body muted">Загрузка…</div>
+      <footer class="inbox-reply-bar">
+        <label class="field-label" for="inboxReplyBody">Ответ с office@</label>
+        <textarea id="inboxReplyBody" rows="5" placeholder="Текст ответа…"></textarea>
+        <div class="row-actions">
+          <label class="check-inline"><input type="checkbox" id="inboxReplyMarkDone" checked /> Пометить «Готово» после отправки</label>
+          <button type="button" class="primary" id="inboxReplySend">Отправить</button>
+        </div>
+        <p class="muted tight" id="inboxReplyStatus"></p>
+      </footer>
+    </aside>
+  </div>
+
   <div id="companyPeelAway" class="peel-away" hidden>
     <button type="button" class="peel-away-backdrop" id="companyPeelBackdrop" aria-label="Закрыть карточку"></button>
     <aside class="peel-away-panel" role="dialog" aria-modal="true" aria-labelledby="companyCardTitle">
@@ -851,6 +875,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=ops13"></script>
+  <script src="app.js?v=ops15"></script>
 </body>
 </html>
