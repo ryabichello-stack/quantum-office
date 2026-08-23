@@ -79,6 +79,7 @@
 |----|------|--------|
 | C1 | Content Studio MVP (objection → draft) | ✅ API + UI Студия |
 | C2 | Social Publish (TG/VK/IG/YT posts + images + repost) | ✅ API + UI Соцсети |
+| C3 | Content Flywheel (news → KB → dedup → slots → post/video) | ✅ MVP + UI Флайвил |
 | R1 | Intent Radar ingest + verify | ✅ API + UI Студия |
 | V1 | Video Studio | ✅ scaffold + UI + upload queue flag |
 | T1 | Multi-tenant onboarding | 🟡 bootstrap from seed package |

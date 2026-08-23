@@ -2150,14 +2150,17 @@
         const view = btn.dataset.studioView;
         const content = $("studioViewContent");
         const social = $("studioViewSocial");
+        const flywheel = $("studioViewFlywheel");
         const radar = $("studioViewRadar");
         const video = $("studioViewVideo");
         if (content) content.hidden = view !== "content";
         if (social) social.hidden = view !== "social";
+        if (flywheel) flywheel.hidden = view !== "flywheel";
         if (radar) radar.hidden = view !== "radar";
         if (video) video.hidden = view !== "video";
         if (view === "content") loadContentDrafts().catch(logAction);
         if (view === "social") loadSocialPublishTab().catch(logAction);
+        if (view === "flywheel") loadFlywheelTab().catch(logAction);
         if (view === "radar") loadRadarSignals().catch(logAction);
         if (view === "video") loadVideoDrafts().catch(logAction);
       });
@@ -2171,6 +2174,7 @@
     const view = (active && active.dataset.studioView) || "content";
     if (view === "content") await loadContentDrafts();
     else if (view === "social") await loadSocialPublishTab();
+    else if (view === "flywheel") await loadFlywheelTab();
     else if (view === "radar") await loadRadarSignals();
     else await loadVideoDrafts();
   }
@@ -2192,6 +2196,9 @@
       "videoDraftBtn",
       "spChannelAddBtn",
       "spPostCreateBtn",
+      "fwPollBtn",
+      "fwRunCycleBtn",
+      "fwNewsIngestBtn",
     ].forEach((id) => {
       const el = $(id);
       if (el) el.disabled = !studioWrite;
@@ -2457,6 +2464,182 @@
 
   async function loadSocialPublishTab() {
     await Promise.all([loadSpChannels(), loadSpPosts()]);
+  }
+
+  async function loadFlywheelSlots() {
+    const data = await api("/api/modules/content_flywheel/slots");
+    const box = $("fwSlots");
+    if (!box) return;
+    const items = data.items || [];
+    box.innerHTML = items.length
+      ? items.map((s) => `<span class="ros-chip">${escapeHtml(s.label || s.slot_key)}</span>`).join(" ")
+      : "слотов нет";
+  }
+
+  function renderFwSources(items) {
+    const box = $("fwSourceList");
+    if (!box) return;
+    if (!items.length) {
+      box.innerHTML = `<p class="muted tight">Нет источников — добавьте или FLYWHEEL_SOURCE_TG в .env</p>`;
+      return;
+    }
+    box.innerHTML = items
+      .map(
+        (s) =>
+          `<div class="sp-channel-row"><span class="sp-platform-badge sp-${escapeHtml(s.platform)}">${escapeHtml(s.platform)}</span> ${escapeHtml(s.handle)}</div>`
+      )
+      .join("");
+  }
+
+  async function loadFwSources() {
+    const data = await api("/api/modules/content_flywheel/sources");
+    renderFwSources(data.items || []);
+  }
+
+  async function addFwSource() {
+    const platform = ($("fwSourcePlatform") && $("fwSourcePlatform").value) || "telegram";
+    const handle = (($("fwSourceHandle") && $("fwSourceHandle").value) || "").trim();
+    if (!handle) throw new Error("Укажите handle");
+    await api("/api/modules/content_flywheel/sources", {
+      method: "POST",
+      body: JSON.stringify({ platform, handle, title: handle }),
+    });
+    if ($("fwSourceHandle")) $("fwSourceHandle").value = "";
+    await loadFwSources();
+  }
+
+  function renderFwNews(items) {
+    const box = $("fwNewsList");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Новостей нет — Poll или Ingest.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map(
+        (n) => `<div class="fw-news-row">
+          <div><strong>${escapeHtml((n.title || "").slice(0, 60))}</strong>
+          <span class="muted tight"> · ${escapeHtml(n.status)} · kb:${escapeHtml(n.kb_status || "")}</span></div>
+          <button type="button" class="small btn-quiet" data-fw-process="${escapeHtml(n.id)}">Process</button>
+        </div>`
+      )
+      .join("");
+    box.querySelectorAll("[data-fw-process]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        processFwNews(btn.getAttribute("data-fw-process")).catch(logAction)
+      );
+    });
+  }
+
+  async function loadFwNews() {
+    const data = await api("/api/modules/content_flywheel/news?limit=25");
+    renderFwNews(data.items || []);
+  }
+
+  async function ingestFwNews() {
+    const title = (($("fwNewsTitle") && $("fwNewsTitle").value) || "").trim();
+    const body = (($("fwNewsBody") && $("fwNewsBody").value) || "").trim();
+    if (!title || !body) throw new Error("Заголовок и текст обязательны");
+    await api("/api/modules/content_flywheel/news", {
+      method: "POST",
+      body: JSON.stringify({ platform: "manual", title, body }),
+    });
+    if ($("fwNewsBody")) $("fwNewsBody").value = "";
+    await loadFwNews();
+  }
+
+  async function processFwNews(id) {
+    const data = await api(`/api/modules/content_flywheel/news/${encodeURIComponent(id)}/process`, {
+      method: "POST",
+      body: "{}",
+    });
+    logAction(data);
+    await Promise.all([loadFwNews(), loadFwProposals(), loadFwMemory()]);
+  }
+
+  function renderFwProposals(items) {
+    const box = $("fwProposalCards");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Предложений нет.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map((p) => {
+        const imgs = (p.image_options || []).length;
+        const vid = (p.video_brief && p.video_brief.format) === "talking_head";
+        const actions =
+          p.status === "approved"
+            ? `<span class="muted tight">✓ пост ${escapeHtml((p.social_post_id || "").slice(0, 8))}</span>`
+            : `<button type="button" class="small primary" data-fw-approve="${escapeHtml(p.id)}">Approve → пост+видео</button>`;
+        return `<article class="ros-card">
+          <div class="ros-card-head">
+            <div><div class="ros-card-title">${escapeHtml((p.title || "").slice(0, 70))}</div>
+            <div class="muted tight">слот ${escapeHtml(p.slot_key || "")} · ${imgs} img · ${vid ? "talking-head" : ""}</div></div>
+            ${statusChip(p.status)}
+          </div>
+          <div class="ros-card-actions">${actions}</div>
+        </article>`;
+      })
+      .join("");
+    box.querySelectorAll("[data-fw-approve]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        approveFwProposal(btn.getAttribute("data-fw-approve")).catch(logAction)
+      );
+    });
+  }
+
+  async function loadFwProposals() {
+    const data = await api("/api/modules/content_flywheel/proposals");
+    renderFwProposals(data.items || []);
+  }
+
+  async function loadFwMemory() {
+    const data = await api("/api/modules/content_flywheel/memory?limit=12");
+    const box = $("fwMemoryList");
+    if (!box) return;
+    const items = data.items || [];
+    box.innerHTML = items.length
+      ? items
+          .map(
+            (m) =>
+              `<div class="fw-mem-row">· ${escapeHtml((m.topic || "").slice(0, 50))} <span class="muted">(${escapeHtml((m.published_at || "").slice(0, 10))})</span></div>`
+          )
+          .join("")
+      : "память пуста — после approve появятся темы";
+  }
+
+  async function approveFwProposal(id) {
+    const data = await api(`/api/modules/content_flywheel/proposals/${encodeURIComponent(id)}/approve`, {
+      method: "POST",
+      body: "{}",
+    });
+    logAction(data);
+    await Promise.all([loadFwProposals(), loadFwMemory()]);
+  }
+
+  async function runFlywheelCycle() {
+    const data = await api("/api/modules/content_flywheel/run-cycle", { method: "POST", body: "{}" });
+    logAction(data);
+    await loadFlywheelTab();
+  }
+
+  async function pollFlywheel() {
+    const data = await api("/api/modules/content_flywheel/poll", { method: "POST", body: "{}" });
+    logAction(data);
+    await loadFwNews();
+  }
+
+  async function loadFlywheelTab() {
+    await Promise.all([
+      loadFlywheelSlots(),
+      loadFwSources(),
+      loadFwNews(),
+      loadFwProposals(),
+      loadFwMemory(),
+    ]);
   }
 
   function renderContentCards(items) {
@@ -2911,6 +3094,21 @@
     }
     if ($("spPostListBtn")) {
       $("spPostListBtn").addEventListener("click", () => loadSpPosts().catch(logAction));
+    }
+    if ($("fwSourceAddBtn")) {
+      $("fwSourceAddBtn").addEventListener("click", () => addFwSource().catch(logAction));
+    }
+    if ($("fwPollBtn")) {
+      $("fwPollBtn").addEventListener("click", () => pollFlywheel().catch(logAction));
+    }
+    if ($("fwRunCycleBtn")) {
+      $("fwRunCycleBtn").addEventListener("click", () => runFlywheelCycle().catch(logAction));
+    }
+    if ($("fwNewsIngestBtn")) {
+      $("fwNewsIngestBtn").addEventListener("click", () => ingestFwNews().catch(logAction));
+    }
+    if ($("fwNewsListBtn")) {
+      $("fwNewsListBtn").addEventListener("click", () => loadFwNews().catch(logAction));
     }
     const adv = $("letterAdvanced");
     if (adv) {

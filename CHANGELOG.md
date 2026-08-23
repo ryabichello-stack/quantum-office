@@ -18,6 +18,9 @@
 - UI ops22: роль + usage в Студии/Настройках; кнопка Owned poll; gate write-кнопок при RBAC
 - **Social Publish** (`modules/social_publish`): каналы TG/VK/Instagram/YouTube, мультиплатформенные посты + SVG-картинки, репост после approve (`SOCIAL_PUBLISH_ENABLED`)
 - UI ops23: вкладка Студия → «Соцсети» (каналы, генерация, репост)
+- **Content Flywheel** (`modules/content_flywheel`): parse news → KB inbox → dedup memory → editorial slots (3×/day) → proposals → social post + talking-head video brief
+- UI ops24: вкладка «Флайвил» (sources, poll, run-cycle, approve)
+- Архитектура: `docs/architecture/CONTENT_FLYWHEEL.md`
 - **AI Revenue OS Stage 0** — architecture pack in `docs/architecture/` (AS_IS, TARGET, GAP, DATA_MAPPING, SOCIAL_CAPABILITY_MATRIX, MIGRATION_PLAN, BACKLOG)
 - **Stage 1 data core** (`outreach/modules/accounts`): Account / Person / Employment / ContactPoint / Lead / `domain_events`; lifecycle `NEW`…`BLACKLISTED`; SoT local + Bitrix company id (Accept R1/R2)
 - **Slice A inbound**: IMAP reply → resolve Account/Person/Lead + `message.received` / `message.classified`; Console call watcher → `call.completed` via `/api/modules/accounts/resolve-inbound`
