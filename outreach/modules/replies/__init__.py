@@ -68,6 +68,24 @@ class ReplyInboxStore:
                 "CREATE INDEX IF NOT EXISTS ix_reply_inbox_unprocessed "
                 "ON reply_inbox(processed, created_at)"
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS operator_replies (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    inbox_id INTEGER,
+                    to_email TEXT NOT NULL,
+                    subject TEXT,
+                    body TEXT NOT NULL,
+                    message_id TEXT,
+                    in_reply_to TEXT,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS ix_operator_replies_email "
+                "ON operator_replies(to_email, created_at)"
+            )
 
     def add(
         self,
@@ -158,6 +176,82 @@ class ReplyInboxStore:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def list_by_contact(
+        self,
+        *,
+        email: str,
+        company_id: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        em = (email or "").strip().lower()
+        clauses = ["lower(from_email) = ?"]
+        params: list[Any] = [em]
+        if company_id:
+            clauses.append("company_id = ?")
+            params.append(str(company_id))
+        where = " AND ".join(clauses)
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT * FROM reply_inbox
+                WHERE {where}
+                ORDER BY created_at ASC
+                LIMIT ?
+                """,
+                [*params, max(1, min(limit, 200))],
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def record_operator_reply(
+        self,
+        *,
+        inbox_id: int | None,
+        to_email: str,
+        subject: str,
+        body: str,
+        message_id: str,
+        in_reply_to: str | None = None,
+    ) -> dict[str, Any]:
+        with self.connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO operator_replies(
+                    inbox_id, to_email, subject, body, message_id, in_reply_to, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    inbox_id,
+                    (to_email or "").strip().lower(),
+                    subject,
+                    (body or "")[:20000],
+                    (message_id or "").strip().strip("<>"),
+                    (in_reply_to or "").strip().strip("<>") or None,
+                    _utc_now(),
+                ),
+            )
+            rid = int(cur.lastrowid)
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM operator_replies WHERE id = ?", (rid,)
+            ).fetchone()
+        return dict(row) if row else {"id": rid}
+
+    def list_operator_replies(
+        self, *, peer_email: str, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        em = (peer_email or "").strip().lower()
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM operator_replies
+                WHERE lower(to_email) = ?
+                ORDER BY created_at ASC
+                LIMIT ?
+                """,
+                (em, max(1, min(limit, 200))),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def mark_processed(self, rid: int, *, bitrix_task_id: str | None = None) -> None:
         with self.connect() as conn:
             conn.execute(
@@ -199,6 +293,13 @@ class RepliesModule:
         return {"ok": True, **self.store.counts()}
 
     def register_routes(self, router: Any) -> None:
+        from pydantic import BaseModel, Field
+
+        class ReplyBody(BaseModel):
+            body: str = Field(..., min_length=1, max_length=20000)
+            subject: str | None = Field(default=None, max_length=300)
+            mark_done: bool = True
+
         @router.get("/inbox")
         def inbox(unprocessed_only: bool = True, limit: int = 50) -> dict[str, Any]:
             items = (
@@ -212,3 +313,32 @@ class RepliesModule:
         def mark(rid: int) -> dict[str, Any]:
             self.store.mark_processed(rid)
             return {"ok": True}
+
+        @router.get("/inbox/{rid}/thread")
+        def thread(rid: int) -> dict[str, Any]:
+            from modules.replies.thread import build_inbox_thread
+
+            out = build_inbox_thread(rid, inbox=self.store)
+            if not out.get("ok"):
+                from fastapi import HTTPException
+
+                raise HTTPException(status_code=404, detail=out.get("error") or "not_found")
+            return out
+
+        @router.post("/inbox/{rid}/reply")
+        def reply(rid: int, body: ReplyBody) -> dict[str, Any]:
+            from fastapi import HTTPException
+            from modules.replies.thread import send_inbox_reply
+
+            out = send_inbox_reply(
+                rid,
+                body=body.body,
+                subject=body.subject,
+                mark_done=body.mark_done,
+                inbox=self.store,
+            )
+            if not out.get("ok"):
+                raise HTTPException(
+                    status_code=400, detail=out.get("error") or "reply_failed"
+                )
+            return out

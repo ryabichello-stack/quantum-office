@@ -1,147 +1,158 @@
 # Quantum Outreach — что уже сделано (as-is)
 
-Документ для внешнего ревью: описание текущего контура и просьба о идеях доработок.  
-Связанный ориентир по архитектуре модулей: [ARCHITECTURE.md](./ARCHITECTURE.md).
+Документ для внешнего ревью и операторов.  
+Связанный ориентир: [OUTREACH_ARCHITECTURE.md](./OUTREACH_ARCHITECTURE.md).
 
-## Контекст и позиционирование
+## Контекст
 
-Внутренняя система **Quantum Labs** для B2B-касаний по базе российских **ломбардов**. Не отдельный ESP и не SMTP-сервер: это **оркестратор** вокруг уже существующей инфраструктуры:
+Внутренний **оркестратор B2B-касаний** Quantum Labs (ниша: ломбарды). Не ESP и не Sales Engagement Platform.
 
-- CRM: **Bitrix24** (`b24-m5614z.bitrix24.ru`)
-- Почта: **Mail.ru Business**, ящик `office@quantumlabs.ru` (тот же SMTP/IMAP, что у AVA-mailer)
-- Телефония: **AVA** (Asterisk/Mango) → post-call в mailer → fan-out в outreach → Bitrix
-- Обогащение: **DaData** по ИНН
-- Хостинг: отдельный systemd-сервис `ava-outreach` на prod (`:8012`, UI `https://a.47z.ru/_ava_outreach/ui/`), **изолирован** от Asterisk/AVA docker/VPN — их не трогаем
+| Интеграция | Роль |
+|------------|------|
+| Bitrix24 | CRM, сделки, timeline |
+| Mail.ru `office@` | SMTP + IMAP |
+| DaData | ИНН → ФИО, адрес, TZ |
+| AVA / телефония | Post-call → Bitrix |
 
-**Сознательный выбор:** cold/outreach идёт с **стабильного From** (`office@`), без ротации плюс-адресов и без Smartlead/Instantly. Репутация ящика важнее «фермы доменов» на текущем объёме.
+**Объём:** ~1785 компаний, ~3121 контакт. **Лимит:** ~15 писем/день, один ящик.
 
-Объём базы (ориентир на момент написания): **~1785 компаний**, **~3121 контакт**, почти у всех есть ИНН и директор из DaData; отрасль в Bitrix выставлена **«Ломбарды»**.
-
----
-
-## Стек
-
-- Python + **FastAPI**
-- UI: простой admin (HTML/JS), русскоязычный, token-auth
-- Хранение: **SQLite** (`outbox.db`, `clients.db`, `modules.db`, `settings.db`)
-- Модульная архитектура (`modules/*` + registry), чтобы наращивать фичи без связки с телефонией
-
-Прод-путь кода: `/opt/ava-outreach`. Репозиторий: `extras/quantum-outreach/`.
+**Прод:** `ava-outreach.service` `:8012`, UI через Quantum Console `?v=ops14`.
 
 ---
 
-## Что умеет система сегодня
+## Зрелость по слоям
 
-### 1. База компаний и контактов
-
-- Полный sync из Bitrix: компании/контакты со всеми полями (`*`, `UF_*`), EMAIL/PHONE/WEB/IM
-- Реквизиты (ИНН, ОГРН и т.д.) → локальное зеркало `clients.db`
-- UI «Клиенты»: просмотр, sync, rebuild очереди без онлайн-Bitrix
-- **DaData:** lookup/enrich по ИНН → ФИО директора, адрес, ОКВЭД и др. → push обратно в Bitrix (реквизиты/директор)
-- Массово проставлена отрасль **Ломбарды**
-
-### 2. Кампания и отправка
-
-- Одна очередь outbox + **sequence 3 шага** (день 0 / +3 / +7): intro → bump → route
-- Управление: **Play / Pause / Stop**, kill-switch `OUTREACH_ENABLED` (по умолчанию выкл.)
-- Лимиты: дневной ≤**15**, warmup 3→15, jitter 60–180 с
-- **domain cap** 2/сутки + **company cap** 1 + cooldown 14д до второго контакта
-- Atomic claim `pending→sending→sent` с Message-ID до SMTP
-- После SMTP: **timeline на компании**, сделка **не** создаётся
-- Сделка — от **ответа** / telephony qualify / вручную
-- **Contact policy** AVA↔email: refuse/meeting → стоп sequence; reply → cooldown
-
-### 3. Engagement / replies (P0+P1)
-
-- Open pixel; bounce hard/soft/policy/auth + stop rules
-- HTTPS unsubscribe + mailto
-- Локальная verification (syntax/MX/role)
-- Rule-based reply class + UI **Inbox** (необработанные) + Bitrix task на human/positive
-- Домен: **`office@quantumlabs.ru`** с жёсткой защитой, без фермы
-
-### 4. Ответы
-
-- IMAP watcher каждые ~2 мин
-- Сопоставление с outbox (From / Message-ID)
-- UI «Ответы»
-- Событие в Bitrix + notify на `office@`
-
-### 5. Deliverability / anti-ban (базовый Control Center)
-
-- Stable From (не ротируем)
-- Warmup, domain cap, suppression (bounce / unsubscribe / manual)
-- Kill-switch и дневной лимит
-- UI вкладка Anti-ban
-
-### 6. Телефония → CRM
-
-После звонка AVA mailer шлёт structured lead в `POST /api/telephony/lead`:
-
-- upsert **контакт** (телефон/email)
-- upsert **компания** (отрасль Ломбарды)
-- сделка `SOURCE=CALL` при квалификации (интерес / встреча / email / company / summary)
-- комментарий в **timeline**
-- идемпотентность по `call_id`
-
-Каналы **звонок** и **email** сходятся в одном Bitrix.
-
-### 7. Чего намеренно нет
-
-- Нет Smartlead/Instantly и своей SMTP-фермы
-- Нет multi-step sequences / A/B / сегмент-билдера
-- Нет верификации email через внешний API
-- Нет click-tracking и antibot
-- Нет AI-классификации ответов
-- Нет импорта реестра ЦБ с diff (источник правды сейчас Bitrix + DaData)
-- Нет RBAC/ролей — один UI-token
-- Нет PostgreSQL/Redis/Celery/Next.js — сознательно lean
+| Слой | Статус | Содержание |
+|------|--------|------------|
+| **A** | ✅ | Локальные B2B-окна, geo KPI, колонка «Окно», настройки = движок |
+| **B** | ✅ | Фильтры очереди, row actions, deferred hint, inbox badges |
+| **C** | ✅ | Праздники РФ, OOO-pause, TZ fairness, auto-geo после sync |
+| **D** | ✅ | Next actions + alerts, campaign collapse, CI pytest+sync |
+| **E** | ✅ | Push notify (email/Telegram), step analytics, consent ledger |
+| **F** | ✅ | Bulk queue, company card, on-call webhook, consent CSV |
+| **F+** | ✅ | Server calendar API, consent export filters + legal hold |
 
 ---
 
-## UI (вкладки)
+## Движок отправки
 
-Обзор · Отчёт · Клиенты · Очередь · Ответы · Письмо · Anti-ban · Расписание · Настройки
-
----
-
-## Принципы, которыми уже руководствуемся
-
-1. Не ломать телефонию и prod-почту ради outreach.
-2. Не врать в UI про «доставлено во входящие» только по SMTP 2xx.
-3. Bitrix — система продаж; outreach — касания + события.
-4. Лид в CRM от **сигнала** (ответ / квалификация звонка), не от одного open.
-5. Сначала репутация ящика и маленькие лимиты, потом масштаб.
+- Outbox + **цепочки 5 шагов** (industry packs: дни 0 / 3 / 6 / 10 / 15) — intro → сценарии → …
+- Play / Pause / Stop, warmup, jitter, domain/company caps
+- **Локальные окна** получателя (10:00–11:30, 14:30–16:30, пн–пт, вт–чт preferred)
+- Праздники РФ, fairness восток/запад (`rotate_daily`)
+- Follow-up якорится от даты первого письма
+- OOO / автоответ → **пауза** цепочки (`OOO_PAUSE_DAYS`), не стоп
 
 ---
 
-## Просьба к ревьюеру
+## UI (6 вкладок)
 
-Ниже по смыслу ориентируемся на полное ТЗ «идеальной» cold-email платформы (event-driven, Smartlead, сегменты, Deliverability Center, AI replies и т.д.). Мы **не** планируем переписывать текущую систему в этот продукт целиком.
+**Кампания · Очередь · Входящие · Результат · Клиенты · Настройки**
 
-Нужны идеи в формате:
+Общее:
+- KPI-полоска (очередь / сегодня / sent / opens / replies / Geo TZ / статус)
+- **Алерты** (mailbox pause, IMAP, runner stopped)
+- **Следующие действия** — приоритетная лента (входящие, callback, due follow-up)
+- Старт / Пауза / Стоп в шапке
 
-1. **Что добавить в наш lean-контур в ближайшие 1–2 итерации** (максимум пользы при минимальной сложности).
-2. **Что из ТЗ имеет смысл позже**, когда вырастем с `office@` / упрёмся в репутацию.
-3. **Что сознательно не делать** в нашей модели (свой SMTP + Bitrix + AVA).
-4. Есть ли **дыры**, из-за которых мы сейчас теряем сделки или жжём ящик (bounce policy, sequences, классификация ответов, отдельные sending domains, verification и т.п.).
+| Вкладка | Есть | Профи-уровень (ещё нет) |
+|---------|------|-------------------------|
+| **Кампания** | Pack, 5-step chain (collapse), брендинг, тест | Wizard, template versions, approval gate |
+| **Очередь** | Due + первые, TZ/окно, фильтры, row actions, **bulk**, **14-day calendar API**, **company card** | Assignee |
+| **Входящие** | Классификация, badges, «Готово», company card, **thread + reply** | Assignee |
+| **Результат** | Воронка, по дням, последние, **step funnel + conversion %** | Cohort export |
+| **Клиенты** | Sync+geo+rebuild (auto-geo), city/TZ table, **company card**, **data quality** | Bulk geo repair |
+| **Настройки** | Окна, праздники, fairness, OOO, anti-ban, **notify + on-call webhook** | Deliverability dashboard, DNS check |
 
-### Ограничения для идей
+### API оператора
 
-- объём базы ~2k ломбардов;
-- один рабочий ящик `office@quantumlabs.ru`;
-- Bitrix уже есть и наполнен;
-- телефония AVA уже пишет лиды в Bitrix;
-- стек FastAPI + SQLite + простой UI — менять можно только если выгода очевидна.
+- `GET /api/ops/summary` — alerts + next actions
+- `GET /api/ops/health` — SMTP/IMAP/Bitrix/mailbox pause
+- `GET /api/dashboard` — полная сводка
+- `GET /api/modules/analytics/sequence-steps` — воронка по шагам цепочки
+- `GET /api/modules/consent/ledger` — журнал DNC/consent
+
+### Уведомления (Layer E)
+
+**Quantum Panel** — общий канал оператору (email + @Quantum_panel_bot) для всего центра управления.  
+Настройка: **Пульт Console** или Outreach → «Уведомления Quantum Panel».  
+Сейчас события Outreach помечаются как `Quantum Panel · Outreach`; Console/звонки — через `POST /api/ops/notify` (`notify_panel_event()`).  
+API: `POST /api/ops/notify`, `POST /api/ops/telegram/verify|discover|test|apply-branding`, статус в `GET /api/ops/health`.  
+`apply-branding`: `include_profile_photo=false` при сохранении настроек; `true` — кнопка «Применить брендинг».
+
+Статика: `outreach/static` → `console/static/outreach` (`?v=ops14`).
+
+### Layer F ✅
+
+- Company card, bulk queue, on-call webhook, consent CSV, data quality
+
+### Layer F+ ✅
+
+- **Календарь очереди** — `GET /api/modules/sequences/calendar?days=14` (МСК), UI во вкладке «Очередь»
+- **Consent export** — `created_from` / `created_to`, `legal_hold` snapshot
+
+### Layer G2 🟡 (inbox)
+
+- `GET /api/modules/replies/inbox/{id}/thread` — переписка (outreach + входящие + ответы оператора)
+- `POST /api/modules/replies/inbox/{id}/reply` — ответ с `office@` (In-Reply-To / References)
+- UI: клик по строке во «Входящие» → боковая панель + форма ответа
 
 ---
 
-## Внутренний черновик приоритетов (не догма)
+## Что намеренно не делаем (lean)
 
-Уже обсуждали как разумный порядок внутри lean-контура:
+- Smartlead / ESP-ферма / ротация From
+- AI-классификация ответов
+- PostgreSQL / Celery (пока SQLite хватает)
+- RBAC (один UI-token)
+- Click-tracking
 
-1. Честные статусы + event timeline по письму  
-2. Hard/soft bounce + auto-pause  
-3. Задачи в Bitrix на positive reply  
-4. Sequences 2–3 касания  
-5. Классификация ответов  
-6. Только потом — отдельный sending domain / внешний ESP, если объём вырастет  
+---
+
+## Риски и следующий приоритет
+
+| Риск | Митигация сейчас | Следующий шаг |
+|------|------------------|---------------|
+| Репутация `office@` | Warmup, caps, pause | Отдельный sending domain при росте |
+| Потеря ответов | IMAP + inbox + **push notify** + **thread/reply UI** | Assignee |
+| Compliance | Unsub, suppression, **consent ledger**, CSV export | Legal hold v2 (immutable) |
+| Один email/компания | Архитектура outbox | Multi-contact targeting |
+| CI / merge | pytest + sync workflow | `requirements.txt` в CI, merge PR #10 |
+
+---
+
+## Куда идём (Layer G+)
+
+**Цель:** не ESP и не Smartlead — **операторский пульт** одного ящика `office@` с телефонией и CRM в одном контуре.
+
+| Горизонт | Фокус |
+|----------|--------|
+| **G — Inbox** | 🟡 | Thread view + reply из UI (Layer G2) |
+| **G — Signals** | 🟡 | Call notify (Console watcher), callback notify |
+| **G — Results** | 🟡 | Step funnel + conversion %, KPI TG/on-call pills |
+| **H — Scale** | Multi-contact, отдельный sending domain, deliverability dashboard |
+| **Second Brain** | ADR без реализации до Accept — общая память голоса и текста |
+
+Принцип: **UI = движок** (окна, caps, pause), **сигнал > open**, **lean** (SQLite, один token, без ESP-фермы).
+
+---
+
+## Тесты и deploy
+
+```bash
+cd outreach && python -m pytest tests/ -q
+bash scripts/sync-outreach-ui.sh
+```
+
+CI: `.github/workflows/outreach.yml`
+
+Статика: `outreach/static` → `console/static/outreach` (обязательно синхронизировать).
+
+---
+
+## Принципы
+
+1. Не ломать телефонию и prod-почту.
+2. UI управляет тем же, чем движок (локальные окна, не «тихое» МСК).
+3. Сделка в Bitrix — от **сигнала** (ответ / звонок), не от open.
+4. Сначала репутация ящика, потом масштаб.

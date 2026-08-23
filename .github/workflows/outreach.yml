@@ -1,0 +1,38 @@
+name: outreach
+
+on:
+  push:
+    paths:
+      - "outreach/**"
+      - "console/static/outreach/**"
+      - "scripts/sync-outreach-ui.sh"
+      - ".github/workflows/outreach.yml"
+  pull_request:
+    paths:
+      - "outreach/**"
+      - "console/static/outreach/**"
+      - "scripts/sync-outreach-ui.sh"
+      - ".github/workflows/outreach.yml"
+
+jobs:
+  test-and-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install outreach test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r outreach/requirements.txt pytest
+
+      - name: Run outreach unit tests
+        working-directory: outreach
+        run: python -m pytest tests/ -q
+
+      - name: Verify outreach UI sync
+        run: bash scripts/sync-outreach-ui.sh

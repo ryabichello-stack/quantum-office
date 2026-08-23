@@ -385,19 +385,28 @@ def ingest_telephony_lead(
                 interested=interested and not refused,
             )
             if meeting or refused or (_truthy(payload.get("do_not_email"))):
-                SequenceStore().stop(
-                    company_id=str(company_id),
-                    reason="call_meeting"
+                stop_reason = (
+                    "call_meeting"
                     if meeting
-                    else ("call_refused" if refused else "call_policy"),
+                    else ("call_refused" if refused else "call_policy")
                 )
+            else:
+                # Any connected call / conversation: stop chain to avoid overheating.
+                outcome_l = (outcome or "").lower()
+                soft = outcome_l in (
+                    "",
+                    "no_answer",
+                    "no-answer",
+                    "busy",
+                    "voicemail",
+                    "failed",
+                    "missed",
+                )
+                stop_reason = None if soft else "call_connected"
+            if stop_reason:
+                SequenceStore().stop(company_id=str(company_id), reason=stop_reason)
                 if email:
-                    SequenceStore().stop(
-                        email=str(email),
-                        reason="call_meeting"
-                        if meeting
-                        else ("call_refused" if refused else "call_policy"),
-                    )
+                    SequenceStore().stop(email=str(email), reason=stop_reason)
     except Exception:  # noqa: BLE001
         logger.debug("policy/sequence after call failed", exc_info=True)
 

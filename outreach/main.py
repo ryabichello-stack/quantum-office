@@ -10,10 +10,10 @@ import secrets
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -22,6 +22,9 @@ from bitrix_client import BitrixClient
 from core.registry import AppContext, ModuleRegistry
 from modules.clients import (
     ClientsModule,
+    backfill_company_geo_and_fio,
+    company_geo_row,
+    geo_stats,
     rebuild_outbox_from_clients,
     sync_from_bitrix,
 )
@@ -34,13 +37,34 @@ from modules.tracking import PIXEL_GIF, TrackingModule
 from modules.verification import VerificationModule
 from modules.sequences import SequencesModule
 from modules.policy import PolicyModule
+from modules.consent import ConsentModule
 from modules.replies import RepliesModule
 from outbox import OutboxStore
-from reply_watcher import ReplyWatchThread, check_replies, imap_configured
+from reply_watcher import ReplyWatchThread, check_replies, imap_configured, reply_watch_status
+from ops_center import build_ops_summary
 from runtime_settings import RuntimeSettings
 from sender import send_batch, send_one, smtp_configured
 from sync import sync_companies
-from templates import DEFAULT_HTML, DEFAULT_PLAIN, render_cooperation
+from templates import (
+    DEFAULT_HTML,
+    DEFAULT_PLAIN,
+    DEFAULT_SIGNATURE,
+    default_logo_url,
+    public_base_url,
+    render_cooperation,
+)
+from content.packs import get_pack, list_packs, pack_campaign_templates
+from content.pack_drafts import (
+    PackDraftStore,
+    normalize_steps,
+    pack_letters_payload,
+    resolve_pack,
+)
+from presentations import (
+    presentation_meta,
+    reset_presentation,
+    save_presentation,
+)
 
 load_dotenv()
 
@@ -51,6 +75,8 @@ DATA_DIR = Path(os.getenv("DATA_DIR", "/opt/ava-outreach/data"))
 DB_PATH = DATA_DIR / "outbox.db"
 SETTINGS_DB = DATA_DIR / "settings.db"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+BRAND_DATA_DIR = DATA_DIR / "brand"
 
 _reply_thread: ReplyWatchThread | None = None
 _settings: RuntimeSettings | None = None
@@ -65,6 +91,7 @@ _telephony_mod = TelephonyModule()
 _verification_mod = VerificationModule()
 _sequences_mod = SequencesModule()
 _policy_mod = PolicyModule()
+_consent_mod = ConsentModule()
 _replies_mod = RepliesModule()
 _registry.register(_tracking_mod)
 _registry.register(_deliver_mod)
@@ -76,6 +103,7 @@ _registry.register(_telephony_mod)
 _registry.register(_verification_mod)
 _registry.register(_sequences_mod)
 _registry.register(_policy_mod)
+_registry.register(_consent_mod)
 _registry.register(_replies_mod)
 _app_ctx: AppContext | None = None
 
@@ -116,6 +144,12 @@ async def lifespan(_app: FastAPI):
     store = OutboxStore(DB_PATH)
     store.init_db()
     _settings = RuntimeSettings(SETTINGS_DB)
+    try:
+        from callback_cta import init_db as _cb_init
+
+        _cb_init()
+    except Exception:  # noqa: BLE001
+        logger.exception("callback_cta init failed")
     _ensure_ui_token()
     _registry.init_all()
 
@@ -165,6 +199,16 @@ app = FastAPI(title="AVA Outreach", version="0.10.0", lifespan=lifespan)
 
 def _store() -> OutboxStore:
     return OutboxStore(DB_PATH)
+
+
+_pack_drafts: PackDraftStore | None = None
+
+
+def _drafts() -> PackDraftStore:
+    global _pack_drafts
+    if _pack_drafts is None:
+        _pack_drafts = PackDraftStore(SETTINGS_DB)
+    return _pack_drafts
 
 
 def _rt() -> RuntimeSettings:
@@ -219,22 +263,42 @@ def _status_payload() -> dict[str, Any]:
         "sequences": _sequences_mod.health(),
         "policy": _policy_mod.health(),
         "reply_inbox": _replies_mod.health(),
+        "consent": _consent_mod.health(),
         "deliverability": _deliver_mod.store.stats(rt, rt.get_int("OUTREACH_DAILY_LIMIT", 15)),
         "engagement": _tracking_mod.store.engagement_counts(),
         "warmup_enabled": rt.get_bool("WARMUP_ENABLED", True),
         "primary_mailbox_protection": True,
         "run_respect_window": rt.get_bool("RUN_RESPECT_WINDOW", True),
+        "schedule_local_windows": rt.get_bool("SCHEDULE_LOCAL_WINDOWS", True),
+        "schedule_followups_first": rt.get_bool("SCHEDULE_FOLLOWUPS_FIRST", True),
         "schedule_window": {
             "start": rt.get_int("SCHEDULE_WINDOW_START", 10),
             "end": rt.get_int("SCHEDULE_WINDOW_END", 18),
             "timezone": rt.get("SCHEDULE_TIMEZONE", "Europe/Moscow"),
             "batch_size": rt.get_int("SCHEDULE_BATCH_SIZE", 1),
+            "local_windows": rt.get_bool("SCHEDULE_LOCAL_WINDOWS", True),
+            "slots": rt.get("SCHEDULE_SLOTS", "10:00-11:30,14:30-16:30"),
+            "preferred_weekdays": rt.get("SCHEDULE_PREFERRED_WEEKDAYS", "1,2,3"),
+            "allowed_weekdays": rt.get("SCHEDULE_ALLOWED_WEEKDAYS", "0,1,2,3,4"),
+            "default_timezone": rt.get("SCHEDULE_DEFAULT_TIMEZONE", "Europe/Moscow"),
+            "followups_first": rt.get_bool("SCHEDULE_FOLLOWUPS_FIRST", True),
+        },
+        "queue": {
+            "send_order": (
+                "followups_due_then_first_touch"
+                if rt.get_bool("SCHEDULE_FOLLOWUPS_FIRST", True)
+                else "first_touch_then_followups"
+            ),
+            "due": len(_sequences_mod.store.list_due(50)),
+            "upcoming": len(_sequences_mod.store.list_upcoming(50)),
+            "pending_first": int((_store().counts() or {}).get("pending") or 0),
         },
         "runner": _runner_mod.health(),
         "clients": {
             "counts": _clients_mod.store.counts(),
             "db_path": str(_clients_mod.store.db_path),
             "last_sync": _clients_mod.store.last_sync(),
+            "geo": geo_stats(_clients_mod.store),
         },
         "modules": _registry.catalog(),
         "outbox": store.status_report(),
@@ -430,6 +494,188 @@ async def unsubscribe_one_click(token: str, request: Request):
     )
 
 
+def _callback_source_email(token: str) -> str | None:
+    from callback_cta import parse_callback_token
+
+    parsed = parse_callback_token(token)
+    if not parsed:
+        return None
+    oid = int(parsed["outbox_id"] or 0)
+    if oid <= 0:
+        return "campaign"
+    row = _store().get_row(oid)
+    return row.email if row else None
+
+
+@app.api_route("/callback/{token}", methods=["GET", "POST"])
+async def callback_request_page(token: str, request: Request):
+    """Public landing: FIO + phone form → notify + optional AVA dial."""
+    from fastapi.responses import HTMLResponse
+
+    from callback_cta import (
+        form_page_html,
+        parse_callback_token,
+        process_callback_request,
+        verify_callback_token,
+    )
+
+    rt = _rt()
+    source_email = _callback_source_email(token)
+    verified = verify_callback_token(token, email=source_email or "campaign")
+    if not verified:
+        return HTMLResponse(
+            form_page_html(token=token, settings=rt, error="Ссылка недействительна или устарела."),
+            status_code=400,
+        )
+
+    if request.method == "GET":
+        q_fio = (request.query_params.get("fio") or "").strip()
+        q_phone = (request.query_params.get("phone") or "").strip()
+        if q_fio and q_phone:
+            result = process_callback_request(
+                token=token,
+                fio=q_fio,
+                phone=q_phone,
+                settings=rt,
+                source_email=source_email,
+                user_agent=request.headers.get("user-agent"),
+                ip=request.client.host if request.client else None,
+            )
+            if result.get("ok"):
+                return HTMLResponse(
+                    form_page_html(
+                        token=token,
+                        settings=rt,
+                        done=True,
+                        done_message=str(result.get("message") or ""),
+                    )
+                )
+            err_map = {
+                "fio_required": "Укажите ФИО",
+                "phone_invalid": "Укажите корректный телефон",
+                "rate_limited": "Заявка с этого номера уже принята. Подождите немного.",
+                "bad_signature": "Ссылка недействительна",
+            }
+            return HTMLResponse(
+                form_page_html(
+                    token=token,
+                    settings=rt,
+                    prefill_fio=q_fio,
+                    prefill_phone=q_phone,
+                    error=err_map.get(str(result.get("error")), "Не удалось отправить заявку"),
+                ),
+                status_code=400,
+            )
+        return HTMLResponse(
+            form_page_html(
+                token=token,
+                settings=rt,
+                prefill_fio=q_fio,
+                prefill_phone=q_phone,
+            )
+        )
+
+    fio = ""
+    phone = ""
+    ctype = (request.headers.get("content-type") or "").lower()
+    if "application/json" in ctype:
+        try:
+            payload = await request.json()
+        except Exception:  # noqa: BLE001
+            payload = {}
+        fio = str((payload or {}).get("fio") or "")
+        phone = str((payload or {}).get("phone") or "")
+    else:
+        form = await request.form()
+        fio = str(form.get("fio") or "")
+        phone = str(form.get("phone") or "")
+
+    result = process_callback_request(
+        token=token,
+        fio=fio,
+        phone=phone,
+        settings=rt,
+        source_email=source_email,
+        user_agent=request.headers.get("user-agent"),
+        ip=request.client.host if request.client else None,
+    )
+    if "application/json" in ctype:
+        code = 200 if result.get("ok") else 400
+        return JSONResponse(result, status_code=code)
+
+    if not result.get("ok"):
+        err_map = {
+            "fio_required": "Укажите ФИО",
+            "phone_invalid": "Укажите корректный телефон",
+            "rate_limited": "Заявка с этого номера уже принята. Подождите немного.",
+            "bad_signature": "Ссылка недействительна",
+        }
+        return HTMLResponse(
+            form_page_html(
+                token=token,
+                settings=rt,
+                prefill_fio=fio,
+                prefill_phone=phone,
+                error=err_map.get(str(result.get("error")), "Не удалось отправить заявку"),
+            ),
+            status_code=400,
+        )
+    # Bitrix note (best-effort)
+    try:
+        parsed = parse_callback_token(token)
+        oid = int((parsed or {}).get("outbox_id") or 0)
+        row = _store().get_row(oid) if oid else None
+        bitrix = _bitrix_or_none()
+        if bitrix and row and row.company_id:
+            bitrix.add_timeline_comment(
+                row.company_id,
+                (
+                    f"📞 Заявка на звонок из письма: {result.get('fio')} "
+                    f"+{result.get('phone')} (notify={result.get('notify_ok')}, "
+                    f"dial={((result.get('dial') or {}).get('mode'))})"
+                ),
+                entity_type="company",
+            )
+            bitrix.close()
+    except Exception:  # noqa: BLE001
+        logger.debug("callback bitrix note failed", exc_info=True)
+
+    return HTMLResponse(
+        form_page_html(
+            token=token,
+            settings=rt,
+            done=True,
+            done_message=str(result.get("message") or ""),
+        )
+    )
+
+
+class CallbackCtaSettingsBody(BaseModel):
+    settings: dict[str, Any] = Field(default_factory=dict)
+
+
+@app.get("/api/callback-cta/settings", dependencies=[Depends(require_ui_auth)])
+def api_callback_cta_settings() -> dict[str, Any]:
+    from callback_cta import settings_snapshot
+
+    return {"ok": True, "settings": settings_snapshot(_rt())}
+
+
+@app.put("/api/callback-cta/settings", dependencies=[Depends(require_ui_auth)])
+def api_callback_cta_settings_put(body: CallbackCtaSettingsBody) -> dict[str, Any]:
+    from callback_cta import settings_snapshot
+
+    updated = _rt().set_many(body.settings or {})
+    return {"ok": True, "updated": sorted(updated.keys()), "settings": settings_snapshot(_rt())}
+
+
+@app.get("/api/callback-cta/requests", dependencies=[Depends(require_ui_auth)])
+def api_callback_cta_requests(limit: int = 30) -> dict[str, Any]:
+    from callback_cta import recent_requests
+
+    return {"ok": True, "items": recent_requests(limit=limit)}
+
+
 @app.get("/")
 def root() -> RedirectResponse:
     return RedirectResponse(url="/ui/")
@@ -444,8 +690,8 @@ def status() -> dict[str, Any]:
 
 
 @app.post("/sync", dependencies=[Depends(require_ui_auth)])
-def api_sync() -> dict[str, Any]:
-    """Sync Bitrix → local clients DB, then refresh outbox from local mirror."""
+def api_sync(skip_geo: bool = False) -> dict[str, Any]:
+    """Sync Bitrix → local clients DB, auto geo/ФИО backfill, then refresh outbox."""
     client = _bitrix_or_none()
     if client is None:
         raise HTTPException(
@@ -458,10 +704,15 @@ def api_sync() -> dict[str, Any]:
         )
     try:
         clients_report = sync_from_bitrix(_clients_mod.store, client)
+        geo_report: dict[str, Any] = {"ok": True, "skipped": True}
+        if not skip_geo:
+            geo_report = backfill_company_geo_and_fio(_clients_mod.store)
+            geo_report["stats"] = geo_stats(_clients_mod.store)
         outbox_report = rebuild_outbox_from_clients(_clients_mod.store, _store())
         return {
             "ok": bool(clients_report.get("ok")),
             "clients": clients_report,
+            "geo_backfill": geo_report,
             "outbox_rebuild": outbox_report,
         }
     finally:
@@ -477,6 +728,19 @@ def api_clients_sync_bitrix() -> dict[str, Any]:
 def api_clients_rebuild_outbox() -> dict[str, Any]:
     """Rebuild outbox from local clients.db without calling Bitrix."""
     return rebuild_outbox_from_clients(_clients_mod.store, _store())
+
+
+@app.get("/api/modules/clients/geo", dependencies=[Depends(require_ui_auth)])
+def api_clients_geo_stats() -> dict[str, Any]:
+    return geo_stats(_clients_mod.store)
+
+
+@app.post("/api/modules/clients/backfill-geo", dependencies=[Depends(require_ui_auth)])
+def api_clients_backfill_geo(limit: int | None = None) -> dict[str, Any]:
+    """Backfill city/timezone + director Имя/Отчество from DaData cache / Bitrix raw."""
+    report = backfill_company_geo_and_fio(_clients_mod.store, limit=limit)
+    report["stats"] = geo_stats(_clients_mod.store)
+    return report
 
 
 @app.post("/check-replies", dependencies=[Depends(require_ui_auth)])
@@ -527,6 +791,7 @@ class SendOneBody(BaseModel):
     contact_name: str | None = None
     dry_run: bool = False
     create_bitrix_deal: bool = False
+    attach_presentation: bool | None = None
 
 
 @app.post("/send-one", dependencies=[Depends(require_ui_auth)])
@@ -544,6 +809,7 @@ def api_send_one(body: SendOneBody) -> dict[str, Any]:
             deliverability=_deliver_mod.store,
             create_bitrix_deal=body.create_bitrix_deal,
             bitrix=bitrix,
+            attach_presentation=body.attach_presentation,
         )
         if not result.get("ok"):
             raise HTTPException(status_code=400, detail=result.get("error") or "send failed")
@@ -561,26 +827,216 @@ def api_dashboard() -> dict[str, Any]:
     return _status_payload()
 
 
+@app.get("/api/ops/summary", dependencies=[Depends(require_ui_auth)])
+def api_ops_summary() -> dict[str, Any]:
+    """Operator alerts + prioritized next actions."""
+    from callback_cta import recent_requests
+
+    rt = _rt()
+    store = _store()
+    seq = _sequences_mod.store
+    return build_ops_summary(
+        rt=rt,
+        deliverability=_deliver_mod.store,
+        reply_inbox=_replies_mod.store,
+        sequences=seq,
+        runner=_runner_mod,
+        reply_watch=reply_watch_status(),
+        callback_requests=recent_requests(limit=15),
+        queue={
+            "due": len(seq.list_due(50)),
+            "upcoming": len(seq.list_upcoming(50)),
+            "pending_first": int((store.counts() or {}).get("pending") or 0),
+        },
+        outbox_counts=(store.counts() or {}),
+    )
+
+
+@app.get("/api/ops/health", dependencies=[Depends(require_ui_auth)])
+def api_ops_health() -> dict[str, Any]:
+    """Deep health for operator alerts (IMAP, SMTP, Bitrix, mailbox pause)."""
+    rt = _rt()
+    paused, pause_reason = _deliver_mod.store.is_paused()
+    rw = reply_watch_status()
+    tg_token = (rt.get("OPS_NOTIFY_TELEGRAM_BOT_TOKEN", "") or "").strip()
+    tg_chat = (rt.get("OPS_NOTIFY_TELEGRAM_CHAT_ID", "") or "").strip()
+    tg_enabled = rt.get_bool("OPS_NOTIFY_TELEGRAM_ENABLED", False)
+    oncall_url = (rt.get("OPS_NOTIFY_ONCALL_WEBHOOK_URL", "") or "").strip()
+    oncall_enabled = rt.get_bool("OPS_NOTIFY_ONCALL_ENABLED", bool(oncall_url))
+    return {
+        "ok": True,
+        "smtp_configured": smtp_configured(),
+        "imap_configured": imap_configured(),
+        "bitrix_webhook_configured": bool(_webhook_url()),
+        "reply_watch": rw,
+        "mailbox_paused": paused,
+        "mailbox_pause_reason": pause_reason,
+        "run_state": (rt.get("OUTREACH_RUN_STATE", "stopped") or "stopped").lower(),
+        "outreach_enabled": rt.get_bool("OUTREACH_ENABLED", False),
+        "runner": _runner_mod.health(),
+        "telegram": {
+            "enabled": tg_enabled,
+            "token_configured": bool(tg_token),
+            "chat_id_configured": bool(tg_chat),
+            "ready": tg_enabled and bool(tg_token) and bool(tg_chat),
+        },
+        "oncall": {
+            "enabled": oncall_enabled,
+            "webhook_configured": bool(oncall_url),
+            "ready": oncall_enabled and bool(oncall_url),
+        },
+        "ops_notify": {
+            "enabled": rt.get_bool("OPS_NOTIFY_ENABLED", True),
+            "email_configured": bool(
+                (rt.get("OPS_NOTIFY_EMAIL", "") or rt.get("REPLY_NOTIFY_EMAIL", "") or "").strip()
+            ),
+        },
+    }
+
+
+class TelegramTokenBody(BaseModel):
+    bot_token: str | None = None
+
+
+class TelegramTestBody(BaseModel):
+    bot_token: str | None = None
+    chat_id: str | None = None
+    message: str | None = None
+
+
+@app.post("/api/ops/telegram/verify", dependencies=[Depends(require_ui_auth)])
+def api_telegram_verify(body: TelegramTokenBody) -> dict[str, Any]:
+    from ops_notify import resolve_bot_token, telegram_verify_bot
+
+    tok = resolve_bot_token(body.bot_token, _rt())
+    if not tok:
+        raise HTTPException(status_code=400, detail="bot_token_required")
+    out = telegram_verify_bot(tok)
+    if not out.get("ok"):
+        raise HTTPException(status_code=400, detail=out.get("error") or "telegram_verify_failed")
+    return out
+
+
+@app.post("/api/ops/telegram/discover", dependencies=[Depends(require_ui_auth)])
+def api_telegram_discover(body: TelegramTokenBody) -> dict[str, Any]:
+    from ops_notify import resolve_bot_token, telegram_discover_chats
+
+    tok = resolve_bot_token(body.bot_token, _rt())
+    if not tok:
+        raise HTTPException(status_code=400, detail="bot_token_required")
+    out = telegram_discover_chats(tok)
+    if not out.get("ok"):
+        raise HTTPException(status_code=400, detail=out.get("error") or "telegram_discover_failed")
+    return out
+
+
+@app.post("/api/ops/telegram/test", dependencies=[Depends(require_ui_auth)])
+def api_telegram_test(body: TelegramTestBody) -> dict[str, Any]:
+    from ops_notify import PANEL_BRAND, resolve_bot_token, telegram_send_message
+
+    rt = _rt()
+    tok = resolve_bot_token(body.bot_token, rt)
+    chat_id = (body.chat_id or rt.get("OPS_NOTIFY_TELEGRAM_CHAT_ID", "") or "").strip()
+    if not tok:
+        raise HTTPException(status_code=400, detail="bot_token_required")
+    if not chat_id:
+        raise HTTPException(status_code=400, detail="chat_id_required")
+    text = (body.message or "").strip() or f"✅ {PANEL_BRAND}: тестовое уведомление оператору."
+    out = telegram_send_message(tok, chat_id, text)
+    if not out.get("ok"):
+        raise HTTPException(status_code=400, detail=out.get("error") or "telegram_send_failed")
+    return out
+
+
+class TelegramBrandingBody(BaseModel):
+    bot_token: str | None = None
+    avatar_jpg: str | None = None
+    include_profile_photo: bool = True
+
+
+@app.post("/api/ops/telegram/apply-branding", dependencies=[Depends(require_ui_auth)])
+def api_telegram_apply_branding(body: TelegramBrandingBody | None = None) -> dict[str, Any]:
+    from ops_notify import resolve_bot_token, telegram_apply_branding
+
+    body = body or TelegramBrandingBody()
+    tok = resolve_bot_token(body.bot_token, _rt())
+    out = telegram_apply_branding(
+        tok,
+        avatar_jpg=body.avatar_jpg,
+        include_profile_photo=body.include_profile_photo,
+    )
+    if not out.get("ok"):
+        raise HTTPException(status_code=400, detail=out.get("error") or "apply_branding_failed")
+    return out
+
+
+class OncallTestBody(BaseModel):
+    message: str | None = None
+
+
+class PanelNotifyBody(BaseModel):
+    event: str = Field(..., min_length=1, max_length=80)
+    title: str = Field(..., min_length=1, max_length=200)
+    body: str = Field(..., min_length=1, max_length=4000)
+    source: str = Field(default="Console", max_length=40)
+    dedup_key: str | None = Field(default=None, max_length=200)
+    dedup_minutes: int = Field(default=30, ge=1, le=1440)
+
+
+@app.post("/api/ops/notify", dependencies=[Depends(require_ui_auth)])
+def api_ops_notify(body: PanelNotifyBody) -> dict[str, Any]:
+    """Panel-wide operator alert from Console or other internal services."""
+    from ops_notify import notify_panel_event
+
+    return notify_panel_event(
+        event=body.event.strip(),
+        title=body.title.strip(),
+        body=body.body.strip(),
+        source=(body.source or "Console").strip() or "Console",
+        settings=_rt(),
+        dedup_key=(body.dedup_key or "").strip() or None,
+        dedup_minutes=body.dedup_minutes,
+    )
+
+
+@app.post("/api/ops/oncall/test", dependencies=[Depends(require_ui_auth)])
+def api_oncall_test(body: OncallTestBody | None = None) -> dict[str, Any]:
+    from ops_notify import notify_oncall_test
+
+    body = body or OncallTestBody()
+    out = notify_oncall_test(_rt(), message=body.message)
+    if not out.get("ok"):
+        raise HTTPException(status_code=400, detail=out.get("error") or "oncall_test_failed")
+    return out
+
+
 @app.get("/api/outbox", dependencies=[Depends(require_ui_auth)])
 def api_outbox(
     status: str | None = None,
     q: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    sort: str = Query(default="", description="id_asc for queue order"),
 ) -> dict[str, Any]:
-    rows, total = _store().list_outbox(status=status, q=q, limit=limit, offset=offset)
-    return {
-        "ok": True,
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-        "items": [
+    from geo_schedule import window_status
+
+    rows, total = _store().list_outbox(
+        status=status, q=q, limit=limit, offset=offset, sort=sort or None
+    )
+    clients = _clients_mod.store
+    rt = _rt()
+    items: list[dict[str, Any]] = []
+    for r in rows:
+        geo = company_geo_row(clients, r.company_id or "")
+        tz = geo.get("timezone") or geo.get("timezone_raw") or ""
+        win = window_status(tz, settings=rt)
+        items.append(
             {
                 "id": r.id,
                 "email": r.email,
                 "company_id": r.company_id,
                 "contact_id": r.contact_id,
-                "contact_name": r.contact_name,
+                "contact_name": r.contact_name or geo.get("director_greeting") or "",
                 "status": r.status,
                 "attempts": r.attempts,
                 "last_error": r.last_error,
@@ -588,9 +1044,23 @@ def api_outbox(
                 "deal_id": r.deal_id,
                 "created_at": r.created_at,
                 "updated_at": r.updated_at,
+                "city": geo.get("city") or "",
+                "region": geo.get("region") or "",
+                "timezone": geo.get("timezone") or win.get("timezone") or "",
+                "timezone_raw": geo.get("timezone_raw") or "",
+                "director_greeting": geo.get("director_greeting") or "",
+                "in_window": bool(win.get("in_window")),
+                "window_label": win.get("label") or "",
+                "next_slot_at": win.get("next_slot_at"),
+                "next_slot_local": win.get("next_slot_local"),
             }
-            for r in rows
-        ],
+        )
+    return {
+        "ok": True,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": items,
     }
 
 
@@ -610,6 +1080,66 @@ def api_outbox_patch(row_id: int, body: StatusBody) -> dict[str, Any]:
     return {"ok": True, "item": row.__dict__ if row else None}
 
 
+class OutboxBulkBody(BaseModel):
+    ids: list[int] = Field(..., min_length=1, max_length=50)
+    action: Literal["skip", "stop", "send_now"]
+
+
+@app.post("/api/outbox/bulk", dependencies=[Depends(require_ui_auth)])
+def api_outbox_bulk(body: OutboxBulkBody) -> dict[str, Any]:
+    from modules.sequences import SequenceStore
+
+    store = _store()
+    seq = SequenceStore()
+    results: list[dict[str, Any]] = []
+    send_emails: list[str] = []
+
+    for row_id in body.ids:
+        row = store.get_row(int(row_id))
+        if not row:
+            results.append({"id": row_id, "ok": False, "error": "not_found"})
+            continue
+        if body.action == "skip":
+            ok = store.set_status(row.id, "skipped")
+            results.append({"id": row.id, "ok": ok, "action": "skip"})
+        elif body.action == "stop":
+            n = seq.stop(
+                email=row.email,
+                company_id=row.company_id or None,
+                reason="manual_bulk",
+            )
+            results.append({"id": row.id, "ok": True, "action": "stop", "stopped": n})
+        elif body.action == "send_now":
+            if row.status == "pending" and row.email:
+                send_emails.append(row.email)
+                results.append({"id": row.id, "ok": True, "action": "send_now", "queued": row.email})
+            else:
+                results.append({"id": row.id, "ok": False, "error": "not_pending"})
+
+    sent: list[dict[str, Any]] = []
+    if body.action == "send_now" and send_emails:
+        bitrix = _bitrix_or_none()
+        try:
+            for email in send_emails[:50]:
+                out = send_batch(
+                    store,
+                    limit=1,
+                    dry_run=False,
+                    bitrix=bitrix,
+                    only_email=email,
+                    settings=_rt(),
+                    tracking=_tracking_mod.store,
+                    deliverability=_deliver_mod.store,
+                )
+                sent.append({"email": email, "ok": bool(out.get("ok")), "detail": out})
+        finally:
+            if bitrix:
+                bitrix.close()
+
+    ok_n = sum(1 for r in results if r.get("ok"))
+    return {"ok": ok_n > 0, "action": body.action, "results": results, "sent": sent}
+
+
 @app.get("/api/replies", dependencies=[Depends(require_ui_auth)])
 def api_replies(
     limit: int = Query(default=50, ge=1, le=200),
@@ -626,6 +1156,16 @@ def api_settings_get() -> dict[str, Any]:
         snap["OUTREACH_TEMPLATE_PLAIN"] = DEFAULT_PLAIN
     if not (snap.get("OUTREACH_TEMPLATE_HTML") or "").strip():
         snap["OUTREACH_TEMPLATE_HTML"] = DEFAULT_HTML
+    if not (snap.get("OUTREACH_SIGNATURE") or "").strip():
+        snap["OUTREACH_SIGNATURE"] = DEFAULT_SIGNATURE
+    else:
+        from templates import normalize_signature_template
+
+        snap["OUTREACH_SIGNATURE"] = normalize_signature_template(snap.get("OUTREACH_SIGNATURE"))
+    if not (snap.get("OUTREACH_LOGO_URL") or "").strip():
+        snap["OUTREACH_LOGO_URL"] = default_logo_url(lambda k: snap.get(k) or "")
+    if snap.get("OUTREACH_LOGO_ENABLED") in (None, ""):
+        snap["OUTREACH_LOGO_ENABLED"] = "true"
     return {"ok": True, "settings": snap}
 
 
@@ -644,17 +1184,74 @@ class PreviewBody(BaseModel):
     subject: str | None = None
     plain: str | None = None
     html: str | None = None
+    company_name: str | None = None
+    website: str | None = None
+    phone: str | None = None
+    contact_email: str | None = None
+    signature: str | None = None
+    logo_url: str | None = None
+    logo_enabled: bool | None = None
 
 
 @app.post("/api/preview", dependencies=[Depends(require_ui_auth)])
 def api_preview(body: PreviewBody) -> dict[str, Any]:
     rt = _rt()
     subject = body.subject or rt.get("OUTREACH_SUBJECT", "Сотрудничество — Quantum Labs")
+    company = (
+        body.company_name
+        if body.company_name is not None
+        else (rt.get("OUTREACH_COMPANY_NAME", "Quantum Labs") or "Quantum Labs")
+    )
+    website = (
+        body.website
+        if body.website is not None
+        else (rt.get("OUTREACH_WEBSITE", "https://quantumlabs.ru") or "https://quantumlabs.ru")
+    )
+    phone = body.phone if body.phone is not None else (rt.get("OUTREACH_CONTACT_PHONE", "") or "")
+    contact_email = (
+        body.contact_email
+        if body.contact_email is not None
+        else (
+            (rt.get("OUTREACH_CONTACT_EMAIL", "") or "").strip()
+            or rt.get("OUTREACH_UNSUBSCRIBE_MAILTO", "")
+            or os.getenv("MAIL_USERNAME")
+            or "office@quantumlabs.ru"
+        )
+    )
+    signature = (
+        body.signature
+        if body.signature is not None
+        else (rt.get("OUTREACH_SIGNATURE", "") or DEFAULT_SIGNATURE)
+    )
+    logo_url = (
+        body.logo_url
+        if body.logo_url is not None
+        else (
+            (rt.get("OUTREACH_LOGO_URL", "") or "").strip()
+            or default_logo_url(lambda k: rt.get(k, "") or "")
+        )
+    )
+    logo_on = (
+        body.logo_enabled
+        if body.logo_enabled is not None
+        else rt.get_bool("OUTREACH_LOGO_ENABLED", True)
+    )
+    cb_url = None
+    try:
+        from callback_cta import callback_url_for, cta_enabled, make_callback_token
+
+        if cta_enabled(rt):
+            cb_url = callback_url_for(
+                make_callback_token(outbox_id=0, email="preview"),
+                rt,
+            )
+    except Exception:  # noqa: BLE001
+        cb_url = None
     plain, html = render_cooperation(
         contact_name=body.contact_name,
-        company_name=rt.get("OUTREACH_COMPANY_NAME", "Quantum Labs") or "Quantum Labs",
-        website=rt.get("OUTREACH_WEBSITE", "https://quantumlabs.ru") or "https://quantumlabs.ru",
-        phone=rt.get("OUTREACH_CONTACT_PHONE", "") or "",
+        company_name=company or "Quantum Labs",
+        website=website or "https://quantumlabs.ru",
+        phone=phone or "",
         unsubscribe_mailto=rt.get("OUTREACH_UNSUBSCRIBE_MAILTO", "")
         or os.getenv("MAIL_USERNAME")
         or "office@quantumlabs.ru",
@@ -664,8 +1261,259 @@ def api_preview(body: PreviewBody) -> dict[str, Any]:
         html_template=body.html
         if body.html is not None
         else (rt.get("OUTREACH_TEMPLATE_HTML") or None),
+        signature_template=signature or DEFAULT_SIGNATURE,
+        logo_url=logo_url,
+        logo_enabled=bool(logo_on),
+        contact_email=contact_email or "",
+        icon_base_url=public_base_url(lambda k: rt.get(k, "") or ""),
+        callback_url=cb_url,
     )
-    return {"ok": True, "subject": subject, "plain": plain, "html": html}
+    attach_on = rt.get_bool("OUTREACH_ATTACH_PRESENTATION", False)
+    return {
+        "ok": True,
+        "subject": subject,
+        "plain": plain,
+        "html": html,
+        "attach_presentation": attach_on,
+        "sequence_pack": rt.get("OUTREACH_SEQUENCE_PACK", "") or "",
+        "logo_url": logo_url,
+    }
+
+
+@app.get("/assets/brand/custom.png")
+def brand_custom_logo() -> FileResponse:
+    path = BRAND_DATA_DIR / "logo.png"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="no custom logo")
+    return FileResponse(path, media_type="image/png")
+
+
+@app.get("/api/brand/logo", dependencies=[Depends(require_ui_auth)])
+def api_brand_logo_meta() -> dict[str, Any]:
+    rt = _rt()
+    custom = BRAND_DATA_DIR / "logo.png"
+    url = (rt.get("OUTREACH_LOGO_URL", "") or "").strip() or default_logo_url(
+        lambda k: rt.get(k, "") or ""
+    )
+    return {
+        "ok": True,
+        "logo_url": url,
+        "default_url": default_logo_url(lambda k: rt.get(k, "") or ""),
+        "has_custom": custom.is_file(),
+        "enabled": rt.get_bool("OUTREACH_LOGO_ENABLED", True),
+    }
+
+
+@app.post("/api/brand/logo", dependencies=[Depends(require_ui_auth)])
+async def api_brand_logo_upload(file: UploadFile = File(...)) -> dict[str, Any]:
+    raw = await file.read()
+    if not raw or len(raw) > 512_000:
+        raise HTTPException(status_code=400, detail="logo must be PNG/SVG/JPEG under 512KB")
+    content_type = (file.content_type or "").lower()
+    name = (file.filename or "").lower()
+    if not (
+        content_type in ("image/png", "image/jpeg", "image/jpg", "image/webp", "image/svg+xml")
+        or name.endswith((".png", ".jpg", ".jpeg", ".webp", ".svg"))
+    ):
+        raise HTTPException(status_code=400, detail="unsupported image type")
+    BRAND_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    dest = BRAND_DATA_DIR / "logo.png"
+    dest.write_bytes(raw)
+    base = public_base_url(lambda k: _rt().get(k, "") or "")
+    logo_url = f"{base}/assets/brand/custom.png?v={int(dest.stat().st_mtime)}"
+    _rt().set_many({"OUTREACH_LOGO_URL": logo_url, "OUTREACH_LOGO_ENABLED": "true"})
+    return {"ok": True, "logo_url": logo_url, "bytes": len(raw)}
+
+
+@app.delete("/api/brand/logo", dependencies=[Depends(require_ui_auth)])
+def api_brand_logo_reset() -> dict[str, Any]:
+    custom = BRAND_DATA_DIR / "logo.png"
+    if custom.is_file():
+        custom.unlink()
+    url = default_logo_url(lambda k: _rt().get(k, "") or "")
+    _rt().set_many({"OUTREACH_LOGO_URL": url, "OUTREACH_LOGO_ENABLED": "true"})
+    return {"ok": True, "logo_url": url}
+
+
+class ApplyPackBody(BaseModel):
+    pack_id: str
+    attach_presentation: bool | None = None
+    reset_draft: bool = False
+
+
+class PackLetterStepBody(BaseModel):
+    step: int | None = None
+    delay_days: int = 0
+    label: str = ""
+    subject: str = ""
+    plain: str = ""
+    html: str = ""
+    attach_presentation: bool = False
+
+
+class PackLettersBody(BaseModel):
+    steps: list[PackLetterStepBody] = Field(..., min_length=1)
+
+
+def _sync_step1_settings(pack: dict[str, Any], *, attach: bool | None = None) -> dict[str, str]:
+    """Mirror letter 1 into campaign settings used by batch send."""
+    steps = list(pack.get("steps") or [])
+    step1 = steps[0] if steps else {}
+    attach_flag = (
+        attach
+        if attach is not None
+        else bool(step1.get("attach_presentation") or pack.get("attach_presentation_default"))
+    )
+    return {
+        "OUTREACH_SEQUENCE_PACK": pack["id"],
+        "OUTREACH_SUBJECT": str(step1.get("subject") or ""),
+        "OUTREACH_TEMPLATE_PLAIN": str(step1.get("plain") or ""),
+        "OUTREACH_TEMPLATE_HTML": str(step1.get("html") or ""),
+        "OUTREACH_ATTACH_PRESENTATION": "true" if attach_flag else "false",
+        "OUTREACH_PRESENTATION_PDF": pack.get("presentation")
+        or "quantum_payouts_presentation_small.pdf",
+        "SEQUENCES_ENABLED": "true",
+    }
+
+
+@app.get("/api/packs", dependencies=[Depends(require_ui_auth)])
+def api_packs() -> dict[str, Any]:
+    items = list_packs()
+    drafts = _drafts()
+    for it in items:
+        it["presentation_meta"] = presentation_meta(it.get("id"))
+        it["has_draft"] = drafts.has_draft(it.get("id") or "")
+    return {"ok": True, "items": items}
+
+
+@app.get("/api/packs/{pack_id}", dependencies=[Depends(require_ui_auth)])
+def api_pack_get(pack_id: str) -> dict[str, Any]:
+    pack = resolve_pack(pack_id, _drafts())
+    if not pack:
+        raise HTTPException(status_code=404, detail="unknown pack")
+    tpl = pack_letters_payload(pack)
+    tpl["presentation_meta"] = presentation_meta(tpl.get("pack_id"))
+    return {"ok": True, "pack": tpl}
+
+
+@app.put("/api/packs/{pack_id}/letters", dependencies=[Depends(require_ui_auth)])
+def api_pack_letters_save(pack_id: str, body: PackLettersBody) -> dict[str, Any]:
+    base = get_pack(pack_id)
+    if not base:
+        raise HTTPException(status_code=404, detail="unknown pack")
+    try:
+        steps = normalize_steps([s.model_dump() for s in body.steps])
+        saved = _drafts().save_steps(base["id"], steps)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    pack = dict(base)
+    pack["steps"] = saved
+    pack["has_draft"] = True
+    tpl = pack_letters_payload(pack)
+    tpl["presentation_meta"] = presentation_meta(tpl.get("pack_id"))
+    # If this pack is active (or none set), sync letter 1 into campaign settings
+    rt = _rt()
+    active = (rt.get("OUTREACH_SEQUENCE_PACK", "") or "").strip()
+    updated: dict[str, str] = {}
+    if not active or active == base["id"]:
+        updated = rt.set_many(_sync_step1_settings(pack))
+    return {
+        "ok": True,
+        "pack": tpl,
+        "updated": sorted(updated.keys()),
+        "settings": rt.snapshot() if updated else None,
+    }
+
+
+@app.post("/api/packs/{pack_id}/letters/reset", dependencies=[Depends(require_ui_auth)])
+def api_pack_letters_reset(pack_id: str) -> dict[str, Any]:
+    base = get_pack(pack_id)
+    if not base:
+        raise HTTPException(status_code=404, detail="unknown pack")
+    cleared = _drafts().clear(base["id"])
+    pack = resolve_pack(base["id"], _drafts()) or base
+    tpl = pack_letters_payload(pack)
+    tpl["presentation_meta"] = presentation_meta(tpl.get("pack_id"))
+    rt = _rt()
+    active = (rt.get("OUTREACH_SEQUENCE_PACK", "") or "").strip()
+    updated: dict[str, str] = {}
+    if active == base["id"]:
+        updated = rt.set_many(_sync_step1_settings(pack))
+    return {
+        "ok": True,
+        "cleared": cleared,
+        "pack": tpl,
+        "updated": sorted(updated.keys()),
+        "settings": rt.snapshot() if updated else None,
+    }
+
+
+@app.get("/api/packs/{pack_id}/presentation", dependencies=[Depends(require_ui_auth)])
+def api_pack_presentation_meta(pack_id: str) -> dict[str, Any]:
+    if not get_pack(pack_id):
+        raise HTTPException(status_code=404, detail="unknown pack")
+    return {"ok": True, "presentation": presentation_meta(pack_id)}
+
+
+@app.post("/api/packs/{pack_id}/presentation", dependencies=[Depends(require_ui_auth)])
+async def api_pack_presentation_upload(
+    pack_id: str,
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
+    pack = get_pack(pack_id)
+    if not pack:
+        raise HTTPException(status_code=404, detail="unknown pack")
+    raw = await file.read()
+    try:
+        meta = save_presentation(pack["id"], raw, original_name=file.filename or "")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # Point active campaign at this pack slot if it is the selected industry
+    rt = _rt()
+    active = (rt.get("OUTREACH_SEQUENCE_PACK", "") or "").strip()
+    if active == pack["id"]:
+        rt.set_many({"OUTREACH_PRESENTATION_PDF": f"presentations/{pack['id']}.pdf"})
+    return {"ok": True, "presentation": meta, "pack_id": pack["id"]}
+
+
+@app.delete("/api/packs/{pack_id}/presentation", dependencies=[Depends(require_ui_auth)])
+def api_pack_presentation_reset(pack_id: str) -> dict[str, Any]:
+    pack = get_pack(pack_id)
+    if not pack:
+        raise HTTPException(status_code=404, detail="unknown pack")
+    try:
+        meta = reset_presentation(pack["id"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "presentation": meta, "pack_id": pack["id"]}
+
+
+@app.post("/api/packs/apply", dependencies=[Depends(require_ui_auth)])
+def api_packs_apply(body: ApplyPackBody) -> dict[str, Any]:
+    """Activate industry pack: sync letter 1 + keep/restore draft chain."""
+    base = get_pack(body.pack_id)
+    if not base:
+        raise HTTPException(status_code=404, detail="unknown pack")
+    if body.reset_draft:
+        _drafts().clear(base["id"])
+    pack = resolve_pack(base["id"], _drafts()) or base
+    attach = (
+        body.attach_presentation
+        if body.attach_presentation is not None
+        else bool(
+            (pack["steps"][0].get("attach_presentation") if pack.get("steps") else False)
+            or pack.get("attach_presentation_default")
+        )
+    )
+    updated = _rt().set_many(_sync_step1_settings(pack, attach=attach))
+    tpl = pack_letters_payload(pack)
+    tpl["presentation_meta"] = presentation_meta(tpl.get("pack_id"))
+    return {
+        "ok": True,
+        "updated": sorted(updated.keys()),
+        "pack": tpl,
+        "settings": _rt().snapshot(),
+    }
 
 
 @app.post("/api/auth/login")
@@ -691,7 +1539,11 @@ async def api_login(request: Request) -> JSONResponse:
     return resp
 
 
-# --- static UI ---
+# --- static UI + brand assets ---
+# custom.png route is registered above; packaged assets follow.
+
+if ASSETS_DIR.is_dir():
+    app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 
 if STATIC_DIR.is_dir():
     app.mount("/ui", StaticFiles(directory=str(STATIC_DIR), html=True), name="ui")
@@ -713,6 +1565,10 @@ def cli_main(argv: list[str] | None = None) -> int:
     sub.add_parser("status", help="Show outbox / config status")
     sub.add_parser("sync", help="Download Bitrix → local clients.db + refresh outbox")
     sub.add_parser("rebuild-outbox", help="Rebuild outbox from local clients.db (no Bitrix)")
+    sub.add_parser(
+        "backfill-geo",
+        help="Backfill city/timezone + director first/patronymic from DaData cache",
+    )
 
     p_dry = sub.add_parser("dry-run", help="Preview N pending without SMTP")
     p_dry.add_argument("n", nargs="?", type=int, default=5)
@@ -780,11 +1636,14 @@ def cli_main(argv: list[str] | None = None) -> int:
         try:
             _clients_mod.store.init_db()
             clients_report = sync_from_bitrix(_clients_mod.store, client)
+            geo_report = backfill_company_geo_and_fio(_clients_mod.store)
+            geo_report["stats"] = geo_stats(_clients_mod.store)
             outbox_report = rebuild_outbox_from_clients(_clients_mod.store, _store())
             _print(
                 {
                     "ok": bool(clients_report.get("ok")),
                     "clients": clients_report,
+                    "geo_backfill": geo_report,
                     "outbox_rebuild": outbox_report,
                 }
             )
@@ -795,6 +1654,13 @@ def cli_main(argv: list[str] | None = None) -> int:
     if args.cmd == "rebuild-outbox":
         _clients_mod.store.init_db()
         _print(rebuild_outbox_from_clients(_clients_mod.store, _store()))
+        return 0
+
+    if args.cmd == "backfill-geo":
+        _clients_mod.store.init_db()
+        report = backfill_company_geo_and_fio(_clients_mod.store)
+        report["stats"] = geo_stats(_clients_mod.store)
+        _print(report)
         return 0
 
     if args.cmd == "check-replies":

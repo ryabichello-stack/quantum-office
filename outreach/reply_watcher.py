@@ -12,6 +12,7 @@ import re
 import smtplib
 import threading
 import time
+from datetime import datetime, timezone
 from email.mime.text import MIMEText
 from email.utils import formataddr, make_msgid
 from typing import Any
@@ -436,16 +437,34 @@ def check_replies(
                 "classification_confidence": classified.confidence,
             }
 
-            # Stop sequence / policy on actionable classes
+            # Stop / pause sequence / policy on actionable classes
             try:
                 from modules.sequences import SequenceStore
                 from modules.policy import ContactPolicyStore
 
+                seq = SequenceStore()
                 if classified.should_stop_sequence:
-                    SequenceStore().stop(
+                    seq.stop(
                         email=row.email or from_email,
                         company_id=row.company_id or None,
                         reason=classified.classification,
+                    )
+                elif getattr(classified, "should_pause_sequence", False):
+                    pause_days = 7
+                    try:
+                        from core.paths import SETTINGS_DB
+                        from runtime_settings import RuntimeSettings
+
+                        pause_days = RuntimeSettings(SETTINGS_DB).get_int(
+                            "OOO_PAUSE_DAYS", 7
+                        )
+                    except Exception:  # noqa: BLE001
+                        pause_days = 7
+                    seq.pause(
+                        email=row.email or from_email,
+                        company_id=row.company_id or None,
+                        reason=classified.classification,
+                        days=pause_days,
                     )
                 if classified.classification == "unsubscribe":
                     ContactPolicyStore().note_unsubscribe(row.company_id or "")
@@ -592,6 +611,56 @@ def check_replies(
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("reply notify email failed: %s", exc)
                     item["notify_error"] = str(exc)[:300]
+            try:
+                from core.paths import SETTINGS_DB
+                from ops_notify import notify_positive_reply
+                from runtime_settings import RuntimeSettings
+
+                ops = notify_positive_reply(
+                    classification=classified.classification,
+                    from_email=from_email,
+                    subject=subject,
+                    preview=preview,
+                    company_name=row.contact_name or "",
+                    company_id=row.company_id or "",
+                    settings=RuntimeSettings(SETTINGS_DB),
+                )
+                if ops.get("email") or ops.get("telegram"):
+                    item["ops_notify"] = ops
+            except Exception:  # noqa: BLE001
+                logger.debug("ops notify on reply failed", exc_info=True)
+
+            if classified.classification == "unsubscribe":
+                try:
+                    from modules.consent import ConsentLedgerStore
+
+                    ConsentLedgerStore().record(
+                        email=from_email,
+                        status="unsubscribed",
+                        source="reply-classify",
+                        reason=classified.reason,
+                        company_id=row.company_id or "",
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+            elif classified.classification in (
+                "positive_interest",
+                "human_unclassified",
+                "forwarded",
+                "negative",
+            ):
+                try:
+                    from modules.consent import ConsentLedgerStore
+
+                    ConsentLedgerStore().record(
+                        email=from_email,
+                        status="replied",
+                        source="reply-classify",
+                        reason=classified.classification,
+                        company_id=row.company_id or "",
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
 
             if classified.classification not in ("automatic", "out_of_office", "bounce"):
                 store.mark_replied(row.id)
@@ -647,6 +716,10 @@ def check_replies(
 class ReplyWatchThread(threading.Thread):
     """Daemon poller started from FastAPI lifespan."""
 
+    last_at: str | None = None
+    last_error: str | None = None
+    last_matched: int = 0
+
     def __init__(self, store: OutboxStore, webhook_url: str) -> None:
         super().__init__(daemon=True, name="ava-outreach-reply-watch")
         self.store = store
@@ -664,12 +737,30 @@ class ReplyWatchThread(threading.Thread):
                 bitrix = BitrixClient(self.webhook_url) if self.webhook_url else None
                 try:
                     report = check_replies(self.store, bitrix)
+                    ReplyWatchThread.last_at = datetime.now(timezone.utc).replace(
+                        microsecond=0
+                    ).isoformat()
+                    ReplyWatchThread.last_error = None
+                    ReplyWatchThread.last_matched = int(report.get("matched") or 0)
                     if report.get("matched"):
                         logger.info("reply watch matched=%s", report.get("matched"))
-                except Exception:  # noqa: BLE001
+                except Exception as exc:  # noqa: BLE001
+                    ReplyWatchThread.last_error = str(exc)[:500]
                     logger.exception("reply watch cycle failed")
                 finally:
                     if bitrix:
                         bitrix.close()
             self._stop.wait(interval)
         logger.info("reply watch stopped")
+
+
+def reply_watch_status() -> dict[str, Any]:
+    interval = int(os.getenv("REPLY_WATCH_INTERVAL_SECONDS", "120"))
+    return {
+        "enabled": _env_true("REPLY_WATCH_ENABLED", "true"),
+        "imap_configured": imap_configured(),
+        "interval_seconds": interval,
+        "last_at": ReplyWatchThread.last_at,
+        "last_error": ReplyWatchThread.last_error,
+        "last_matched": ReplyWatchThread.last_matched,
+    }

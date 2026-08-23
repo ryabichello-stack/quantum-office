@@ -3,20 +3,206 @@
 from __future__ import annotations
 
 import logging
+import mimetypes
 import os
 import random
 import smtplib
 import time
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr, make_msgid
+from pathlib import Path
 from typing import Any
 
 from bitrix_client import BitrixClient  # noqa: I001
 from outbox import OutboxStore
-from templates import render_cooperation
+from templates import DEFAULT_SIGNATURE, default_logo_url, render_cooperation
+
+
+def _render_letter(
+    *,
+    contact_name: str,
+    company: str,
+    website: str,
+    phone: str,
+    unsubscribe_mailto: str,
+    unsubscribe_url: str | None = None,
+    plain_template: str | None = None,
+    html_template: str | None = None,
+    settings: Any = None,
+    callback_url: str | None = None,
+) -> tuple[str, str]:
+    from templates import public_base_url
+
+    sig = (_cfg(settings, "OUTREACH_SIGNATURE", "") or "").strip() or DEFAULT_SIGNATURE
+    logo_url = (_cfg(settings, "OUTREACH_LOGO_URL", "") or "").strip() or default_logo_url(
+        lambda k: _cfg(settings, k, "")
+    )
+    logo_on = _cfg_bool(settings, "OUTREACH_LOGO_ENABLED", True)
+    contact_email = (
+        (_cfg(settings, "OUTREACH_CONTACT_EMAIL", "") or "").strip()
+        or unsubscribe_mailto
+        or os.getenv("MAIL_USERNAME")
+        or "office@quantumlabs.ru"
+    )
+    return render_cooperation(
+        contact_name=contact_name,
+        company_name=company,
+        website=website,
+        phone=phone,
+        unsubscribe_mailto=unsubscribe_mailto,
+        unsubscribe_url=unsubscribe_url,
+        plain_template=plain_template,
+        html_template=html_template,
+        signature_template=sig,
+        logo_url=logo_url,
+        logo_enabled=logo_on,
+        contact_email=contact_email,
+        icon_base_url=public_base_url(lambda k: _cfg(settings, k, "")),
+        callback_url=callback_url,
+    )
+
+
+def _tracking_company_slug(
+    *,
+    contact_name: str | None = None,
+    email: str | None = None,
+    company_title: str | None = None,
+) -> str:
+    from modules.tracking import plus_company_slug
+
+    # Prefer human company/contact label; fall back to recipient domain.
+    return plus_company_slug(company_title or contact_name or email or "")
+
+
+def _callback_url_for_row(
+    *,
+    outbox_id: int,
+    email: str,
+    settings: Any = None,
+) -> str | None:
+    try:
+        from callback_cta import (
+            callback_url_for,
+            cta_enabled,
+            make_callback_token,
+        )
+
+        if not cta_enabled(settings):
+            return None
+        token = make_callback_token(outbox_id=int(outbox_id or 0), email=email or "campaign")
+        return callback_url_for(token, settings)
+    except Exception:  # noqa: BLE001
+        logger.debug("callback url build failed", exc_info=True)
+        return None
 
 logger = logging.getLogger("ava-outreach.sender")
+
+_ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+_DEFAULT_PRESENTATION = _ASSETS_DIR / "quantum_payouts_presentation_small.pdf"
+
+
+from presentations import resolve_presentation
+
+
+def _presentation_path(settings: Any = None, pack_path: str | None = None) -> Path | None:
+    """Resolve PDF: custom upload → pack asset → settings path → shared default."""
+    pack_id = (_cfg(settings, "OUTREACH_SEQUENCE_PACK", "") or "").strip()
+    settings_path = (pack_path or _cfg(settings, "OUTREACH_PRESENTATION_PDF", "") or "").strip()
+    if not pack_id and settings_path:
+        stem = Path(settings_path).stem
+        if stem and stem != "quantum_payouts_presentation_small":
+            pack_id = stem
+    return resolve_presentation(pack_id=pack_id or None, settings_path=settings_path or None)
+
+
+def _should_attach_presentation(
+    settings: Any,
+    *,
+    step_wants: bool = False,
+    force: bool | None = None,
+) -> bool:
+    if force is False:
+        return False
+    if force is True:
+        return True
+    if step_wants:
+        # still respect explicit off
+        if _cfg(settings, "OUTREACH_ATTACH_PRESENTATION", "") in ("0", "false", "no", "off"):
+            return False
+        return True
+    return _cfg_bool(settings, "OUTREACH_ATTACH_PRESENTATION", False)
+
+
+def _attachments_for_send(
+    settings: Any,
+    *,
+    step_wants: bool = False,
+    pack_presentation: str | None = None,
+    force: bool | None = None,
+) -> list[Path]:
+    if not _should_attach_presentation(settings, step_wants=step_wants, force=force):
+        return []
+    path = _presentation_path(settings, pack_presentation)
+    return [path] if path else []
+
+
+def _recipient_timezone(company_id: str, settings: Any = None) -> str:
+    from geo_schedule import DEFAULT_IANA, iana_from_utc_offset, schedule_config
+
+    cfg = schedule_config(settings)
+    default = cfg.get("default_timezone") or DEFAULT_IANA
+    cid = (company_id or "").strip()
+    if not cid:
+        return default
+    try:
+        from modules.clients import ClientsStore, company_geo_row
+
+        geo = company_geo_row(ClientsStore(), cid)
+        tz = (geo.get("timezone") or "").strip()
+        if tz:
+            return iana_from_utc_offset(tz, default=default)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("recipient tz lookup failed: %s", exc)
+    return default
+
+
+def _rank_pending_by_local_window(
+    candidates: list[Any],
+    *,
+    settings: Any,
+) -> tuple[list[Any], list[dict[str, Any]]]:
+    """Keep only recipients currently in a local B2B slot; rank east/preferred first."""
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    from geo_schedule import in_send_window, schedule_config, window_rank
+
+    cfg = schedule_config(settings)
+    if not cfg["enabled"]:
+        return list(candidates), []
+
+    scored: list[tuple[float, Any]] = []
+    deferred: list[dict[str, Any]] = []
+    now_utc = datetime.now(timezone.utc)
+    for row in candidates:
+        tz_name = _recipient_timezone(getattr(row, "company_id", "") or "", settings)
+        local = now_utc.astimezone(ZoneInfo(tz_name))
+        if not in_send_window(local, settings=settings):
+            deferred.append(
+                {
+                    "id": getattr(row, "id", None),
+                    "email": getattr(row, "email", None),
+                    "reason": "outside_local_window",
+                    "timezone": tz_name,
+                    "local_time": local.isoformat(),
+                }
+            )
+            continue
+        scored.append((window_rank(local, settings=settings), row))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [r for _, r in scored], deferred
 
 
 def _cfg(settings: Any, key: str, default: str = "") -> str:
@@ -65,10 +251,15 @@ def send_email(
     outreach_id: str | None = None,
     message_id: str | None = None,
     unsubscribe_url: str | None = None,
+    attachments: list[Path] | None = None,
+    in_reply_to: str | None = None,
+    references: str | None = None,
+    include_list_unsubscribe: bool = True,
 ) -> str:
     """Send one message. Returns Message-ID (without angle brackets).
 
     If message_id is provided (pre-claim), reuse it for SMTP idempotency.
+    Optional PDF/file attachments use multipart/mixed wrapping alternative body.
     """
     host = os.getenv("MAIL_SMTP_HOST", "").strip()
     port = int(os.getenv("MAIL_SMTP_PORT", "465"))
@@ -88,24 +279,52 @@ def send_email(
     else:
         mid_header = make_msgid(domain=domain)
 
-    msg = MIMEMultipart("alternative")
+    files = [p for p in (attachments or []) if p and Path(p).is_file()]
+    if files:
+        msg: MIMEMultipart = MIMEMultipart("mixed")
+        alt = MIMEMultipart("alternative")
+        alt.attach(MIMEText(plain, "plain", "utf-8"))
+        alt.attach(MIMEText(html, "html", "utf-8"))
+        msg.attach(alt)
+        for path in files:
+            path = Path(path)
+            ctype, _ = mimetypes.guess_type(str(path))
+            maintype, subtype = (ctype or "application/pdf").split("/", 1)
+            with path.open("rb") as fh:
+                part = MIMEApplication(fh.read(), _subtype=subtype if maintype == "application" else "octet-stream")
+            part.add_header(
+                "Content-Disposition",
+                "attachment",
+                filename=path.name,
+            )
+            msg.attach(part)
+    else:
+        msg = MIMEMultipart("alternative")
+        msg.attach(MIMEText(plain, "plain", "utf-8"))
+        msg.attach(MIMEText(html, "html", "utf-8"))
+
     msg["From"] = formataddr((from_name, user))
     msg["To"] = to
     msg["Subject"] = subject
     msg["Reply-To"] = reply
     msg["Message-ID"] = mid_header
-    unsub_parts = [f"<mailto:{unsubscribe_mailto}?subject=unsubscribe>"]
-    if unsubscribe_url:
-        unsub_parts.insert(0, f"<{unsubscribe_url}>")
-    msg["List-Unsubscribe"] = ", ".join(unsub_parts)
-    if unsubscribe_url:
-        msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+    if in_reply_to:
+        irt = in_reply_to.strip()
+        if not irt.startswith("<"):
+            irt = f"<{irt.strip('<>')}>"
+        msg["In-Reply-To"] = irt
+    if references:
+        msg["References"] = references.strip()
+    if include_list_unsubscribe:
+        unsub_parts = [f"<mailto:{unsubscribe_mailto}?subject=unsubscribe>"]
+        if unsubscribe_url:
+            unsub_parts.insert(0, f"<{unsubscribe_url}>")
+        msg["List-Unsubscribe"] = ", ".join(unsub_parts)
+        if unsubscribe_url:
+            msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
     # Stable From identity (anti-ban): never rotate From; tracking goes to Reply-To / Message-ID.
     if outreach_id:
         msg["X-Outreach-Id"] = outreach_id
-
-    msg.attach(MIMEText(plain, "plain", "utf-8"))
-    msg.attach(MIMEText(html, "html", "utf-8"))
 
     with smtplib.SMTP_SSL(host, port, timeout=timeout) as server:
         server.login(user, password)
@@ -304,8 +523,8 @@ def send_batch(
             "processed": 0,
         }
 
-    # Fetch extra pending so domain/suppression skips can refill within batch
-    fetch_n = min(limit * 3, remaining * 3 if not dry_run else limit * 3, 100)
+    # Fetch extra pending so domain/suppression/timezone skips can refill within batch
+    fetch_n = min(limit * 8, remaining * 8 if not dry_run else limit * 8, 250)
     fetch_n = max(fetch_n, limit)
     candidates = store.list_pending(fetch_n, only_email=only_email)
     if only_email and not candidates:
@@ -315,10 +534,50 @@ def send_batch(
             "processed": 0,
         }
 
+    window_deferred: list[dict[str, Any]] = []
+    if not only_email:
+        candidates, window_deferred = _rank_pending_by_local_window(
+            candidates, settings=settings
+        )
+
     results: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     followups: list[dict[str, Any]] = []
     processed_sends = 0
+
+    # 1) Due follow-ups first (each contact on their own chain day), then new step-1.
+    #    one-shot only_email stays first-touch-only.
+    followups_first = _cfg_bool(settings, "SCHEDULE_FOLLOWUPS_FIRST", True)
+    if (
+        followups_first
+        and not dry_run
+        and not only_email
+        and _cfg_bool(settings, "SEQUENCES_ENABLED", True)
+        and processed_sends < limit
+    ):
+        try:
+            followups = _send_due_sequence_steps(
+                store,
+                limit=max(0, min(limit - processed_sends, remaining - processed_sends)),
+                settings=settings,
+                bitrix=bitrix,
+                tracking=tracking,
+                deliverability=deliverability,
+                subject_default=subject,
+                company=company,
+                mailbox=mailbox,
+                unsub=unsub,
+            )
+            for fu in followups:
+                if fu.get("status") == "sent":
+                    processed_sends += 1
+                    results.append(fu)
+                elif fu.get("status") == "skipped":
+                    skipped.append(fu)
+                else:
+                    results.append(fu)
+        except Exception:  # noqa: BLE001
+            logger.exception("sequence follow-ups (priority) failed")
 
     for row in candidates:
         if processed_sends >= limit:
@@ -403,6 +662,11 @@ def send_batch(
                 outbox_id=row.id,
                 mailbox=mailbox,
                 enable_plus_reply_to=plus_reply,
+                company_slug=_tracking_company_slug(
+                    contact_name=row.contact_name,
+                    email=row.email,
+                    company_title=company,
+                ),
             )
             plus_tag = hdrs.get("plus_tag")
             reply_to = hdrs.get("reply_to")
@@ -411,15 +675,18 @@ def send_batch(
             unsub_token = make_unsubscribe_token(outbox_id=row.id, email=row.email)
             unsub_url = unsubscribe_url_for(unsub_token, settings)
 
-        plain, html = render_cooperation(
+        cb_url = _callback_url_for_row(outbox_id=row.id, email=row.email, settings=settings)
+        plain, html = _render_letter(
             contact_name=row.contact_name,
-            company_name=company,
+            company=company,
             website=website,
             phone=phone,
             unsubscribe_mailto=unsub_addr,
             unsubscribe_url=unsub_url,
             plain_template=plain_tpl or None,
             html_template=html_tpl or None,
+            settings=settings,
+            callback_url=cb_url,
         )
         open_token = None
         if tracking is not None and not dry_run:
@@ -446,6 +713,9 @@ def send_batch(
                 item["status"] = "dry_run"
                 item["subject"] = subject
                 item["preview_plain"] = plain[:500]
+                attach = _attachments_for_send(settings, step_wants=False)
+                if attach:
+                    item["would_attach"] = [p.name for p in attach]
                 logger.info("dry-run would send to %s (%s)", row.email, row.contact_name)
                 results.append(item)
                 processed_sends += 1
@@ -461,6 +731,7 @@ def send_batch(
                     )
                     continue
                 try:
+                    attach = _attachments_for_send(settings, step_wants=False)
                     message_id = send_email(
                         to=row.email,
                         subject=subject,
@@ -471,7 +742,10 @@ def send_batch(
                         outreach_id=str(row.id),
                         message_id=pre_mid,
                         unsubscribe_url=unsub_url,
+                        attachments=attach,
                     )
+                    if attach:
+                        item["attached"] = [p.name for p in attach]
                 except Exception:
                     store.release_claim(row.id, error="smtp_failed")
                     raise
@@ -536,6 +810,7 @@ def send_batch(
                         from modules.sequences import SequenceStore
                         from modules.policy import ContactPolicyStore
 
+                        pack_id = (_cfg(settings, "OUTREACH_SEQUENCE_PACK", "") or "").strip()
                         seq = SequenceStore()
                         lead = seq.enroll(
                             email=row.email,
@@ -543,6 +818,7 @@ def send_batch(
                             contact_name=row.contact_name or "",
                             subject_base=subject,
                             outbox_id=row.id,
+                            pack_id=pack_id,
                         )
                         if lead.get("id"):
                             seq.mark_step_sent(
@@ -550,8 +826,17 @@ def send_batch(
                                 step=1,
                                 outbox_id=row.id,
                                 subject_base=subject,
+                                timezone_name=_recipient_timezone(
+                                    row.company_id or "", settings
+                                ),
+                                settings=settings,
                             )
                             item["sequence_step"] = 1
+                            item["timezone"] = _recipient_timezone(
+                                row.company_id or "", settings
+                            )
+                            if pack_id:
+                                item["sequence_pack"] = pack_id
                         if row.company_id:
                             ContactPolicyStore().note_email_sent(
                                 row.company_id, email=row.email
@@ -570,8 +855,14 @@ def send_batch(
             results.append(item)
             logger.exception("send failed for %s", row.email)
 
-    # Follow-up steps (2+) for due sequence leads
-    if not dry_run and _cfg_bool(settings, "SEQUENCES_ENABLED", True) and processed_sends < limit:
+    # Follow-ups already sent at the start when SCHEDULE_FOLLOWUPS_FIRST (default).
+    # Legacy / opt-out: run them after first-touch with leftover budget.
+    if (
+        not followups_first
+        and not dry_run
+        and _cfg_bool(settings, "SEQUENCES_ENABLED", True)
+        and processed_sends < limit
+    ):
         try:
             followups = _send_due_sequence_steps(
                 store,
@@ -608,6 +899,12 @@ def send_batch(
         "effective_daily_limit": effective_limit,
         "plus_reply_to_enabled": plus_reply,
         "only_email": only_email,
+        "deferred_window_count": len(window_deferred),
+        "send_order": (
+            "followups_due_then_first_touch"
+            if followups_first
+            else "first_touch_then_followups"
+        ),
         "results": results,
     }
 
@@ -660,6 +957,45 @@ def _send_due_sequence_steps(
             continue
         email = str(lead["email"])
         company_id = str(lead.get("company_id") or "")
+        try:
+            meta = __import__("json").loads(lead.get("meta_json") or "{}")
+            if not isinstance(meta, dict):
+                meta = {}
+        except Exception:  # noqa: BLE001
+            meta = {}
+        tz_name = str(meta.get("timezone") or "").strip() or _recipient_timezone(
+            company_id, settings
+        )
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+
+        from geo_schedule import in_send_window, next_send_datetime, schedule_config
+
+        if schedule_config(settings)["enabled"]:
+            local = datetime.now(timezone.utc).astimezone(ZoneInfo(tz_name))
+            if not in_send_window(local, settings=settings):
+                nxt = next_send_datetime(
+                    datetime.now(timezone.utc), tz_name, settings=settings
+                )
+                with seq.connect() as conn:
+                    conn.execute(
+                        "UPDATE sequence_leads SET next_action_at=?, updated_at=? WHERE id=?",
+                        (
+                            nxt.replace(microsecond=0).isoformat(),
+                            datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+                            int(lead["id"]),
+                        ),
+                    )
+                out.append(
+                    {
+                        "email": email,
+                        "status": "skipped",
+                        "reason": "outside_local_window",
+                        "timezone": tz_name,
+                        "next_action_at": nxt.isoformat(),
+                    }
+                )
+                continue
         if company_id:
             ok_p, why = pol.allow_email(company_id)
             if not ok_p:
@@ -680,17 +1016,29 @@ def _send_due_sequence_steps(
                 break
 
         name = str(lead.get("contact_name") or "коллега")
+        # Prefer Имя Отчество in follow-ups when contact_name is still full FIO
+        try:
+            from templates import resolve_greeting
+
+            _, name = resolve_greeting(name)
+        except Exception:  # noqa: BLE001
+            pass
         base_subj = str(lead.get("subject_base") or subject_default)
+        website = _cfg(settings, "OUTREACH_WEBSITE", "https://quantumlabs.ru")
+        phone = _cfg(settings, "OUTREACH_CONTACT_PHONE", "")
+        pack_id = str(lead.get("pack_id") or "")
         subj_tpl = step_def.get("subject") or base_subj
-        subject = str(subj_tpl).replace("{subject}", base_subj).replace("{name}", name)
-        plain_tpl = step_def.get("plain") or ""
-        plain = (
-            str(plain_tpl)
+        subject = (
+            str(subj_tpl)
+            .replace("{subject}", base_subj)
             .replace("{name}", name)
             .replace("{company}", company)
-            .replace("{subject}", base_subj)
         )
-        html = _plain_to_html(plain)
+        plain_tpl = step_def.get("plain") or (
+            "Добрый день, {name}!\n\nПодскажите, успели посмотреть моё письмо?\n\n"
+            "С уважением,\n{company}\n"
+        )
+        html_tpl = step_def.get("html")
 
         outbox_id = int(lead["last_outbox_id"] or 0) or None
         row = store.find_by_email(email)
@@ -708,6 +1056,11 @@ def _send_due_sequence_steps(
                 outbox_id=outbox_id,
                 mailbox=mailbox,
                 enable_plus_reply_to=plus_reply,
+                company_slug=_tracking_company_slug(
+                    contact_name=name,
+                    email=email,
+                    company_title=company,
+                ),
             )
             plus_tag = hdrs.get("plus_tag")
             reply_to = hdrs.get("reply_to")
@@ -715,27 +1068,42 @@ def _send_due_sequence_steps(
                 unsub_addr = hdrs["unsubscribe_mailto"]
             unsub_token = make_unsubscribe_token(outbox_id=outbox_id, email=email)
             unsub_url = unsubscribe_url_for(unsub_token, settings)
-            if open_tracking_enabled(settings):
-                open_token = new_open_token()
-                html = inject_open_pixel(html, open_token, settings)
 
-        # Append unsub footer
-        if unsub_url:
-            plain = plain + f"\n\n---\nОтписаться: {unsub_url}\n"
-            html = html.replace(
-                "</body>",
-                f'<hr><p style="font-size:12px"><a href="{unsub_url}">Отписаться</a></p></body>',
-            )
+        cb_url = _callback_url_for_row(
+            outbox_id=int(outbox_id or 0),
+            email=email,
+            settings=settings,
+        )
+        plain, html = _render_letter(
+            contact_name=name,
+            company=company,
+            website=website,
+            phone=phone,
+            unsubscribe_mailto=unsub_addr,
+            unsubscribe_url=unsub_url,
+            plain_template=str(plain_tpl),
+            html_template=str(html_tpl) if html_tpl else None,
+            settings=settings,
+            callback_url=cb_url,
+        )
+        if tracking is not None and outbox_id and open_tracking_enabled(settings):
+            open_token = new_open_token()
+            html = inject_open_pixel(html, open_token, settings)
 
         item: dict[str, Any] = {
             "email": email,
             "company_id": company_id,
             "sequence_lead_id": lead["id"],
             "sequence_step": int(step_def["step"]),
+            "sequence_pack": pack_id or None,
             "followup": True,
         }
         try:
             pre_mid = make_outbound_message_id()
+            attach = _attachments_for_send(
+                settings,
+                step_wants=bool(step_def.get("attach_presentation")),
+            )
             message_id = send_email(
                 to=email,
                 subject=subject,
@@ -746,6 +1114,7 @@ def _send_due_sequence_steps(
                 outreach_id=f"seq-{lead['id']}-{step_def['step']}",
                 message_id=pre_mid,
                 unsubscribe_url=unsub_url,
+                attachments=attach,
             )
             item["message_id"] = message_id
             if tracking is not None and outbox_id:
@@ -783,6 +1152,8 @@ def _send_due_sequence_steps(
                 step=int(step_def["step"]),
                 outbox_id=outbox_id,
                 subject_base=base_subj,
+                timezone_name=tz_name,
+                settings=settings,
             )
             if company_id:
                 pol.note_email_sent(company_id, email=email)
@@ -819,6 +1190,7 @@ def send_one(
     deliverability: Any = None,
     create_bitrix_deal: bool = False,
     bitrix: BitrixClient | None = None,
+    attach_presentation: bool | None = None,
 ) -> dict[str, Any]:
     """Send a single letter to an explicit address (test / one-shot).
 
@@ -844,7 +1216,7 @@ def send_one(
         except Exception:  # noqa: BLE001
             deliverability = None
 
-    oneshot_limit = _cfg_int(settings, "ONESHOT_DAILY_LIMIT", 5)
+    oneshot_limit = _cfg_int(settings, "ONESHOT_DAILY_LIMIT", 25)
     if deliverability is not None and not dry_run:
         used = deliverability.oneshot_today()
         if used >= oneshot_limit:
@@ -892,21 +1264,30 @@ def send_one(
             outbox_id=row.id,
             mailbox=mailbox,
             enable_plus_reply_to=plus_reply,
+            company_slug=_tracking_company_slug(
+                contact_name=name,
+                email=to_email,
+                company_title=company,
+            ),
         )
         plus_tag = hdrs.get("plus_tag")
         reply_to = hdrs.get("reply_to")
         if hdrs.get("unsubscribe_mailto"):
             unsub_addr = hdrs["unsubscribe_mailto"]
 
-    plain, html = render_cooperation(
+    cb_url = _callback_url_for_row(outbox_id=row.id, email=to_email, settings=settings)
+    plain, html = _render_letter(
         contact_name=name,
-        company_name=company,
+        company=company,
         website=website,
         phone=phone,
         unsubscribe_mailto=unsub_addr,
         plain_template=plain_tpl or None,
         html_template=html_tpl or None,
+        settings=settings,
+        callback_url=cb_url,
     )
+    attach = _attachments_for_send(settings, step_wants=False, force=attach_presentation)
     open_token = None
     if tracking is not None and not dry_run:
         try:
@@ -926,11 +1307,12 @@ def send_one(
         "plus_tag": plus_tag,
         "reply_to": reply_to,
         "oneshot": True,
+        "subject": subject,
+        "attached": [p.name for p in attach] if attach else [],
     }
 
     if dry_run:
         item["status"] = "dry_run"
-        item["subject"] = subject
         item["preview_plain"] = plain[:500]
         return {
             "ok": True,
@@ -938,6 +1320,7 @@ def send_one(
             "processed": 1,
             "oneshot_today": deliverability.oneshot_today() if deliverability else 0,
             "oneshot_daily_limit": oneshot_limit,
+            "attached": item["attached"],
             "results": [item],
         }
 
@@ -950,6 +1333,7 @@ def send_one(
             unsubscribe_mailto=unsub_addr,
             reply_to=reply_to,
             outreach_id=f"oneshot-{row.id}",
+            attachments=attach,
         )
         item["message_id"] = message_id
         if tracking is not None:
@@ -985,13 +1369,14 @@ def send_one(
 
         store.mark(row.id, "sent", deal_id=deal_meta.get("deal_id"))
         item["status"] = "sent"
-        logger.info("oneshot sent to %s mid=%s", to_email, message_id)
+        logger.info("oneshot sent to %s mid=%s attach=%s", to_email, message_id, item["attached"])
         return {
             "ok": True,
             "dry_run": False,
             "processed": 1,
             "oneshot_today": item.get("oneshot_today"),
             "oneshot_daily_limit": oneshot_limit,
+            "attached": item["attached"],
             "results": [item],
         }
     except Exception as exc:  # noqa: BLE001

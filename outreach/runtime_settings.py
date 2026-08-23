@@ -18,6 +18,10 @@ EDITABLE_KEYS = (
     "OUTREACH_COMPANY_NAME",
     "OUTREACH_WEBSITE",
     "OUTREACH_CONTACT_PHONE",
+    "OUTREACH_CONTACT_EMAIL",
+    "OUTREACH_SIGNATURE",
+    "OUTREACH_LOGO_URL",
+    "OUTREACH_LOGO_ENABLED",
     "OUTREACH_UNSUBSCRIBE_MAILTO",
     "OUTREACH_TEMPLATE_PLAIN",
     "OUTREACH_TEMPLATE_HTML",
@@ -27,6 +31,16 @@ EDITABLE_KEYS = (
     "SCHEDULE_TIMEZONE",
     "SCHEDULE_BATCH_SIZE",
     "SCHEDULE_TICK_SECONDS",
+    "SCHEDULE_LOCAL_WINDOWS",
+    "SCHEDULE_SLOTS",
+    "SCHEDULE_PREFERRED_WEEKDAYS",
+    "SCHEDULE_ALLOWED_WEEKDAYS",
+    "SCHEDULE_DEFAULT_TIMEZONE",
+    "SCHEDULE_PREFER_TUE_THU",
+    "SCHEDULE_FOLLOWUPS_FIRST",
+    "SCHEDULE_SKIP_RU_HOLIDAYS",
+    "SCHEDULE_TZ_FAIRNESS",
+    "OOO_PAUSE_DAYS",
     "BITRIX_CREATE_DEAL",
     "BITRIX_ASSIGNED_BY_ID",
     "BITRIX_DEAL_STAGE_ID",
@@ -34,6 +48,15 @@ EDITABLE_KEYS = (
     "REPLY_WATCH_ENABLED",
     "REPLY_NOTIFY_ENABLED",
     "REPLY_NOTIFY_EMAIL",
+    "OPS_NOTIFY_ENABLED",
+    "OPS_NOTIFY_EMAIL_ENABLED",
+    "OPS_NOTIFY_EMAIL",
+    "OPS_NOTIFY_TELEGRAM_ENABLED",
+    "OPS_NOTIFY_TELEGRAM_BOT_TOKEN",
+    "OPS_NOTIFY_TELEGRAM_CHAT_ID",
+    "OPS_NOTIFY_ON_POSITIVE_REPLY",
+    "OPS_NOTIFY_ON_MAILBOX_PAUSE",
+    "OPS_NOTIFY_ON_CALLBACK",
     # Deliverability / tracking (module settings)
     "WARMUP_ENABLED",
     "WARMUP_START_DAY",
@@ -47,6 +70,20 @@ EDITABLE_KEYS = (
     "COMPANY_DAILY_CAP",
     "COMPANY_CONTACT_COOLDOWN_DAYS",
     "SEQUENCES_ENABLED",
+    "OUTREACH_SEQUENCE_PACK",
+    "OUTREACH_ATTACH_PRESENTATION",
+    "OUTREACH_PRESENTATION_PDF",
+    # Callback CTA from email → notify + optional AVA dial
+    "CALLBACK_CTA_ENABLED",
+    "CALLBACK_DIAL_ENABLED",
+    "CALLBACK_NOTIFY_ENABLED",
+    "CALLBACK_DIAL_MODE",
+    "CALLBACK_CTA_TITLE",
+    "CALLBACK_CTA_LEAD",
+    "CALLBACK_CTA_BUTTON",
+    "CALLBACK_NOTIFY_EMAIL",
+    "CALLBACK_SCENARIO_GREETING",
+    "CALLBACK_SCENARIO_SCRIPT",
 )
 
 SECRET_KEYS = frozenset(
@@ -54,6 +91,13 @@ SECRET_KEYS = frozenset(
         "BITRIX_WEBHOOK_URL",
         "MAIL_PASSWORD",
         "OUTREACH_UI_TOKEN",
+    }
+)
+
+# Stored in DB but never returned verbatim to the UI (empty save keeps existing value).
+MASKED_KEYS = frozenset(
+    {
+        "OPS_NOTIFY_TELEGRAM_BOT_TOKEN",
     }
 )
 
@@ -123,6 +167,8 @@ class RuntimeSettings:
                 if key not in EDITABLE_KEYS:
                     continue
                 text = "" if value is None else str(value)
+                if key in MASKED_KEYS and not text.strip():
+                    continue
                 conn.execute(
                     """
                     INSERT INTO app_settings(key, value, updated_at)
@@ -141,7 +187,12 @@ class RuntimeSettings:
         """Public settings for UI (no secrets)."""
         out: dict[str, Any] = {}
         for key in EDITABLE_KEYS:
-            out[key] = self.get(key, "")
+            raw = self.get(key, "")
+            if key in MASKED_KEYS:
+                out[key] = ""
+                out[f"{key}_CONFIGURED"] = bool((raw or "").strip())
+            else:
+                out[key] = raw
         # Read-only hints
         out["MAIL_USERNAME"] = os.getenv("MAIL_USERNAME", "")
         out["MAIL_SMTP_HOST"] = os.getenv("MAIL_SMTP_HOST", "")
