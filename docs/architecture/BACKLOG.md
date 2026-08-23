@@ -1,6 +1,6 @@
 # BACKLOG — AI Revenue OS
 
-Связано: [AS_IS](./AS_IS.md) · [TARGET](./TARGET_ARCHITECTURE.md) · [GAP](./GAP_ANALYSIS.md) · [MIGRATION_PLAN](./MIGRATION_PLAN.md)
+Связано: [AS_IS](./AS_IS.md) · [TARGET](./TARGET_ARCHITECTURE.md) · [GAP](./GAP_ANALYSIS.md) · [DATA_MAPPING](./DATA_MAPPING.md) · [MIGRATION_PLAN](./MIGRATION_PLAN.md)
 
 Источник требований: `Quantum_Console_AI_Revenue_OS_Cursor_Spec.md` v1.1.
 
@@ -11,6 +11,7 @@
 - [x] AS_IS architecture
 - [x] TARGET architecture
 - [x] GAP analysis + social capability matrix
+- [x] DATA_MAPPING (AS-IS → canonical)
 - [x] Migration plan + backlog
 - [ ] Human Accept на решения R1–R6 в MIGRATION_PLAN
 
