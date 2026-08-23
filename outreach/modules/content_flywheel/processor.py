@@ -65,11 +65,23 @@ def build_image_options(
     return options
 
 
-def talking_head_brief(*, title: str, body: str, news_id: str) -> dict[str, Any]:
+def talking_head_brief(
+    *,
+    title: str,
+    body: str,
+    news_id: str,
+    product_paragraph: str = "",
+    citations: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     profile = avatar_profile()
+    kb_line = ""
+    if product_paragraph:
+        kb_line = f"\n\nПо продуктам Quantum Labs: {product_paragraph[:350]}"
+    elif citations:
+        kb_line = "\n\n" + " ".join((c.get("note") or "")[:100] for c in citations[:2])
     script = (
         f"Привет! Коротко о главном: {title}.\n\n"
-        f"{body[:600]}\n\n"
+        f"{body[:500]}{kb_line}\n\n"
         f"Quantum Labs — платёжная инфраструктура для ломбардов и МФО. "
         f"Подробности на сайте."
     )
@@ -83,6 +95,7 @@ def talking_head_brief(*, title: str, body: str, news_id: str) -> dict[str, Any]
         "platforms": ["youtube", "instagram"],
         "series": "news-digest",
         "source_news_id": news_id,
+        "kb_citations": citations or [],
         "note": "Рендер talking-head — провайдер подключается отдельно (HeyGen/Synthesia stub)",
     }
 
@@ -135,16 +148,36 @@ def process_news_item(
     if not slot:
         return {"ok": False, "error": "no_open_slot"}
 
-    brief = body[:2000]
-    variants = variants_from_brief(title=title, brief=brief, link=news.get("link") or "")
+    from knowledge_enrich import enrich_content_brief
+
+    kb_ctx = enrich_content_brief(
+        title=title,
+        body=body[:2000],
+        link=news.get("link") or "",
+        tenant_id=getattr(store, "tenant_id", "quantum-labs"),
+    )
+    brief = kb_ctx.get("brief_enriched") or body[:2000]
+    product_footer = kb_ctx.get("product_paragraph") or ""
+    variants = variants_from_brief(
+        title=title,
+        brief=brief,
+        link=news.get("link") or "",
+        product_footer=product_footer,
+    )
     image_options = build_image_options(
         store,
         post_id=news_id,
         title=title,
-        brief=brief,
+        brief=brief[:200],
         original_url=news.get("image_url") or "",
     )
-    video_brief = talking_head_brief(title=title, body=body, news_id=news_id)
+    video_brief = talking_head_brief(
+        title=title,
+        body=body,
+        news_id=news_id,
+        product_paragraph=product_footer,
+        citations=kb_ctx.get("citations") or [],
+    )
 
     proposal = store.create_proposal(
         news_id=news_id,
@@ -156,6 +189,7 @@ def process_news_item(
         variants=variants,
         image_options=image_options,
         video_brief=video_brief,
+        kb_context=kb_ctx,
         dedup_score=0.0,
     )
     store.set_news_status(news_id, "processed")
@@ -166,6 +200,7 @@ def process_news_item(
         "slot": slot,
         "proposal": proposal,
         "similar_checked": len(memory),
+        "kb_context": kb_ctx,
         "auto_outreach": False,
     }
 
@@ -179,6 +214,8 @@ def approve_proposal(store: Any, proposal_id: str) -> dict[str, Any]:
 
     title = prop.get("title") or ""
     brief = prop.get("brief") or ""
+    kb_ctx = prop.get("kb_context") or {}
+    product_footer = kb_ctx.get("product_paragraph") or ""
     platforms = list((prop.get("variants") or {}).keys()) or [
         "telegram",
         "vk",
@@ -196,6 +233,8 @@ def approve_proposal(store: Any, proposal_id: str) -> dict[str, Any]:
         link="",
         source=f"flywheel:{prop.get('news_id')}",
         generate_images=False,
+        use_kb=False,
+        kb_context=kb_ctx,
     )
     images = prop.get("image_options") or []
     selected = next((i for i in images if i.get("selected")), images[0] if images else None)

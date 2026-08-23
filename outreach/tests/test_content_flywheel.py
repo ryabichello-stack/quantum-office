@@ -49,7 +49,7 @@ def test_flywheel_ingest_process_approve():
         )
         assert dup.get("duplicate") or dup["id"] == news["id"]
 
-        with patch.dict(os.environ, {"FLYWHEEL_AUTO_KB": "false"}, clear=False):
+        with patch.dict(os.environ, {"FLYWHEEL_AUTO_KB": "false", "FLYWHEEL_KB_ENRICH": "false"}, clear=False):
             out = process_news_item(store, news["id"])
         assert out.get("ok") is True
         assert out.get("proposal")

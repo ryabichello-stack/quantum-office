@@ -111,6 +111,17 @@ class SocialPublishStore:
                     ON publish_jobs(tenant_id, post_id, status);
                 """
             )
+            self._ensure_columns(
+                conn,
+                "social_posts",
+                {"kb_context_json": "TEXT NOT NULL DEFAULT '{}'"},
+            )
+
+    def _ensure_columns(self, conn: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
+        existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        for col, typedef in columns.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typedef}")
 
     # --- channels ---
 
@@ -205,14 +216,37 @@ class SocialPublishStore:
         link: str = "",
         source: str = "studio",
         generate_images: bool = True,
+        use_kb: bool = True,
+        kb_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         now = _utc_now()
         pid = _new_id()
         title = (title or "Пост Quantum Labs").strip()[:200]
-        brief = (brief or "").strip()[:4000]
+        brief_raw = (brief or "").strip()[:4000]
+        kb_ctx: dict[str, Any] = kb_context or {}
+        if use_kb and not kb_ctx:
+            try:
+                from knowledge_enrich import enrich_content_brief
+
+                kb_ctx = enrich_content_brief(
+                    title=title,
+                    body=brief_raw,
+                    link=link,
+                    tenant_id=self.tenant_id,
+                )
+            except Exception:  # noqa: BLE001
+                kb_ctx = {}
+        brief = kb_ctx.get("brief_enriched") or brief_raw
+        product_footer = kb_ctx.get("product_paragraph") or ""
         selected = [p.strip().lower() for p in (platforms or list(PLATFORMS)) if p.strip()]
         selected = [p for p in selected if p in PLATFORMS] or list(PLATFORMS)
-        variants = variants_from_brief(title=title, brief=brief, platforms=selected, link=link)
+        variants = variants_from_brief(
+            title=title,
+            brief=brief,
+            platforms=selected,
+            link=link,
+            product_footer=product_footer,
+        )
         images: list[dict[str, Any]] = []
         if generate_images:
             images = self._generate_images(pid, title=title, brief=brief)
@@ -221,8 +255,8 @@ class SocialPublishStore:
                 """
                 INSERT INTO social_posts(
                     id, tenant_id, title, brief, link, status, platforms_json,
-                    variants_json, images_json, source, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
+                    variants_json, images_json, kb_context_json, source, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     pid,
@@ -233,6 +267,7 @@ class SocialPublishStore:
                     json.dumps(selected, ensure_ascii=False),
                     json.dumps(variants, ensure_ascii=False),
                     json.dumps(images, ensure_ascii=False),
+                    json.dumps(kb_ctx, ensure_ascii=False),
                     source,
                     now,
                     now,
@@ -268,6 +303,7 @@ class SocialPublishStore:
             ("platforms_json", []),
             ("variants_json", {}),
             ("images_json", []),
+            ("kb_context_json", {}),
         ):
             field = key.replace("_json", "")
             try:
@@ -514,6 +550,7 @@ class SocialPublishModule:
             link: str = ""
             source: str = "studio"
             generate_images: bool = True
+            use_kb: bool = True
 
         @router.post("/posts")
         def create_post(payload: PostBody) -> dict[str, Any]:
@@ -524,8 +561,17 @@ class SocialPublishModule:
                 link=payload.link,
                 source=payload.source,
                 generate_images=payload.generate_images,
+                use_kb=payload.use_kb,
             )
             return {"ok": True, "post": row}
+
+        @router.get("/kb/enrich")
+        def kb_enrich(title: str = "", body: str = "") -> dict[str, Any]:
+            from knowledge_enrich import enrich_content_brief
+
+            if not (title.strip() or body.strip()):
+                raise HTTPException(400, "title_or_body_required")
+            return {"ok": True, **enrich_content_brief(title=title, body=body, tenant_id=self.store.tenant_id)}
 
         @router.get("/posts")
         def list_posts(

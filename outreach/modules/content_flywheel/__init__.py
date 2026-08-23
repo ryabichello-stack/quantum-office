@@ -136,6 +136,17 @@ class ContentFlywheelStore:
                     ON editorial_proposals(tenant_id, slot_key, status);
                 """
             )
+            self._ensure_columns(
+                conn,
+                "editorial_proposals",
+                {"kb_context_json": "TEXT NOT NULL DEFAULT '{}'"},
+            )
+
+    def _ensure_columns(self, conn: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
+        existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        for col, typedef in columns.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typedef}")
 
     # --- sources ---
 
@@ -411,6 +422,7 @@ class ContentFlywheelStore:
         variants: dict[str, Any],
         image_options: list[dict[str, Any]],
         video_brief: dict[str, Any],
+        kb_context: dict[str, Any] | None = None,
         dedup_score: float = 0.0,
     ) -> dict[str, Any]:
         now = _utc_now()
@@ -421,8 +433,8 @@ class ContentFlywheelStore:
                 INSERT INTO editorial_proposals(
                     id, tenant_id, news_id, slot_key, slot_at, title, brief,
                     angle_fingerprint, status, variants_json, image_options_json,
-                    video_brief_json, dedup_score, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
+                    video_brief_json, kb_context_json, dedup_score, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     pid,
@@ -436,6 +448,7 @@ class ContentFlywheelStore:
                     json.dumps(variants, ensure_ascii=False),
                     json.dumps(image_options, ensure_ascii=False),
                     json.dumps(video_brief, ensure_ascii=False),
+                    json.dumps(kb_context or {}, ensure_ascii=False),
                     float(dedup_score),
                     now,
                     now,
@@ -449,6 +462,7 @@ class ContentFlywheelStore:
             ("variants_json", {}),
             ("image_options_json", []),
             ("video_brief_json", {}),
+            ("kb_context_json", {}),
         ):
             field = key.replace("_json", "")
             try:
@@ -640,6 +654,20 @@ class ContentFlywheelModule:
         @router.get("/memory")
         def memory(limit: int = Query(40, ge=1, le=200)) -> dict[str, Any]:
             return {"ok": True, "items": self.store.list_memory(limit=limit)}
+
+        @router.get("/kb/enrich")
+        def kb_enrich(title: str = "", body: str = "") -> dict[str, Any]:
+            from knowledge_enrich import enrich_content_brief
+
+            if not (title.strip() or body.strip()):
+                raise HTTPException(400, "title_or_body_required")
+            return {"ok": True, **enrich_content_brief(title=title, body=body, tenant_id=self.store.tenant_id)}
+
+        @router.get("/kb/products")
+        def kb_products() -> dict[str, Any]:
+            from knowledge_enrich import load_tenant_products
+
+            return {"ok": True, "items": load_tenant_products(self.store.tenant_id)}
 
         @router.post("/run-cycle")
         def run_cycle() -> dict[str, Any]:

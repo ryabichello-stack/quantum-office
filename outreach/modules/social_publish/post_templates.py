@@ -21,10 +21,19 @@ def _clip(text: str, limit: int) -> str:
     return t[: limit - 1].rstrip() + "…"
 
 
-def variant_for_platform(*, platform: str, title: str, brief: str, link: str = "") -> dict[str, Any]:
+def variant_for_platform(
+    *,
+    platform: str,
+    title: str,
+    brief: str,
+    link: str = "",
+    product_footer: str = "",
+) -> dict[str, Any]:
     p = (platform or "telegram").strip().lower()
     title = (title or "Quantum Labs").strip()
     brief = (brief or "").strip()
+    if product_footer and product_footer not in brief:
+        brief = f"{brief}\n\n{product_footer}".strip()
     tags = _HASHTAGS.get(p, "")
     link_line = f"\n\n{link}" if link else ""
 
@@ -79,11 +88,19 @@ def variants_from_brief(
     brief: str,
     platforms: list[str] | None = None,
     link: str = "",
+    product_footer: str = "",
 ) -> dict[str, dict[str, Any]]:
     selected = [p.strip().lower() for p in (platforms or list(PLATFORMS)) if p.strip()]
     selected = [p for p in selected if p in PLATFORMS]
     if not selected:
         selected = list(PLATFORMS)
     return {
-        p: variant_for_platform(platform=p, title=title, brief=brief, link=link) for p in selected
+        p: variant_for_platform(
+            platform=p,
+            title=title,
+            brief=brief,
+            link=link,
+            product_footer=product_footer,
+        )
+        for p in selected
     }

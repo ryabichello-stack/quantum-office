@@ -57,7 +57,22 @@ flowchart LR
 | Video | `modules/video_studio` | private + talking-head meta |
 | Listen stub | `radar/owned_listen` | расширяется под news body |
 
-## Env
+## 2. Knowledge loop
+
+| Direction | Mechanism |
+|-----------|-----------|
+| News → KB | `queue_flywheel_document` → `brain_inbox/` |
+| KB → Posts | `knowledge_enrich.enrich_content_brief` → Second Brain search + `product_profile.json` |
+| Products | `config/tenants/quantum-labs/product_profile.json` (Quantum Labs, Quantum Payouts) |
+
+При **Process** / создании поста в «Соцсети»:
+1. Запросы в `/api/brain/search` (hybrid) по новости + продуктам
+2. Факты в блок **«Контекст»** в тексте поста и в talking-head сценарии
+3. Citations в `kb_context` на карточке proposal (UI: строка KB)
+
+Env: `FLYWHEEL_KB_ENRICH=true`, `CONTENT_USE_KB=true`, `KNOWLEDGE_BASE=http://127.0.0.1:8017`
+
+## 3. Env
 
 ```env
 FLYWHEEL_ENABLED=true

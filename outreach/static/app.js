@@ -2365,6 +2365,13 @@
           )
           .join("");
         const plats = (p.platforms || []).map((x) => `<span class="sp-platform-badge sp-${escapeHtml(x)}">${escapeHtml(x)}</span>`).join("");
+        const kb = (p.kb_context && p.kb_context.citations) || [];
+        const kbLine = kb.length
+          ? `<p class="muted tight fw-kb">KB: ${kb
+              .slice(0, 2)
+              .map((c) => escapeHtml((c.note || "").slice(0, 70)))
+              .join(" · ")}</p>`
+          : "";
         let actions = "";
         if (p.status === "approved") {
           actions = `<button type="button" class="small primary" data-sp-repost="${escapeHtml(p.id)}">Репост в каналы</button>
@@ -2385,6 +2392,7 @@
             ${statusChip(p.status)}
           </div>
           <p class="muted tight sp-brief">${escapeHtml((p.brief || "").slice(0, 140))}</p>
+          ${kbLine}
           <div class="sp-thumbs">${thumbs}</div>
           ${renderSpVariantPreview(p.variants)}
           <div class="ros-card-actions">${actions}</div>
@@ -2570,6 +2578,13 @@
       .map((p) => {
         const imgs = (p.image_options || []).length;
         const vid = (p.video_brief && p.video_brief.format) === "talking_head";
+        const kb = (p.kb_context && p.kb_context.citations) || [];
+        const kbLine = kb.length
+          ? `<p class="muted tight fw-kb">KB: ${kb
+              .slice(0, 2)
+              .map((c) => escapeHtml((c.note || "").slice(0, 70)))
+              .join(" · ")}</p>`
+          : "";
         const actions =
           p.status === "approved"
             ? `<span class="muted tight">✓ пост ${escapeHtml((p.social_post_id || "").slice(0, 8))}</span>`
@@ -2580,6 +2595,7 @@
             <div class="muted tight">слот ${escapeHtml(p.slot_key || "")} · ${imgs} img · ${vid ? "talking-head" : ""}</div></div>
             ${statusChip(p.status)}
           </div>
+          ${kbLine}
           <div class="ros-card-actions">${actions}</div>
         </article>`;
       })
