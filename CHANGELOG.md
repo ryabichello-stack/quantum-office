@@ -12,6 +12,13 @@
 
 ### Added
 
+- **AI Revenue OS Stage 0** — architecture pack in `docs/architecture/` (AS_IS, TARGET, GAP, DATA_MAPPING, SOCIAL_CAPABILITY_MATRIX, MIGRATION_PLAN, BACKLOG)
+- **Stage 1 data core** (`outreach/modules/accounts`): Account / Person / Employment / ContactPoint / Lead / `domain_events`; lifecycle `NEW`…`BLACKLISTED`; SoT local + Bitrix company id (Accept R1/R2)
+- **Slice A inbound**: IMAP reply → resolve Account/Person/Lead + `message.received` / `message.classified`; Console call watcher → `call.completed` via `/api/modules/accounts/resolve-inbound`
+- Inbox peel-away **enrichment panel** (Account / Person / Lead) + rules-first **suggested next action** + APPROVAL_REQUIRED reply draft («Вставить черновик»); thread API field `enrichment`
+- API: `/api/modules/accounts/*`, `/meta/enrichment`, `/meta/suggest-next`, `/meta/events`, `/meta/leads`
+- Tenant seed: `outreach/config/tenants/quantum-labs/` (product / ICP / roles / channel policy)
+- **Slice B scaffold** (`outreach/modules/social`): SocialSourceAdapter registry (clients, dadata, web_import, telegram + stubs vk/ok/tenchat/linkedin); `LPRSearchRun` / candidates / score / identity cluster (APPROVAL_REQUIRED); coverage matrix; `SocialActionTask` without auto-DM; API `/api/modules/social/*`
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
 - Юридический футер + «Отписаться» / List-Unsubscribe в шаблонах; презентация PDF на 1-м письме
 - API `GET/POST /api/packs` (+ apply) и вкладка «Кампания» в UI (Console embed + standalone)
@@ -29,6 +36,7 @@
 - Кампания: загрузка/замена PDF-презентации по отрасли (`/api/packs/{id}/presentation`, хранение в `data/presentations/`)
 - Кампания: разовое тестовое письмо на указанный адрес (сохраняет поля → `/send-one`, с PDF по флажку)
 - Письма: universal callback CTA — inline form + bulletproof кнопка (Gmail) + mailto fallback; one-screen landing
+- Outreach Layers A–G3 control plane: B2B send windows, queue bulk/calendar, company peel-away, consent, Quantum Panel Telegram, ops notify, inbox thread+reply, call notify, step conversion %
 
 ### Changed
 
@@ -37,6 +45,7 @@
 - Outreach UI: полностью в стиле «Задание на звонок» — surface/поля/mode-cards, акцент Console, Кампания первой вкладкой; Рассылка / Очередь / Настройки тем же паттерном
 - Outreach «Отчёт»: доли / воронка / по дням / пояснения / последние письма — в панелях с тонкой разлиновкой
 - Отраслевые пакеты: финал писем через `{signature}` вместо жёсткой подписи; HTML — `{logo_header}` + корректный `{phone_line}`
+- Accept R5: Social Intelligence живёт в `outreach/modules/social` (не отдельный сервис до нагрузки)
 
 ## [0.2.0] — 2026-08-20
 

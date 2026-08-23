@@ -40,6 +40,7 @@ from modules.policy import PolicyModule
 from modules.consent import ConsentModule
 from modules.replies import RepliesModule
 from modules.accounts import AccountsModule
+from modules.social import SocialModule
 from outbox import OutboxStore
 from reply_watcher import ReplyWatchThread, check_replies, imap_configured, reply_watch_status
 from ops_center import build_ops_summary
@@ -95,6 +96,7 @@ _policy_mod = PolicyModule()
 _consent_mod = ConsentModule()
 _replies_mod = RepliesModule()
 _accounts_mod = AccountsModule()
+_social_mod = SocialModule()
 _registry.register(_tracking_mod)
 _registry.register(_deliver_mod)
 _registry.register(_runner_mod)
@@ -108,6 +110,7 @@ _registry.register(_policy_mod)
 _registry.register(_consent_mod)
 _registry.register(_replies_mod)
 _registry.register(_accounts_mod)
+_registry.register(_social_mod)
 _app_ctx: AppContext | None = None
 
 
