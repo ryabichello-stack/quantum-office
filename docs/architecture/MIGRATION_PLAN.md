@@ -144,9 +144,9 @@ Intent-first monitoring, cold auto-DM, LinkedIn unofficial scrapers.
 ### P2
 
 - [x] Revenue Orchestrator journeys (wrap sequences) — scaffold
-- [ ] Intent-first signals
+- [x] Intent-first signals — Radar MVP API
 - [ ] Owned-page listening (Telegram/VK when capable)
-- [ ] Content Studio MVP
+- [x] Content Studio MVP — objection → draft API
 - [ ] YouTube private upload path
 
 ### P3

@@ -75,7 +75,13 @@
 
 ## Epic 5+ — Later
 
-Content Studio · Video Studio · Intent Radar · Multi-tenant onboarding · RBAC · Usage metering.
+| ID | Item | Status |
+|----|------|--------|
+| C1 | Content Studio MVP (objection → draft) | ✅ API |
+| R1 | Intent Radar ingest + verify | ✅ API |
+| V1 | Video Studio | pending |
+| T1 | Multi-tenant onboarding | pending |
+| T2 | RBAC / usage metering | pending |
 
 См. этапы 5–8 в MIGRATION_PLAN.
 

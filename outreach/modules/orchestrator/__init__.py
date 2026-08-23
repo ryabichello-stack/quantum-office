@@ -373,14 +373,14 @@ class OrchestratorModule:
             dry_run: bool = False
 
         @router.post("/enroll")
-        def enroll(body: EnrollBody) -> dict[str, Any]:
+        def enroll(payload: EnrollBody) -> dict[str, Any]:
             try:
                 row = self.store.enroll(
-                    email=body.email,
-                    company_id=body.company_id,
-                    account_id=body.account_id,
-                    journey_key=body.journey_key,
-                    dry_run=body.dry_run,
+                    email=payload.email,
+                    company_id=payload.company_id,
+                    account_id=payload.account_id,
+                    journey_key=payload.journey_key,
+                    dry_run=payload.dry_run,
                 )
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
@@ -391,8 +391,10 @@ class OrchestratorModule:
             company_id: str | None = None
 
         @router.post("/dry-run")
-        def dry_run(body: DryRunBody) -> dict[str, Any]:
-            return self.store.dry_run_preview(email=body.email, company_id=body.company_id)
+        def dry_run(payload: DryRunBody) -> dict[str, Any]:
+            return self.store.dry_run_preview(
+                email=payload.email, company_id=payload.company_id
+            )
 
         @router.get("/enrollments")
         def enrollments(limit: int = Query(50, ge=1, le=200)) -> dict[str, Any]:
@@ -405,10 +407,10 @@ class OrchestratorModule:
             classification: str | None = None
 
         @router.post("/on-inbound")
-        def on_inbound(body: InboundBody) -> dict[str, Any]:
+        def on_inbound(payload: InboundBody) -> dict[str, Any]:
             return self.store.on_inbound_reply(
-                email=body.email,
-                company_id=body.company_id,
-                account_id=body.account_id,
-                classification=body.classification,
+                email=payload.email,
+                company_id=payload.company_id,
+                account_id=payload.account_id,
+                classification=payload.classification,
             )

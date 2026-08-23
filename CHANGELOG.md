@@ -23,6 +23,8 @@
 - **Send guards** — единый gate: suppression + consent DNC + Account `BLACKLISTED` перед send
 - **Second Brain citations** в suggested reply (best-effort `KNOWLEDGE_BASE` / `/api/brain/search` → fallback `/api/knowledge/query`)
 - **Orchestrator scaffold** (`modules/orchestrator`): journey definitions, enroll, dry-run, stop-on-reply + sequence stop
+- **Content Studio MVP** (`modules/content_studio`): objection → draft pack letters, APPROVAL_REQUIRED
+- **Intent Radar MVP** (`modules/radar`): ingest signals + verify suggest action (never auto-outreach)
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
 - Юридический футер + «Отписаться» / List-Unsubscribe в шаблонах; презентация PDF на 1-м письме
 - API `GET/POST /api/packs` (+ apply) и вкладка «Кампания» в UI (Console embed + standalone)
