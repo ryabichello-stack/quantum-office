@@ -79,11 +79,11 @@
 
 | ID | Сценарий | Pass |
 |----|----------|------|
-| A1 | IMAP reply → один Account/Person, sequence stop | |
-| A2 | Operator reply из UI → Message outbound в thread | |
-| A3 | Call completed → event + Inbox note / task | |
-| A4 | Unsubscribe → suppression blocks send | |
-| A5 | Duplicate email не создаёт второй Person | |
+| A1 | IMAP reply → один Account/Person, sequence stop | 🟡 resolve+event; stop via existing sequences |
+| A2 | Operator reply из UI → Message outbound в thread | ✅ Layer G |
+| A3 | Call completed → event + Inbox note / task | 🟡 console → resolve-inbound |
+| A4 | Unsubscribe → suppression blocks send | 🟡 lifecycle BLACKLISTED |
+| A5 | Duplicate email не создаёт второй Person | ✅ unit |
 
 ### Не в scope Slice A
 

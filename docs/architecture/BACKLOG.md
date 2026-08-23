@@ -38,9 +38,9 @@
 |----|------|---------|--------|
 | A1 | Normalize `message.received` / `call.completed` | D6 | ✅ |
 | A2 | Account/Person resolve on inbound | D3,D4 | ✅ |
-| A3 | Inbox enrichment panel (account side) | A2 | pending UI |
-| A4 | Suggested next action (meeting/task/reply) | A2 | pending |
-| A5 | Optional SB-cited reply draft (approval) | knowledge | pending |
+| A3 | Inbox enrichment panel (account side) | A2 | ✅ peel-away panel |
+| A4 | Suggested next action (meeting/task/reply) | A2 | ✅ rules-first |
+| A5 | Optional SB-cited reply draft (approval) | knowledge | 🟡 stub + APPROVAL_REQUIRED |
 | A6 | Local Lead record + Bitrix adapter | D3 | ✅ local Lead |
 | A7 | E2E tests A1–A5 from MIGRATION_PLAN | A1–A6 | 🟡 unit tests |
 

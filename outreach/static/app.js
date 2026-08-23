@@ -853,6 +853,7 @@
   }
 
   let activeInboxThreadId = null;
+  let activeInboxDraft = "";
 
   function closeInboxThread() {
     const peel = $("inboxThreadPeelAway");
@@ -863,8 +864,16 @@
     }, 260);
     document.body.classList.remove("peel-away-open");
     activeInboxThreadId = null;
+    activeInboxDraft = "";
     if ($("inboxReplyBody")) $("inboxReplyBody").value = "";
     if ($("inboxReplyStatus")) $("inboxReplyStatus").textContent = "";
+    const enrich = $("inboxThreadEnrichment");
+    if (enrich) {
+      enrich.hidden = true;
+      enrich.innerHTML = "";
+    }
+    const draftBtn = $("inboxReplyUseDraft");
+    if (draftBtn) draftBtn.hidden = true;
   }
 
   function renderInboxThreadMessages(messages) {
@@ -892,6 +901,70 @@
       .join("");
   }
 
+  function renderInboxEnrichment(enrichment) {
+    const el = $("inboxThreadEnrichment");
+    const draftBtn = $("inboxReplyUseDraft");
+    activeInboxDraft = "";
+    if (!el) return;
+    if (!enrichment || !enrichment.ok) {
+      el.hidden = true;
+      el.innerHTML = "";
+      if (draftBtn) draftBtn.hidden = true;
+      return;
+    }
+    const acc = enrichment.account || null;
+    const person = enrichment.person || null;
+    const lead = enrichment.lead || null;
+    const next = enrichment.next_action || {};
+    const draft = enrichment.suggested_reply || {};
+    const bits = [];
+    if (acc) {
+      bits.push(
+        `<div><span class="muted">Account</span> ${escapeHtml(
+          acc.legal_name || acc.brand_name || acc.id
+        )} · <code>${escapeHtml(acc.lifecycle_status || "")}</code>` +
+          (acc.bitrix_company_id
+            ? ` · bx ${escapeHtml(String(acc.bitrix_company_id))}`
+            : "") +
+          `</div>`
+      );
+    } else {
+      bits.push(`<div class="muted">Account ещё не связан — появится после resolve inbound</div>`);
+    }
+    if (person) {
+      bits.push(
+        `<div><span class="muted">Person</span> ${escapeHtml(
+          person.full_name || person.id
+        )}</div>`
+      );
+    }
+    if (lead) {
+      bits.push(
+        `<div><span class="muted">Lead</span> ${escapeHtml(
+          lead.status || ""
+        )} · ${escapeHtml(lead.source || "")}</div>`
+      );
+    }
+    if (next.label) {
+      bits.push(
+        `<div class="inbox-next-action"><span class="muted">Next</span> <strong>${escapeHtml(
+          next.label
+        )}</strong> <span class="badge">${escapeHtml(next.priority || "")}</span></div>`
+      );
+    }
+    if (draft.approval_required && draft.body) {
+      bits.push(
+        `<div class="muted tight">Черновик ответа · APPROVAL_REQUIRED (не отправляется автоматически)</div>`
+      );
+      activeInboxDraft = draft.body;
+      if (draftBtn) draftBtn.hidden = false;
+    } else if (draftBtn) {
+      draftBtn.hidden = true;
+    }
+    el.innerHTML = bits.join("");
+    el.hidden = false;
+  }
+
   async function openInboxThread(inboxId) {
     const peel = $("inboxThreadPeelAway");
     const title = $("inboxThreadTitle");
@@ -905,6 +978,11 @@
     if (title) title.textContent = "Переписка";
     if (meta) meta.textContent = "Загрузка…";
     if (body) body.innerHTML = "<p class='muted tight'>Загрузка…</p>";
+    const enrichEl = $("inboxThreadEnrichment");
+    if (enrichEl) {
+      enrichEl.hidden = true;
+      enrichEl.innerHTML = "";
+    }
     try {
       const data = await api(`/api/modules/replies/inbox/${encodeURIComponent(inboxId)}/thread`);
       if (title) title.textContent = data.subject || "Переписка";
@@ -917,6 +995,7 @@
           .filter(Boolean)
           .join(" · ");
       }
+      renderInboxEnrichment(data.enrichment);
       if (body) {
         body.innerHTML = `<div class="inbox-thread-messages">${renderInboxThreadMessages(
           data.messages
@@ -3027,6 +3106,16 @@
     }
     if ($("inboxReplySend")) {
       $("inboxReplySend").addEventListener("click", () => sendInboxThreadReply().catch(logAction));
+    }
+    if ($("inboxReplyUseDraft")) {
+      $("inboxReplyUseDraft").addEventListener("click", () => {
+        if (!activeInboxDraft) return;
+        if ($("inboxReplyBody")) $("inboxReplyBody").value = activeInboxDraft;
+        if ($("inboxReplyStatus")) {
+          $("inboxReplyStatus").textContent =
+            "Черновик вставлен — проверьте перед отправкой (APPROVAL_REQUIRED)";
+        }
+      });
     }
     document.addEventListener("keydown", (ev) => {
       const peel = $("companyPeelAway");

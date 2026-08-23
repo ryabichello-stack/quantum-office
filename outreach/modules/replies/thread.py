@@ -120,6 +120,21 @@ def build_inbox_thread(
         if mid:
             ref_ids.append(mid)
 
+    enrichment: dict[str, Any] | None = None
+    try:
+        from modules.accounts import AccountStore
+
+        enrichment = AccountStore().enrichment_context(
+            email=peer or None,
+            bitrix_company_id=company_id or None,
+            classification=row.get("classification"),
+            contact_name="",
+            company_title="",
+            create_if_missing=False,
+        )
+    except Exception:  # noqa: BLE001
+        enrichment = None
+
     return {
         "ok": True,
         "inbox_id": inbox_id,
@@ -130,6 +145,7 @@ def build_inbox_thread(
         "subject": row.get("subject"),
         "references": ref_ids,
         "messages": messages,
+        "enrichment": enrichment,
     }
 
 

@@ -85,3 +85,64 @@ def test_blacklist_on_unsubscribe():
         )
         assert out["account"]["lifecycle_status"] == "BLACKLISTED"
         assert out["lead"]["status"] == "BLACKLISTED"
+
+
+def test_suggest_next_action_rules():
+    from modules.accounts import suggest_next_action, suggested_reply_draft
+
+    assert suggest_next_action(classification="unsubscribe")["action"] == "suppress"
+    assert (
+        suggest_next_action(classification="positive_interest")["action"]
+        == "propose_meeting"
+    )
+    assert suggest_next_action(classification="negative")["action"] == "close_politely"
+    assert (
+        suggest_next_action(lifecycle="REPLIED", classification="human_unclassified")[
+            "action"
+        ]
+        == "operator_reply"
+    )
+    draft = suggested_reply_draft(
+        classification="positive_interest",
+        account_name="ООО Тест",
+        person_name="Иван",
+        next_action=suggest_next_action(classification="positive_interest"),
+    )
+    assert draft["approval_required"] is True
+    assert "Иван" in draft["body"]
+    assert draft["citations"]
+
+
+def test_enrichment_context_read_and_create():
+    with tempfile.TemporaryDirectory() as tmp:
+        store = AccountStore(Path(tmp) / "m.db")
+        store.upsert_account_from_company(
+            {"bitrix_id": "99", "title": "Enrich Co"}
+        )
+        empty = store.enrichment_context(
+            email="nobody@x.ru",
+            bitrix_company_id="99",
+            classification="human_unclassified",
+        )
+        assert empty["ok"] is True
+        assert empty["account"]["bitrix_company_id"] == "99"
+        assert empty["person"] is None
+        assert empty["next_action"]["action"] == "operator_reply"
+
+        created = store.enrichment_context(
+            email="ann@enrich.ru",
+            bitrix_company_id="99",
+            classification="positive_interest",
+            contact_name="Анна",
+            create_if_missing=True,
+        )
+        assert created["person"]["full_name"] == "Анна"
+        assert created["lead"]["status"] == "INTERESTED"
+        assert created["next_action"]["action"] == "propose_meeting"
+        assert created["suggested_reply"]["approval_required"] is True
+
+        again = store.enrichment_context(
+            email="ann@enrich.ru", bitrix_company_id="99"
+        )
+        assert again["person"]["id"] == created["person"]["id"]
+        assert again["lead"]["id"] == created["lead"]["id"]

@@ -723,6 +723,94 @@ class AccountStore:
             "lead": lead,
         }
 
+    def latest_lead(
+        self,
+        *,
+        account_id: str | None = None,
+        person_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        if not account_id and not person_id:
+            return None
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM leads
+                WHERE tenant_id = ?
+                  AND (? IS NULL OR account_id = ?)
+                  AND (? IS NULL OR person_id = ?)
+                ORDER BY updated_at DESC LIMIT 1
+                """,
+                (
+                    self.tenant_id,
+                    account_id,
+                    account_id,
+                    person_id,
+                    person_id,
+                ),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def enrichment_context(
+        self,
+        *,
+        email: str | None = None,
+        bitrix_company_id: str | None = None,
+        classification: str | None = None,
+        contact_name: str = "",
+        company_title: str = "",
+        create_if_missing: bool = False,
+    ) -> dict[str, Any]:
+        """Lookup Account/Person/Lead for inbox enrichment panel (read-mostly)."""
+        account = None
+        person = None
+        if bitrix_company_id:
+            account = self.get_account_by_bitrix(bitrix_company_id)
+        if email:
+            person = self.find_person_by_email(email)
+
+        if create_if_missing and (email or bitrix_company_id):
+            resolved = self.resolve_inbound(
+                email=email,
+                bitrix_company_id=bitrix_company_id,
+                contact_name=contact_name,
+                company_title=company_title,
+                classification=classification,
+                source="inbox_enrichment",
+            )
+            account = resolved.get("account") or account
+            person = resolved.get("person") or person
+            lead = resolved.get("lead")
+        else:
+            lead = self.latest_lead(
+                account_id=account["id"] if account else None,
+                person_id=person["id"] if person else None,
+            )
+
+        lifecycle = (account or {}).get("lifecycle_status")
+        lead_status = (lead or {}).get("status")
+        next_action = suggest_next_action(
+            lifecycle=lifecycle,
+            lead_status=lead_status,
+            classification=classification,
+        )
+        draft = suggested_reply_draft(
+            classification=classification,
+            account_name=(account or {}).get("legal_name")
+            or (account or {}).get("brand_name")
+            or company_title
+            or "",
+            person_name=(person or {}).get("full_name") or contact_name or "",
+            next_action=next_action,
+        )
+        return {
+            "ok": True,
+            "account": account,
+            "person": person,
+            "lead": lead,
+            "next_action": next_action,
+            "suggested_reply": draft,
+        }
+
     def sync_from_clients(self, *, limit: int = 500) -> dict[str, Any]:
         """Backfill accounts from clients.companies."""
         from modules.clients import ClientsStore
@@ -738,6 +826,137 @@ class AccountStore:
             self.upsert_account_from_company(dict(r))
             n += 1
         return {"ok": True, "upserted": n}
+
+
+def suggest_next_action(
+    *,
+    lifecycle: str | None = None,
+    lead_status: str | None = None,
+    classification: str | None = None,
+) -> dict[str, Any]:
+    """Rules-first next action for Slice A (no LLM)."""
+    cls = (classification or "").strip().lower()
+    life = (lifecycle or lead_status or "NEW").strip().upper()
+
+    if cls == "unsubscribe" or life == "BLACKLISTED":
+        return {
+            "action": "suppress",
+            "label": "Не писать — suppress / BLACKLISTED",
+            "priority": "high",
+            "channel": None,
+            "reason": "unsubscribe_or_blacklist",
+        }
+    if cls == "positive_interest" or life == "INTERESTED":
+        return {
+            "action": "propose_meeting",
+            "label": "Предложить слот / ответить с CTA встречи",
+            "priority": "high",
+            "channel": "email",
+            "reason": "positive_interest",
+        }
+    if cls == "forwarded":
+        return {
+            "action": "follow_cc",
+            "label": "Уточнить ЛПР у того, кому переслали",
+            "priority": "medium",
+            "channel": "email",
+            "reason": "forwarded",
+        }
+    if cls == "negative":
+        return {
+            "action": "close_politely",
+            "label": "Вежливо закрыть + пауза последовательности",
+            "priority": "medium",
+            "channel": "email",
+            "reason": "negative",
+        }
+    if life == "MEETING_BOOKED":
+        return {
+            "action": "prepare_meeting",
+            "label": "Подтвердить встречу / бриф",
+            "priority": "high",
+            "channel": "email",
+            "reason": "meeting_booked",
+        }
+    if cls == "human_unclassified" or life == "REPLIED":
+        return {
+            "action": "operator_reply",
+            "label": "Ответить оператором из Inbox",
+            "priority": "high",
+            "channel": "email",
+            "reason": "needs_human_reply",
+        }
+    return {
+        "action": "review",
+        "label": "Просмотреть карточку Account",
+        "priority": "low",
+        "channel": None,
+        "reason": "default",
+    }
+
+
+def suggested_reply_draft(
+    *,
+    classification: str | None,
+    account_name: str = "",
+    person_name: str = "",
+    next_action: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Stub reply draft — APPROVAL_REQUIRED; SB citations filled later."""
+    action = (next_action or {}).get("action") or "review"
+    name = (person_name or "").strip() or "коллеги"
+    company = (account_name or "").strip()
+    company_bit = f" ({company})" if company else ""
+
+    bodies = {
+        "propose_meeting": (
+            f"Здравствуйте, {name}!\n\n"
+            f"Спасибо за ответ{company_bit}. Готовы коротко созвониться "
+            "и показать, как Quantum Labs закрывает ваш кейс. "
+            "Удобны ли вам 2–3 слота на этой неделе?\n\n"
+            "С уважением,\nQuantum Labs"
+        ),
+        "close_politely": (
+            f"Здравствуйте, {name}!\n\n"
+            "Понял, спасибо за ответ. Не буду беспокоить. "
+            "Если тема станет актуальной — напишите, будем рады помочь.\n\n"
+            "С уважением,\nQuantum Labs"
+        ),
+        "follow_cc": (
+            f"Здравствуйте, {name}!\n\n"
+            "Вижу, письмо переслали коллеге. Подскажите, пожалуйста, "
+            "с кем лучше продолжить диалог по внедрению?\n\n"
+            "С уважением,\nQuantum Labs"
+        ),
+        "operator_reply": (
+            f"Здравствуйте, {name}!\n\n"
+            f"Спасибо за сообщение{company_bit}. "
+            "[уточните ответ по сути запроса]\n\n"
+            "С уважением,\nQuantum Labs"
+        ),
+        "suppress": "",
+        "prepare_meeting": (
+            f"Здравствуйте, {name}!\n\n"
+            "Напоминаю о нашей встрече. Если нужно перенести слот — "
+            "напишите, подберём другое время.\n\n"
+            "С уважением,\nQuantum Labs"
+        ),
+    }
+    body = bodies.get(action, bodies["operator_reply"])
+    return {
+        "approval_required": True,
+        "status": "draft",
+        "action": action,
+        "body": body,
+        "citations": [
+            {
+                "source": "tenant_config",
+                "ref": "config/tenants/quantum-labs/product_profile.json",
+                "note": "Second Brain claim cite — Stage 2 wiring",
+            }
+        ],
+        "classification": classification,
+    }
 
 
 def classify_to_lifecycle(classification: str | None) -> str | None:
@@ -829,6 +1048,37 @@ class AccountsModule:
                     (self.store.tenant_id, limit),
                 ).fetchall()
             return {"ok": True, "items": [dict(r) for r in rows]}
+
+        @router.get("/meta/enrichment")
+        def enrichment(
+            email: str | None = None,
+            bitrix_company_id: str | None = None,
+            classification: str | None = None,
+            contact_name: str = "",
+            company_title: str = "",
+            create_if_missing: bool = False,
+        ) -> dict[str, Any]:
+            return self.store.enrichment_context(
+                email=email,
+                bitrix_company_id=bitrix_company_id,
+                classification=classification,
+                contact_name=contact_name,
+                company_title=company_title,
+                create_if_missing=create_if_missing,
+            )
+
+        @router.get("/meta/suggest-next")
+        def suggest_next(
+            classification: str | None = None,
+            lifecycle: str | None = None,
+            lead_status: str | None = None,
+        ) -> dict[str, Any]:
+            action = suggest_next_action(
+                lifecycle=lifecycle,
+                lead_status=lead_status,
+                classification=classification,
+            )
+            return {"ok": True, "next_action": action}
 
         @router.get("/by-bitrix/{bitrix_id}")
         def by_bitrix(bitrix_id: str) -> dict[str, Any]:
