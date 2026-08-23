@@ -2697,6 +2697,10 @@
         const themeLine = theme.primary_label
           ? `<p class="muted tight fw-theme">Тема: ${escapeHtml(theme.primary_label)} · ${Math.round((theme.theme_score || 0) * 100)}%</p>`
           : "";
+        const llmLine =
+          theme.llm_angle && theme.llm_angle.used
+            ? `<p class="muted tight fw-llm">Угол: LLM + тематика</p>`
+            : "";
         const kbLine = kb.length
           ? `<p class="muted tight fw-kb">KB: ${kb
               .slice(0, 2)
@@ -2714,6 +2718,7 @@
             ${statusChip(p.status)}
           </div>
           ${themeLine}
+          ${llmLine}
           ${kbLine}
           <div class="ros-card-actions">${actions}</div>
         </article>`;

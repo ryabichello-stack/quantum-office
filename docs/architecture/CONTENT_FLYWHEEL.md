@@ -91,6 +91,15 @@ API:
 - `GET /themes` — конфиг + taxonomy
 - `GET/PUT /themes/config` — чтение/сохранение
 - `GET /themes/presets`, `POST /themes/apply-preset`
+- `POST /themes/reanalyze` — переанализ новостей после смены тематики
+
+### RSS sources
+
+Любая отрасль может подключить RSS/Atom: UI **Флайвил → Источники → RSS** или `FLYWHEEL_SOURCE_RSS=url1,url2`.
+
+### Auto-cycle
+
+`FLYWHEEL_AUTO_CYCLE=true` + `FLYWHEEL_CYCLE_SECONDS=3600` — фоновый poll + process в процессе outreach.
 
 ## 3. Knowledge loop (optional layer)
 
@@ -144,8 +153,9 @@ FLYWHEEL_AVATAR_PROFILE=quantum-host-v1
 
 ## Этапы после MVP
 
-1. Реальный TG/VK parser (Bot API / VK wall.get)
-2. LLM angle extraction + SB citations
-3. DALL-E / Flux для картинок
-4. HeyGen / Synthesia talking-head render
-5. Cron `run-cycle` на проде (systemd timer)
+1. ~~RSS ingest~~ ✅ `rss_fetch.py` + sources UI
+2. ~~LLM angle extraction~~ ✅ optional `FLYWHEEL_LLM_ANGLE`
+3. Реальный TG/VK parser (Bot API / VK wall.get)
+4. DALL-E / Flux для картинок
+5. HeyGen / Synthesia talking-head render
+6. ~~Cron `run-cycle`~~ ✅ `FLYWHEEL_AUTO_CYCLE` background thread

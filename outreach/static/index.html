@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops28" />
+  <link rel="stylesheet" href="styles.css?v=ops29" />
   <script>
     (function () {
       function parentBase() {
@@ -648,12 +648,13 @@
                 <p class="ros-pane-title">Источники новостей</p>
                 <label class="field">Платформа
                   <select id="fwSourcePlatform">
+                    <option value="rss">RSS / Atom</option>
                     <option value="telegram">Telegram</option>
                     <option value="vk">VK</option>
                   </select>
                 </label>
-                <label class="field">Handle
-                  <input id="fwSourceHandle" type="text" placeholder="@industry_news" />
+                <label class="field">Handle / URL
+                  <input id="fwSourceHandle" type="text" placeholder="https://example.com/feed.xml или @channel" />
                 </label>
                 <div class="task-actions ros-actions">
                   <button type="button" id="fwSourceAddBtn" class="btn-quiet">Добавить</button>
@@ -1195,6 +1196,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=ops28"></script>
+  <script src="app.js?v=ops29"></script>
 </body>
 </html>

@@ -1,10 +1,12 @@
-"""News ingest — poll watch sources (stub) + manual import."""
+"""News ingest — poll watch sources (RSS/TG/VK) + manual import."""
 
 from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
 from typing import Any
+
+from modules.content_flywheel.rss_fetch import fetch_feed_items
 
 
 def _split_csv(raw: str) -> list[str]:
@@ -20,23 +22,45 @@ def flywheel_enabled() -> bool:
     }
 
 
+def rss_item_limit() -> int:
+    try:
+        return max(1, min(20, int(os.getenv("FLYWHEEL_RSS_LIMIT") or "5")))
+    except ValueError:
+        return 5
+
+
 def default_source_handles() -> dict[str, list[str]]:
     return {
         "telegram": _split_csv(os.getenv("FLYWHEEL_SOURCE_TG") or os.getenv("OWNED_TG_CHANNELS") or ""),
         "vk": _split_csv(os.getenv("FLYWHEEL_SOURCE_VK") or os.getenv("OWNED_VK_GROUPS") or ""),
+        "rss": _split_csv(os.getenv("FLYWHEEL_SOURCE_RSS") or ""),
     }
 
 
 def poll_watch_sources(*, handles: dict[str, list[str]] | None = None) -> list[dict[str, Any]]:
-    """Stub parser: one synthetic news item per configured handle.
-
-    Real TG/VK API collectors plug in here later.
-    """
+    """Poll configured sources. RSS uses real fetch; TG/VK remain stub until API wired."""
     if not flywheel_enabled():
         return []
     handles = handles or default_source_handles()
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     items: list[dict[str, Any]] = []
+
+    for feed_url in handles.get("rss") or []:
+        for row in fetch_feed_items(feed_url, limit=rss_item_limit()):
+            items.append(
+                {
+                    "platform": "rss",
+                    "handle": feed_url,
+                    "external_id": row.get("external_id") or "",
+                    "title": row.get("title") or "",
+                    "body": row.get("body") or "",
+                    "image_url": row.get("image_url") or "",
+                    "link": row.get("link") or "",
+                    "published_at": row.get("published_at") or now,
+                    "raw": row.get("raw") or {"mode": "rss", "feed_url": feed_url},
+                }
+            )
+
     for handle in handles.get("telegram") or []:
         items.append(
             {

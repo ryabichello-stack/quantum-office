@@ -63,6 +63,23 @@ def test_flywheel_ingest_process_approve():
         assert len(mem) >= 1
 
 
+def test_reanalyze_news():
+    with tempfile.TemporaryDirectory() as tmp:
+        db = Path(tmp) / "m.db"
+        store = ContentFlywheelStore(db, tenant_id="quantum-labs")
+        news = store.ingest_news(
+            platform="manual",
+            handle="",
+            title="ЦБ и ставки",
+            body="Рынок обсуждает ключевую ставку и оборот.",
+        )
+        out = store.reanalyze_news(limit=10)
+        assert out["ok"] is True
+        assert out["updated"] >= 1
+        row = store.get_news(news["id"])
+        assert row.get("theme_score", 0) > 0
+
+
 def test_find_similar_memory():
     memory = [{"topic": "Выплаты ломбардам", "summary": "инфраструктура без посредника банк"}]
     hits = find_similar("ломбарды и выплаты через банк", memory, threshold=0.2)

@@ -209,13 +209,15 @@ class ContentFlywheelStore:
         return cur.rowcount > 0
 
     def source_handles_map(self) -> dict[str, list[str]]:
-        out: dict[str, list[str]] = {"telegram": [], "vk": []}
+        out: dict[str, list[str]] = {"telegram": [], "vk": [], "rss": []}
         for s in self.list_sources():
             if not s.get("enabled"):
                 continue
             p = s.get("platform") or ""
             if p in out:
                 out[p].append(s.get("handle") or "")
+            else:
+                out.setdefault(p, []).append(s.get("handle") or "")
         env = default_source_handles()
         for p, handles in env.items():
             for h in handles:
@@ -293,6 +295,14 @@ class ContentFlywheelStore:
             body=news.get("body") or "",
             tenant_id=self.tenant_id,
         )
+        from modules.content_flywheel.llm_angle import enrich_editorial_angle
+
+        analysis = enrich_editorial_angle(
+            title=news.get("title") or "",
+            body=news.get("body") or "",
+            analysis=analysis,
+            tenant_id=self.tenant_id,
+        )
         now = _utc_now()
         with self.connect() as conn:
             conn.execute(
@@ -311,6 +321,14 @@ class ContentFlywheelStore:
                 ),
             )
         return self.get_news(news_id)
+
+    def reanalyze_news(self, *, status: str | None = None, limit: int = 50) -> dict[str, Any]:
+        rows = self.list_news(status=status, limit=limit)
+        updated = 0
+        for row in rows:
+            if self.analyze_news_item(row["id"]):
+                updated += 1
+        return {"ok": True, "scanned": len(rows), "updated": updated}
 
     def poll_and_ingest(self) -> dict[str, Any]:
         handles = self.source_handles_map()
@@ -599,10 +617,11 @@ class ContentFlywheelStore:
 
 class ContentFlywheelModule:
     name = "content_flywheel"
-    version = "0.1.0"
+    version = "0.2.0"
 
     def __init__(self) -> None:
         self.store = ContentFlywheelStore()
+        self._cycle_thread: Any = None
 
     def init_db(self) -> None:
         self.store.init_db()
@@ -612,9 +631,17 @@ class ContentFlywheelModule:
         ctx.extras["content_flywheel"] = self.store
         BRAIN_INBOX.mkdir(parents=True, exist_ok=True)
         logger.info("content_flywheel ready enabled=%s", flywheel_enabled())
+        from modules.content_flywheel.flywheel_worker import FlywheelCycleThread, auto_cycle_enabled
+
+        if auto_cycle_enabled():
+            self._cycle_thread = FlywheelCycleThread(run_cycle_fn=self.store.run_cycle)
+            self._cycle_thread.start()
 
     def on_shutdown(self) -> None:
-        return None
+        if self._cycle_thread is not None:
+            self._cycle_thread.stop()
+            self._cycle_thread.join(timeout=5)
+            self._cycle_thread = None
 
     def health(self) -> dict[str, Any]:
         with self.store.connect() as conn:
@@ -637,6 +664,16 @@ class ContentFlywheelModule:
             "draft_proposals": int(prop),
             "memory": int(mem),
             "slots_today": slots_for_day(),
+            "auto_cycle": self._auto_cycle_status(),
+        }
+
+    def _auto_cycle_status(self) -> dict[str, Any]:
+        from modules.content_flywheel.flywheel_worker import auto_cycle_enabled, cycle_interval_seconds
+
+        return {
+            "enabled": auto_cycle_enabled(),
+            "interval_seconds": cycle_interval_seconds(),
+            "thread_running": self._cycle_thread is not None and self._cycle_thread.is_alive(),
         }
 
     def register_routes(self, router: Any) -> None:
@@ -775,6 +812,10 @@ class ContentFlywheelModule:
             except FileNotFoundError as exc:
                 raise HTTPException(404, str(exc)) from exc
             return {"ok": True, "config": cfg}
+
+        @router.post("/themes/reanalyze")
+        def reanalyze_themes(status: str | None = None, limit: int = Query(50, ge=1, le=200)) -> dict[str, Any]:
+            return self.store.reanalyze_news(status=status, limit=limit)
 
         @router.post("/news/{news_id}/analyze")
         def analyze_news(news_id: str) -> dict[str, Any]:

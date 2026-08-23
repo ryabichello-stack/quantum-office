@@ -86,6 +86,7 @@
 - 2026-08-23 (cont.11): thematic macro-financial analysis per news; ops26
 - 2026-08-23 (cont.12): tenant-defined content themes (any niche) + UI editor; ops27
 - 2026-08-23 (cont.13): default tenant generic, industry presets, neutral post/video templates; ops28
+- 2026-08-23 (cont.14): RSS ingest, optional LLM angle, flywheel auto-cycle; ops29
 
 ## [0.2.0] — 2026-08-20
 
