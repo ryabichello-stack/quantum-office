@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops46" />
+  <link rel="stylesheet" href="styles.css?v=ops47" />
   <script>
     (function () {
       function parentBase() {
@@ -137,22 +137,18 @@
                 <button type="button" class="btn-quiet small" data-go="outbox">Очередь</button>
               </div>
             </div>
-            <div class="tile-cal-body">
-              <div class="tile-cal-left">
-                <div class="desk-stats" id="deskQueueStats"></div>
-                <div class="desk-month" id="deskCalendar"></div>
-              </div>
-              <div class="desk-day-head" id="deskDayHead">
+            <div class="desk-stats" id="deskQueueStats"></div>
+            <div class="desk-month" id="deskCalendar"></div>
+            <div class="desk-day-panel" id="deskDayPanel">
+              <div class="desk-day-head">
                 <strong id="deskDayTitle">День</strong>
                 <span class="muted tight" id="deskDayMeta">Выберите дату слева</span>
               </div>
-              <div class="desk-day-panel" id="deskDayPanel">
-                <ul class="desk-day-list" id="deskDayList">
-                  <li class="muted">Здесь появятся письма выбранного дня</li>
-                </ul>
-                <div class="desk-day-actions">
-                  <button type="button" class="btn-quiet small" id="deskDayOpenQueue" hidden>В очередь</button>
-                </div>
+              <ul class="desk-day-list" id="deskDayList">
+                <li class="muted">Здесь появятся письма выбранного дня</li>
+              </ul>
+              <div class="desk-day-actions">
+                <button type="button" class="btn-quiet small" id="deskDayOpenQueue" hidden>В очередь</button>
               </div>
             </div>
             <details class="hero-plan desk-hint-fold">
@@ -161,8 +157,7 @@
             </details>
           </article>
 
-          <div class="desk-row-pair">
-          <article class="tile tile-md tile-inbox">
+          <article class="tile tile-md">
             <div class="tile-head">
               <div>
                 <p class="tile-kicker">Входящие</p>
@@ -171,19 +166,18 @@
               <button type="button" class="btn-quiet small" data-go="inbox">Открыть</button>
             </div>
             <div class="desk-stats compact" id="deskInboxStats"></div>
-            <div id="deskInboxList" class="desk-list desk-list-compact desk-list-grow"></div>
+            <div id="deskInboxList" class="desk-list desk-list-compact"></div>
           </article>
 
-          <article class="tile tile-md tile-focus">
+          <article class="tile tile-md">
             <div class="tile-head">
               <div>
                 <p class="tile-kicker">Фокус</p>
                 <h3 class="tile-title">Сейчас</h3>
               </div>
             </div>
-            <div id="deskActionsList" class="desk-list desk-list-compact desk-list-grow"></div>
+            <div id="deskActionsList" class="desk-list desk-list-compact"></div>
           </article>
-          </div>
 
           <button type="button" class="tile tile-sm tile-go" data-go="letter">
             <p class="tile-kicker">Кампания</p>
@@ -1417,6 +1411,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=ops46"></script>
+  <script src="app.js?v=ops47"></script>
 </body>
 </html>

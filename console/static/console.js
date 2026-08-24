@@ -1209,7 +1209,7 @@
   };
 
   function outreachFrameSrc(subTab) {
-    const base = BASE + "/assets/outreach/index.html?v=ops46";
+    const base = BASE + "/assets/outreach/index.html?v=ops47";
     if (!subTab || subTab === "home") return base;
     return base + "&tab=" + encodeURIComponent(subTab);
   }

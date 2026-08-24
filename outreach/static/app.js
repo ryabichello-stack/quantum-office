@@ -992,7 +992,6 @@
         (day.spam_risk ? " · риск спама" : "");
     }
     const items = day.items || [];
-    deskDayItemsCache = {};
     if (!items.length) {
       list.innerHTML =
         count > 0
@@ -1001,9 +1000,7 @@
     } else {
       list.innerHTML = items
         .slice(0, 12)
-        .map((r, idx) => {
-          const key = `${dayKey}:${idx}`;
-          deskDayItemsCache[key] = r;
+        .map((r) => {
           const who = r.contact_name || r.email || "—";
           const company = r.company_title || r.company_id || "";
           const kind =
@@ -1011,21 +1008,13 @@
               ? `шаг ${r.next_step || "?"} · ${r.next_label || "follow-up"}`
               : r.next_label || "первое письмо";
           const place = [r.city, r.timezone].filter(Boolean).join(" · ");
-          const sub = [kind, r.email || "", company, place].filter(Boolean).join(" · ");
+          const line2 = [r.email || "", company, kind, place].filter(Boolean).join(" · ");
           return `<li>
-            <button type="button" class="desk-day-item" data-desk-letter="${escapeHtml(key)}" title="Открыть текст письма">
-              <span class="who">${escapeHtml(String(who))}</span>
-              <span class="meta">${escapeHtml(deskClip(sub, 72))}</span>
-            </button>
+            <div class="who">${escapeHtml(String(who))}</div>
+            <div class="meta">${escapeHtml(deskClip(line2, 96))}</div>
           </li>`;
         })
         .join("");
-      list.querySelectorAll("[data-desk-letter]").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const item = deskDayItemsCache[btn.getAttribute("data-desk-letter")];
-          if (item) openDeskLetterPreview(item).catch((e) => logAction(e));
-        });
-      });
       if (count > items.length) {
         list.innerHTML += `<li class="muted">+${count - items.length} ещё в этот день</li>`;
       }
