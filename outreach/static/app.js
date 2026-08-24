@@ -1757,16 +1757,25 @@
       return;
     }
     const totals = (cal && cal.totals) || {};
+    const deliv = (cal && cal.deliverability) || {};
+    const eff = deliv.effective_daily_limit != null ? deliv.effective_daily_limit : "—";
+    const ftCap = deliv.first_touch_daily_cap != null ? deliv.first_touch_daily_cap : "—";
+    const sent = deliv.sent_today != null ? deliv.sent_today : "—";
     const meta =
-      totals.items != null
-        ? `<p class="muted tight">Всего ${totals.items} · due ${totals.due || 0} · дней с задачами ${totals.days_with_items || 0} (${cal.timezone || "Europe/Moscow"})</p>`
-        : "";
+      `<p class="muted tight">Всего ${totals.items != null ? totals.items : "—"} · due ${totals.due || 0} · дней с задачами ${totals.days_with_items || 0} (${cal.timezone || "Europe/Moscow"})</p>` +
+      `<p class="muted tight queue-cap-hint">Лимит SMTP сегодня: <strong>${escapeHtml(String(eff))}</strong> (уже ${escapeHtml(String(sent))}) · первые письма ~${escapeHtml(String(ftCap))}/день. 296 в один день <em>не уйдут</em> — только до лимита.</p>`;
     box.innerHTML =
       meta +
       days
         .map((day) => {
           const items = day.items || [];
           const dueN = day.due_count || 0;
+          const count = day.count || 0;
+          const over = day.over_capacity || day.spam_risk;
+          const riskCls = day.spam_risk ? "cal-day-spam" : over ? "cal-day-over" : dueN ? "cal-day-due" : "";
+          const capNote = over
+            ? `<div class="cal-day-warn">⚠ ${count} в плане · лимит ${escapeHtml(String(day.capacity || eff))} — разложите очередь</div>`
+            : "";
           const sample = items
             .slice(0, 4)
             .map(
@@ -1780,12 +1789,23 @@
             day.truncated || items.length > 4
               ? `<li class="muted">+${Math.max(0, (day.count || items.length) - 4)} ещё</li>`
               : "";
-          return `<div class="cal-day ${dueN ? "cal-day-due" : ""}">
-          <div class="cal-day-head"><strong>${escapeHtml(fmtDay(day.date))}</strong><span>${day.count || 0}</span></div>
+          return `<div class="cal-day ${riskCls}">
+          <div class="cal-day-head"><strong>${escapeHtml(fmtDay(day.date))}</strong><span>${count}</span></div>
+          ${capNote}
           <ul class="cal-day-list">${sample || "<li class='muted'>—</li>"}${more}</ul>
         </div>`;
         })
         .join("");
+  }
+
+  async function paceQueue() {
+    const data = await api("/api/modules/sequences/pace-queue", {
+      method: "POST",
+      body: JSON.stringify({ dry_run: false, horizon_days: 60 }),
+    });
+    logAction(data);
+    await loadQueueView();
+    return data;
   }
 
   async function loadQueueView() {
@@ -3592,6 +3612,9 @@
           logAction(e);
         }
       });
+    }
+    if ($("queuePaceBtn")) {
+      $("queuePaceBtn").addEventListener("click", () => paceQueue().catch(logAction));
     }
     $("repliesLoad").addEventListener("click", () => loadReplies().catch(logAction));
     if ($("inboxLoad")) {

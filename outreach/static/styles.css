@@ -1214,6 +1214,22 @@ button.small { height: 26px; font-size: 0.72rem; padding: 0 0.45rem; }
   border-color: #fed7aa;
   background: #fff7ed;
 }
+.cal-day-over {
+  border-color: #fbbf24;
+  background: #fffbeb;
+}
+.cal-day-spam {
+  border-color: #f87171;
+  background: #fef2f2;
+}
+.cal-day-warn {
+  font-size: 0.72rem;
+  color: #b45309;
+  margin: 0 0 0.3rem;
+  line-height: 1.3;
+}
+.cal-day-spam .cal-day-warn { color: #b91c1c; }
+.queue-cap-hint { margin: 0.15rem 0 0.55rem; }
 .cal-day-head {
   display: flex;
   justify-content: space-between;

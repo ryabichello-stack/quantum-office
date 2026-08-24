@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops30" />
+  <link rel="stylesheet" href="styles.css?v=ops31" />
   <script>
     (function () {
       function parentBase() {
@@ -272,6 +272,7 @@
             <div class="actions wrap-actions">
               <button type="button" id="outboxLoad" class="primary">Обновить</button>
               <button type="button" class="btn-quiet" id="queueRebuildNamesBtn">ФИО в очередь</button>
+              <button type="button" class="btn-quiet" id="queuePaceBtn" title="Разложить первые письма по дням — не слать сотни в один день">Разложить очередь</button>
               <button type="button" id="syncBtn" class="btn-quiet">Bitrix sync</button>
               <button type="button" id="checkRepliesBtn" class="btn-quiet">Проверить ответы</button>
               <button type="button" id="dryRunBtn" class="btn-quiet">Пробный ×5</button>
@@ -284,7 +285,10 @@
 
           <details class="task-advanced" id="queueCalendarWrap" open>
             <summary>Календарь очереди (14 дней)</summary>
-            <p class="muted tight">Follow-up по дате next_action_at; первые письма — по ближайшему слоту окна.</p>
+            <p class="muted tight" id="queueCalendarHint">
+              Число на дне — план/бэклог, не факт отправки. За сутки уйдёт не больше дневного лимита (warmup ~3–15).
+              Если день перегружен — «Разложить очередь».
+            </p>
             <div id="queueCalendar" class="queue-calendar"></div>
           </details>
 
@@ -1196,6 +1200,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=ops30"></script>
+  <script src="app.js?v=ops31"></script>
 </body>
 </html>

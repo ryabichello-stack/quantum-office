@@ -88,6 +88,7 @@
 - 2026-08-23 (cont.13): default tenant generic, industry presets, neutral post/video templates; ops28
 - 2026-08-23 (cont.14): RSS ingest, optional LLM angle, flywheel auto-cycle; ops29
 - 2026-08-23 (cont.15): real Telegram public channel parser (t.me/s); ops30
+- 2026-08-24: anti-spam queue pacing — spread first-touch across days (not_before); calendar capacity warnings; ops31
 
 ## [0.2.0] — 2026-08-20
 

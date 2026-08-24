@@ -786,6 +786,8 @@ class SequencesModule:
         def calendar(days: int = 14) -> dict[str, Any]:
             """Server-side 14-day queue calendar (Moscow dates)."""
             from modules.clients import ClientsStore, company_geo_row
+            from modules.deliverability import DeliverabilityStore
+            from modules.sequences.pace import first_touch_daily_cap
             from outbox import OutboxStore
             from core.paths import DATA_DIR, SETTINGS_DB
             from geo_schedule import window_status
@@ -795,7 +797,12 @@ class SequencesModule:
             outbox = OutboxStore(DATA_DIR / "outbox.db")
             clients = ClientsStore()
             rt = RuntimeSettings(SETTINGS_DB)
-            pending_rows = outbox.list_pending(min(500, 50 * days_n))
+            deliver = DeliverabilityStore()
+            configured = rt.get_int("OUTREACH_DAILY_LIMIT", 15)
+            effective = deliver.effective_daily_limit(rt, configured)
+            ft_cap = first_touch_daily_cap(rt, effective_daily_limit=effective)
+            # Include paced future rows so calendar shows spread, not one giant day
+            pending_rows = outbox.list_pending_all(min(2000, 80 * days_n))
             first_touch: list[dict[str, Any]] = []
             for row in pending_rows:
                 geo = company_geo_row(clients, row.company_id or "")
@@ -811,12 +818,20 @@ class SequencesModule:
                     "timezone": geo.get("timezone") or "",
                     "city": geo.get("city") or "",
                     "due": True,
+                    "not_before": row.not_before or "",
                 }
                 win = window_status(item.get("timezone") or "", settings=rt)
                 item["in_window"] = bool(win.get("in_window"))
                 item["window_label"] = win.get("label") or ""
-                item["next_slot_at"] = win.get("next_slot_at")
-                item["next_slot_local"] = win.get("next_slot_local")
+                # Prefer pacing hold over nearest window so calendar matches send plan
+                if row.not_before:
+                    item["next_slot_at"] = row.not_before
+                    item["next_slot_local"] = row.not_before
+                    item["paced"] = True
+                else:
+                    item["next_slot_at"] = win.get("next_slot_at")
+                    item["next_slot_local"] = win.get("next_slot_local")
+                    item["paced"] = False
                 first_touch.append(item)
 
             snap = self.store.calendar_snapshot(
@@ -830,7 +845,52 @@ class SequencesModule:
                         geo = company_geo_row(clients, str(item.get("company_id") or ""))
                         item["timezone"] = geo.get("timezone") or ""
                         item["city"] = geo.get("city") or ""
+                day_count = int(day.get("count") or 0)
+                day["capacity"] = effective
+                day["first_touch_cap"] = ft_cap
+                day["over_capacity"] = day_count > effective
+                day["spam_risk"] = day_count > max(effective * 2, 20)
+
+            snap["deliverability"] = {
+                "configured_daily_limit": configured,
+                "effective_daily_limit": effective,
+                "first_touch_daily_cap": ft_cap,
+                "sent_today": outbox.sent_today_count(),
+                "warmup_day_index": deliver.warmup_day_index(rt),
+                "note": (
+                    "Календарь = план/бэклог. За сутки SMTP уйдёт не больше "
+                    f"effective_daily_limit={effective} (warmup + OUTREACH_DAILY_LIMIT). "
+                    "Нажмите «Разложить очередь», если один день перегружен."
+                ),
+            }
             return snap
+
+        class PaceBody(BaseModel):
+            dry_run: bool = False
+            horizon_days: int = 45
+
+        @router.post("/pace-queue")
+        def pace_queue(body: PaceBody | None = None) -> dict[str, Any]:
+            """Spread pending first-touch across days (anti-spam pacing)."""
+            from modules.deliverability import DeliverabilityStore
+            from modules.sequences.pace import pace_first_touch_queue
+            from outbox import OutboxStore
+            from core.paths import DATA_DIR, SETTINGS_DB
+            from runtime_settings import RuntimeSettings
+
+            payload = body or PaceBody()
+            outbox = OutboxStore(DATA_DIR / "outbox.db")
+            rt = RuntimeSettings(SETTINGS_DB)
+            deliver = DeliverabilityStore()
+            configured = rt.get_int("OUTREACH_DAILY_LIMIT", 15)
+            effective = deliver.effective_daily_limit(rt, configured)
+            return pace_first_touch_queue(
+                outbox,
+                settings=rt,
+                effective_daily_limit=effective,
+                horizon_days=max(7, min(int(payload.horizon_days or 45), 90)),
+                dry_run=bool(payload.dry_run),
+            )
 
         @router.get("/packs")
         def packs() -> dict[str, Any]:
