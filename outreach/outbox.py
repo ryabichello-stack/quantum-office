@@ -37,6 +37,7 @@ class OutboxRow:
     message_id: str | None
     created_at: str
     updated_at: str
+    not_before: str | None = None
 
 
 def _utc_now() -> str:
@@ -111,11 +112,16 @@ class OutboxStore:
                 conn.execute("ALTER TABLE outbox ADD COLUMN replied_at TEXT")
             if "message_id" not in cols:
                 conn.execute("ALTER TABLE outbox ADD COLUMN message_id TEXT")
+            if "not_before" not in cols:
+                conn.execute("ALTER TABLE outbox ADD COLUMN not_before TEXT")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS ix_outbox_message_id ON outbox(message_id)"
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS ix_outbox_company ON outbox(company_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS ix_outbox_not_before ON outbox(status, not_before)"
             )
 
     def upsert_company(
@@ -183,28 +189,71 @@ class OutboxStore:
         return out
 
     def list_pending(self, limit: int, *, only_email: str | None = None) -> list[OutboxRow]:
+        """Pending rows ready to send (respects not_before pacing hold)."""
+        now = _utc_now()
         with self.connect() as conn:
             if only_email:
                 rows = conn.execute(
                     """
                     SELECT * FROM outbox
                     WHERE status = 'pending' AND lower(email) = lower(?)
+                      AND (not_before IS NULL OR not_before = '' OR not_before <= ?)
                     ORDER BY id ASC
                     LIMIT ?
                     """,
-                    (only_email.strip(), limit),
+                    (only_email.strip(), now, limit),
                 ).fetchall()
             else:
                 rows = conn.execute(
                     """
                     SELECT * FROM outbox
                     WHERE status = 'pending'
+                      AND (not_before IS NULL OR not_before = '' OR not_before <= ?)
                     ORDER BY id ASC
                     LIMIT ?
                     """,
-                    (limit,),
+                    (now, limit),
                 ).fetchall()
         return [self._row(r) for r in rows]
+
+    def list_pending_all(self, limit: int = 5000) -> list[OutboxRow]:
+        """All pending rows including future not_before (for calendar / pacing)."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM outbox
+                WHERE status = 'pending'
+                ORDER BY id ASC
+                LIMIT ?
+                """,
+                (max(1, min(limit, 10000)),),
+            ).fetchall()
+        return [self._row(r) for r in rows]
+
+    def set_not_before(self, row_id: int, not_before: str | None) -> bool:
+        now = _utc_now()
+        with self.connect() as conn:
+            cur = conn.execute(
+                """
+                UPDATE outbox
+                SET not_before = ?, updated_at = ?
+                WHERE id = ? AND status = 'pending'
+                """,
+                (not_before, now, row_id),
+            )
+            return bool(cur.rowcount)
+
+    def clear_not_before_all_pending(self) -> int:
+        now = _utc_now()
+        with self.connect() as conn:
+            cur = conn.execute(
+                """
+                UPDATE outbox SET not_before = NULL, updated_at = ?
+                WHERE status = 'pending' AND not_before IS NOT NULL
+                """,
+                (now,),
+            )
+            return int(cur.rowcount or 0)
 
     def company_already_contacted(self, company_id: str) -> bool:
         cid = (company_id or "").strip()
@@ -446,6 +495,7 @@ class OutboxStore:
             message_id=str(r["message_id"]) if "message_id" in keys and r["message_id"] else None,
             created_at=str(r["created_at"]),
             updated_at=str(r["updated_at"]),
+            not_before=str(r["not_before"]) if "not_before" in keys and r["not_before"] else None,
         )
 
     def status_report(self) -> dict[str, Any]:

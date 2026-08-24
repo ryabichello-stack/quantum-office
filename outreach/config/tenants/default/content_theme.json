@@ -1,0 +1,24 @@
+{
+  "tenant_id": "default",
+  "preset": "generic",
+  "lens_id": "generic",
+  "lens_label": "Ваша тематика",
+  "brand_short": "",
+  "min_score": 0.35,
+  "score_cap": 4.0,
+  "high_tier_threshold": 0.65,
+  "low_tier_threshold": 0.15,
+  "off_topic_message": "Новость вне заданной тематики. Сохранено для мониторинга; публикация — только вручную.",
+  "default_hook_prefix": "В контексте вашей темы",
+  "hashtags": ["#новости", "#отрасль", "#бизнес"],
+  "video_intro": "Коротко по теме:",
+  "themes": [
+    {
+      "id": "core",
+      "label": "Основная тема",
+      "hook_prefix": "С точки зрения основной темы",
+      "keywords": ["рынок", "отрасль", "тренд", "компани"],
+      "weight": 1.0
+    }
+  ]
+}

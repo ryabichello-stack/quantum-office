@@ -1,0 +1,43 @@
+{
+  "lens_id": "ecommerce",
+  "lens_label": "E-commerce и ритейл",
+  "brand_short": "",
+  "min_score": 0.35,
+  "score_cap": 4.0,
+  "high_tier_threshold": 0.65,
+  "low_tier_threshold": 0.15,
+  "off_topic_message": "Новость вне e-commerce повестки.",
+  "default_hook_prefix": "На рынке e-commerce",
+  "hashtags": ["#ecommerce", "#ритейл", "#маркетплейс", "#онлайн"],
+  "video_intro": "Коротко о ритейле и онлайн-торговле:",
+  "themes": [
+    {
+      "id": "marketplace",
+      "label": "Маркетплейсы",
+      "hook_prefix": "В логике маркетплейсов",
+      "keywords": ["маркетплейс", "ozon", "wildberries", "seller", "селлер"],
+      "weight": 1.2
+    },
+    {
+      "id": "logistics",
+      "label": "Логистика и доставка",
+      "hook_prefix": "По цепочке доставки",
+      "keywords": ["доставк", "логистик", "склад", "фулфилмент", "посылк"],
+      "weight": 1.1
+    },
+    {
+      "id": "conversion",
+      "label": "Конверсия и маркетинг",
+      "hook_prefix": "Для performance-маркетинга",
+      "keywords": ["конверси", "трафик", "реклам", "crm", "retention"],
+      "weight": 1.0
+    },
+    {
+      "id": "payments",
+      "label": "Оплата и чекаут",
+      "hook_prefix": "На этапе оплаты",
+      "keywords": ["оплат", "чекаут", "корзин", "эквайринг", "bnpl"],
+      "weight": 1.0
+    }
+  ]
+}

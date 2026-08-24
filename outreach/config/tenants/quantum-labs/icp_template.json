@@ -1,0 +1,8 @@
+{
+  "tenant_id": "quantum-labs",
+  "name": "Ломбарды РФ (seed ICP)",
+  "company_signals": ["pawnshop", "ломбард", "залог"],
+  "geo": ["RU"],
+  "disqualifiers": ["bank", "mfo_only_if_out_of_scope"],
+  "notes": "First-tenant seed; new tenants supply their own ICPTemplate"
+}

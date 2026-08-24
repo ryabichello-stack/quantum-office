@@ -39,6 +39,15 @@ from modules.sequences import SequencesModule
 from modules.policy import PolicyModule
 from modules.consent import ConsentModule
 from modules.replies import RepliesModule
+from modules.accounts import AccountsModule
+from modules.social import SocialModule
+from modules.orchestrator import OrchestratorModule
+from modules.content_studio import ContentStudioModule
+from modules.radar import RadarModule
+from modules.video_studio import VideoStudioModule
+from modules.social_publish import SocialPublishModule
+from modules.content_flywheel import ContentFlywheelModule
+from modules.rbac import RbacModule, attach_principal, rbac_enabled
 from outbox import OutboxStore
 from reply_watcher import ReplyWatchThread, check_replies, imap_configured, reply_watch_status
 from ops_center import build_ops_summary
@@ -93,6 +102,15 @@ _sequences_mod = SequencesModule()
 _policy_mod = PolicyModule()
 _consent_mod = ConsentModule()
 _replies_mod = RepliesModule()
+_accounts_mod = AccountsModule()
+_social_mod = SocialModule()
+_orchestrator_mod = OrchestratorModule()
+_content_studio_mod = ContentStudioModule()
+_radar_mod = RadarModule()
+_video_studio_mod = VideoStudioModule()
+_social_publish_mod = SocialPublishModule()
+_flywheel_mod = ContentFlywheelModule()
+_rbac_mod = RbacModule()
 _registry.register(_tracking_mod)
 _registry.register(_deliver_mod)
 _registry.register(_runner_mod)
@@ -105,6 +123,15 @@ _registry.register(_sequences_mod)
 _registry.register(_policy_mod)
 _registry.register(_consent_mod)
 _registry.register(_replies_mod)
+_registry.register(_accounts_mod)
+_registry.register(_social_mod)
+_registry.register(_orchestrator_mod)
+_registry.register(_content_studio_mod)
+_registry.register(_radar_mod)
+_registry.register(_video_studio_mod)
+_registry.register(_social_publish_mod)
+_registry.register(_flywheel_mod)
+_registry.register(_rbac_mod)
 _app_ctx: AppContext | None = None
 
 
@@ -320,23 +347,91 @@ def _extract_token(request: Request, authorization: str | None, x_token: str | N
     return ""
 
 
+def _token_accepted(got: str) -> bool:
+    """Accept primary UI token or any OUTREACH_ROLE_TOKENS entry."""
+    got = (got or "").strip()
+    if not got:
+        return False
+    expected = (os.getenv("OUTREACH_UI_TOKEN") or "").strip()
+    if not expected:
+        expected = _ensure_ui_token()
+    if secrets.compare_digest(got, expected):
+        return True
+    if not rbac_enabled():
+        return False
+    from modules.rbac import parse_role_tokens
+
+    for mapped in parse_role_tokens():
+        if secrets.compare_digest(got, mapped):
+            return True
+    return False
+
+
 async def require_ui_auth(
     request: Request,
     authorization: str | None = Header(default=None),
     x_outreach_token: str | None = Header(default=None, alias="X-Outreach-Token"),
 ) -> None:
-    expected = (os.getenv("OUTREACH_UI_TOKEN") or "").strip()
-    if not expected:
-        expected = _ensure_ui_token()
     got = _extract_token(request, authorization, x_outreach_token)
-    if not got or not secrets.compare_digest(got, expected):
+    if not got or not _token_accepted(got):
         raise HTTPException(status_code=401, detail="Unauthorized — set OUTREACH_UI_TOKEN")
+    attach_principal(request, got)
+
 
 
 # Module routes (independent feature APIs) — after auth helper exists
 _registry.mount_routes(
     app, prefix="/api/modules", dependencies=[Depends(require_ui_auth)]
 )
+
+from api_v1 import build_v1_router
+
+app.include_router(build_v1_router(require_auth=require_ui_auth))
+
+
+@app.get("/api/v1/tenants", dependencies=[Depends(require_ui_auth)])
+def v1_tenants() -> dict[str, Any]:
+    from tenant_bootstrap import list_tenants
+
+    return {"ok": True, "items": list_tenants()}
+
+
+@app.post("/api/v1/tenants/bootstrap", dependencies=[Depends(require_ui_auth)])
+async def v1_tenant_bootstrap(request: Request) -> dict[str, Any]:
+    from fastapi import HTTPException
+    from tenant_bootstrap import bootstrap_tenant
+
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    tid = str(body.get("tenant_id") or "").strip()
+    force = bool(body.get("force") or False)
+    try:
+        return bootstrap_tenant(tid, force=force)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(500, str(exc)) from exc
+
+
+@app.get("/api/v1/usage", dependencies=[Depends(require_ui_auth)])
+def v1_usage(days: int = 14) -> dict[str, Any]:
+    from usage_meter import UsageMeter
+
+    return UsageMeter().snapshot(days=days)
+
+
+@app.get("/api/v1/me", dependencies=[Depends(require_ui_auth)])
+def v1_me(request: Request) -> dict[str, Any]:
+    principal = getattr(request.state, "principal", None)
+    if principal is None:
+        from modules.rbac import Principal
+
+        principal = Principal(role="owner", token_label="ui")
+    return {"ok": True, **principal.to_dict()}
 
 
 # --- public ---
@@ -827,6 +922,22 @@ def api_dashboard() -> dict[str, Any]:
     return _status_payload()
 
 
+def _first_touch_in_window_count(rt: Any, store: Any, *, sample: int = 80) -> int:
+    """How many pending first-touch rows are inside a local send slot right now."""
+    try:
+        from geo_schedule import window_status
+
+        n = 0
+        for row in store.list_pending(sample):
+            tz = (getattr(row, "timezone", None) or "Europe/Moscow") or "Europe/Moscow"
+            win = window_status(str(tz), settings=rt)
+            if win.get("in_window"):
+                n += 1
+        return n
+    except Exception:  # noqa: BLE001
+        return 0
+
+
 @app.get("/api/ops/summary", dependencies=[Depends(require_ui_auth)])
 def api_ops_summary() -> dict[str, Any]:
     """Operator alerts + prioritized next actions."""
@@ -847,6 +958,7 @@ def api_ops_summary() -> dict[str, Any]:
             "due": len(seq.list_due(50)),
             "upcoming": len(seq.list_upcoming(50)),
             "pending_first": int((store.counts() or {}).get("pending") or 0),
+            "first_touch_in_window": _first_touch_in_window_count(rt, store),
         },
         outbox_counts=(store.counts() or {}),
     )
@@ -1394,6 +1506,61 @@ def api_pack_get(pack_id: str) -> dict[str, Any]:
     tpl = pack_letters_payload(pack)
     tpl["presentation_meta"] = presentation_meta(tpl.get("pack_id"))
     return {"ok": True, "pack": tpl}
+
+
+@app.get("/api/letter-variants", dependencies=[Depends(require_ui_auth)])
+def api_letter_variants(
+    pack_id: str = "lombards",
+    email: str = "demo@example.com",
+) -> dict[str, Any]:
+    """Full variant matrix for UI edit + sample pick for an email."""
+    from content.letter_variants import (
+        load_bundle,
+        pick_first_touch_variant,
+        variant_stats,
+        variants_enabled,
+    )
+
+    pid = (pack_id or "lombards").strip() or "lombards"
+    bundle = load_bundle(pid)
+    picked = pick_first_touch_variant(email=email, company_id=email, pack_id=pid, settings=_rt())
+    return {
+        "ok": True,
+        "enabled": variants_enabled(_rt()),
+        "stats": variant_stats(),
+        "pack_id": pid,
+        "subjects": bundle.get("subjects") or [],
+        "bodies": bundle.get("bodies") or [],
+        "source": bundle.get("source"),
+        "combinations": bundle.get("combinations"),
+        "sample_email": email,
+        "picked": picked,
+        "note": "Редактируйте темы и тексты ниже; на отправке выбирается пара по email (стабильно).",
+    }
+
+
+class LetterVariantsBody(BaseModel):
+    pack_id: str = "lombards"
+    subjects: list[str] = Field(default_factory=list)
+    bodies: list[str] = Field(default_factory=list)
+
+
+@app.put("/api/letter-variants", dependencies=[Depends(require_ui_auth)])
+def api_letter_variants_save(body: LetterVariantsBody) -> dict[str, Any]:
+    from content.letter_variants import save_bundle
+
+    try:
+        saved = save_bundle(body.pack_id, subjects=body.subjects, bodies=body.bodies)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "bundle": saved}
+
+
+@app.post("/api/letter-variants/reset", dependencies=[Depends(require_ui_auth)])
+def api_letter_variants_reset(pack_id: str = "lombards") -> dict[str, Any]:
+    from content.letter_variants import reset_bundle
+
+    return {"ok": True, "bundle": reset_bundle(pack_id)}
 
 
 @app.put("/api/packs/{pack_id}/letters", dependencies=[Depends(require_ui_auth)])

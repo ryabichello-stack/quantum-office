@@ -1,0 +1,15 @@
+{
+  "tenant_id": "quantum-labs",
+  "channels": {
+    "email": {"default_mode": "AUTO", "cold_ok": true},
+    "voice_inbound": {"default_mode": "AUTO"},
+    "voice_outbound_cold": {"default_mode": "MANUAL_TASK"},
+    "telegram_bot_inbound": {"default_mode": "AUTO"},
+    "telegram_cold_dm": {"default_mode": "MANUAL_TASK"},
+    "vk_personal": {"default_mode": "MANUAL_TASK"},
+    "ok_personal": {"default_mode": "MANUAL_TASK"},
+    "tenchat_personal": {"default_mode": "MANUAL_TASK"},
+    "linkedin_personal": {"default_mode": "MANUAL_TASK"}
+  },
+  "notes": "No browser automation; social cold = MANUAL_TASK only"
+}

@@ -1,24 +1,37 @@
 (() => {
   const titles = {
+    home: "Пульт",
     letter: "Кампания",
+    variants: "Варианты",
     outbox: "Очередь",
     inbox: "Входящие",
     report: "Результат",
     clients: "Клиенты",
+    lpr: "ЛПР",
+    studio: "Студия",
     settings: "Настройки",
   };
   const hints = {
+    home: "Рабочий стол: статус, окна, очередь и входящие",
     letter: "Отрасль, цепочка, тест — затем Старт и Очередь",
+    variants: "Темы и тексты первого письма: смотрите, правьте, сохраняйте",
     outbox: "Пачки, окна по TZ, фильтры и действия по строке",
     inbox: "Классификация ответов и привязка к письмам",
     report: "Воронка, динамика, последние письма",
     clients: "Bitrix → geo → очередь; список с городом и TZ",
+    lpr: "Комитет ЛПР: поиск, покрытие ролей, approve / task",
+    studio: "Контент, соцсети, Radar и видео — с ручным утверждением",
     settings: "Локальные окна, лимиты, anti-ban",
   };
+  const MORE_TABS = new Set(["variants", "clients"]);
 
   let outboxItemsCache = [];
   let outboxTotalCache = 0;
+  let queueLetterCache = {};
   let lastBatchMeta = { deferred_window_count: null, at: null };
+  let accessPrincipal = null;
+  let usageSnapshot = null;
+
 
   function apiBase() {
     if (typeof window !== "undefined" && window.__QC_OUTREACH_API__) {
@@ -142,6 +155,12 @@
       .replace(/"/g, "&quot;");
   }
 
+  function deskClip(s, max) {
+    const t = String(s || "").trim();
+    if (t.length <= max) return t;
+    return t.slice(0, Math.max(0, max - 1)).trim() + "…";
+  }
+
   function contactIconUrl(name) {
     // Through Console proxy when embedded; absolute outreach path otherwise.
     if (BASE) return BASE.replace(/\/$/, "") + "/assets/brand/icons/v2/" + name + ".png";
@@ -246,7 +265,9 @@
       const text = $("runBannerText");
       if (st === "playing") {
         if (title) title.textContent = "Рассылка идёт";
-        if (text) text.textContent = "Можно отправлять пачки из очереди. Пауза — временно остановить, Стоп — выключить.";
+        if (text)
+          text.textContent =
+            "Старт включён. Письма уходят только в локальные окна (по умолчанию 10:00–11:30 и 14:30–16:30). Если «В окне сейчас» = 0 — в Отправленные пока пусто, ждём следующий слот.";
       } else if (st === "paused") {
         if (title) title.textContent = "На паузе";
         if (text) text.textContent = "Массовая отправка приостановлена. Нажмите «Старт», чтобы продолжить.";
@@ -260,6 +281,122 @@
   let packsCache = [];
   let selectedPackId = "";
   /** @type {Array<{step:number,delay_days:number,label:string,subject:string,plain:string,html:string,attach_presentation:boolean}>} */
+  let letterVariantSubjects = [];
+  let letterVariantBodies = [];
+
+  function collectLetterVariantsFromDom() {
+    const subjects = Array.from(document.querySelectorAll("[data-lv-subject]")).map((el) =>
+      (el.value || "").trim()
+    );
+    const bodies = Array.from(document.querySelectorAll("[data-lv-body]")).map((el) =>
+      (el.value || "").trim()
+    );
+    letterVariantSubjects = subjects.filter(Boolean);
+    letterVariantBodies = bodies.filter(Boolean);
+    return { subjects: letterVariantSubjects, bodies: letterVariantBodies };
+  }
+
+  function renderLetterVariantEditors() {
+    const subBox = $("letterVariantSubjects");
+    const bodyBox = $("letterVariantBodies");
+    if (subBox) {
+      subBox.innerHTML = (letterVariantSubjects.length ? letterVariantSubjects : [""])
+        .map(
+          (s, i) => `<div class="letter-variant-row">
+            <header><span>Тема ${i + 1}</span>
+              <button type="button" class="btn-quiet small" data-lv-del-sub="${i}">×</button></header>
+            <input type="text" data-lv-subject value="${escapeHtml(s)}" />
+          </div>`
+        )
+        .join("");
+      subBox.querySelectorAll("[data-lv-del-sub]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          collectLetterVariantsFromDom();
+          const i = Number(btn.getAttribute("data-lv-del-sub"));
+          letterVariantSubjects.splice(i, 1);
+          if (!letterVariantSubjects.length) letterVariantSubjects = [""];
+          renderLetterVariantEditors();
+        });
+      });
+    }
+    if (bodyBox) {
+      bodyBox.innerHTML = (letterVariantBodies.length ? letterVariantBodies : [""])
+        .map(
+          (b, i) => `<div class="letter-variant-row">
+            <header><span>Текст ${i + 1}</span>
+              <button type="button" class="btn-quiet small" data-lv-del-body="${i}">×</button></header>
+            <textarea data-lv-body rows="8">${escapeHtml(b)}</textarea>
+          </div>`
+        )
+        .join("");
+      bodyBox.querySelectorAll("[data-lv-del-body]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          collectLetterVariantsFromDom();
+          const i = Number(btn.getAttribute("data-lv-del-body"));
+          letterVariantBodies.splice(i, 1);
+          if (!letterVariantBodies.length) letterVariantBodies = [""];
+          renderLetterVariantEditors();
+        });
+      });
+    }
+  }
+
+  async function loadLetterVariants() {
+    const pack = selectedPackId || (settingsCache && settingsCache.OUTREACH_SEQUENCE_PACK) || "lombards";
+    const email =
+      (($("letterVariantPreviewEmail") && $("letterVariantPreviewEmail").value) || "").trim() ||
+      "demo@mail.ru";
+    if ($("letterVariantPreviewEmail") && !$("letterVariantPreviewEmail").value) {
+      $("letterVariantPreviewEmail").value = email;
+    }
+    const data = await api(
+      `/api/letter-variants?pack_id=${encodeURIComponent(pack)}&email=${encodeURIComponent(email)}`
+    );
+    letterVariantSubjects = data.subjects || [];
+    letterVariantBodies = data.bodies || [];
+    renderLetterVariantEditors();
+    if ($("letterVariantsMeta")) {
+      $("letterVariantsMeta").textContent =
+        `${letterVariantSubjects.length} тем × ${letterVariantBodies.length} текстов = ${
+          data.combinations || letterVariantSubjects.length * letterVariantBodies.length
+        } комбинаций · источник: ${data.source || "—"} · ${data.enabled === false ? "выкл" : "вкл"}`;
+    }
+    if ($("letterVariantPicked")) {
+      const p = data.picked || {};
+      $("letterVariantPicked").textContent = p.subject
+        ? `combo ${p.combo}\nТема: ${p.subject}\n\n${(p.plain || "").slice(0, 500)}…`
+        : "Варианты выключены или пусты";
+    }
+    return data;
+  }
+
+  async function saveLetterVariants() {
+    collectLetterVariantsFromDom();
+    const pack = selectedPackId || (settingsCache && settingsCache.OUTREACH_SEQUENCE_PACK) || "lombards";
+    const data = await api("/api/letter-variants", {
+      method: "PUT",
+      body: JSON.stringify({
+        pack_id: pack,
+        subjects: letterVariantSubjects,
+        bodies: letterVariantBodies,
+      }),
+    });
+    if ($("letterVariantsLog")) $("letterVariantsLog").textContent = JSON.stringify(data, null, 2);
+    await loadLetterVariants();
+    return data;
+  }
+
+  async function resetLetterVariants() {
+    const pack = selectedPackId || (settingsCache && settingsCache.OUTREACH_SEQUENCE_PACK) || "lombards";
+    const data = await api(`/api/letter-variants/reset?pack_id=${encodeURIComponent(pack)}`, {
+      method: "POST",
+      body: "{}",
+    });
+    if ($("letterVariantsLog")) $("letterVariantsLog").textContent = JSON.stringify(data, null, 2);
+    await loadLetterVariants();
+    return data;
+  }
+
   let letterChain = [];
   let activeLetterIdx = 0;
   let letterDirty = false;
@@ -399,13 +536,19 @@
     box.innerHTML = packsCache
       .map((p) => {
         const on = p.id === activeId ? "active" : "";
-        const draft = p.has_draft ? " · черновик" : "";
+        const draft = p.has_draft ? "черновик" : "";
+        const steps = p.steps || 3;
         return `<label class="pack-card ${on}">
           <input type="radio" name="packId" value="${escapeHtml(p.id)}" ${p.id === activeId ? "checked" : ""} />
-          <span>
-            <strong>${escapeHtml(p.title)}</strong>
-            <small>${escapeHtml(p.short || "")}${draft}</small>
-            <em>${escapeHtml(p.audience || "")} · ${p.steps || 3} письма</em>
+          <span class="pack-card-body">
+            <span class="pack-card-kicker">Отрасль</span>
+            <strong class="pack-card-title">${escapeHtml(p.title)}</strong>
+            <span class="pack-card-desc">${escapeHtml(p.short || "Цепочка писем для этой отрасли")}</span>
+            <span class="pack-card-meta">
+              <span class="pack-chip">${steps} ${steps === 1 ? "письмо" : "писем"}</span>
+              ${p.audience ? `<span class="pack-chip muted">${escapeHtml(p.audience)}</span>` : ""}
+              ${draft ? `<span class="pack-chip draft">${draft}</span>` : ""}
+            </span>
           </span>
         </label>`;
       })
@@ -434,6 +577,7 @@
           await previewPack(active, true);
         }
       }
+      loadLetterVariants().catch(() => {});
     } catch (err) {
       if ($("packCards")) $("packCards").textContent = String(err.message || err);
     }
@@ -608,12 +752,629 @@
     ]);
     renderStats(dash, health);
     setRunStateBadge(dash.run_state || (dash.runner && dash.runner.state) || "stopped");
-    await loadOpsSummary().catch(() => {});
+    const ops = await loadOpsSummary().catch(() => ({}));
+    await refreshDesk(dash, health, ops);
   }
 
   function goToTab(tab) {
-    const btn = document.querySelector(`.tabs button[data-tab="${tab}"]`);
-    if (btn) btn.click();
+    switchToTab(tab);
+    closeTabMore();
+  }
+
+  function initialTabFromUrl() {
+    try {
+      const tab = new URLSearchParams(location.search).get("tab");
+      return tab && titles[tab] ? tab : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function onOutreachTabMessage(ev) {
+    const data = ev && ev.data;
+    if (!data || data.type !== "qc-outreach-tab") return;
+    const tab = data.tab;
+    if (tab && titles[tab]) switchToTab(tab);
+  }
+
+  function switchToTab(tab) {
+    document.querySelectorAll(".tabs button[data-tab]").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+    const navBtn = document.querySelector(`.tabs button[data-tab="${tab}"]`);
+    if (navBtn) navBtn.classList.add("active");
+    const panel = $("tab-" + tab);
+    if (panel) panel.classList.add("active");
+    if ($("pageTitle")) $("pageTitle").textContent = titles[tab] || tab;
+    if ($("pageHint")) $("pageHint").textContent = hints[tab] || "";
+    markNav(tab);
+    closeTabMore();
+    if (tab === "home") loadDash().catch(logAction);
+    if (tab === "clients") loadClients().catch((e) => ($("clientsLog").textContent = String(e)));
+    if (tab === "lpr") loadLprTab().catch((e) => { if ($("lprMeta")) $("lprMeta").textContent = String(e); });
+    if (tab === "studio") loadStudioTab().catch(logAction);
+    if (tab === "outbox") loadOutbox().catch(logAction);
+    if (tab === "report") loadReport().catch(logAction);
+    if (tab === "settings") {
+      loadSettingsIntoForms()
+        .then(() => Promise.all([loadAntiban(), loadConsentLedger(), loadIntegrationsHealth()]))
+        .catch((e) => {
+          if ($("antibanLog")) $("antibanLog").textContent = String(e);
+          logAction(e);
+        });
+    }
+    if (tab === "letter") {
+      loadSettingsIntoForms()
+        .then(() => loadPacks())
+        .catch(logAction);
+    }
+    if (tab === "variants") {
+      loadLetterVariants().catch(logAction);
+    }
+    if (tab === "inbox") {
+      const sub = document.querySelector('.sub-tab[data-inbox-view="classified"]');
+      if (sub) sub.click();
+      else loadInbox(true).catch(logAction);
+    }
+  }
+
+  function closeTabMore() {
+    const menu = $("tabMoreMenu");
+    const btn = $("tabMoreBtn");
+    if (menu) menu.classList.add("hidden");
+    if (btn) btn.setAttribute("aria-expanded", "false");
+  }
+
+  function markNav(tab) {
+    const more = $("tabMore");
+    if (more) more.classList.toggle("is-active", MORE_TABS.has(tab));
+  }
+
+  let deskCalCache = null;
+  let deskSelectedDay = null;
+  let deskDayItemsCache = {};
+
+  function tplVars(text, name, company) {
+    return String(text || "")
+      .replace(/\{name\}/g, name || "")
+      .replace(/\{company\}/g, company || "")
+      .replace(/\{subject\}/g, "");
+  }
+
+  function closeDeskLetterPeel() {
+    const peel = $("deskLetterPeelAway");
+    if (!peel) return;
+    peel.classList.remove("is-open");
+    window.setTimeout(() => {
+      if (!peel.classList.contains("is-open")) {
+        peel.hidden = true;
+        peel.setAttribute("hidden", "");
+      }
+    }, 220);
+    document.body.classList.remove("peel-away-open");
+  }
+
+  async function loadDeskLetterPreview(item) {
+    const packId =
+      (item.pack_id && String(item.pack_id).trim()) ||
+      (settingsCache && (settingsCache.OUTREACH_SEQUENCE_PACK || (settingsCache.settings || {}).OUTREACH_SEQUENCE_PACK)) ||
+      selectedPackId ||
+      "lombards";
+    const name = item.contact_name || "";
+    const email = item.email || "";
+    const company = item.company_title || name || email || "";
+    const kindLabel =
+      item.kind === "followup"
+        ? `Цепочка · шаг ${item.next_step || "?"} · ${item.next_label || "follow-up"}`
+        : `Первое письмо · ${item.next_label || "intro"}`;
+
+    const fallback = {
+      subject: item.next_subject || "Письмо",
+      plain:
+        [
+          whoLine(item),
+          email ? `Email: ${email}` : "",
+          company ? `Компания: ${company}` : "",
+          kindLabel,
+          item.next_subject ? `Тема: ${item.next_subject}` : "",
+          "",
+          "Полный текст шаблона сейчас недоступен — откройте Кампанию / Варианты.",
+        ]
+          .filter((x) => x !== "")
+          .join("\n"),
+      html: "",
+      meta: kindLabel,
+    };
+
+    try {
+      if (item.kind === "followup") {
+        const data = await api(`/api/packs/${encodeURIComponent(packId)}`);
+        const steps = (data.pack && data.pack.steps) || [];
+        const stepNum = Number(item.next_step || 1);
+        const step =
+          steps.find((s) => Number(s.step) === stepNum) ||
+          steps[Math.max(0, stepNum - 1)] ||
+          null;
+        const subject = tplVars((step && step.subject) || item.next_subject || "", name, company);
+        const plain = tplVars((step && step.plain) || "", name, company);
+        if (subject || plain) {
+          return {
+            subject: subject || fallback.subject,
+            plain: plain || fallback.plain,
+            html: (step && step.html) || "",
+            meta: kindLabel,
+          };
+        }
+      } else {
+        try {
+          const v = await api(
+            `/api/letter-variants?pack_id=${encodeURIComponent(packId)}&email=${encodeURIComponent(
+              email || "demo@mail.ru"
+            )}`
+          );
+          if (v.picked && (v.picked.subject || v.picked.plain)) {
+            try {
+              const preview = await api("/api/preview", {
+                method: "POST",
+                body: JSON.stringify({
+                  contact_name: name || "коллега",
+                  subject: v.picked.subject,
+                  plain: v.picked.plain,
+                }),
+              });
+              return {
+                subject: preview.subject || v.picked.subject,
+                plain: preview.plain || v.picked.plain,
+                html: preview.html || "",
+                meta: `Первое письмо · вариант ${v.picked.combo || ""}`,
+              };
+            } catch (_) {
+              return {
+                subject: v.picked.subject || fallback.subject,
+                plain: v.picked.plain || fallback.plain,
+                html: "",
+                meta: `Первое письмо · вариант ${v.picked.combo || ""}`,
+              };
+            }
+          }
+        } catch (_) {}
+        try {
+          const preview = await api("/api/preview", {
+            method: "POST",
+            body: JSON.stringify({ contact_name: name || "коллега" }),
+          });
+          return {
+            subject: preview.subject || fallback.subject,
+            plain: preview.plain || fallback.plain,
+            html: preview.html || "",
+            meta: "Первое письмо",
+          };
+        } catch (_) {}
+      }
+    } catch (_) {}
+    return fallback;
+  }
+
+  function whoLine(item) {
+    return item.contact_name || item.email || "Письмо";
+  }
+
+  async function openDeskLetterPreview(item) {
+    const peel = $("deskLetterPeelAway");
+    const title = $("deskLetterTitle");
+    const meta = $("deskLetterMeta");
+    const subj = $("deskLetterSubject");
+    const plain = $("deskLetterPlain");
+    const htmlBox = $("deskLetterHtml");
+    if (!item) return;
+    if (!peel) {
+      logAction("Панель письма не найдена в DOM");
+      return;
+    }
+    const who = whoLine(item);
+    peel.removeAttribute("hidden");
+    peel.hidden = false;
+    peel.classList.add("is-open");
+    document.body.classList.add("peel-away-open");
+    if (title) title.textContent = who;
+    if (meta) {
+      meta.textContent = [item.email || "", item.city || item.timezone || "", "загрузка…"]
+        .filter(Boolean)
+        .join(" · ");
+    }
+    if (subj) subj.textContent = item.next_subject || "Загрузка…";
+    if (plain) {
+      plain.textContent = [
+        item.kind === "followup"
+          ? `Шаг ${item.next_step || "?"} · ${item.next_label || "follow-up"}`
+          : item.next_label || "первое письмо",
+        item.email || "",
+        "Загружаю текст письма…",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }
+    if (htmlBox) {
+        if (htmlBox.tagName === "IFRAME") htmlBox.srcdoc = "";
+        else htmlBox.innerHTML = "";
+      }
+    try {
+      const data = await loadDeskLetterPreview(item);
+      if (meta) {
+        meta.textContent = [data.meta, item.email || "", item.city || item.timezone || ""]
+          .filter(Boolean)
+          .join(" · ");
+      }
+      if (subj) subj.textContent = data.subject || "—";
+      if (plain) plain.textContent = data.plain || "Текст недоступен";
+      if (htmlBox) {
+        if (data.html) paintPreviewHtml(htmlBox, data.html);
+        else if (htmlBox.tagName === "IFRAME") htmlBox.srcdoc = "";
+        else htmlBox.innerHTML = "";
+      }
+    } catch (e) {
+      if (meta) meta.textContent = String(e.message || e);
+      if (plain && !plain.textContent) plain.textContent = String(e.message || e);
+    }
+  }
+
+  function deskMetric(n, l) {
+    return `<div class="desk-metric"><span class="n">${escapeHtml(String(n))}</span><span class="l">${escapeHtml(l)}</span></div>`;
+  }
+
+  function dayMapFromCal(cal) {
+    const map = {};
+    for (const day of (cal && cal.calendar) || []) {
+      if (day && day.date) map[day.date] = day;
+    }
+    return map;
+  }
+
+  function setDeskDayPanelExpanded(on) {
+    const panel = $("deskDayPanel");
+    const btn = $("deskDayExpandBtn");
+    if (panel) panel.classList.toggle("is-expanded", !!on);
+    if (btn) btn.textContent = on ? "Свернуть" : "Развернуть";
+  }
+
+  function renderDeskDayPanel(dayKey, day) {
+    const title = $("deskDayTitle");
+    const meta = $("deskDayMeta");
+    const list = $("deskDayList");
+    const openBtn = $("deskDayOpenQueue");
+    if (!title || !list) return;
+    if (!dayKey || !day) {
+      title.textContent = "Выберите день";
+      if (meta) meta.textContent = "";
+      list.innerHTML = `<li class="muted">Кликните по дню — увидите, кто запланирован</li>`;
+      if (openBtn) openBtn.hidden = true;
+      if ($("deskDayExpandBtn")) $("deskDayExpandBtn").hidden = true;
+      setDeskDayPanelExpanded(false);
+      return;
+    }
+    setDeskDayPanelExpanded(false);
+    let label = dayKey;
+    try {
+      label = new Date(dayKey + "T12:00:00").toLocaleDateString("ru-RU", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+      });
+    } catch (_) {}
+    const count = day.count || 0;
+    const due = day.due_count || 0;
+    const cap = day.capacity != null ? day.capacity : "—";
+    title.textContent = label;
+    if (meta) {
+      meta.textContent =
+        `${count} в плане` +
+        (due ? ` · due ${due}` : "") +
+        ` · лимит ${cap}` +
+        (day.over_capacity ? " · перегруз" : "") +
+        (day.spam_risk ? " · риск спама" : "");
+    }
+    const items = day.items || [];
+    deskDayItemsCache = {};
+    if (!items.length) {
+      list.innerHTML =
+        count > 0
+          ? `<li class="muted">${count} писем в плане (детализация урезана) — откройте Очередь</li>`
+          : `<li class="muted">На этот день ничего не запланировано</li>`;
+    } else {
+      list.innerHTML = items
+        .slice(0, 12)
+        .map((r, idx) => {
+          const key = `${dayKey}:${idx}`;
+          deskDayItemsCache[key] = r;
+          const who = r.contact_name || r.email || "—";
+          const company = r.company_title || r.company_id || "";
+          const kind =
+            r.kind === "followup"
+              ? `шаг ${r.next_step || "?"} · ${r.next_label || "follow-up"}`
+              : r.next_label || "первое письмо";
+          const place = [r.city, r.timezone].filter(Boolean).join(" · ");
+          const line2 = [kind, r.email || "", company, place].filter(Boolean).join(" · ");
+          return `<li>
+            <button type="button" class="desk-day-item" data-desk-letter="${escapeHtml(key)}" title="Открыть письмо">
+              <span class="who">${escapeHtml(String(who))}</span>
+              <span class="meta">${escapeHtml(line2)}</span>
+            </button>
+          </li>`;
+        })
+        .join("");
+      if (count > items.length) {
+        const more = document.createElement("li");
+        more.className = "muted";
+        more.textContent = `+${count - items.length} ещё в этот день`;
+        list.appendChild(more);
+      }
+    }
+    if (openBtn) {
+      openBtn.hidden = false;
+      openBtn.onclick = () => goToTab("outbox");
+    }
+    const expandBtn = $("deskDayExpandBtn");
+    if (expandBtn) {
+      expandBtn.hidden = !(items.length || count > 0);
+    }
+  }
+
+  function renderDeskCalendar(cal) {
+    const box = $("deskCalendar");
+    if (!box) return;
+    deskCalCache = cal || null;
+    const days = (cal && cal.calendar) || [];
+    if (!days.length) {
+      box.innerHTML = `<p class="muted tight">Нет данных календаря</p>`;
+      renderDeskDayPanel(null, null);
+      return;
+    }
+    const byDate = dayMapFromCal(cal);
+    const first = days[0].date;
+    const last = days[days.length - 1].date;
+    let start;
+    try {
+      start = new Date(first + "T12:00:00");
+    } catch (_) {
+      start = new Date();
+    }
+    // Align grid to Monday
+    const mondayOffset = (start.getDay() + 6) % 7;
+    const gridStart = new Date(start);
+    gridStart.setDate(start.getDate() - mondayOffset);
+
+    const end = new Date(last + "T12:00:00");
+    const todayIso = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Moscow" });
+    if ($("deskCalTitle")) {
+      try {
+        const a = start.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+        const b = end.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+        $("deskCalTitle").textContent = `${a} — ${b}`;
+      } catch (_) {
+        $("deskCalTitle").textContent = "Месяц вперёд";
+      }
+    }
+
+    const wd = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
+      .map((w) => `<div class="desk-month-wd">${w}</div>`)
+      .join("");
+    const cells = [];
+    const cursor = new Date(gridStart);
+    // cover until last day, complete weeks
+    const stop = new Date(end);
+    stop.setDate(stop.getDate() + ((7 - ((stop.getDay() + 6) % 7) - 1 + 7) % 7));
+    while (cursor <= stop) {
+      const iso = cursor.toISOString().slice(0, 10);
+      // prefer local date key matching API (MSK dates as YYYY-MM-DD without UTC shift)
+      const localIso = [
+        cursor.getFullYear(),
+        String(cursor.getMonth() + 1).padStart(2, "0"),
+        String(cursor.getDate()).padStart(2, "0"),
+      ].join("-");
+      const key = localIso;
+      const inRange = key >= first && key <= last;
+      if (!inRange) {
+        cells.push(`<div class="desk-cal-day empty" aria-hidden="true"></div>`);
+      } else {
+        const day = byDate[key] || { date: key, count: 0, items: [] };
+        const n = day.count || 0;
+        const weekend = cursor.getDay() === 0 || cursor.getDay() === 6;
+        const cls = [
+          "desk-cal-day",
+          weekend ? "wknd" : "",
+          n > 15 ? "hot" : "",
+          day.over_capacity || day.spam_risk ? "over" : "",
+          key === todayIso ? "today" : "",
+          key === deskSelectedDay ? "is-selected" : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+        const ft = (day.items || []).filter((x) => x.kind !== "followup").length;
+        const fu = (day.items || []).filter((x) => x.kind === "followup").length;
+        let sub = "";
+        if (n > 0) {
+          if (ft || fu) sub = [ft ? `новые ${ft}` : "", fu ? `цепь ${fu}` : ""].filter(Boolean).join(" · ");
+          else sub = `${n} писем`;
+        }
+        const countLabel = n > 0 ? String(n) : "";
+        cells.push(
+          `<button type="button" class="${cls}" data-desk-day="${escapeHtml(key)}" title="${escapeHtml(
+            key + (sub ? " · " + sub : "")
+          )}">
+            <span class="d">${cursor.getDate()}</span>
+            <strong>${countLabel}</strong>
+          </button>`
+        );
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    box.innerHTML = wd + cells.join("");
+    box.querySelectorAll("[data-desk-day]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const key = btn.getAttribute("data-desk-day");
+        deskSelectedDay = key;
+        box.querySelectorAll("[data-desk-day]").forEach((b) =>
+          b.classList.toggle("is-selected", b.getAttribute("data-desk-day") === key)
+        );
+        renderDeskDayPanel(key, byDate[key] || { date: key, count: 0, items: [] });
+      });
+    });
+    if (!deskSelectedDay || !byDate[deskSelectedDay]) {
+      deskSelectedDay = byDate[todayIso] ? todayIso : first;
+    }
+    const selectedBtn = box.querySelector(`[data-desk-day="${deskSelectedDay}"]`);
+    if (selectedBtn) selectedBtn.classList.add("is-selected");
+    renderDeskDayPanel(deskSelectedDay, byDate[deskSelectedDay] || null);
+  }
+
+  function renderDesk(dash, health, queue, cal, ops, extra) {
+    extra = extra || {};
+    const st = (dash && (dash.run_state || (dash.runner && dash.runner.state)) || "stopped").toLowerCase();
+    const stLabel = { playing: "Идёт", paused: "Пауза", stopped: "Стоп" }[st] || st;
+    if ($("deskRunStatus")) $("deskRunStatus").textContent = stLabel;
+    const inWin = (queue && queue.counts && queue.counts.first_touch_in_window) || 0;
+    const pending =
+      (queue && queue.counts && (queue.counts.first_touch_pending_total || queue.counts.first_touch_pending)) ||
+      ((dash && dash.outbox && dash.outbox.counts && dash.outbox.counts.pending) || 0);
+    const sentToday = dash && dash.outbox ? dash.outbox.sent_today : 0;
+    const limit = (dash && (dash.effective_daily_limit || dash.daily_limit)) || "—";
+    const tick = dash && dash.runner && dash.runner.last_tick;
+    const slots =
+      (((settingsCache && (settingsCache.settings || settingsCache)) || {}).SCHEDULE_SLOTS) ||
+      "10:00-11:30,14:30-16:30";
+    const tickNote =
+      (tick && tick.result && (tick.result.note || tick.result.error)) ||
+      (tick && tick.skipped === "outside_window" ? "вне окон отправки" : "") ||
+      (inWin
+        ? `${inWin} контактов в окне сейчас · слоты ${slots}`
+        : `В окне 0 · слоты ${slots} — письма ждут следующий слот`);
+    if ($("deskRunNote")) $("deskRunNote").textContent = tickNote;
+    if ($("deskRunMetrics")) {
+      $("deskRunMetrics").innerHTML =
+        deskMetric(sentToday, "Сегодня") +
+        deskMetric(limit, "Лимит") +
+        deskMetric(inWin, "В окне") +
+        deskMetric(pending, "Очередь");
+    }
+    const s = (settingsCache && (settingsCache.settings || settingsCache)) || settingsCache || {};
+    if ($("deskSlots") && !$("deskSlots").dataset.dirty) {
+      $("deskSlots").value = s.SCHEDULE_SLOTS || $("deskSlots").value || "10:00-11:30,14:30-16:30";
+    }
+    const qc = (queue && queue.counts) || {};
+    const deliv = (cal && cal.deliverability) || {};
+    const totals = (cal && cal.totals) || {};
+    if ($("deskQueueStats")) {
+      $("deskQueueStats").innerHTML =
+        deskMetric(totals.items != null ? totals.items : pending, "План") +
+        deskMetric(totals.days_with_items || 0, "Дней") +
+        deskMetric(qc.followups_due || 0, "Due") +
+        deskMetric(deliv.first_touch_daily_cap || "—", "Cap") +
+        deskMetric(qc.first_touch_in_window || 0, "Сейчас");
+    }
+    if ($("deskQueueHint")) {
+      const note = (deliv && deliv.note) || (queue && queue.send_order_ru) || "";
+      $("deskQueueHint").textContent = String(note);
+    }
+    renderDeskCalendar(cal);
+
+    const inboxN = (ops && ops.counts && ops.counts.inbox_unprocessed) || 0;
+    if ($("deskInboxTitle")) $("deskInboxTitle").textContent = inboxN ? `Ответы · ${inboxN}` : "Ответы";
+    if ($("deskInboxStats")) {
+      $("deskInboxStats").innerHTML =
+        deskMetric(inboxN, "ждут") +
+        deskMetric((ops && ops.counts && ops.counts.due_followups) || 0, "due") +
+        deskMetric((dash && dash.reply_inbox && dash.reply_inbox.total) || 0, "всего inbox");
+    }
+    const inboxBox = $("deskInboxList");
+    if (inboxBox) {
+      const inboxActs = ((ops && ops.actions) || []).filter((a) => a.kind === "inbox_reply").slice(0, 5);
+      inboxBox.innerHTML = inboxActs.length
+        ? inboxActs
+            .map(
+              (a) =>
+                `<button type="button" data-go="inbox"><div class="desk-item-title">${escapeHtml(
+                  deskClip(a.title || "Входящее", 52)
+                )}</div><div class="desk-item-detail">${escapeHtml(deskClip(a.detail || "", 64))}</div></button>`
+            )
+            .join("")
+        : `<p class="muted tight">Нет необработанных ответов</p>`;
+      inboxBox.querySelectorAll("[data-go]").forEach((el) => {
+        el.addEventListener("click", () => goToTab(el.dataset.go));
+      });
+    }
+
+    const e = (dash && dash.engagement) || {};
+    if ($("deskReportMeta")) {
+      $("deskReportMeta").textContent = `отпр. ${e.sent || 0} · откр. ${e.opened || 0}`;
+    }
+    if ($("deskReportLine2")) {
+      $("deskReportLine2").textContent = `ответы ${e.replied || 0} · bounce ${e.bounced || 0}`;
+    }
+
+    const pack = s.OUTREACH_SEQUENCE_PACK || selectedPackId || "—";
+    const packInfo = extra.pack || {};
+    if ($("deskPackMeta")) $("deskPackMeta").textContent = `Пакет: ${pack}`;
+    if ($("deskPackLine2")) {
+      const steps = packInfo.steps != null ? packInfo.steps : packInfo.letters != null ? packInfo.letters : null;
+      $("deskPackLine2").textContent = steps != null ? `${steps} шагов в цепочке` : "отрасль → цепочка → тест";
+    }
+
+    const variants = extra.variants || {};
+    if ($("deskVariantsMeta")) {
+      const sc = (variants.subjects && variants.subjects.length) || 7;
+      const bc = (variants.bodies && variants.bodies.length) || 7;
+      $("deskVariantsMeta").textContent = `${sc}×${bc} = ${variants.combinations || sc * bc} комбо`;
+    }
+    if ($("deskVariantsLine2")) {
+      const picked = variants.picked && variants.picked.subject;
+      $("deskVariantsLine2").textContent = picked
+        ? `пример: ${String(picked).slice(0, 42)}${String(picked).length > 42 ? "…" : ""}`
+        : "темы и тексты первого касания";
+    }
+
+    const geo = (dash && dash.clients && dash.clients.geo) || {};
+    if ($("deskClientsMeta")) {
+      $("deskClientsMeta").textContent = `компаний ${geo.companies != null ? geo.companies : "—"}`;
+    }
+    if ($("deskClientsLine2")) {
+      $("deskClientsLine2").textContent = `с TZ ${geo.with_timezone != null ? geo.with_timezone : "—"} · Bitrix sync`;
+    }
+  }
+
+  async function refreshDesk(dash, health, ops) {
+    if (!$("tab-home")) return;
+    let queue = {};
+    let cal = {};
+    let variants = {};
+    let pack = {};
+    try {
+      const packId =
+        (settingsCache && (settingsCache.OUTREACH_SEQUENCE_PACK || (settingsCache.settings || {}).OUTREACH_SEQUENCE_PACK)) ||
+        selectedPackId ||
+        "lombards";
+      const settled = await Promise.allSettled([
+        api("/api/modules/sequences/queue?limit=12"),
+        api("/api/modules/sequences/calendar?days=31"),
+        api(`/api/letter-variants?pack_id=${encodeURIComponent(packId)}&email=demo@mail.ru`),
+        api(`/api/packs/${encodeURIComponent(packId)}`),
+      ]);
+      queue = settled[0].status === "fulfilled" ? settled[0].value : {};
+      cal = settled[1].status === "fulfilled" ? settled[1].value : {};
+      variants = settled[2].status === "fulfilled" ? settled[2].value : {};
+      const packRes = settled[3].status === "fulfilled" ? settled[3].value : {};
+      pack = packRes.pack || packRes || {};
+      if (pack) {
+        const letters = pack.letters || pack.steps || (pack.template && pack.template.steps);
+        if (Array.isArray(letters)) pack.steps = letters.length;
+        else if (typeof pack.step_count === "number") pack.steps = pack.step_count;
+      }
+    } catch (_) {}
+    if (!settingsCache) {
+      try {
+        const data = await api("/api/settings");
+        settingsCache = data.settings || data;
+      } catch (_) {}
+    }
+    renderDesk(dash || {}, health || {}, queue, cal, ops || {}, { variants, pack });
   }
 
   function renderOpsAlerts(alerts) {
@@ -641,33 +1402,31 @@
 
   function renderOpsActions(data) {
     const section = $("opsActions");
-    const list = $("opsActionsList");
+    if (section) section.classList.add("hidden");
+    const list = $("deskActionsList") || $("opsActionsList");
     const meta = $("opsActionsMeta");
-    if (!section || !list) return;
+    if (!list) return;
     const actions = (data && data.actions) || [];
     const counts = (data && data.counts) || {};
+    if (meta) {
+      meta.textContent = actions.length
+        ? `Всего ${actions.length} · входящие ${counts.inbox_unprocessed || 0}`
+        : "";
+    }
     if (!actions.length) {
-      section.classList.add("hidden");
-      list.innerHTML = "";
-      if (meta) meta.textContent = "";
+      list.innerHTML = `<p class="muted tight">Пока нет срочных действий</p>`;
       return;
     }
-    section.classList.remove("hidden");
-    if (meta) {
-      meta.textContent = `Всего ${actions.length} · входящие ${counts.inbox_unprocessed || 0}`;
-    }
     list.innerHTML = actions
+      .slice(0, 5)
       .map(
-        (a) => `<button type="button" class="ops-action sev-${escapeHtml(a.severity || "medium")}" data-ops-action="${escapeHtml(a.id || "")}" data-ops-tab="${escapeHtml(a.tab || "")}">
-          <span class="ops-action-main">
-            <div class="ops-action-title">${escapeHtml(a.title || "")}</div>
-            <div class="ops-action-detail">${escapeHtml(a.detail || "")}</div>
-          </span>
-          <span class="muted">→</span>
+        (a) => `<button type="button" data-ops-tab="${escapeHtml(a.tab || "")}">
+          <div class="desk-item-title">${escapeHtml(deskClip(a.title || "", 52))}</div>
+          <div class="desk-item-detail">${escapeHtml(deskClip(a.detail || "", 64))}</div>
         </button>`
       )
       .join("");
-    list.querySelectorAll("[data-ops-action]").forEach((btn) => {
+    list.querySelectorAll("[data-ops-tab]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const tab = btn.dataset.opsTab;
         if (tab) goToTab(tab);
@@ -853,6 +1612,7 @@
   }
 
   let activeInboxThreadId = null;
+  let activeInboxDraft = "";
 
   function closeInboxThread() {
     const peel = $("inboxThreadPeelAway");
@@ -863,8 +1623,16 @@
     }, 260);
     document.body.classList.remove("peel-away-open");
     activeInboxThreadId = null;
+    activeInboxDraft = "";
     if ($("inboxReplyBody")) $("inboxReplyBody").value = "";
     if ($("inboxReplyStatus")) $("inboxReplyStatus").textContent = "";
+    const enrich = $("inboxThreadEnrichment");
+    if (enrich) {
+      enrich.hidden = true;
+      enrich.innerHTML = "";
+    }
+    const draftBtn = $("inboxReplyUseDraft");
+    if (draftBtn) draftBtn.hidden = true;
   }
 
   function renderInboxThreadMessages(messages) {
@@ -892,6 +1660,79 @@
       .join("");
   }
 
+  function renderInboxEnrichment(enrichment) {
+    const el = $("inboxThreadEnrichment");
+    const draftBtn = $("inboxReplyUseDraft");
+    activeInboxDraft = "";
+    if (!el) return;
+    if (!enrichment || !enrichment.ok) {
+      el.hidden = true;
+      el.innerHTML = "";
+      if (draftBtn) draftBtn.hidden = true;
+      return;
+    }
+    const acc = enrichment.account || null;
+    const person = enrichment.person || null;
+    const lead = enrichment.lead || null;
+    const next = enrichment.next_action || {};
+    const draft = enrichment.suggested_reply || {};
+    const bits = [];
+    if (acc) {
+      bits.push(
+        `<div><span class="muted">Account</span> ${escapeHtml(
+          acc.legal_name || acc.brand_name || acc.id
+        )} · <code>${escapeHtml(acc.lifecycle_status || "")}</code>` +
+          (acc.bitrix_company_id
+            ? ` · bx ${escapeHtml(String(acc.bitrix_company_id))}`
+            : "") +
+          `</div>`
+      );
+    } else {
+      bits.push(`<div class="muted">Account ещё не связан — появится после resolve inbound</div>`);
+    }
+    if (person) {
+      bits.push(
+        `<div><span class="muted">Person</span> ${escapeHtml(
+          person.full_name || person.id
+        )}</div>`
+      );
+    }
+    if (lead) {
+      bits.push(
+        `<div><span class="muted">Lead</span> ${escapeHtml(
+          lead.status || ""
+        )} · ${escapeHtml(lead.source || "")}</div>`
+      );
+    }
+    if (next.label) {
+      bits.push(
+        `<div class="inbox-next-action"><span class="muted">Next</span> <strong>${escapeHtml(
+          next.label
+        )}</strong> <span class="badge">${escapeHtml(next.priority || "")}</span></div>`
+      );
+    }
+    if (draft.approval_required && draft.body) {
+      bits.push(
+        `<div class="muted tight">Черновик ответа · APPROVAL_REQUIRED (не отправляется автоматически)</div>`
+      );
+      const cites = draft.citations || [];
+      if (cites.length) {
+        bits.push(
+          `<div class="muted tight">Цитаты: ${cites
+            .slice(0, 3)
+            .map((c) => escapeHtml((c.source || "") + " · " + (c.ref || "")))
+            .join("; ")}</div>`
+        );
+      }
+      activeInboxDraft = draft.body;
+      if (draftBtn) draftBtn.hidden = false;
+    } else if (draftBtn) {
+      draftBtn.hidden = true;
+    }
+    el.innerHTML = bits.join("");
+    el.hidden = false;
+  }
+
   async function openInboxThread(inboxId) {
     const peel = $("inboxThreadPeelAway");
     const title = $("inboxThreadTitle");
@@ -905,6 +1746,11 @@
     if (title) title.textContent = "Переписка";
     if (meta) meta.textContent = "Загрузка…";
     if (body) body.innerHTML = "<p class='muted tight'>Загрузка…</p>";
+    const enrichEl = $("inboxThreadEnrichment");
+    if (enrichEl) {
+      enrichEl.hidden = true;
+      enrichEl.innerHTML = "";
+    }
     try {
       const data = await api(`/api/modules/replies/inbox/${encodeURIComponent(inboxId)}/thread`);
       if (title) title.textContent = data.subject || "Переписка";
@@ -917,6 +1763,7 @@
           .filter(Boolean)
           .join(" · ");
       }
+      renderInboxEnrichment(data.enrichment);
       if (body) {
         body.innerHTML = `<div class="inbox-thread-messages">${renderInboxThreadMessages(
           data.messages
@@ -1099,7 +1946,9 @@
   }
 
   async function loadSettingsIntoForms() {
+    await loadAccessMeta().catch(() => {});
     const data = await api("/api/settings");
+
     settingsCache = data.settings || {};
     const s = settingsCache;
     $("letterSubject").value = s.OUTREACH_SUBJECT || "";
@@ -1239,6 +2088,12 @@
 
     $("warmupEnabled").checked = String(s.WARMUP_ENABLED || "true").toLowerCase() !== "false";
     $("domainCap").value = s.DOMAIN_DAILY_CAP || 2;
+    if ($("domainSharedCap")) {
+      $("domainSharedCap").value =
+        s.DOMAIN_SHARED_DAILY_CAP != null && s.DOMAIN_SHARED_DAILY_CAP !== ""
+          ? s.DOMAIN_SHARED_DAILY_CAP
+          : 0;
+    }
     $("plusReply").checked = String(s.TRACKING_PLUS_REPLY_TO || "false").toLowerCase() === "true" || s.TRACKING_PLUS_REPLY_TO === "1";
     $("openTracking").checked = String(s.OPEN_TRACKING_ENABLED || "true").toLowerCase() !== "false";
     if ($("letterAttachPdf")) {
@@ -1429,6 +2284,28 @@
       .join("");
   }
 
+  function inboxClassLabel(cls) {
+    const c = String(cls || "").toLowerCase();
+    const labels = {
+      positive: "Интерес",
+      positive_interest: "Интерес",
+      human: "Человек",
+      human_unclassified: "Разбор",
+      interested: "Интерес",
+      negative: "Отказ",
+      unsub: "Отписка",
+      unsubscribe: "Отписка",
+      bounce: "Bounce",
+      ooo: "Автоответ",
+      out_of_office: "Автоответ",
+      auto: "Авто",
+      automatic: "Авто",
+      forward: "Переслано",
+      forwarded: "Переслано",
+    };
+    return labels[c] || cls || "—";
+  }
+
   function inboxClassBadge(cls) {
     const c = String(cls || "").toLowerCase();
     const map = {
@@ -1449,7 +2326,38 @@
       forwarded: "warn",
     };
     const tone = map[c] || "muted";
-    return `<span class="eng ${tone}">${escapeHtml(cls || "—")}</span>`;
+    return `<span class="eng ${tone}">${escapeHtml(inboxClassLabel(cls))}</span>`;
+  }
+
+  function inboxClassTone(cls) {
+    const c = String(cls || "").toLowerCase();
+    if (["positive", "positive_interest", "human", "human_unclassified", "interested"].includes(c)) return "tone-ok";
+    if (["negative", "unsub", "unsubscribe", "bounce"].includes(c)) return "tone-bad";
+    if (["ooo", "out_of_office", "forward", "forwarded"].includes(c)) return "tone-warn";
+    return "";
+  }
+
+  function toQueueLetterItem(r, kind) {
+    const isFollow = kind === "followup" || r.kind === "followup" || Number(r.next_step || 0) > 1;
+    return {
+      kind: isFollow ? "followup" : "first",
+      email: r.email || "",
+      contact_name: r.contact_name || r.director_greeting || "",
+      company_title: r.company_title || "",
+      company_id: r.company_id,
+      city: r.city || "",
+      timezone: r.timezone || r.timezone_raw || "",
+      pack_id: r.pack_id,
+      next_step: r.next_step,
+      next_label: r.next_label || (isFollow ? "follow-up" : "первое письмо"),
+      next_subject: r.next_subject || r.subject || "",
+    };
+  }
+
+  function rememberQueueLetter(key, item) {
+    if (!key || !item) return key;
+    queueLetterCache[key] = item;
+    return key;
   }
 
   function filterOutboxItems(items) {
@@ -1522,7 +2430,7 @@
     const outWin = items.length - inWin;
     const statusVal = ($("outboxStatus") && $("outboxStatus").value) || "";
     if ($("outboxMeta")) {
-      let meta = `Показано ${filtered.length} из ${items.length} (всего ${total})`;
+      let meta = `Показано ${filtered.length} из ${items.length} (всего ${total}) · клик по строке — открыть письмо`;
       if (!statusVal || statusVal === "pending") {
         meta += ` · в окне: ${inWin} · вне окна: ${outWin}`;
       }
@@ -1534,8 +2442,9 @@
     if ($("outboxBody")) {
       $("outboxBody").innerHTML = filtered.length
         ? filtered
-            .map(
-              (r) => `<tr>
+            .map((r) => {
+              const key = rememberQueueLetter(`outbox-${r.id}`, toQueueLetterItem(r, "first"));
+              return `<tr class="queue-clickable" data-queue-letter="${escapeHtml(key)}" tabindex="0">
           <td class="cell-check">${
             r.status === "pending"
               ? `<input type="checkbox" class="outbox-pick" data-id="${r.id}" />`
@@ -1551,8 +2460,8 @@
           <td class="cell-narrow">${escapeHtml(r.status)}</td>
           <td class="cell-narrow">${escapeHtml(r.sent_at || "")}</td>
           <td class="cell-actions">${outboxRowActions(r)}</td>
-        </tr>`
-            )
+        </tr>`;
+            })
             .join("")
         : `<tr><td colspan="11" class="muted">Нет строк по фильтру</td></tr>`;
     }
@@ -1660,16 +2569,25 @@
       return;
     }
     const totals = (cal && cal.totals) || {};
+    const deliv = (cal && cal.deliverability) || {};
+    const eff = deliv.effective_daily_limit != null ? deliv.effective_daily_limit : "—";
+    const ftCap = deliv.first_touch_daily_cap != null ? deliv.first_touch_daily_cap : "—";
+    const sent = deliv.sent_today != null ? deliv.sent_today : "—";
     const meta =
-      totals.items != null
-        ? `<p class="muted tight">Всего ${totals.items} · due ${totals.due || 0} · дней с задачами ${totals.days_with_items || 0} (${cal.timezone || "Europe/Moscow"})</p>`
-        : "";
+      `<p class="muted tight">Всего ${totals.items != null ? totals.items : "—"} · due ${totals.due || 0} · дней с задачами ${totals.days_with_items || 0} (${cal.timezone || "Europe/Moscow"})</p>` +
+      `<p class="muted tight queue-cap-hint">Лимит SMTP сегодня: <strong>${escapeHtml(String(eff))}</strong> (уже ${escapeHtml(String(sent))}) · первые письма ~${escapeHtml(String(ftCap))}/день. 296 в один день <em>не уйдут</em> — только до лимита.</p>`;
     box.innerHTML =
       meta +
       days
         .map((day) => {
           const items = day.items || [];
           const dueN = day.due_count || 0;
+          const count = day.count || 0;
+          const over = day.over_capacity || day.spam_risk;
+          const riskCls = day.spam_risk ? "cal-day-spam" : over ? "cal-day-over" : dueN ? "cal-day-due" : "";
+          const capNote = over
+            ? `<div class="cal-day-warn">⚠ ${count} в плане · лимит ${escapeHtml(String(day.capacity || eff))} — разложите очередь</div>`
+            : "";
           const sample = items
             .slice(0, 4)
             .map(
@@ -1683,12 +2601,45 @@
             day.truncated || items.length > 4
               ? `<li class="muted">+${Math.max(0, (day.count || items.length) - 4)} ещё</li>`
               : "";
-          return `<div class="cal-day ${dueN ? "cal-day-due" : ""}">
-          <div class="cal-day-head"><strong>${escapeHtml(fmtDay(day.date))}</strong><span>${day.count || 0}</span></div>
+          return `<div class="cal-day ${riskCls}">
+          <div class="cal-day-head"><strong>${escapeHtml(fmtDay(day.date))}</strong><span>${count}</span></div>
+          ${capNote}
           <ul class="cal-day-list">${sample || "<li class='muted'>—</li>"}${more}</ul>
         </div>`;
         })
         .join("");
+  }
+
+  async function paceQueue() {
+    const log = $("queuePaceLog");
+    const daysEl = $("queuePaceDays");
+    const workdays = Math.max(7, Math.min(180, Number((daysEl && daysEl.value) || 14) || 14));
+    if (log) {
+      log.hidden = false;
+      log.textContent = `Раскладываю на ${workdays} будних дней (сб/вс пропускаю)…`;
+    }
+    try {
+      const data = await api("/api/modules/sequences/pace-queue", {
+        method: "POST",
+        body: JSON.stringify({ dry_run: false, workdays }),
+      });
+      const byDay = Object.entries(data.by_day || {})
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([d, n]) => `${d}: ${n}`)
+        .join(" · ");
+      const summary =
+        (data.note || `paced=${data.paced}`) +
+        `\nбудней=${data.workdays || workdays}, ~${data.per_day_target || "?"}/день, ` +
+        `сегодня=${data.today_unlocked || 0}, cap=${data.first_touch_daily_cap || "?"}` +
+        (byDay ? `\n${byDay}` : "");
+      if (log) log.textContent = summary;
+      logAction(data.note || data);
+      await loadQueueView();
+      return data;
+    } catch (e) {
+      if (log) log.textContent = String((e && e.message) || e);
+      throw e;
+    }
   }
 
   async function loadQueueView() {
@@ -1698,6 +2649,7 @@
     const status = statusEl ? statusEl.value : "pending";
 
     let queue = { first_touch: [], followups_due: [], followups_upcoming: [], counts: {}, send_order_ru: "" };
+    queueLetterCache = {};
     try {
       queue = await api("/api/modules/sequences/queue?limit=100");
     } catch (e) {
@@ -1748,8 +2700,12 @@
       const due = queue.followups_due || [];
       $("queueDueBody").innerHTML = due.length
         ? due
-            .map(
-              (r) => `<tr>
+            .map((r) => {
+              const key = rememberQueueLetter(
+                `due-${r.email || ""}-${r.next_step || ""}-${r.next_action_at || ""}`,
+                toQueueLetterItem(r, "followup")
+              );
+              return `<tr class="queue-clickable" data-queue-letter="${escapeHtml(key)}" tabindex="0">
             <td class="cell-narrow">${escapeHtml(r.next_step || "—")}</td>
             <td class="cell-narrow">${fmtWhen(r.next_action_at)}</td>
             <td class="cell-wide">${escapeHtml(r.contact_name || "—")}<br><span class="muted">${escapeHtml(r.email || "")}</span></td>
@@ -1757,8 +2713,8 @@
             <td class="cell-tz">${fmtTimezone(r)}</td>
             <td class="cell-win">${fmtWindow(r)}</td>
             <td class="cell-wide">${escapeHtml(r.next_subject || "")}</td>
-          </tr>`
-            )
+          </tr>`;
+            })
             .join("")
         : `<tr><td colspan="7" class="muted">Нет due follow-up — сегодня уйдут только новые первые письма (если Старт).</td></tr>`;
     }
@@ -1767,8 +2723,12 @@
       const up = queue.followups_upcoming || [];
       $("queueUpcomingBody").innerHTML = up.length
         ? up
-            .map(
-              (r) => `<tr>
+            .map((r) => {
+              const key = rememberQueueLetter(
+                `up-${r.email || ""}-${r.next_step || ""}-${r.next_action_at || ""}`,
+                toQueueLetterItem(r, "followup")
+              );
+              return `<tr class="queue-clickable" data-queue-letter="${escapeHtml(key)}" tabindex="0">
             <td>${r.next_step || "—"}</td>
             <td>${fmtWhen(r.next_action_at)}</td>
             <td>${escapeHtml(r.contact_name || "")}<br><span class="muted">${escapeHtml(r.email || "")}</span></td>
@@ -1776,8 +2736,8 @@
             <td class="cell-tz">${fmtTimezone(r)}</td>
             <td class="cell-win">${fmtWindow(r)}</td>
             <td>${escapeHtml(r.next_label || "")}</td>
-          </tr>`
-            )
+          </tr>`;
+            })
             .join("")
         : `<tr><td colspan="7" class="muted">Пока нет запланированных следующих шагов.</td></tr>`;
     }
@@ -1811,20 +2771,76 @@
       .join("");
   }
 
+  function currentInboxUnprocessedOnly() {
+    const active = document.querySelector(".sub-tab.active[data-inbox-filter]");
+    if (active && active.dataset.inboxFilter === "all") return false;
+    return true;
+  }
+
+  function fmtInboxWhen(iso) {
+    if (!iso) return "—";
+    try {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return String(iso);
+      return d.toLocaleString("ru-RU", {
+        timeZone: "Europe/Moscow",
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch (_) {
+      return String(iso);
+    }
+  }
+
   async function loadInbox(unprocessedOnly = true) {
     const q = unprocessedOnly ? "unprocessed_only=true" : "unprocessed_only=false";
     const data = await api("/api/modules/replies/inbox?" + q + "&limit=80");
     const c = data.counts || {};
-    $("inboxStats").innerHTML = `
+    if ($("inboxStats")) {
+      $("inboxStats").innerHTML = `
       <div class="stat"><div class="n">${c.total || 0}</div><div class="l">Всего</div></div>
-      <div class="stat"><div class="n">${c.unprocessed || 0}</div><div class="l">Необработано</div></div>`;
-    $("inboxBody").innerHTML = (data.items || [])
-      .map((r) => {
-        const btn =
-          r.processed == 0
-            ? `<button type="button" data-inbox-id="${r.id}">Готово</button>`
-            : "";
-        return `<tr class="inbox-row" data-inbox-open="${r.id}" style="cursor:pointer">
+      <div class="stat"><div class="n">${c.unprocessed || 0}</div><div class="l">Ждут разбора</div></div>`;
+    }
+    const items = data.items || [];
+    if ($("inboxCardList")) {
+      $("inboxCardList").innerHTML = items.length
+        ? items
+            .map((r) => {
+              const open = Number(r.processed || 0) === 0;
+              const tone = inboxClassTone(r.classification);
+              const label = escapeHtml(inboxClassLabel(r.classification));
+              const snippet = String(r.snippet || r.preview || r.body_preview || r.classification_reason || "")
+                .replace(/\s+/g, " ")
+                .trim();
+              const doneBtn = open
+                ? `<button type="button" class="small btn-quiet inbox-mail-done" data-inbox-id="${r.id}">Готово</button>`
+                : "";
+              return `<div class="inbox-mail-card ${open ? "is-open" : "is-done"}" data-inbox-open="${r.id}" role="button" tabindex="0">
+          <span class="inbox-mail-badge ${tone}">${label}</span>
+          <span class="inbox-mail-main">
+            <span class="inbox-mail-from">${escapeHtml(r.from_email || r.from_name || "—")}</span>
+            <span class="inbox-mail-subject">${escapeHtml(r.subject || "Без темы")}</span>
+            ${snippet ? `<span class="inbox-mail-snippet">${escapeHtml(snippet)}</span>` : ""}
+            ${doneBtn}
+          </span>
+          <span class="inbox-mail-when">${escapeHtml(fmtInboxWhen(r.created_at))}</span>
+        </div>`;
+            })
+            .join("")
+        : `<p class="muted tight">${
+            unprocessedOnly ? "Нет писем, ждущих разбора." : "Входящих пока нет."
+          }</p>`;
+    }
+    if ($("inboxBody")) {
+      $("inboxBody").innerHTML = items
+        .map((r) => {
+          const btn =
+            r.processed == 0
+              ? `<button type="button" data-inbox-id="${r.id}">Готово</button>`
+              : "";
+          return `<tr class="inbox-row" data-inbox-open="${r.id}" style="cursor:pointer">
           <td>${escapeHtml(r.created_at || "")}</td>
           <td>${escapeHtml(r.from_email || "")}</td>
           <td>${inboxClassBadge(r.classification)} <span class="muted">(${Number(r.confidence || 0).toFixed(2)})</span></td>
@@ -1832,8 +2848,9 @@
           <td>${companyLink(r.company_id, r.company_id)}</td>
           <td>${btn}</td>
         </tr>`;
-      })
-      .join("");
+        })
+        .join("");
+    }
   }
 
   function activeTabName() {
@@ -1841,9 +2858,1076 @@
     return (btn && btn.dataset.tab) || "letter";
   }
 
+  let lprLastRunId = null;
+
+  function statusChip(st) {
+    const s = String(st || "proposed");
+    const map = {
+      proposed: "chip-neutral",
+      approved: "chip-ok",
+      rejected: "chip-bad",
+      cluster_pending: "chip-warn",
+      draft: "chip-neutral",
+      pending_approval: "chip-warn",
+      new: "chip-neutral",
+      uploaded_private: "chip-ok",
+    };
+    return `<span class="ros-chip ${map[s] || "chip-neutral"}">${escapeHtml(s)}</span>`;
+  }
+
+  function renderLprCoverage(coverage) {
+    const el = $("lprCoverage");
+    if (!el) return;
+    const roles = (coverage && coverage.roles) || [];
+    const missing = (coverage && coverage.missing_roles) || [];
+    if (!roles.length) {
+      el.innerHTML = `<p class="muted tight">Покрытие появится после поиска.</p>`;
+      return;
+    }
+    el.innerHTML =
+      `<div class="lpr-coverage-row">` +
+      roles
+        .map(
+          (r) =>
+            `<span class="lpr-role ${r.covered ? "ok" : "miss"}"><span class="lpr-role-id">${escapeHtml(
+              r.role_id || ""
+            )}</span>${r.covered ? " покрыта" : " нет"}</span>`
+        )
+        .join("") +
+      `</div>` +
+      (missing.length
+        ? `<p class="muted tight" style="margin-top:0.4rem">Не хватает: ${escapeHtml(missing.join(", "))}</p>`
+        : `<p class="muted tight" style="margin-top:0.4rem">Минимальный комитет закрыт.</p>`);
+  }
+
+  function renderLprCandidates(items) {
+    const box = $("lprCards");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Кандидатов нет — уточните company id или добавьте import.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map((c) => {
+        const st = c.status || "proposed";
+        const link = c.profile_url
+          ? `<a class="ros-link" href="${escapeHtml(c.profile_url)}" target="_blank" rel="noopener">профиль</a>`
+          : "";
+        let actions = "";
+        if (st === "rejected" || st === "merged") {
+          actions = `<span class="muted tight">${escapeHtml(st)}</span>`;
+        } else {
+          const mergeBtn = c.cluster_id
+            ? `<button type="button" class="small btn-quiet" data-lpr-merge="${escapeHtml(c.cluster_id)}" data-lpr-keep="${escapeHtml(c.id)}">Слить кластер сюда</button>`
+            : "";
+          actions = `<div class="ros-card-actions">
+                <button type="button" class="small primary" data-lpr-approve="${escapeHtml(c.id)}">Утвердить</button>
+                <button type="button" class="small btn-quiet" data-lpr-reject="${escapeHtml(c.id)}">Отклонить</button>
+                <button type="button" class="small btn-quiet" data-lpr-task="${escapeHtml(c.id)}">Task</button>
+                ${mergeBtn}
+              </div>`;
+        }
+        return `<article class="ros-card">
+          <div class="ros-card-head">
+            <div>
+              <div class="ros-card-title">${escapeHtml(c.full_name || "Без имени")}${
+          c.cluster_id ? ' <span class="badge">cluster</span>' : ""
+        }</div>
+              <div class="muted tight">${escapeHtml(c.role_guess || "роль ?")} · ${escapeHtml(
+          c.source || ""
+        )} · score ${Number(c.score || 0).toFixed(2)} ${link}</div>
+            </div>
+            ${statusChip(st)}
+          </div>
+          ${actions}
+        </article>`;
+      })
+      .join("");
+    box.querySelectorAll("[data-lpr-approve]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setLprStatus(btn.getAttribute("data-lpr-approve"), "approved").catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-lpr-reject]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setLprStatus(btn.getAttribute("data-lpr-reject"), "rejected").catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-lpr-task]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        createLprTask(btn.getAttribute("data-lpr-task")).catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-lpr-merge]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        mergeLprCluster(
+          btn.getAttribute("data-lpr-merge"),
+          btn.getAttribute("data-lpr-keep")
+        ).catch(logAction)
+      );
+    });
+  }
+
+  async function mergeLprCluster(clusterId, keepId) {
+    const data = await api(`/api/modules/social/clusters/${encodeURIComponent(clusterId)}/merge`, {
+      method: "POST",
+      body: JSON.stringify({ keep_candidate_id: keepId }),
+    });
+    if ($("lprMeta")) {
+      $("lprMeta").textContent = `Кластер слит · остался 1 кандидат · merged ${data.merged_count || 0}`;
+    }
+    if (lprLastRunId) await reloadLprRun(lprLastRunId);
+  }
+
+  async function setLprStatus(id, status) {
+    await api(`/api/modules/social/candidates/${encodeURIComponent(id)}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
+    if (lprLastRunId) await reloadLprRun(lprLastRunId);
+  }
+
+  async function createLprTask(id) {
+    const data = await api("/api/modules/social/tasks", {
+      method: "POST",
+      body: JSON.stringify({ candidate_id: id, draft_text: "", action_type: "open_profile" }),
+    });
+    if ($("lprMeta")) {
+      $("lprMeta").textContent = `Task создан · ${((data.task || {}).profile_url) || "без URL"}`;
+    }
+  }
+
+  async function reloadLprRun(runId) {
+    const data = await api(`/api/modules/social/runs/${encodeURIComponent(runId)}`);
+    renderLprCoverage(data.coverage);
+    renderLprCandidates(data.candidates || []);
+  }
+
+  async function loadLprTab() {
+    if ($("lprMeta") && !$("lprMeta").textContent) {
+      $("lprMeta").textContent = "Укажите company id или import и нажмите «Найти кандидатов».";
+    }
+  }
+
+  async function runLprSearch() {
+    const imports = [];
+    const webUrl = (($("lprWebUrl") && $("lprWebUrl").value) || "").trim();
+    if (webUrl) {
+      imports.push({
+        source: "web_import",
+        profile_url: webUrl,
+        full_name: ($("lprWebName") && $("lprWebName").value) || "",
+      });
+    }
+    const tg = (($("lprTgUser") && $("lprTgUser").value) || "").trim().replace(/^@/, "");
+    if (tg) {
+      imports.push({
+        source: "telegram",
+        username: tg,
+        full_name: ($("lprTgName") && $("lprTgName").value) || "",
+      });
+    }
+    const payload = {
+      bitrix_company_id: (($("lprCompanyId") && $("lprCompanyId").value) || "").trim() || null,
+      company_title: (($("lprCompanyTitle") && $("lprCompanyTitle").value) || "").trim(),
+      inn: (($("lprInn") && $("lprInn").value) || "").trim() || null,
+      sources: ["clients", "dadata", "web_import", "telegram"],
+      imports,
+    };
+    if ($("lprMeta")) $("lprMeta").textContent = "Ищем…";
+    const data = await api("/api/modules/social/search", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    lprLastRunId = (data.run && data.run.id) || null;
+    renderLprCoverage(data.coverage);
+    renderLprCandidates(data.candidates || []);
+    if ($("lprMeta")) {
+      const n = (data.candidates || []).length;
+      const miss = ((data.coverage && data.coverage.missing_roles) || []).length;
+      $("lprMeta").textContent = `${n} кандидат(ов) · cost ${
+        (data.run && data.run.cost_estimate) || 0
+      } · незакрытых ролей: ${miss}`;
+    }
+  }
+
+  async function loadLprCaps() {
+    const data = await api("/api/modules/social/capabilities");
+    const items = data.items || [];
+    if ($("lprMeta")) {
+      $("lprMeta").textContent = items
+        .map((c) => `${c.source_id}${c.search ? " (search)" : " (import)"}`)
+        .join(" · ");
+    }
+  }
+
+  function bindStudioSubTabs() {
+    document.querySelectorAll(".sub-tab[data-studio-view]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".sub-tab[data-studio-view]").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        const view = btn.dataset.studioView;
+        const content = $("studioViewContent");
+        const social = $("studioViewSocial");
+        const flywheel = $("studioViewFlywheel");
+        const radar = $("studioViewRadar");
+        const video = $("studioViewVideo");
+        if (content) content.hidden = view !== "content";
+        if (social) social.hidden = view !== "social";
+        if (flywheel) flywheel.hidden = view !== "flywheel";
+        if (radar) radar.hidden = view !== "radar";
+        if (video) video.hidden = view !== "video";
+        if (view === "content") loadContentDrafts().catch(logAction);
+        if (view === "social") loadSocialPublishTab().catch(logAction);
+        if (view === "flywheel") loadFlywheelTab().catch(logAction);
+        if (view === "radar") loadRadarSignals().catch(logAction);
+        if (view === "video") loadVideoDrafts().catch(logAction);
+      });
+    });
+  }
+
+  async function loadStudioTab() {
+    bindStudioSubTabs();
+    await loadAccessMeta().catch(() => {});
+    const active = document.querySelector(".sub-tab[data-studio-view].active");
+    const view = (active && active.dataset.studioView) || "content";
+    if (view === "content") await loadContentDrafts();
+    else if (view === "social") await loadSocialPublishTab();
+    else if (view === "flywheel") await loadFlywheelTab();
+    else if (view === "radar") await loadRadarSignals();
+    else await loadVideoDrafts();
+  }
+
+  function canWrite(perm) {
+    if (!accessPrincipal || !accessPrincipal.rbac_enabled) return true;
+    const perms = accessPrincipal.permissions || [];
+    return perms.indexOf(perm) >= 0;
+  }
+
+  function applyAccessGates() {
+    const studioWrite = canWrite("studio.write");
+    const settingsWrite = canWrite("outreach.settings");
+    const sendWrite = canWrite("outreach.send");
+    [
+      "csDraftBtn",
+      "radarIngestBtn",
+      "radarOwnedPollBtn",
+      "videoDraftBtn",
+      "spChannelAddBtn",
+      "spPostCreateBtn",
+      "fwPollBtn",
+      "fwRunCycleBtn",
+      "fwNewsIngestBtn",
+    ].forEach((id) => {
+      const el = $(id);
+      if (el) el.disabled = !studioWrite;
+    });
+    const saveBtn = $("saveSettingsBtn");
+    if (saveBtn) saveBtn.disabled = !settingsWrite;
+    ["startBtn", "pauseBtn", "stopBtn"].forEach((id) => {
+      const el = $(id);
+      if (el) el.disabled = !sendWrite && accessPrincipal && accessPrincipal.rbac_enabled;
+    });
+  }
+
+  function renderAccessUi() {
+    const role = (accessPrincipal && accessPrincipal.role) || "owner";
+    const rbac = !!(accessPrincipal && accessPrincipal.rbac_enabled);
+    const perms = (accessPrincipal && accessPrincipal.permissions) || [];
+    if ($("studioRoleChip")) {
+      $("studioRoleChip").textContent = rbac ? `роль: ${role}` : `роль: ${role} (rbac off)`;
+    }
+    if ($("studioUsageChip")) {
+      const items = (usageSnapshot && usageSnapshot.items) || [];
+      const today = new Date().toISOString().slice(0, 10);
+      const todayRows = items.filter((r) => r.day === today);
+      const total = todayRows.reduce((s, r) => s + (Number(r.value) || 0), 0);
+      $("studioUsageChip").textContent = todayRows.length
+        ? `usage сегодня: ${total}`
+        : "usage: нет данных";
+    }
+    if ($("settingsRoleLine")) {
+      $("settingsRoleLine").textContent = rbac
+        ? `Роль «${role}» · RBAC включён`
+        : `Роль «${role}» · RBAC выключен (все = owner)`;
+    }
+    if ($("settingsPermLine")) {
+      $("settingsPermLine").textContent = perms.length
+        ? `Права: ${perms.join(", ")}`
+        : "";
+    }
+    if ($("settingsUsageLine")) {
+      const items = (usageSnapshot && usageSnapshot.items) || [];
+      $("settingsUsageLine").textContent = items.length
+        ? `Метрики: ${items
+            .slice(0, 6)
+            .map((r) => `${r.day} ${r.metric}=${r.value}`)
+            .join(" · ")}`
+        : "Метрики usage пока пусты";
+    }
+    applyAccessGates();
+  }
+
+  async function loadAccessMeta() {
+    const [me, usage] = await Promise.all([
+      api("/api/v1/me"),
+      api("/api/v1/usage?days=7"),
+    ]);
+    accessPrincipal = me;
+    usageSnapshot = usage;
+    renderAccessUi();
+    return me;
+  }
+
+  async function pollOwnedPages() {
+    const data = await api("/api/modules/radar/owned/poll", {
+      method: "POST",
+      body: "{}",
+    });
+    logAction(data);
+    await loadRadarSignals();
+    return data;
+  }
+
+  const SP_TENANT = "quantum-labs";
+
+  function spImageUrl(img) {
+    if (!img || !img.filename) return "";
+    return `${BASE}/api/modules/social_publish/images/${SP_TENANT}/${encodeURIComponent(img.filename)}`;
+  }
+
+  function selectedSpPlatforms() {
+    return Array.from(document.querySelectorAll('input[name="spPlatform"]:checked')).map((el) => el.value);
+  }
+
+  function renderSpChannels(items) {
+    const box = $("spChannelList");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Каналов пока нет.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map(
+        (ch) => `<div class="sp-channel-row">
+          <label class="check tight sp-channel-pick">
+            <input type="checkbox" name="spRepostChannel" value="${escapeHtml(ch.id)}" checked />
+            <span class="sp-platform-badge sp-${escapeHtml(ch.platform)}">${escapeHtml(ch.platform)}</span>
+            <span>${escapeHtml(ch.title || ch.handle)}</span>
+            <span class="muted tight">${escapeHtml(ch.handle || "")}</span>
+          </label>
+          <button type="button" class="small btn-quiet" data-sp-del-ch="${escapeHtml(ch.id)}">×</button>
+        </div>`
+      )
+      .join("");
+    box.querySelectorAll("[data-sp-del-ch]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        deleteSpChannel(btn.getAttribute("data-sp-del-ch")).catch(logAction)
+      );
+    });
+  }
+
+  async function loadSpChannels() {
+    const data = await api("/api/modules/social_publish/channels");
+    renderSpChannels(data.items || []);
+    return data.items || [];
+  }
+
+  async function addSpChannel() {
+    const platform = ($("spChannelPlatform") && $("spChannelPlatform").value) || "telegram";
+    const title = (($("spChannelTitle") && $("spChannelTitle").value) || "").trim();
+    const handle = (($("spChannelHandle") && $("spChannelHandle").value) || "").trim();
+    if (!handle) throw new Error("Укажите handle канала");
+    await api("/api/modules/social_publish/channels", {
+      method: "POST",
+      body: JSON.stringify({ platform, title, handle, enabled: true }),
+    });
+    if ($("spChannelTitle")) $("spChannelTitle").value = "";
+    if ($("spChannelHandle")) $("spChannelHandle").value = "";
+    await loadSpChannels();
+  }
+
+  async function deleteSpChannel(id) {
+    if (!id) return;
+    await api(`/api/modules/social_publish/channels/${encodeURIComponent(id)}`, { method: "DELETE" });
+    await loadSpChannels();
+  }
+
+  function renderSpVariantPreview(variants) {
+    const keys = Object.keys(variants || {});
+    if (!keys.length) return "";
+    return keys
+      .map((k) => {
+        const v = variants[k] || {};
+        const text = (v.text || v.caption || "").slice(0, 160);
+        return `<details class="sp-variant"><summary>${escapeHtml(k)}</summary><pre class="sp-variant-text">${escapeHtml(text)}</pre></details>`;
+      })
+      .join("");
+  }
+
+  function renderSpPostCards(items) {
+    const box = $("spPostCards");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Создайте пост слева.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map((p) => {
+        const imgs = (p.images || []).slice(0, 2);
+        const thumbs = imgs
+          .map(
+            (img) =>
+              `<a href="${escapeHtml(spImageUrl(img))}" target="_blank" rel="noopener" class="sp-thumb-wrap"><img class="sp-thumb" src="${escapeHtml(spImageUrl(img))}" alt="" /></a>`
+          )
+          .join("");
+        const plats = (p.platforms || []).map((x) => `<span class="sp-platform-badge sp-${escapeHtml(x)}">${escapeHtml(x)}</span>`).join("");
+        const kb = (p.kb_context && p.kb_context.citations) || [];
+        const kbLine = kb.length
+          ? `<p class="muted tight fw-kb">KB: ${kb
+              .slice(0, 2)
+              .map((c) => escapeHtml((c.note || "").slice(0, 70)))
+              .join(" · ")}</p>`
+          : "";
+        let actions = "";
+        if (p.status === "approved") {
+          actions = `<button type="button" class="small primary" data-sp-repost="${escapeHtml(p.id)}">Репост в каналы</button>
+            <button type="button" class="small btn-quiet" data-sp-regen="${escapeHtml(p.id)}">Новые картинки</button>`;
+        } else if (p.status === "published") {
+          actions = `<span class="muted tight">опубликовано (stub/queue)</span>`;
+        } else {
+          actions = `<button type="button" class="small primary" data-sp-approve="${escapeHtml(p.id)}">Утвердить</button>
+            <button type="button" class="small btn-quiet" data-sp-reject="${escapeHtml(p.id)}">Отклонить</button>
+            <button type="button" class="small btn-quiet" data-sp-regen="${escapeHtml(p.id)}">Картинки</button>`;
+        }
+        return `<article class="ros-card sp-post-card">
+          <div class="ros-card-head">
+            <div>
+              <div class="ros-card-title">${escapeHtml(p.title || "Пост")}</div>
+              <div class="muted tight">${plats}</div>
+            </div>
+            ${statusChip(p.status)}
+          </div>
+          <p class="muted tight sp-brief">${escapeHtml((p.brief || "").slice(0, 140))}</p>
+          ${kbLine}
+          <div class="sp-thumbs">${thumbs}</div>
+          ${renderSpVariantPreview(p.variants)}
+          <div class="ros-card-actions">${actions}</div>
+        </article>`;
+      })
+      .join("");
+    box.querySelectorAll("[data-sp-approve]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setSpPostStatus(btn.getAttribute("data-sp-approve"), "approved").catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-sp-reject]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setSpPostStatus(btn.getAttribute("data-sp-reject"), "rejected").catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-sp-regen]").forEach((btn) => {
+      btn.addEventListener("click", () => regenSpImages(btn.getAttribute("data-sp-regen")).catch(logAction));
+    });
+    box.querySelectorAll("[data-sp-repost]").forEach((btn) => {
+      btn.addEventListener("click", () => repostSpPost(btn.getAttribute("data-sp-repost")).catch(logAction));
+    });
+  }
+
+  async function loadSpPosts() {
+    const data = await api("/api/modules/social_publish/posts?limit=30");
+    renderSpPostCards(data.items || []);
+    return data.items || [];
+  }
+
+  async function createSpPost() {
+    const title = (($("spPostTitle") && $("spPostTitle").value) || "").trim();
+    const brief = (($("spPostBrief") && $("spPostBrief").value) || "").trim();
+    if (!title || !brief) throw new Error("Заголовок и текст обязательны");
+    await api("/api/modules/social_publish/posts", {
+      method: "POST",
+      body: JSON.stringify({
+        title,
+        brief,
+        link: ($("spPostLink") && $("spPostLink").value) || "",
+        platforms: selectedSpPlatforms(),
+        generate_images: true,
+      }),
+    });
+    if ($("spPostBrief")) $("spPostBrief").value = "";
+    await loadSpPosts();
+  }
+
+  async function setSpPostStatus(id, status) {
+    await api(`/api/modules/social_publish/posts/${encodeURIComponent(id)}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
+    await loadSpPosts();
+  }
+
+  async function regenSpImages(id) {
+    await api(`/api/modules/social_publish/posts/${encodeURIComponent(id)}/generate-images`, {
+      method: "POST",
+      body: "{}",
+    });
+    await loadSpPosts();
+  }
+
+  async function repostSpPost(id) {
+    const picked = Array.from(document.querySelectorAll('input[name="spRepostChannel"]:checked')).map(
+      (el) => el.value
+    );
+    if (!picked.length) throw new Error("Выберите каналы для репоста (слева)");
+    const data = await api(`/api/modules/social_publish/posts/${encodeURIComponent(id)}/repost`, {
+      method: "POST",
+      body: JSON.stringify({ channel_ids: picked }),
+    });
+    logAction(data);
+    await loadSpPosts();
+  }
+
+  async function loadSocialPublishTab() {
+    await Promise.all([loadSpChannels(), loadSpPosts()]);
+  }
+
+  let fwThemeDraft = [];
+
+  function renderFwThemeRows() {
+    const box = $("fwThemeList");
+    if (!box) return;
+    const themes = fwThemeDraft || [];
+    if (!themes.length) {
+      box.innerHTML = `<p class="muted tight">Добавьте хотя бы одну тему с ключевыми словами.</p>`;
+      return;
+    }
+    box.innerHTML = themes
+      .map(
+        (t, idx) => `<div class="fw-theme-row" data-theme-idx="${idx}">
+          <input type="text" class="fw-theme-id" value="${escapeHtml(t.id || "")}" placeholder="id" title="id" />
+          <input type="text" class="fw-theme-label" value="${escapeHtml(t.label || "")}" placeholder="Название темы" />
+          <input type="text" class="fw-theme-keywords" value="${escapeHtml((t.keywords || []).join(", "))}" placeholder="ключевые, слова" />
+          <button type="button" class="small btn-quiet" data-theme-remove="${idx}">×</button>
+        </div>`
+      )
+      .join("");
+    box.querySelectorAll("[data-theme-remove]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const i = Number(btn.getAttribute("data-theme-remove"));
+        fwThemeDraft.splice(i, 1);
+        renderFwThemeRows();
+      });
+    });
+  }
+
+  function collectFwThemeDraft() {
+    const box = $("fwThemeList");
+    if (!box) return [];
+    return Array.from(box.querySelectorAll(".fw-theme-row")).map((row, idx) => {
+      const id = (row.querySelector(".fw-theme-id") && row.querySelector(".fw-theme-id").value) || `theme_${idx + 1}`;
+      const label = (row.querySelector(".fw-theme-label") && row.querySelector(".fw-theme-label").value) || id;
+      const kwRaw = (row.querySelector(".fw-theme-keywords") && row.querySelector(".fw-theme-keywords").value) || "";
+      const keywords = kwRaw
+        .split(/[,;]+/)
+        .map((k) => k.trim())
+        .filter(Boolean);
+      return { id: id.trim(), label: label.trim(), keywords, weight: 1.0 };
+    });
+  }
+
+  async function loadFwThemePresets() {
+    const data = await api("/api/modules/content_flywheel/themes/presets");
+    const sel = $("fwThemePreset");
+    if (!sel) return;
+    const items = data.items || [];
+    sel.innerHTML =
+      `<option value="">— выбрать пресет —</option>` +
+      items.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.lens_label || p.id)}</option>`).join("");
+  }
+
+  async function loadFwThemes() {
+    const data = await api("/api/modules/content_flywheel/themes/config");
+    const cfg = data.config || {};
+    if ($("fwThemeLens")) $("fwThemeLens").value = cfg.lens_label || "";
+    if ($("fwThemeBrand")) $("fwThemeBrand").value = cfg.brand_short || "";
+    if ($("fwThemeMinScore")) $("fwThemeMinScore").value = cfg.min_score != null ? cfg.min_score : 0.35;
+    if ($("fwThemeHashtags")) {
+      $("fwThemeHashtags").value = (cfg.hashtags || []).join(", ");
+    }
+    fwThemeDraft = (cfg.themes || []).map((t) => ({
+      id: t.id || "",
+      label: t.label || "",
+      keywords: t.keywords || [],
+      weight: t.weight || 1.0,
+    }));
+    renderFwThemeRows();
+  }
+
+  async function saveFwThemes() {
+    const themes = collectFwThemeDraft();
+    if (!themes.length) throw new Error("Добавьте хотя бы одну тему");
+    const payload = {
+      lens_id: "custom",
+      lens_label: (($("fwThemeLens") && $("fwThemeLens").value) || "").trim() || "Контент-тематика",
+      brand_short: (($("fwThemeBrand") && $("fwThemeBrand").value) || "").trim(),
+      min_score: parseFloat(($("fwThemeMinScore") && $("fwThemeMinScore").value) || "0.35") || 0.35,
+      hashtags: (($("fwThemeHashtags") && $("fwThemeHashtags").value) || "")
+        .split(/[,;]+/)
+        .map((h) => h.trim())
+        .filter(Boolean),
+      themes,
+    };
+    const data = await api("/api/modules/content_flywheel/themes/config", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+    logAction(data);
+    fwThemeDraft = (data.config && data.config.themes) || themes;
+    renderFwThemeRows();
+  }
+
+  async function applyFwThemePreset() {
+    const presetId = ($("fwThemePreset") && $("fwThemePreset").value) || "";
+    if (!presetId) throw new Error("Выберите пресет");
+    const data = await api("/api/modules/content_flywheel/themes/apply-preset", {
+      method: "POST",
+      body: JSON.stringify({ preset_id: presetId }),
+    });
+    logAction(data);
+    await loadFwThemes();
+  }
+
+  function addFwThemeRow() {
+    fwThemeDraft = collectFwThemeDraft();
+    fwThemeDraft.push({ id: `theme_${fwThemeDraft.length + 1}`, label: "", keywords: [], weight: 1.0 });
+    renderFwThemeRows();
+  }
+
+  async function loadFlywheelSlots() {
+    const data = await api("/api/modules/content_flywheel/slots");
+    const box = $("fwSlots");
+    if (!box) return;
+    const items = data.items || [];
+    box.innerHTML = items.length
+      ? items.map((s) => `<span class="ros-chip">${escapeHtml(s.label || s.slot_key)}</span>`).join(" ")
+      : "слотов нет";
+  }
+
+  function renderFwSources(items) {
+    const box = $("fwSourceList");
+    if (!box) return;
+    if (!items.length) {
+      box.innerHTML = `<p class="muted tight">Нет источников — добавьте или FLYWHEEL_SOURCE_TG в .env</p>`;
+      return;
+    }
+    box.innerHTML = items
+      .map(
+        (s) =>
+          `<div class="sp-channel-row"><span class="sp-platform-badge sp-${escapeHtml(s.platform)}">${escapeHtml(s.platform)}</span> ${escapeHtml(s.handle)}</div>`
+      )
+      .join("");
+  }
+
+  async function loadFwSources() {
+    const data = await api("/api/modules/content_flywheel/sources");
+    renderFwSources(data.items || []);
+  }
+
+  async function addFwSource() {
+    const platform = ($("fwSourcePlatform") && $("fwSourcePlatform").value) || "telegram";
+    const handle = (($("fwSourceHandle") && $("fwSourceHandle").value) || "").trim();
+    if (!handle) throw new Error("Укажите handle");
+    await api("/api/modules/content_flywheel/sources", {
+      method: "POST",
+      body: JSON.stringify({ platform, handle, title: handle }),
+    });
+    if ($("fwSourceHandle")) $("fwSourceHandle").value = "";
+    await loadFwSources();
+  }
+
+  function renderFwNews(items) {
+    const box = $("fwNewsList");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Новостей нет — Poll или Ingest.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map(
+        (n) => `<div class="fw-news-row">
+          <div><strong>${escapeHtml((n.title || "").slice(0, 60))}</strong>
+          <span class="muted tight"> · ${escapeHtml(n.status)} · theme ${Math.round((n.theme_score || 0) * 100)}%</span>
+          ${(n.theme_tags || []).slice(0, 2).map((t) => `<span class="ros-chip">${escapeHtml(t)}</span>`).join(" ")}
+          </div>
+          <button type="button" class="small btn-quiet" data-fw-process="${escapeHtml(n.id)}">Process</button>
+        </div>`
+      )
+      .join("");
+    box.querySelectorAll("[data-fw-process]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        processFwNews(btn.getAttribute("data-fw-process")).catch(logAction)
+      );
+    });
+  }
+
+  async function loadFwNews() {
+    const data = await api("/api/modules/content_flywheel/news?limit=25");
+    renderFwNews(data.items || []);
+  }
+
+  async function ingestFwNews() {
+    const title = (($("fwNewsTitle") && $("fwNewsTitle").value) || "").trim();
+    const body = (($("fwNewsBody") && $("fwNewsBody").value) || "").trim();
+    if (!title || !body) throw new Error("Заголовок и текст обязательны");
+    await api("/api/modules/content_flywheel/news", {
+      method: "POST",
+      body: JSON.stringify({ platform: "manual", title, body }),
+    });
+    if ($("fwNewsBody")) $("fwNewsBody").value = "";
+    await loadFwNews();
+  }
+
+  async function processFwNews(id) {
+    const data = await api(`/api/modules/content_flywheel/news/${encodeURIComponent(id)}/process`, {
+      method: "POST",
+      body: "{}",
+    });
+    logAction(data);
+    await Promise.all([loadFwNews(), loadFwProposals(), loadFwMemory()]);
+  }
+
+  function renderFwProposals(items) {
+    const box = $("fwProposalCards");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Предложений нет.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map((p) => {
+        const imgs = (p.image_options || []).length;
+        const vid = (p.video_brief && p.video_brief.format) === "talking_head";
+        const kb = (p.kb_context && p.kb_context.citations) || [];
+        const theme = p.theme_context || {};
+        const themeLine = theme.primary_label
+          ? `<p class="muted tight fw-theme">Тема: ${escapeHtml(theme.primary_label)} · ${Math.round((theme.theme_score || 0) * 100)}%</p>`
+          : "";
+        const llmLine =
+          theme.llm_angle && theme.llm_angle.used
+            ? `<p class="muted tight fw-llm">Угол: LLM + тематика</p>`
+            : "";
+        const kbLine = kb.length
+          ? `<p class="muted tight fw-kb">KB: ${kb
+              .slice(0, 2)
+              .map((c) => escapeHtml((c.note || "").slice(0, 70)))
+              .join(" · ")}</p>`
+          : "";
+        const actions =
+          p.status === "approved"
+            ? `<span class="muted tight">✓ пост ${escapeHtml((p.social_post_id || "").slice(0, 8))}</span>`
+            : `<button type="button" class="small primary" data-fw-approve="${escapeHtml(p.id)}">Approve → пост+видео</button>`;
+        return `<article class="ros-card">
+          <div class="ros-card-head">
+            <div><div class="ros-card-title">${escapeHtml((p.title || "").slice(0, 70))}</div>
+            <div class="muted tight">слот ${escapeHtml(p.slot_key || "")} · ${imgs} img · ${vid ? "talking-head" : ""}</div></div>
+            ${statusChip(p.status)}
+          </div>
+          ${themeLine}
+          ${llmLine}
+          ${kbLine}
+          <div class="ros-card-actions">${actions}</div>
+        </article>`;
+      })
+      .join("");
+    box.querySelectorAll("[data-fw-approve]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        approveFwProposal(btn.getAttribute("data-fw-approve")).catch(logAction)
+      );
+    });
+  }
+
+  async function loadFwProposals() {
+    const data = await api("/api/modules/content_flywheel/proposals");
+    renderFwProposals(data.items || []);
+  }
+
+  async function loadFwMemory() {
+    const data = await api("/api/modules/content_flywheel/memory?limit=12");
+    const box = $("fwMemoryList");
+    if (!box) return;
+    const items = data.items || [];
+    box.innerHTML = items.length
+      ? items
+          .map(
+            (m) =>
+              `<div class="fw-mem-row">· ${escapeHtml((m.topic || "").slice(0, 50))} <span class="muted">(${escapeHtml((m.published_at || "").slice(0, 10))})</span></div>`
+          )
+          .join("")
+      : "память пуста — после approve появятся темы";
+  }
+
+  async function approveFwProposal(id) {
+    const data = await api(`/api/modules/content_flywheel/proposals/${encodeURIComponent(id)}/approve`, {
+      method: "POST",
+      body: "{}",
+    });
+    logAction(data);
+    await Promise.all([loadFwProposals(), loadFwMemory()]);
+  }
+
+  async function runFlywheelCycle() {
+    const data = await api("/api/modules/content_flywheel/run-cycle", { method: "POST", body: "{}" });
+    logAction(data);
+    await loadFlywheelTab();
+  }
+
+  async function pollFlywheel() {
+    const data = await api("/api/modules/content_flywheel/poll", { method: "POST", body: "{}" });
+    logAction(data);
+    await loadFwNews();
+  }
+
+  async function loadFlywheelTab() {
+    await Promise.all([
+      loadFlywheelSlots(),
+      loadFwThemePresets(),
+      loadFwThemes(),
+      loadFwSources(),
+      loadFwNews(),
+      loadFwProposals(),
+      loadFwMemory(),
+    ]);
+  }
+
+  function renderContentCards(items) {
+    const box = $("csCards");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Пока пусто — создайте черновик слева.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map((d) => {
+        const letters = ((d.body && d.body.letters) || []).length;
+        const actions =
+          d.status === "approved"
+            ? `<span class="muted tight">утверждён</span>`
+            : `<button type="button" class="small primary" data-cs-approve="${escapeHtml(d.id)}">Утвердить</button>
+               <button type="button" class="small btn-quiet" data-cs-reject="${escapeHtml(d.id)}">Отклонить</button>`;
+        return `<article class="ros-card">
+          <div class="ros-card-head">
+            <div>
+              <div class="ros-card-title">${escapeHtml(d.title || "Черновик")}</div>
+              <div class="muted tight">${escapeHtml(d.industry_pack || "")} · ${letters} писем · ${escapeHtml(
+          (d.objection || "").slice(0, 80)
+        )}</div>
+            </div>
+            ${statusChip(d.status)}
+          </div>
+          <div class="ros-card-actions">${actions}</div>
+        </article>`;
+      })
+      .join("");
+    box.querySelectorAll("[data-cs-approve]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setContentStatus(btn.getAttribute("data-cs-approve"), "approved").catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-cs-reject]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setContentStatus(btn.getAttribute("data-cs-reject"), "rejected").catch(logAction)
+      );
+    });
+  }
+
+  async function setContentStatus(id, status) {
+    await api(`/api/modules/content_studio/drafts/${encodeURIComponent(id)}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
+    await loadContentDrafts();
+  }
+
+  async function loadContentDrafts() {
+    const data = await api("/api/modules/content_studio/drafts?limit=30");
+    renderContentCards(data.items || []);
+  }
+
+  async function createContentDraft() {
+    const objection = (($("csObjection") && $("csObjection").value) || "").trim();
+    if (!objection) throw new Error("Укажите возражение");
+    await api("/api/modules/content_studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({
+        objection,
+        industry_pack: ($("csPack") && $("csPack").value) || "lombards",
+      }),
+    });
+    if ($("csObjection")) $("csObjection").value = "";
+    await loadContentDrafts();
+  }
+
+  function renderRadarCards(items) {
+    const box = $("radarCards");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Сигналов пока нет.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map((s) => {
+        return `<article class="ros-card">
+          <div class="ros-card-head">
+            <div>
+              <div class="ros-card-title">${escapeHtml(s.company_title || s.signal_type || "Сигнал")}</div>
+              <div class="muted tight">${escapeHtml(s.signal_type || "")} · score ${Number(
+          s.score || 0
+        ).toFixed(2)} · ${escapeHtml((s.summary || "").slice(0, 100))}</div>
+            </div>
+            ${statusChip(s.status)}
+          </div>
+          <div class="ros-card-actions">
+            <button type="button" class="small primary" data-radar-verify="${escapeHtml(s.id)}">Проверить</button>
+            <button type="button" class="small btn-quiet" data-radar-dismiss="${escapeHtml(s.id)}">Скрыть</button>
+          </div>
+        </article>`;
+      })
+      .join("");
+    box.querySelectorAll("[data-radar-verify]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-radar-verify");
+        const data = await api(`/api/modules/radar/signals/${encodeURIComponent(id)}/verify`, {
+          method: "POST",
+          body: "{}",
+        });
+        btn.textContent = (data.suggested_action || "ok").replace(/_/g, " ");
+      });
+    });
+    box.querySelectorAll("[data-radar-dismiss]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        await api(`/api/modules/radar/signals/${encodeURIComponent(btn.getAttribute("data-radar-dismiss"))}/status`, {
+          method: "POST",
+          body: JSON.stringify({ status: "dismissed" }),
+        });
+        await loadRadarSignals();
+      });
+    });
+  }
+
+  async function loadRadarSignals() {
+    const data = await api("/api/modules/radar/signals?limit=40");
+    renderRadarCards(data.items || []);
+  }
+
+  async function ingestRadarSignal() {
+    const summary = (($("radarSummary") && $("radarSummary").value) || "").trim();
+    if (!summary) throw new Error("Укажите краткое описание");
+    await api("/api/modules/radar/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        signal_type: ($("radarType") && $("radarType").value) || "manual",
+        company_title: ($("radarCompany") && $("radarCompany").value) || "",
+        summary,
+        score: Number(($("radarScore") && $("radarScore").value) || 0.5),
+      }),
+    });
+    if ($("radarSummary")) $("radarSummary").value = "";
+    await loadRadarSignals();
+  }
+
+  function renderVideoCards(items) {
+    const box = $("videoCards");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Создайте первый черновик слева.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map((d) => {
+        const actions =
+          d.status === "approved"
+            ? `<button type="button" class="small primary" data-video-upload="${escapeHtml(d.id)}">Private upload</button>`
+            : d.status === "uploaded_private"
+              ? `<span class="muted tight">private queue</span>`
+              : `<button type="button" class="small primary" data-video-approve="${escapeHtml(d.id)}">Утвердить</button>
+                 <button type="button" class="small btn-quiet" data-video-reject="${escapeHtml(d.id)}">Отклонить</button>`;
+        return `<article class="ros-card">
+          <div class="ros-card-head">
+            <div>
+              <div class="ros-card-title">${escapeHtml(d.title || "Video")}</div>
+              <div class="muted tight">${escapeHtml((d.brief || "").slice(0, 100))}</div>
+            </div>
+            ${statusChip(d.status)}
+          </div>
+          <div class="ros-card-actions">${actions}</div>
+        </article>`;
+      })
+      .join("");
+    box.querySelectorAll("[data-video-approve]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setVideoStatus(btn.getAttribute("data-video-approve"), "approved").catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-video-reject]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setVideoStatus(btn.getAttribute("data-video-reject"), "rejected").catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-video-upload]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        await api(
+          `/api/modules/video_studio/drafts/${encodeURIComponent(btn.getAttribute("data-video-upload"))}/queue-private-upload`,
+          { method: "POST", body: "{}" }
+        );
+        await loadVideoDrafts();
+      });
+    });
+  }
+
+  async function setVideoStatus(id, status) {
+    await api(`/api/modules/video_studio/drafts/${encodeURIComponent(id)}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
+    await loadVideoDrafts();
+  }
+
+  async function loadVideoDrafts() {
+    const data = await api("/api/modules/video_studio/drafts?limit=30");
+    renderVideoCards(data.items || []);
+  }
+
+  async function createVideoDraft() {
+    const title = (($("videoTitle") && $("videoTitle").value) || "").trim();
+    if (!title) throw new Error("Укажите название");
+    await api("/api/modules/video_studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({
+        title,
+        brief: ($("videoBrief") && $("videoBrief").value) || "",
+        script_text: ($("videoScript") && $("videoScript").value) || "",
+      }),
+    });
+    if ($("videoTitle")) $("videoTitle").value = "";
+    if ($("videoBrief")) $("videoBrief").value = "";
+    if ($("videoScript")) $("videoScript").value = "";
+    await loadVideoDrafts();
+  }
+
+
   function refreshActiveTab() {
     const tab = activeTabName();
     if (tab === "clients") loadClients().catch((e) => ($("clientsLog").textContent = String(e)));
+    else if (tab === "lpr") loadLprTab().catch((e) => { if ($("lprMeta")) $("lprMeta").textContent = String(e); });
+    else if (tab === "studio") loadStudioTab().catch(logAction);
     else if (tab === "outbox") loadOutbox().catch(logAction);
     else if (tab === "inbox") {
       const view = document.querySelector(".sub-tab.active");
@@ -1879,7 +3963,7 @@
         } else {
           if (classified) classified.hidden = false;
           if (replies) replies.hidden = true;
-          loadInbox(true).catch(logAction);
+          loadInbox(currentInboxUnprocessedOnly()).catch(logAction);
         }
       });
     });
@@ -1887,66 +3971,143 @@
 
   function bindTabs() {
     bindInboxSubTabs();
-    document.querySelectorAll(".tabs button").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        document.querySelectorAll(".tabs button").forEach((b) => b.classList.remove("active"));
-        document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
-        btn.classList.add("active");
-        const tab = btn.dataset.tab;
-        $("tab-" + tab).classList.add("active");
-        $("pageTitle").textContent = titles[tab] || tab;
-        if ($("pageHint")) $("pageHint").textContent = hints[tab] || "";
-        if (tab === "clients") loadClients().catch((e) => ($("clientsLog").textContent = String(e)));
-        if (tab === "outbox") loadOutbox().catch(logAction);
-        if (tab === "report") loadReport().catch(logAction);
-        if (tab === "settings") {
-          loadSettingsIntoForms()
-            .then(() => Promise.all([loadAntiban(), loadConsentLedger(), loadIntegrationsHealth()]))
-            .catch((e) => {
-              if ($("antibanLog")) $("antibanLog").textContent = String(e);
-              logAction(e);
-            });
-        }
-        if (tab === "letter") {
-          loadSettingsIntoForms()
-            .then(() => loadPacks())
-            .catch(logAction);
-        }
-        if (tab === "inbox") {
-          const sub = document.querySelector('.sub-tab[data-inbox-view="classified"]');
-          if (sub) sub.click();
-          else loadInbox(true).catch(logAction);
-        }
+    document.querySelectorAll(".tabs button[data-tab]").forEach((btn) => {
+      btn.addEventListener("click", () => switchToTab(btn.dataset.tab));
+    });
+  }
+
+  function bindDesk() {
+    document.querySelectorAll("[data-go]").forEach((el) => {
+      el.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        const tab = el.getAttribute("data-go");
+        if (tab) goToTab(tab);
       });
     });
+    if ($("openSettingsBtn")) {
+      $("openSettingsBtn").addEventListener("click", () => goToTab("settings"));
+    }
+    if ($("tabMoreBtn")) {
+      $("tabMoreBtn").addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const menu = $("tabMoreMenu");
+        if (!menu) return;
+        const open = menu.classList.contains("hidden");
+        menu.classList.toggle("hidden", !open);
+        $("tabMoreBtn").setAttribute("aria-expanded", open ? "true" : "false");
+      });
+    }
+    document.addEventListener("click", (ev) => {
+      const wrap = $("tabMore");
+      if (wrap && !wrap.contains(ev.target)) closeTabMore();
+    });
+    if ($("deskSlots")) {
+      $("deskSlots").addEventListener("input", () => {
+        $("deskSlots").dataset.dirty = "1";
+      });
+    }
+    if ($("deskSlotsSave")) {
+      $("deskSlotsSave").addEventListener("click", async () => {
+        try {
+          const slots = (($("deskSlots") && $("deskSlots").value) || "").trim() || "10:00-11:30,14:30-16:30";
+          await api("/api/settings", {
+            method: "PUT",
+            body: JSON.stringify({ settings: { SCHEDULE_SLOTS: slots } }),
+          });
+          if ($("localSlots")) $("localSlots").value = slots;
+          if ($("deskSlots")) delete $("deskSlots").dataset.dirty;
+          logAction("Окна сохранены: " + slots);
+          await loadDash();
+        } catch (e) {
+          logAction(e);
+        }
+      });
+    }
+    if ($("deskPaceBtn")) {
+      $("deskPaceBtn").addEventListener("click", async () => {
+        try {
+          if ($("queuePaceDays") && $("deskPaceDays")) $("queuePaceDays").value = $("deskPaceDays").value;
+          await paceQueue();
+          await loadDash();
+        } catch (e) {
+          logAction(e);
+        }
+      });
+    }
+    if ($("deskCalRefresh")) {
+      $("deskCalRefresh").addEventListener("click", () => loadDash().catch(logAction));
+    }
+    if ($("deskDayExpandBtn")) {
+      $("deskDayExpandBtn").addEventListener("click", () => {
+        const panel = $("deskDayPanel");
+        if (panel) setDeskDayPanelExpanded(!panel.classList.contains("is-expanded"));
+      });
+    }
+    if ($("deskDayList") && !$("deskDayList").dataset.letterBound) {
+      $("deskDayList").dataset.letterBound = "1";
+      $("deskDayList").addEventListener("click", (ev) => {
+        const btn = ev.target && ev.target.closest && ev.target.closest("[data-desk-letter]");
+        if (!btn) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        const key = btn.getAttribute("data-desk-letter");
+        const item = key && deskDayItemsCache[key];
+        if (!item) {
+          logAction("Письмо не найдено в кэше дня: " + key);
+          return;
+        }
+        openDeskLetterPreview(item).catch((e) => logAction(e));
+      });
+    }
   }
 
   function paintPreviewHtml(box, html) {
     if (!box) return;
     const raw = String(html || "").trim();
+    const isFrame = box.tagName === "IFRAME";
     if (!raw) {
-      box.innerHTML =
-        "<p style='margin:0;color:#5a6b78;font:14px/1.45 Manrope,Segoe UI,sans-serif'>Нет HTML-версии — нажмите «Превью» ещё раз или примените отрасль.</p>";
+      const empty =
+        "<!doctype html><html><head><meta charset='utf-8'></head><body style='margin:0;padding:1rem;font:14px/1.45 Manrope,Segoe UI,sans-serif;color:#5a6e7a'>Нет HTML — нажмите «Превью» или примените отрасль.</body></html>";
+      if (isFrame) {
+        box.srcdoc = empty;
+      } else {
+        box.innerHTML =
+          "<p style='margin:0;color:#5a6b78;font:14px/1.45 Manrope,Segoe UI,sans-serif'>Нет HTML-версии — нажмите «Превью» ещё раз или примените отрасль.</p>";
+      }
       return;
     }
-    // Never assign a full <html> document via innerHTML — browsers drop it and the
-    // white preview looks empty while the dark plain pane still works.
+    if (isFrame) {
+      if (/<html[\s>]/i.test(raw)) {
+        let doc = raw;
+        if (!/<meta[^>]+charset/i.test(doc)) {
+          doc = doc.replace(/<head([^>]*)>/i, "<head$1><meta charset='utf-8'>");
+        }
+        box.srcdoc = doc;
+        return;
+      }
+      box.srcdoc =
+        "<!doctype html><html><head><meta charset='utf-8'><style>html,body{margin:0;padding:0;background:#ffffff}img{max-width:100%;height:auto}</style></head><body>" +
+        raw +
+        "</body></html>";
+      return;
+    }
     let inner = raw;
     const bodyMatch = raw.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
     if (bodyMatch) inner = bodyMatch[1];
-    inner = inner
-      .replace(/<!DOCTYPE[^>]*>/gi, "")
-      .replace(/<\/?(html|head)[^>]*>/gi, "")
-      .replace(/<meta[^>]*>/gi, "")
-      .trim();
-    if (!inner) {
-      box.innerHTML =
-        "<p style='margin:0;color:#5a6b78;font:14px/1.45 Manrope,Segoe UI,sans-serif'>HTML пустой после разбора шаблона.</p>";
-      return;
+    else {
+      inner = raw
+        .replace(/<!DOCTYPE[^>]*>/gi, "")
+        .replace(/<\/?(html|head)[^>]*>/gi, "")
+        .replace(/<meta[^>]*>/gi, "")
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+        .trim();
     }
+    const styleMatch = raw.match(/<style[^>]*>([\s\S]*?)<\/style>/gi);
+    const styles = styleMatch ? styleMatch.join("\n") : "";
     box.innerHTML =
+      styles +
       "<div class='email-preview-root' style='color:#1a1a1a;font:14px/1.5 Manrope,Segoe UI,Helvetica,Arial,sans-serif;background:#fff'>" +
-      inner +
+      (inner || "") +
       "</div>";
   }
 
@@ -2026,8 +4187,77 @@
 
   async function boot() {
     bindTabs();
+    bindDesk();
     bindContactIcons();
     bindInnerWheelScroll();
+    window.addEventListener("message", onOutreachTabMessage);
+    if ($("lprSearchBtn")) {
+      $("lprSearchBtn").addEventListener("click", () => runLprSearch().catch((e) => {
+        if ($("lprMeta")) $("lprMeta").textContent = String(e);
+      }));
+    }
+    if ($("lprCapsBtn")) {
+      $("lprCapsBtn").addEventListener("click", () => loadLprCaps().catch((e) => {
+        if ($("lprMeta")) $("lprMeta").textContent = String(e);
+      }));
+    }
+    if ($("csDraftBtn")) {
+      $("csDraftBtn").addEventListener("click", () => createContentDraft().catch(logAction));
+    }
+    if ($("csListBtn")) {
+      $("csListBtn").addEventListener("click", () => loadContentDrafts().catch(logAction));
+    }
+    if ($("radarIngestBtn")) {
+      $("radarIngestBtn").addEventListener("click", () => ingestRadarSignal().catch(logAction));
+    }
+    if ($("radarListBtn")) {
+      $("radarListBtn").addEventListener("click", () => loadRadarSignals().catch(logAction));
+    }
+    if ($("radarOwnedPollBtn")) {
+      $("radarOwnedPollBtn").addEventListener("click", () => pollOwnedPages().catch(logAction));
+    }
+    if ($("videoDraftBtn")) {
+      $("videoDraftBtn").addEventListener("click", () => createVideoDraft().catch(logAction));
+    }
+    if ($("videoListBtn")) {
+      $("videoListBtn").addEventListener("click", () => loadVideoDrafts().catch(logAction));
+    }
+    if ($("spChannelAddBtn")) {
+      $("spChannelAddBtn").addEventListener("click", () => addSpChannel().catch(logAction));
+    }
+    if ($("spChannelListBtn")) {
+      $("spChannelListBtn").addEventListener("click", () => loadSpChannels().catch(logAction));
+    }
+    if ($("spPostCreateBtn")) {
+      $("spPostCreateBtn").addEventListener("click", () => createSpPost().catch(logAction));
+    }
+    if ($("spPostListBtn")) {
+      $("spPostListBtn").addEventListener("click", () => loadSpPosts().catch(logAction));
+    }
+    if ($("fwSourceAddBtn")) {
+      $("fwSourceAddBtn").addEventListener("click", () => addFwSource().catch(logAction));
+    }
+    if ($("fwPollBtn")) {
+      $("fwPollBtn").addEventListener("click", () => pollFlywheel().catch(logAction));
+    }
+    if ($("fwRunCycleBtn")) {
+      $("fwRunCycleBtn").addEventListener("click", () => runFlywheelCycle().catch(logAction));
+    }
+    if ($("fwNewsIngestBtn")) {
+      $("fwNewsIngestBtn").addEventListener("click", () => ingestFwNews().catch(logAction));
+    }
+    if ($("fwNewsListBtn")) {
+      $("fwNewsListBtn").addEventListener("click", () => loadFwNews().catch(logAction));
+    }
+    if ($("fwThemeSaveBtn")) {
+      $("fwThemeSaveBtn").addEventListener("click", () => saveFwThemes().catch(logAction));
+    }
+    if ($("fwThemeAddBtn")) {
+      $("fwThemeAddBtn").addEventListener("click", () => addFwThemeRow());
+    }
+    if ($("fwThemeApplyPresetBtn")) {
+      $("fwThemeApplyPresetBtn").addEventListener("click", () => applyFwThemePreset().catch(logAction));
+    }
     const adv = $("letterAdvanced");
     if (adv) {
       adv.addEventListener("toggle", () => {
@@ -2360,9 +4590,12 @@
         }
       });
     }
+    if ($("queuePaceBtn")) {
+      $("queuePaceBtn").addEventListener("click", () => paceQueue().catch(logAction));
+    }
     $("repliesLoad").addEventListener("click", () => loadReplies().catch(logAction));
     if ($("inboxLoad")) {
-      $("inboxLoad").addEventListener("click", () => loadInbox(true).catch(logAction));
+      $("inboxLoad").addEventListener("click", () => loadInbox(currentInboxUnprocessedOnly()).catch(logAction));
       $("inboxLoadAll").addEventListener("click", () => loadInbox(false).catch(logAction));
       $("seqStatusBtn").addEventListener("click", async () => {
         try {
@@ -2372,27 +4605,67 @@
           logAction(String(e));
         }
       });
-      $("inboxBody").addEventListener("click", async (ev) => {
+      const markInboxProcessed = async (id) => {
+        await api("/api/modules/replies/inbox/" + id + "/processed", {
+          method: "POST",
+          body: "{}",
+        });
+        await loadInbox(currentInboxUnprocessedOnly());
+      };
+      const onInboxListClick = async (ev) => {
         const btn = ev.target.closest("button[data-inbox-id]");
         if (btn) {
           ev.stopPropagation();
           try {
-            await api("/api/modules/replies/inbox/" + btn.dataset.inboxId + "/processed", {
-              method: "POST",
-              body: "{}",
-            });
-            await loadInbox(true);
+            await markInboxProcessed(btn.dataset.inboxId);
           } catch (e) {
             logAction(String(e));
           }
           return;
         }
-        const row = ev.target.closest("tr[data-inbox-open]");
-        if (!row) return;
+        const card = ev.target.closest("[data-inbox-open]");
+        if (!card) return;
         if (ev.target.closest(".company-open")) return;
-        openInboxThread(row.dataset.inboxOpen).catch(logAction);
-      });
+        openInboxThread(card.dataset.inboxOpen).catch(logAction);
+      };
+      if ($("inboxBody")) $("inboxBody").addEventListener("click", onInboxListClick);
+      if ($("inboxCardList")) {
+        $("inboxCardList").addEventListener("click", onInboxListClick);
+        $("inboxCardList").addEventListener("keydown", (ev) => {
+          if (ev.key !== "Enter" && ev.key !== " ") return;
+          const card = ev.target.closest("[data-inbox-open]");
+          if (!card || ev.target.closest("button")) return;
+          ev.preventDefault();
+          openInboxThread(card.dataset.inboxOpen).catch(logAction);
+        });
+      }
     }
+    const openQueueLetterFromEvent = (ev) => {
+      if (ev.target.closest("button, a, input, label, .company-open, .row-actions")) return;
+      const row = ev.target.closest("[data-queue-letter]");
+      if (!row) return;
+      const key = row.getAttribute("data-queue-letter");
+      const item = key && queueLetterCache[key];
+      if (!item) {
+        logAction("Письмо очереди не найдено: " + key);
+        return;
+      }
+      openDeskLetterPreview(item).catch((e) => logAction(e));
+    };
+    ["queueDueBody", "queueUpcomingBody", "outboxBody"].forEach((id) => {
+      const el = $(id);
+      if (!el || el.dataset.queueLetterBound) return;
+      el.dataset.queueLetterBound = "1";
+      el.addEventListener("click", openQueueLetterFromEvent);
+      el.addEventListener("keydown", (ev) => {
+        if (ev.key !== "Enter" && ev.key !== " ") return;
+        if (ev.target.closest("button, a, input")) return;
+        const row = ev.target.closest("[data-queue-letter]");
+        if (!row) return;
+        ev.preventDefault();
+        openQueueLetterFromEvent({ target: row });
+      });
+    });
     if ($("outboxBody")) {
       $("outboxBody").addEventListener("change", (ev) => {
         if (ev.target && ev.target.classList && ev.target.classList.contains("outbox-pick")) {
@@ -2402,6 +4675,7 @@
       $("outboxBody").addEventListener("click", async (ev) => {
         const btn = ev.target.closest("button[data-action]");
         if (!btn) return;
+        ev.stopPropagation();
         const action = btn.dataset.action;
         try {
           if (action === "send-now") {
@@ -2476,8 +4750,6 @@
           body: JSON.stringify(campaignPreviewPayload()),
         });
         $("previewSubject").textContent = data.subject || "";
-        $("previewPlain").textContent = data.plain || "";
-        // Open <details> first — painting into a closed panel leaves the white preview blank.
         const adv = $("letterAdvanced");
         if (adv) adv.open = true;
         paintPreviewHtml($("previewFrame"), data.html || "");
@@ -3005,7 +5277,6 @@
         });
       });
     }
-
     document.addEventListener("click", (ev) => {
       const btn = ev.target.closest("[data-company-id]");
       if (!btn || !btn.classList.contains("company-open")) return;
@@ -3025,12 +5296,33 @@
     if ($("inboxThreadBackdrop")) {
       $("inboxThreadBackdrop").addEventListener("click", closeInboxThread);
     }
+    if ($("deskLetterClose")) {
+      $("deskLetterClose").addEventListener("click", closeDeskLetterPeel);
+    }
+    if ($("deskLetterBackdrop")) {
+      $("deskLetterBackdrop").addEventListener("click", closeDeskLetterPeel);
+    }
     if ($("inboxReplySend")) {
       $("inboxReplySend").addEventListener("click", () => sendInboxThreadReply().catch(logAction));
+    }
+    if ($("inboxReplyUseDraft")) {
+      $("inboxReplyUseDraft").addEventListener("click", () => {
+        if (!activeInboxDraft) return;
+        if ($("inboxReplyBody")) $("inboxReplyBody").value = activeInboxDraft;
+        if ($("inboxReplyStatus")) {
+          $("inboxReplyStatus").textContent =
+            "Черновик вставлен — проверьте перед отправкой (APPROVAL_REQUIRED)";
+        }
+      });
     }
     document.addEventListener("keydown", (ev) => {
       const peel = $("companyPeelAway");
       const thread = $("inboxThreadPeelAway");
+      const letter = $("deskLetterPeelAway");
+      if (ev.key === "Escape" && letter && letter.classList.contains("is-open")) {
+        closeDeskLetterPeel();
+        return;
+      }
       if (ev.key === "Escape" && thread && thread.classList.contains("is-open")) {
         closeInboxThread();
         return;
@@ -3038,11 +5330,50 @@
       if (ev.key === "Escape" && peel && peel.classList.contains("is-open")) closeCompanyCard();
     });
 
+    if ($("openLetterVariantsBtn")) {
+      $("openLetterVariantsBtn").addEventListener("click", () => {
+        goToTab("variants");
+        loadLetterVariants().catch(logAction);
+      });
+    }
+    if ($("letterVariantsSave")) {
+      $("letterVariantsSave").addEventListener("click", () => saveLetterVariants().catch(logAction));
+    }
+    if ($("letterVariantsReload")) {
+      $("letterVariantsReload").addEventListener("click", () => loadLetterVariants().catch(logAction));
+    }
+    if ($("letterVariantsReset")) {
+      $("letterVariantsReset").addEventListener("click", () => {
+        if (confirm("Сбросить темы и тексты к встроенным 7×7?")) {
+          resetLetterVariants().catch(logAction);
+        }
+      });
+    }
+    if ($("letterVariantAddSubject")) {
+      $("letterVariantAddSubject").addEventListener("click", () => {
+        collectLetterVariantsFromDom();
+        letterVariantSubjects.push("");
+        renderLetterVariantEditors();
+      });
+    }
+    if ($("letterVariantAddBody")) {
+      $("letterVariantAddBody").addEventListener("click", () => {
+        collectLetterVariantsFromDom();
+        letterVariantBodies.push("{greeting}\n\n\n\n{signature}");
+        renderLetterVariantEditors();
+      });
+    }
+    if ($("letterVariantPreviewEmail")) {
+      $("letterVariantPreviewEmail").addEventListener("change", () =>
+        loadLetterVariants().catch(logAction)
+      );
+    }
     $("antibanSave").addEventListener("click", async () => {
       try {
         const payload = {
           WARMUP_ENABLED: $("warmupEnabled").checked ? "true" : "false",
           DOMAIN_DAILY_CAP: String($("domainCap").value),
+          DOMAIN_SHARED_DAILY_CAP: String(($("domainSharedCap") && $("domainSharedCap").value) || "0"),
           TRACKING_PLUS_REPLY_TO: $("plusReply").checked ? "true" : "false",
           OPEN_TRACKING_ENABLED: $("openTracking").checked ? "true" : "false",
         };
@@ -3109,8 +5440,8 @@
         await loadDash();
         await loadSettingsIntoForms();
         await loadPacks();
-        // default tab is campaign
-        if ($("pageHint")) $("pageHint").textContent = hints.letter || "";
+        const initTab = initialTabFromUrl();
+        if (initTab && initTab !== "home") switchToTab(initTab);
         return;
       } catch (e) {
         showLogin();
@@ -3127,8 +5458,8 @@
         await loadDash();
         await loadSettingsIntoForms();
         await loadPacks();
-        // default tab is campaign
-        if ($("pageHint")) $("pageHint").textContent = hints.letter || "";
+        const initTab = initialTabFromUrl();
+        if (initTab && initTab !== "home") switchToTab(initTab);
         return;
       } catch (_) {
         showLogin();

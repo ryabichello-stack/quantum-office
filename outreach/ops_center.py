@@ -144,6 +144,34 @@ def build_ops_summary(
             }
         )
 
+    # Playing but nobody in local B2B slots → looks like "Start broken"
+    in_window_n = int((queue or {}).get("first_touch_in_window") or 0)
+    slots = (rt.get("SCHEDULE_SLOTS", "") or "10:00-11:30,14:30-16:30").strip()
+    if run_state == "playing" and pending > 0 and in_window_n <= 0:
+        alerts.append(
+            {
+                "id": "outside_send_window",
+                "level": "warning",
+                "title": "Старт включён, но сейчас вне окон отправки",
+                "detail": (
+                    f"В окне сейчас: 0 из {pending}. Слоты (локальное время получателя): {slots}. "
+                    "Письма уйдут в следующий слот — в «Отправленные» пока пусто."
+                ),
+                "tab": "outbox",
+            }
+        )
+        actions.insert(
+            0,
+            {
+                "id": "act-outside-window",
+                "kind": "outside_window",
+                "severity": "high",
+                "title": "Ждём локальное окно (или расширьте слоты в Настройках)",
+                "detail": f"Сейчас 0 контактов в окне · слоты {slots}",
+                "tab": "settings",
+            },
+        )
+
     seq_counts = sequences.counts() if hasattr(sequences, "counts") else {}
     paused_seq = int(seq_counts.get("paused") or 0)
     if paused_seq:

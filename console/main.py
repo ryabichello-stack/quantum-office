@@ -347,9 +347,66 @@ def _panel_check_new_calls() -> None:
                 dedup_key=f"console:call:{r['call_id']}",
                 dedup_minutes=10,
             )
+            _accounts_resolve_call(
+                call_id=str(r["call_id"]),
+                phone=phone if phone != "—" else "",
+                contact_name=name if name != "—" else "",
+                inbound=inbound,
+                outcome=outcome,
+                duration_seconds=dur,
+                context_name=ctx,
+            )
             _CALL_NOTIFY_STATE["watermark"] = r["start_time"] or wm
     finally:
         conn.close()
+
+
+def _accounts_resolve_call(
+    *,
+    call_id: str,
+    phone: str,
+    contact_name: str,
+    inbound: bool,
+    outcome: str,
+    duration_seconds: int,
+    context_name: str,
+) -> None:
+    """Slice A: attach completed call to Account/Person/Lead via outreach accounts API."""
+    tok = _load_outreach_ui_token()
+    if not tok or not OUTREACH_BASE:
+        return
+    payload = json.dumps(
+        {
+            "phone": phone or None,
+            "contact_name": contact_name or "",
+            "source": "voice_inbound" if inbound else "voice_outbound",
+            "classification": "human_unclassified",
+            "emit_event_type": "call.completed",
+            "channel": "voice",
+            "idempotency_key": f"call.completed:{call_id}",
+            "payload": {
+                "call_id": call_id,
+                "outcome": outcome,
+                "duration_seconds": duration_seconds,
+                "context_name": context_name,
+            },
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        f"{OUTREACH_BASE}/api/modules/accounts/resolve-inbound",
+        data=payload,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "X-Outreach-Token": tok,
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            resp.read()
+    except Exception as exc:
+        logger.warning("accounts resolve on call failed: %s", exc)
 
 
 # ---------------------------------------------------------------------------

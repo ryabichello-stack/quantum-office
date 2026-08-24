@@ -591,6 +591,79 @@ def check_replies(
             except Exception:  # noqa: BLE001
                 logger.debug("reply inbox failed", exc_info=True)
 
+            # Stage 1 / Slice A: Account/Person/Lead + domain event
+            try:
+                from modules.accounts import AccountStore
+
+                acc_store = AccountStore()
+                resolved = acc_store.resolve_inbound(
+                    email=from_email,
+                    bitrix_company_id=row.company_id or None,
+                    contact_name=row.contact_name or "",
+                    company_title=row.contact_name or "",
+                    classification=classified.classification,
+                    bitrix_deal_id=str(item.get("deal_id") or row.deal_id or "") or None,
+                    source="email_reply",
+                )
+                item["account_id"] = (resolved.get("account") or {}).get("id")
+                item["person_id"] = (resolved.get("person") or {}).get("id")
+                item["lead_id"] = (resolved.get("lead") or {}).get("id")
+                acc_store.emit_event(
+                    event_type="message.received",
+                    source="reply_watcher",
+                    channel="email",
+                    account_id=item.get("account_id"),
+                    person_id=item.get("person_id"),
+                    idempotency_key=f"message.received:{mid}",
+                    payload={
+                        "from_email": from_email,
+                        "subject": subject,
+                        "classification": classified.classification,
+                        "outbox_id": row.id,
+                        "inbox_id": item.get("inbox_id"),
+                        "lead_id": item.get("lead_id"),
+                    },
+                )
+                if classified.classification:
+                    acc_store.emit_event(
+                        event_type="message.classified",
+                        source="reply_watcher",
+                        channel="email",
+                        account_id=item.get("account_id"),
+                        person_id=item.get("person_id"),
+                        idempotency_key=f"message.classified:{mid}",
+                        payload={
+                            "classification": classified.classification,
+                            "confidence": classified.confidence,
+                        },
+                    )
+                if classified.classification == "unsubscribe" or (
+                    resolved.get("account") or {}
+                ).get("lifecycle_status") == "BLACKLISTED":
+                    try:
+                        from modules.deliverability import DeliverabilityStore
+
+                        DeliverabilityStore().add_suppression(
+                            from_email, reason="unsubscribe", source="accounts-resolve"
+                        )
+                    except Exception:  # noqa: BLE001
+                        logger.debug("blacklist suppress failed", exc_info=True)
+                try:
+                    from modules.orchestrator import OrchestratorStore
+
+                    orch = OrchestratorStore().on_inbound_reply(
+                        email=from_email,
+                        company_id=row.company_id or None,
+                        account_id=item.get("account_id"),
+                        classification=classified.classification,
+                        stop_sequences=bool(classified.should_stop_sequence),
+                    )
+                    item["orchestrator"] = orch
+                except Exception:  # noqa: BLE001
+                    logger.debug("orchestrator on reply failed", exc_info=True)
+            except Exception:  # noqa: BLE001
+                logger.debug("accounts resolve on reply failed", exc_info=True)
+
             notified_ok = False
             if notify and classified.should_notify:
                 try:

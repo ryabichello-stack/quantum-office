@@ -1,0 +1,17 @@
+{
+  "tenant_id": "quantum-labs",
+  "products": [
+    {
+      "id": "quantum-labs",
+      "name": "Quantum Labs",
+      "claims_source": "second_brain",
+      "notes": "Parent brand / first tenant package"
+    },
+    {
+      "id": "quantum-payouts",
+      "name": "Quantum Payouts",
+      "claims_source": "second_brain",
+      "notes": "Configured as product profile, not hardcoded domain logic"
+    }
+  ]
+}

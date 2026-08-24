@@ -33,11 +33,17 @@ extras/quantum-outreach/
 | Stable From | `office@` | Never rotate From; reputation lives there |
 | Message-ID | always | Primary reply chain key |
 | Plus Reply-To | off | `office+au.<id>.<sig>@domain` — enable after Mail.ru smoke |
-| Warm-up | on | Effective daily cap ramps 5→30 |
-| Domain cap | 2/day | Max sends per recipient domain |
+| Warm-up | on | Effective daily cap ramps 3→15 (never 296/day) |
+| Daily limit | 15 | `OUTREACH_DAILY_LIMIT` — hard SMTP ceiling |
+| First-touch pace | auto | `POST /api/modules/sequences/pace-queue` spreads backlog via `not_before` |
+| Domain cap (corporate) | 2/day | Unique @company.ru domains |
+| Domain cap (shared ISP) | = daily limit | mail.ru / yandex / gmail — иначе рассылка встанет |
+| Company cap | 1/day | Max one letter per company |
 | Delay jitter | 60–180s | Between messages |
 | Suppression | empty | unsub / bounce / manual |
 | Send window | optional | Schedule module |
+
+**Календарь 296 на понедельник ≠ 296 писем сегодня.** Это бэклог «готовы к слоту». Уйдёт максимум `effective_daily_limit` (warmup). Кнопка **«Разложить очередь»** раскладывает первые письма по ~8/день.
 
 ### Plus addresses (Mail.ru)
 

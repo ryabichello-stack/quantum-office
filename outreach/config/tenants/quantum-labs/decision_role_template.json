@@ -1,0 +1,12 @@
+{
+  "tenant_id": "quantum-labs",
+  "product_id": "quantum-payouts",
+  "roles": [
+    {"id": "economic_buyer", "labels": ["собственник", "гендиректор", "CEO", "директор"], "primary": true},
+    {"id": "cfo", "labels": ["финансовый директор", "CFO", "главный бухгалтер"], "primary": true},
+    {"id": "operations", "labels": ["операционный директор", "управляющий"], "primary": false},
+    {"id": "it", "labels": ["CTO", "IT", "интегратор"], "primary": false},
+    {"id": "legal", "labels": ["юрист", "комплаенс"], "primary": false}
+  ],
+  "min_coverage": ["economic_buyer"]
+}
