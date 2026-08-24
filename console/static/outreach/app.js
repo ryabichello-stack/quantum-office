@@ -1008,10 +1008,10 @@
               ? `шаг ${r.next_step || "?"} · ${r.next_label || "follow-up"}`
               : r.next_label || "первое письмо";
           const place = [r.city, r.timezone].filter(Boolean).join(" · ");
-          const line2 = [r.email || "", company, kind, place].filter(Boolean).join(" · ");
+          const line2 = [kind, r.email || "", company, place].filter(Boolean).join(" · ");
           return `<li>
             <div class="who">${escapeHtml(String(who))}</div>
-            <div class="meta">${escapeHtml(deskClip(line2, 96))}</div>
+            <div class="meta">${escapeHtml(line2)}</div>
           </li>`;
         })
         .join("");
