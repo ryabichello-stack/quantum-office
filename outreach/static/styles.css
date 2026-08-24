@@ -603,7 +603,7 @@ button.tile {
   gap: 0.28rem;
   flex: 1 1 auto;
   min-height: 0;
-  max-height: 9.75rem;
+  max-height: 11.1rem;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
