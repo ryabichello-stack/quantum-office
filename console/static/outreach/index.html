@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops40" />
+  <link rel="stylesheet" href="styles.css?v=ops41" />
   <script>
     (function () {
       function parentBase() {
@@ -55,7 +55,13 @@
           <button type="button" id="runPauseBtn" class="btn-quiet">Пауза</button>
           <button type="button" id="runStopBtn" class="danger">Стоп</button>
         </div>
-        <button type="button" class="btn-quiet icon-btn" id="refreshBtn" title="Обновить">↻</button>
+        <button type="button" class="btn-quiet icon-btn" id="openSettingsBtn" title="Настройки" aria-label="Настройки">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+            <circle cx="12" cy="12" r="3.25" />
+            <path d="M12 2.5v2.1M12 19.4v2.1M4.6 4.6l1.5 1.5M17.9 17.9l1.5 1.5M2.5 12h2.1M19.4 12h2.1M4.6 19.4l1.5-1.5M17.9 6.1l1.5-1.5" stroke-linecap="round" />
+          </svg>
+        </button>
+        <button type="button" class="btn-quiet icon-btn" id="refreshBtn" title="Обновить" aria-label="Обновить">↻</button>
       </div>
     </header>
 
@@ -72,9 +78,6 @@
           <button type="button" data-tab="variants" role="menuitem">Варианты</button>
           <button type="button" data-tab="report" role="menuitem">Результат</button>
           <button type="button" data-tab="clients" role="menuitem">Клиенты</button>
-          <button type="button" data-tab="lpr" role="menuitem">ЛПР</button>
-          <button type="button" data-tab="studio" role="menuitem">Студия</button>
-          <button type="button" data-tab="settings" role="menuitem">Настройки</button>
         </div>
       </div>
     </nav>
@@ -199,24 +202,6 @@
             <h3 class="tile-title">Клиенты</h3>
             <p class="desk-tile-line" id="deskClientsMeta">—</p>
             <p class="desk-tile-line muted" id="deskClientsLine2"></p>
-          </button>
-          <button type="button" class="tile tile-sm tile-go" data-go="lpr">
-            <p class="tile-kicker">Сделки</p>
-            <h3 class="tile-title">ЛПР</h3>
-            <p class="desk-tile-line" id="deskLprMeta">Комитет</p>
-            <p class="desk-tile-line muted" id="deskLprLine2">роли · approve</p>
-          </button>
-          <button type="button" class="tile tile-sm tile-go" data-go="studio">
-            <p class="tile-kicker">Контент</p>
-            <h3 class="tile-title">Студия</h3>
-            <p class="desk-tile-line" id="deskStudioMeta">Radar</p>
-            <p class="desk-tile-line muted" id="deskStudioLine2">с approve</p>
-          </button>
-          <button type="button" class="tile tile-sm tile-go" data-go="settings">
-            <p class="tile-kicker">Система</p>
-            <h3 class="tile-title">Настройки</h3>
-            <p class="desk-tile-line" id="deskSettingsMeta">—</p>
-            <p class="desk-tile-line muted" id="deskSettingsLine2"></p>
           </button>
         </div>
       </section>
@@ -1407,6 +1392,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=ops40"></script>
+  <script src="app.js?v=ops41"></script>
 </body>
 </html>

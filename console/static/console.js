@@ -15,6 +15,8 @@
   const TAB_META = {
     status: { title: "Пульт", hint: "Линия, робот, outreach, звонки и сервисы" },
     outreach: { title: "Outreach", hint: "Кампании по отраслям, очередь писем, звонки" },
+    "outreach-lpr": { title: "ЛПР", hint: "Комитет ЛПР: поиск, покрытие ролей, approve / task" },
+    "outreach-studio": { title: "Студия", hint: "Контент, соцсети, Radar и видео — с ручным утверждением" },
     scenario: { title: "Сценарий", hint: "YAML-профили входящих и исходящих" },
     knowledge: { title: "База знаний", hint: "Second Brain · quantum_labs.md" },
     calls: { title: "Звонки", hint: "История и расшифровки" },
@@ -1200,12 +1202,69 @@
     return r;
   }
 
+  const OUTREACH_PANEL_TABS = {
+    outreach: "home",
+    "outreach-lpr": "lpr",
+    "outreach-studio": "studio",
+  };
+
+  function outreachFrameSrc(subTab) {
+    const base = BASE + "/assets/outreach/index.html?v=ops41";
+    if (!subTab || subTab === "home") return base;
+    return base + "&tab=" + encodeURIComponent(subTab);
+  }
+
+  function navigateOutreachFrame(subTab) {
+    const frame = $("outreachFrame");
+    if (!frame) return;
+    const tab = subTab === "home" ? null : subTab;
+    if (!frame.getAttribute("src")) return;
+    try {
+      frame.contentWindow.postMessage({ type: "qc-outreach-tab", tab: tab || "home" }, "*");
+    } catch (_) {
+      frame.src = outreachFrameSrc(subTab);
+    }
+  }
+
+  function ensureOutreachFrame(subTab) {
+    const frame = $("outreachFrame");
+    const status = $("outreachLoadStatus");
+    if (!frame) return;
+    const want = outreachFrameSrc(subTab);
+    if (!frame.getAttribute("src")) {
+      if (status) {
+        status.hidden = false;
+        status.textContent = "Загрузка Outreach…";
+      }
+      frame.onload = () => {
+        if (status) status.hidden = true;
+        if (subTab && subTab !== "home") {
+          try {
+            frame.contentWindow.postMessage({ type: "qc-outreach-tab", tab: subTab }, "*");
+          } catch (_) {}
+        }
+      };
+      frame.onerror = () => {
+        if (status) {
+          status.hidden = false;
+          status.textContent = "Не удалось загрузить Outreach UI";
+        }
+      };
+      frame.src = want;
+      return;
+    }
+    if (subTab && subTab !== "home") navigateOutreachFrame(subTab);
+    else navigateOutreachFrame("home");
+  }
+
   function setTab(name) {
     document.querySelectorAll(".side-nav button").forEach((b) => b.classList.remove("active"));
     document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
     const btn = document.querySelector(`.side-nav button[data-tab="${name}"]`);
     if (btn) btn.classList.add("active");
-    const panel = $("tab-" + name);
+    const outreachSub = OUTREACH_PANEL_TABS[name];
+    const panelName = outreachSub !== undefined ? "outreach" : name;
+    const panel = $("tab-" + panelName);
     if (panel) panel.classList.add("active");
     const meta = TAB_META[name] || { title: name, hint: "" };
     if ($("pageTitle")) $("pageTitle").textContent = meta.title;
@@ -1215,25 +1274,8 @@
     } else {
       stopCampPolling();
     }
-    if (name === "outreach") {
-      const frame = $("outreachFrame");
-      const status = $("outreachLoadStatus");
-      if (frame && !frame.getAttribute("src")) {
-        if (status) {
-          status.hidden = false;
-          status.textContent = "Загрузка Outreach…";
-        }
-        frame.onload = () => {
-          if (status) status.hidden = true;
-        };
-        frame.onerror = () => {
-          if (status) {
-            status.hidden = false;
-            status.textContent = "Не удалось загрузить Outreach UI";
-          }
-        };
-        frame.src = BASE + "/assets/outreach/index.html?v=ops40";
-      }
+    if (outreachSub !== undefined) {
+      ensureOutreachFrame(outreachSub);
     }
   }
 

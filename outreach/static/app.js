@@ -23,7 +23,7 @@
     studio: "Контент, соцсети, Radar и видео — с ручным утверждением",
     settings: "Локальные окна, лимиты, anti-ban",
   };
-  const MORE_TABS = new Set(["variants", "report", "clients", "lpr", "studio", "settings"]);
+  const MORE_TABS = new Set(["variants", "report", "clients"]);
 
   let outboxItemsCache = [];
   let outboxTotalCache = 0;
@@ -744,9 +744,64 @@
   }
 
   function goToTab(tab) {
-    const btn = document.querySelector(`.tabs button[data-tab="${tab}"]`);
-    if (btn) btn.click();
+    switchToTab(tab);
     closeTabMore();
+  }
+
+  function initialTabFromUrl() {
+    try {
+      const tab = new URLSearchParams(location.search).get("tab");
+      return tab && titles[tab] ? tab : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function onOutreachTabMessage(ev) {
+    const data = ev && ev.data;
+    if (!data || data.type !== "qc-outreach-tab") return;
+    const tab = data.tab;
+    if (tab && titles[tab]) switchToTab(tab);
+  }
+
+  function switchToTab(tab) {
+    document.querySelectorAll(".tabs button[data-tab]").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+    const navBtn = document.querySelector(`.tabs button[data-tab="${tab}"]`);
+    if (navBtn) navBtn.classList.add("active");
+    const panel = $("tab-" + tab);
+    if (panel) panel.classList.add("active");
+    if ($("pageTitle")) $("pageTitle").textContent = titles[tab] || tab;
+    if ($("pageHint")) $("pageHint").textContent = hints[tab] || "";
+    markNav(tab);
+    closeTabMore();
+    if (tab === "home") loadDash().catch(logAction);
+    if (tab === "clients") loadClients().catch((e) => ($("clientsLog").textContent = String(e)));
+    if (tab === "lpr") loadLprTab().catch((e) => { if ($("lprMeta")) $("lprMeta").textContent = String(e); });
+    if (tab === "studio") loadStudioTab().catch(logAction);
+    if (tab === "outbox") loadOutbox().catch(logAction);
+    if (tab === "report") loadReport().catch(logAction);
+    if (tab === "settings") {
+      loadSettingsIntoForms()
+        .then(() => Promise.all([loadAntiban(), loadConsentLedger(), loadIntegrationsHealth()]))
+        .catch((e) => {
+          if ($("antibanLog")) $("antibanLog").textContent = String(e);
+          logAction(e);
+        });
+    }
+    if (tab === "letter") {
+      loadSettingsIntoForms()
+        .then(() => loadPacks())
+        .catch(logAction);
+    }
+    if (tab === "variants") {
+      loadLetterVariants().catch(logAction);
+    }
+    if (tab === "inbox") {
+      const sub = document.querySelector('.sub-tab[data-inbox-view="classified"]');
+      if (sub) sub.click();
+      else loadInbox(true).catch(logAction);
+    }
   }
 
   function closeTabMore() {
@@ -917,18 +972,18 @@
           .join(" ");
         const ft = (day.items || []).filter((x) => x.kind !== "followup").length;
         const fu = (day.items || []).filter((x) => x.kind === "followup").length;
-        let sub = "—";
+        let sub = "";
         if (n > 0) {
           if (ft || fu) sub = [ft ? `новые ${ft}` : "", fu ? `цепь ${fu}` : ""].filter(Boolean).join(" · ");
           else sub = `${n} писем`;
         }
+        const countLabel = n > 0 ? String(n) : "";
         cells.push(
           `<button type="button" class="${cls}" data-desk-day="${escapeHtml(key)}" title="${escapeHtml(
-            key
+            key + (sub ? " · " + sub : "")
           )}">
             <span class="d">${cursor.getDate()}</span>
-            <strong>${n || "·"}</strong>
-            <span class="sub">${escapeHtml(n ? sub : "")}</span>
+            <strong>${countLabel}</strong>
           </button>`
         );
       }
@@ -1065,29 +1120,6 @@
     if ($("deskClientsLine2")) {
       $("deskClientsLine2").textContent = `с TZ ${geo.with_timezone != null ? geo.with_timezone : "—"} · Bitrix sync`;
     }
-
-    if ($("deskLprMeta")) $("deskLprMeta").textContent = "Комитет ЛПР";
-    if ($("deskLprLine2")) $("deskLprLine2").textContent = "поиск · покрытие ролей · approve";
-
-    const studio = extra.studio || {};
-    if ($("deskStudioMeta")) {
-      $("deskStudioMeta").textContent =
-        studio.drafts != null ? `черновиков ${studio.drafts}` : "Radar · соцсети · видео";
-    }
-    if ($("deskStudioLine2")) {
-      $("deskStudioLine2").textContent =
-        studio.signals != null ? `сигналов ${studio.signals}` : "публикация только после approve";
-    }
-
-    const tg = (health && health.telegram) || {};
-    const imap = health && health.imap_configured;
-    if ($("deskSettingsMeta")) {
-      $("deskSettingsMeta").textContent = `лимит ${limit}/день · ${slots}`;
-    }
-    if ($("deskSettingsLine2")) {
-      $("deskSettingsLine2").textContent =
-        `IMAP ${imap ? "ok" : "—"} · TG ${tg.ready ? "ok" : "…"} · anti-ban`;
-    }
   }
 
   async function refreshDesk(dash, health, ops) {
@@ -1096,7 +1128,6 @@
     let cal = {};
     let variants = {};
     let pack = {};
-    let studio = {};
     try {
       const packId =
         (settingsCache && (settingsCache.OUTREACH_SEQUENCE_PACK || (settingsCache.settings || {}).OUTREACH_SEQUENCE_PACK)) ||
@@ -1107,15 +1138,12 @@
         api("/api/modules/sequences/calendar?days=31"),
         api(`/api/letter-variants?pack_id=${encodeURIComponent(packId)}&email=demo@mail.ru`),
         api(`/api/packs/${encodeURIComponent(packId)}`),
-        api("/api/modules/content_studio/drafts?limit=5").catch(() => null),
       ]);
       queue = settled[0].status === "fulfilled" ? settled[0].value : {};
       cal = settled[1].status === "fulfilled" ? settled[1].value : {};
       variants = settled[2].status === "fulfilled" ? settled[2].value : {};
       const packRes = settled[3].status === "fulfilled" ? settled[3].value : {};
       pack = packRes.pack || packRes || {};
-      const drafts = settled[4].status === "fulfilled" ? settled[4].value : null;
-      if (drafts && Array.isArray(drafts.items)) studio.drafts = drafts.items.length;
       if (pack) {
         const letters = pack.letters || pack.steps || (pack.template && pack.template.steps);
         if (Array.isArray(letters)) pack.steps = letters.length;
@@ -1128,7 +1156,7 @@
         settingsCache = data.settings || data;
       } catch (_) {}
     }
-    renderDesk(dash || {}, health || {}, queue, cal, ops || {}, { variants, pack, studio });
+    renderDesk(dash || {}, health || {}, queue, cal, ops || {}, { variants, pack });
   }
 
   function renderOpsAlerts(alerts) {
@@ -3606,45 +3634,7 @@
   function bindTabs() {
     bindInboxSubTabs();
     document.querySelectorAll(".tabs button[data-tab]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        document.querySelectorAll(".tabs button[data-tab]").forEach((b) => b.classList.remove("active"));
-        document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
-        btn.classList.add("active");
-        const tab = btn.dataset.tab;
-        const panel = $("tab-" + tab);
-        if (panel) panel.classList.add("active");
-        $("pageTitle").textContent = titles[tab] || tab;
-        if ($("pageHint")) $("pageHint").textContent = hints[tab] || "";
-        markNav(tab);
-        closeTabMore();
-        if (tab === "home") loadDash().catch(logAction);
-        if (tab === "clients") loadClients().catch((e) => ($("clientsLog").textContent = String(e)));
-        if (tab === "lpr") loadLprTab().catch((e) => { if ($("lprMeta")) $("lprMeta").textContent = String(e); });
-        if (tab === "studio") loadStudioTab().catch(logAction);
-        if (tab === "outbox") loadOutbox().catch(logAction);
-        if (tab === "report") loadReport().catch(logAction);
-        if (tab === "settings") {
-          loadSettingsIntoForms()
-            .then(() => Promise.all([loadAntiban(), loadConsentLedger(), loadIntegrationsHealth()]))
-            .catch((e) => {
-              if ($("antibanLog")) $("antibanLog").textContent = String(e);
-              logAction(e);
-            });
-        }
-        if (tab === "letter") {
-          loadSettingsIntoForms()
-            .then(() => loadPacks())
-            .catch(logAction);
-        }
-        if (tab === "variants") {
-          loadLetterVariants().catch(logAction);
-        }
-        if (tab === "inbox") {
-          const sub = document.querySelector('.sub-tab[data-inbox-view="classified"]');
-          if (sub) sub.click();
-          else loadInbox(true).catch(logAction);
-        }
-      });
+      btn.addEventListener("click", () => switchToTab(btn.dataset.tab));
     });
   }
 
@@ -3656,6 +3646,9 @@
         if (tab) goToTab(tab);
       });
     });
+    if ($("openSettingsBtn")) {
+      $("openSettingsBtn").addEventListener("click", () => goToTab("settings"));
+    }
     if ($("tabMoreBtn")) {
       $("tabMoreBtn").addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -3816,6 +3809,7 @@
     bindDesk();
     bindContactIcons();
     bindInnerWheelScroll();
+    window.addEventListener("message", onOutreachTabMessage);
     if ($("lprSearchBtn")) {
       $("lprSearchBtn").addEventListener("click", () => runLprSearch().catch((e) => {
         if ($("lprMeta")) $("lprMeta").textContent = String(e);
@@ -5015,8 +5009,8 @@
         await loadDash();
         await loadSettingsIntoForms();
         await loadPacks();
-        // default tab is campaign
-        if ($("pageHint")) $("pageHint").textContent = hints.letter || "";
+        const initTab = initialTabFromUrl();
+        if (initTab && initTab !== "home") switchToTab(initTab);
         return;
       } catch (e) {
         showLogin();
@@ -5033,8 +5027,8 @@
         await loadDash();
         await loadSettingsIntoForms();
         await loadPacks();
-        // default tab is campaign
-        if ($("pageHint")) $("pageHint").textContent = hints.letter || "";
+        const initTab = initialTabFromUrl();
+        if (initTab && initTab !== "home") switchToTab(initTab);
         return;
       } catch (_) {
         showLogin();
