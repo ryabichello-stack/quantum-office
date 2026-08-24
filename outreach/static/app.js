@@ -761,37 +761,200 @@
     if (more) more.classList.toggle("is-active", MORE_TABS.has(tab));
   }
 
+  let deskCalCache = null;
+  let deskSelectedDay = null;
+
   function deskMetric(n, l) {
     return `<div class="desk-metric"><span class="n">${escapeHtml(String(n))}</span><span class="l">${escapeHtml(l)}</span></div>`;
+  }
+
+  function dayMapFromCal(cal) {
+    const map = {};
+    for (const day of (cal && cal.calendar) || []) {
+      if (day && day.date) map[day.date] = day;
+    }
+    return map;
+  }
+
+  function renderDeskDayPanel(dayKey, day) {
+    const title = $("deskDayTitle");
+    const meta = $("deskDayMeta");
+    const list = $("deskDayList");
+    const openBtn = $("deskDayOpenQueue");
+    if (!title || !list) return;
+    if (!dayKey || !day) {
+      title.textContent = "Выберите день";
+      if (meta) meta.textContent = "";
+      list.innerHTML = `<li class="muted">Кликните по дню — увидите, кто запланирован</li>`;
+      if (openBtn) openBtn.hidden = true;
+      return;
+    }
+    let label = dayKey;
+    try {
+      label = new Date(dayKey + "T12:00:00").toLocaleDateString("ru-RU", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+      });
+    } catch (_) {}
+    const count = day.count || 0;
+    const due = day.due_count || 0;
+    const cap = day.capacity != null ? day.capacity : "—";
+    title.textContent = label;
+    if (meta) {
+      meta.textContent =
+        `${count} в плане` +
+        (due ? ` · due ${due}` : "") +
+        ` · лимит ${cap}` +
+        (day.over_capacity ? " · перегруз" : "") +
+        (day.spam_risk ? " · риск спама" : "");
+    }
+    const items = day.items || [];
+    if (!items.length) {
+      list.innerHTML =
+        count > 0
+          ? `<li class="muted">${count} писем в плане (детализация урезана) — откройте Очередь</li>`
+          : `<li class="muted">На этот день ничего не запланировано</li>`;
+    } else {
+      list.innerHTML = items
+        .slice(0, 12)
+        .map((r) => {
+          const who = r.contact_name || r.email || "—";
+          const company = r.company_title || r.company_id || "";
+          const kind =
+            r.kind === "followup"
+              ? `шаг ${r.next_step || "?"} · ${r.next_label || "follow-up"}`
+              : r.next_label || "первое письмо";
+          const place = [r.city, r.timezone].filter(Boolean).join(" · ");
+          return `<li>
+            <div class="who">${escapeHtml(String(who))}</div>
+            <div class="meta">${escapeHtml(String(r.email || ""))}${
+            company ? " · " + escapeHtml(String(company)) : ""
+          }</div>
+            <div class="meta">${escapeHtml(kind)}${place ? " · " + escapeHtml(place) : ""}</div>
+          </li>`;
+        })
+        .join("");
+      if (count > items.length) {
+        list.innerHTML += `<li class="muted">+${count - items.length} ещё в этот день</li>`;
+      }
+    }
+    if (openBtn) {
+      openBtn.hidden = false;
+      openBtn.onclick = () => goToTab("outbox");
+    }
   }
 
   function renderDeskCalendar(cal) {
     const box = $("deskCalendar");
     if (!box) return;
+    deskCalCache = cal || null;
     const days = (cal && cal.calendar) || [];
     if (!days.length) {
-      box.innerHTML = "";
+      box.innerHTML = `<p class="muted tight">Нет данных календаря</p>`;
+      renderDeskDayPanel(null, null);
       return;
     }
-    box.innerHTML = days
-      .slice(0, 7)
-      .map((day) => {
-        let wd = day.date;
-        let weekend = false;
-        try {
-          const d = new Date(day.date + "T12:00:00");
-          wd = d.toLocaleDateString("ru-RU", { weekday: "short" });
-          weekend = d.getDay() === 0 || d.getDay() === 6;
-        } catch (_) {}
-        const n = day.count || 0;
-        return `<div class="desk-cal-day${weekend ? " wknd" : ""}${n > 15 ? " hot" : ""}"><span>${escapeHtml(
-          wd
-        )}</span><strong>${n}</strong></div>`;
-      })
+    const byDate = dayMapFromCal(cal);
+    const first = days[0].date;
+    const last = days[days.length - 1].date;
+    let start;
+    try {
+      start = new Date(first + "T12:00:00");
+    } catch (_) {
+      start = new Date();
+    }
+    // Align grid to Monday
+    const mondayOffset = (start.getDay() + 6) % 7;
+    const gridStart = new Date(start);
+    gridStart.setDate(start.getDate() - mondayOffset);
+
+    const end = new Date(last + "T12:00:00");
+    const todayIso = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Moscow" });
+    if ($("deskCalTitle")) {
+      try {
+        const a = start.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+        const b = end.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+        $("deskCalTitle").textContent = `${a} — ${b}`;
+      } catch (_) {
+        $("deskCalTitle").textContent = "Месяц вперёд";
+      }
+    }
+
+    const wd = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
+      .map((w) => `<div class="desk-month-wd">${w}</div>`)
       .join("");
+    const cells = [];
+    const cursor = new Date(gridStart);
+    // cover until last day, complete weeks
+    const stop = new Date(end);
+    stop.setDate(stop.getDate() + ((7 - ((stop.getDay() + 6) % 7) - 1 + 7) % 7));
+    while (cursor <= stop) {
+      const iso = cursor.toISOString().slice(0, 10);
+      // prefer local date key matching API (MSK dates as YYYY-MM-DD without UTC shift)
+      const localIso = [
+        cursor.getFullYear(),
+        String(cursor.getMonth() + 1).padStart(2, "0"),
+        String(cursor.getDate()).padStart(2, "0"),
+      ].join("-");
+      const key = localIso;
+      const inRange = key >= first && key <= last;
+      if (!inRange) {
+        cells.push(`<div class="desk-cal-day empty" aria-hidden="true"></div>`);
+      } else {
+        const day = byDate[key] || { date: key, count: 0, items: [] };
+        const n = day.count || 0;
+        const weekend = cursor.getDay() === 0 || cursor.getDay() === 6;
+        const cls = [
+          "desk-cal-day",
+          weekend ? "wknd" : "",
+          n > 15 ? "hot" : "",
+          day.over_capacity || day.spam_risk ? "over" : "",
+          key === todayIso ? "today" : "",
+          key === deskSelectedDay ? "is-selected" : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+        const ft = (day.items || []).filter((x) => x.kind !== "followup").length;
+        const fu = (day.items || []).filter((x) => x.kind === "followup").length;
+        let sub = "—";
+        if (n > 0) {
+          if (ft || fu) sub = [ft ? `новые ${ft}` : "", fu ? `цепь ${fu}` : ""].filter(Boolean).join(" · ");
+          else sub = `${n} писем`;
+        }
+        cells.push(
+          `<button type="button" class="${cls}" data-desk-day="${escapeHtml(key)}" title="${escapeHtml(
+            key
+          )}">
+            <span class="d">${cursor.getDate()}</span>
+            <strong>${n}</strong>
+            <span class="sub">${escapeHtml(sub)}</span>
+          </button>`
+        );
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    box.innerHTML = wd + cells.join("");
+    box.querySelectorAll("[data-desk-day]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const key = btn.getAttribute("data-desk-day");
+        deskSelectedDay = key;
+        box.querySelectorAll("[data-desk-day]").forEach((b) =>
+          b.classList.toggle("is-selected", b.getAttribute("data-desk-day") === key)
+        );
+        renderDeskDayPanel(key, byDate[key] || { date: key, count: 0, items: [] });
+      });
+    });
+    if (!deskSelectedDay || !byDate[deskSelectedDay]) {
+      deskSelectedDay = byDate[todayIso] ? todayIso : first;
+    }
+    const selectedBtn = box.querySelector(`[data-desk-day="${deskSelectedDay}"]`);
+    if (selectedBtn) selectedBtn.classList.add("is-selected");
+    renderDeskDayPanel(deskSelectedDay, byDate[deskSelectedDay] || null);
   }
 
-  function renderDesk(dash, health, queue, cal, ops) {
+  function renderDesk(dash, health, queue, cal, ops, extra) {
+    extra = extra || {};
     const st = (dash && (dash.run_state || (dash.runner && dash.runner.state)) || "stopped").toLowerCase();
     const stLabel = { playing: "Идёт", paused: "Пауза", stopped: "Стоп" }[st] || st;
     if ($("deskRunStatus")) $("deskRunStatus").textContent = stLabel;
@@ -802,39 +965,55 @@
     const sentToday = dash && dash.outbox ? dash.outbox.sent_today : 0;
     const limit = (dash && (dash.effective_daily_limit || dash.daily_limit)) || "—";
     const tick = dash && dash.runner && dash.runner.last_tick;
+    const slots =
+      (((settingsCache && (settingsCache.settings || settingsCache)) || {}).SCHEDULE_SLOTS) ||
+      "10:00-11:30,14:30-16:30";
     const tickNote =
       (tick && tick.result && (tick.result.note || tick.result.error)) ||
       (tick && tick.skipped === "outside_window" ? "вне окон отправки" : "") ||
-      (inWin ? `${inWin} контактов в окне сейчас` : "В окне сейчас никого — письма ждут слот");
+      (inWin
+        ? `${inWin} контактов в окне сейчас · слоты ${slots}`
+        : `В окне 0 · слоты ${slots} — письма ждут следующий слот`);
     if ($("deskRunNote")) $("deskRunNote").textContent = tickNote;
     if ($("deskRunMetrics")) {
       $("deskRunMetrics").innerHTML =
         deskMetric(sentToday, "сегодня") +
-        deskMetric(limit, "лимит") +
-        deskMetric(inWin, "в окне") +
-        deskMetric(pending, "очередь");
+        deskMetric(limit, "лимит/день") +
+        deskMetric(inWin, "готовы сейчас") +
+        deskMetric(pending, "весь бэклог");
     }
     const s = (settingsCache && (settingsCache.settings || settingsCache)) || settingsCache || {};
     if ($("deskSlots") && !$("deskSlots").dataset.dirty) {
       $("deskSlots").value = s.SCHEDULE_SLOTS || $("deskSlots").value || "10:00-11:30,14:30-16:30";
     }
     const qc = (queue && queue.counts) || {};
+    const deliv = (cal && cal.deliverability) || {};
+    const totals = (cal && cal.totals) || {};
     if ($("deskQueueStats")) {
       $("deskQueueStats").innerHTML =
-        deskMetric(qc.followups_due || 0, "due цепочка") +
-        deskMetric(qc.first_touch_in_window || 0, "в окне") +
-        deskMetric(qc.first_touch_pending_total != null ? qc.first_touch_pending_total : qc.first_touch_pending || 0, "первые");
+        deskMetric(totals.items != null ? totals.items : pending, "в календаре") +
+        deskMetric(totals.days_with_items || 0, "дней с планом") +
+        deskMetric(qc.followups_due || 0, "due follow-up") +
+        deskMetric(deliv.first_touch_daily_cap || "—", "cap первых") +
+        deskMetric(qc.first_touch_in_window || 0, "в окне сейчас");
     }
     if ($("deskQueueHint")) {
-      $("deskQueueHint").textContent = queue && queue.send_order_ru ? String(queue.send_order_ru) : "";
+      const note = (deliv && deliv.note) || (queue && queue.send_order_ru) || "";
+      $("deskQueueHint").textContent = String(note);
     }
     renderDeskCalendar(cal);
 
     const inboxN = (ops && ops.counts && ops.counts.inbox_unprocessed) || 0;
     if ($("deskInboxTitle")) $("deskInboxTitle").textContent = inboxN ? `Ответы · ${inboxN}` : "Ответы";
+    if ($("deskInboxStats")) {
+      $("deskInboxStats").innerHTML =
+        deskMetric(inboxN, "ждут") +
+        deskMetric((ops && ops.counts && ops.counts.due_followups) || 0, "due") +
+        deskMetric((dash && dash.reply_inbox && dash.reply_inbox.total) || 0, "всего inbox");
+    }
     const inboxBox = $("deskInboxList");
     if (inboxBox) {
-      const inboxActs = ((ops && ops.actions) || []).filter((a) => a.kind === "inbox_reply").slice(0, 4);
+      const inboxActs = ((ops && ops.actions) || []).filter((a) => a.kind === "inbox_reply").slice(0, 5);
       inboxBox.innerHTML = inboxActs.length
         ? inboxActs
             .map(
@@ -852,11 +1031,62 @@
 
     const e = (dash && dash.engagement) || {};
     if ($("deskReportMeta")) {
-      $("deskReportMeta").textContent = `открыто ${e.opened || 0} · ответы ${e.replied || 0}`;
+      $("deskReportMeta").textContent = `отпр. ${e.sent || 0} · откр. ${e.opened || 0}`;
     }
-    if ($("deskPackMeta")) {
-      const pack = (s.OUTREACH_SEQUENCE_PACK || selectedPackId || "—");
-      $("deskPackMeta").textContent = `Пакет: ${pack}`;
+    if ($("deskReportLine2")) {
+      $("deskReportLine2").textContent = `ответы ${e.replied || 0} · bounce ${e.bounced || 0}`;
+    }
+
+    const pack = s.OUTREACH_SEQUENCE_PACK || selectedPackId || "—";
+    const packInfo = extra.pack || {};
+    if ($("deskPackMeta")) $("deskPackMeta").textContent = `Пакет: ${pack}`;
+    if ($("deskPackLine2")) {
+      const steps = packInfo.steps != null ? packInfo.steps : packInfo.letters != null ? packInfo.letters : null;
+      $("deskPackLine2").textContent = steps != null ? `${steps} шагов в цепочке` : "отрасль → цепочка → тест";
+    }
+
+    const variants = extra.variants || {};
+    if ($("deskVariantsMeta")) {
+      const sc = (variants.subjects && variants.subjects.length) || 7;
+      const bc = (variants.bodies && variants.bodies.length) || 7;
+      $("deskVariantsMeta").textContent = `${sc}×${bc} = ${variants.combinations || sc * bc} комбо`;
+    }
+    if ($("deskVariantsLine2")) {
+      const picked = variants.picked && variants.picked.subject;
+      $("deskVariantsLine2").textContent = picked
+        ? `пример: ${String(picked).slice(0, 42)}${String(picked).length > 42 ? "…" : ""}`
+        : "темы и тексты первого касания";
+    }
+
+    const geo = (dash && dash.clients && dash.clients.geo) || {};
+    if ($("deskClientsMeta")) {
+      $("deskClientsMeta").textContent = `компаний ${geo.companies != null ? geo.companies : "—"}`;
+    }
+    if ($("deskClientsLine2")) {
+      $("deskClientsLine2").textContent = `с TZ ${geo.with_timezone != null ? geo.with_timezone : "—"} · Bitrix sync`;
+    }
+
+    if ($("deskLprMeta")) $("deskLprMeta").textContent = "Комитет ЛПР";
+    if ($("deskLprLine2")) $("deskLprLine2").textContent = "поиск · покрытие ролей · approve";
+
+    const studio = extra.studio || {};
+    if ($("deskStudioMeta")) {
+      $("deskStudioMeta").textContent =
+        studio.drafts != null ? `черновиков ${studio.drafts}` : "Radar · соцсети · видео";
+    }
+    if ($("deskStudioLine2")) {
+      $("deskStudioLine2").textContent =
+        studio.signals != null ? `сигналов ${studio.signals}` : "публикация только после approve";
+    }
+
+    const tg = (health && health.telegram) || {};
+    const imap = health && health.imap_configured;
+    if ($("deskSettingsMeta")) {
+      $("deskSettingsMeta").textContent = `лимит ${limit}/день · ${slots}`;
+    }
+    if ($("deskSettingsLine2")) {
+      $("deskSettingsLine2").textContent =
+        `IMAP ${imap ? "ok" : "—"} · TG ${tg.ready ? "ok" : "…"} · anti-ban`;
     }
   }
 
@@ -864,11 +1094,33 @@
     if (!$("tab-home")) return;
     let queue = {};
     let cal = {};
+    let variants = {};
+    let pack = {};
+    let studio = {};
     try {
-      [queue, cal] = await Promise.all([
-        api("/api/modules/sequences/queue?limit=8"),
-        api("/api/modules/sequences/calendar?days=7"),
+      const packId =
+        (settingsCache && (settingsCache.OUTREACH_SEQUENCE_PACK || (settingsCache.settings || {}).OUTREACH_SEQUENCE_PACK)) ||
+        selectedPackId ||
+        "lombards";
+      const settled = await Promise.allSettled([
+        api("/api/modules/sequences/queue?limit=12"),
+        api("/api/modules/sequences/calendar?days=31"),
+        api(`/api/letter-variants?pack_id=${encodeURIComponent(packId)}&email=demo@mail.ru`),
+        api(`/api/packs/${encodeURIComponent(packId)}`),
+        api("/api/modules/content_studio/drafts?limit=5").catch(() => null),
       ]);
+      queue = settled[0].status === "fulfilled" ? settled[0].value : {};
+      cal = settled[1].status === "fulfilled" ? settled[1].value : {};
+      variants = settled[2].status === "fulfilled" ? settled[2].value : {};
+      const packRes = settled[3].status === "fulfilled" ? settled[3].value : {};
+      pack = packRes.pack || packRes || {};
+      const drafts = settled[4].status === "fulfilled" ? settled[4].value : null;
+      if (drafts && Array.isArray(drafts.items)) studio.drafts = drafts.items.length;
+      if (pack) {
+        const letters = pack.letters || pack.steps || (pack.template && pack.template.steps);
+        if (Array.isArray(letters)) pack.steps = letters.length;
+        else if (typeof pack.step_count === "number") pack.steps = pack.step_count;
+      }
     } catch (_) {}
     if (!settingsCache) {
       try {
@@ -876,7 +1128,7 @@
         settingsCache = data.settings || data;
       } catch (_) {}
     }
-    renderDesk(dash || {}, health || {}, queue, cal, ops || {});
+    renderDesk(dash || {}, health || {}, queue, cal, ops || {}, { variants, pack, studio });
   }
 
   function renderOpsAlerts(alerts) {
@@ -3450,6 +3702,9 @@
           logAction(e);
         }
       });
+    }
+    if ($("deskCalRefresh")) {
+      $("deskCalRefresh").addEventListener("click", () => loadDash().catch(logAction));
     }
   }
 

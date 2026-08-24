@@ -545,7 +545,7 @@ class SequenceStore:
         """14-day (default) operator calendar: follow-ups + first-touch by Moscow date."""
         from zoneinfo import ZoneInfo
 
-        days_n = max(1, min(int(days or 14), 60))
+        days_n = max(1, min(int(days or 14), 62))
         msk = ZoneInfo("Europe/Moscow")
         today = datetime.now(msk).date()
         end = today + timedelta(days=days_n - 1)
@@ -793,7 +793,7 @@ class SequencesModule:
             from geo_schedule import window_status
             from runtime_settings import RuntimeSettings
 
-            days_n = max(1, min(int(days or 14), 60))
+            days_n = max(1, min(int(days or 14), 62))
             outbox = OutboxStore(DATA_DIR / "outbox.db")
             clients = ClientsStore()
             rt = RuntimeSettings(SETTINGS_DB)
@@ -802,7 +802,7 @@ class SequencesModule:
             effective = deliver.effective_daily_limit(rt, configured)
             ft_cap = first_touch_daily_cap(rt, effective_daily_limit=effective)
             # Include paced future rows so calendar shows spread, not one giant day
-            pending_rows = outbox.list_pending_all(min(2000, 80 * days_n))
+            pending_rows = outbox.list_pending_all(min(4000, max(500, 100 * days_n)))
             first_touch: list[dict[str, Any]] = []
             for row in pending_rows:
                 geo = company_geo_row(clients, row.company_id or "")
