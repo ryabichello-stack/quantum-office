@@ -1,5 +1,6 @@
 (() => {
   const titles = {
+    home: "Пульт",
     letter: "Кампания",
     variants: "Варианты",
     outbox: "Очередь",
@@ -11,6 +12,7 @@
     settings: "Настройки",
   };
   const hints = {
+    home: "Рабочий стол: статус, окна, очередь и входящие",
     letter: "Отрасль, цепочка, тест — затем Старт и Очередь",
     variants: "Темы и тексты первого письма: смотрите, правьте, сохраняйте",
     outbox: "Пачки, окна по TZ, фильтры и действия по строке",
@@ -21,6 +23,7 @@
     studio: "Контент, соцсети, Radar и видео — с ручным утверждением",
     settings: "Локальные окна, лимиты, anti-ban",
   };
+  const MORE_TABS = new Set(["variants", "report", "clients", "lpr", "studio", "settings"]);
 
   let outboxItemsCache = [];
   let outboxTotalCache = 0;
@@ -736,12 +739,144 @@
     ]);
     renderStats(dash, health);
     setRunStateBadge(dash.run_state || (dash.runner && dash.runner.state) || "stopped");
-    await loadOpsSummary().catch(() => {});
+    const ops = await loadOpsSummary().catch(() => ({}));
+    await refreshDesk(dash, health, ops);
   }
 
   function goToTab(tab) {
     const btn = document.querySelector(`.tabs button[data-tab="${tab}"]`);
     if (btn) btn.click();
+    closeTabMore();
+  }
+
+  function closeTabMore() {
+    const menu = $("tabMoreMenu");
+    const btn = $("tabMoreBtn");
+    if (menu) menu.classList.add("hidden");
+    if (btn) btn.setAttribute("aria-expanded", "false");
+  }
+
+  function markNav(tab) {
+    const more = $("tabMore");
+    if (more) more.classList.toggle("is-active", MORE_TABS.has(tab));
+  }
+
+  function deskMetric(n, l) {
+    return `<div class="desk-metric"><span class="n">${escapeHtml(String(n))}</span><span class="l">${escapeHtml(l)}</span></div>`;
+  }
+
+  function renderDeskCalendar(cal) {
+    const box = $("deskCalendar");
+    if (!box) return;
+    const days = (cal && cal.calendar) || [];
+    if (!days.length) {
+      box.innerHTML = "";
+      return;
+    }
+    box.innerHTML = days
+      .slice(0, 7)
+      .map((day) => {
+        let wd = day.date;
+        let weekend = false;
+        try {
+          const d = new Date(day.date + "T12:00:00");
+          wd = d.toLocaleDateString("ru-RU", { weekday: "short" });
+          weekend = d.getDay() === 0 || d.getDay() === 6;
+        } catch (_) {}
+        const n = day.count || 0;
+        return `<div class="desk-cal-day${weekend ? " wknd" : ""}${n > 15 ? " hot" : ""}"><span>${escapeHtml(
+          wd
+        )}</span><strong>${n}</strong></div>`;
+      })
+      .join("");
+  }
+
+  function renderDesk(dash, health, queue, cal, ops) {
+    const st = (dash && (dash.run_state || (dash.runner && dash.runner.state)) || "stopped").toLowerCase();
+    const stLabel = { playing: "Идёт", paused: "Пауза", stopped: "Стоп" }[st] || st;
+    if ($("deskRunStatus")) $("deskRunStatus").textContent = stLabel;
+    const inWin = (queue && queue.counts && queue.counts.first_touch_in_window) || 0;
+    const pending =
+      (queue && queue.counts && (queue.counts.first_touch_pending_total || queue.counts.first_touch_pending)) ||
+      ((dash && dash.outbox && dash.outbox.counts && dash.outbox.counts.pending) || 0);
+    const sentToday = dash && dash.outbox ? dash.outbox.sent_today : 0;
+    const limit = (dash && (dash.effective_daily_limit || dash.daily_limit)) || "—";
+    const tick = dash && dash.runner && dash.runner.last_tick;
+    const tickNote =
+      (tick && tick.result && (tick.result.note || tick.result.error)) ||
+      (tick && tick.skipped === "outside_window" ? "вне окон отправки" : "") ||
+      (inWin ? `${inWin} контактов в окне сейчас` : "В окне сейчас никого — письма ждут слот");
+    if ($("deskRunNote")) $("deskRunNote").textContent = tickNote;
+    if ($("deskRunMetrics")) {
+      $("deskRunMetrics").innerHTML =
+        deskMetric(sentToday, "сегодня") +
+        deskMetric(limit, "лимит") +
+        deskMetric(inWin, "в окне") +
+        deskMetric(pending, "очередь");
+    }
+    const s = (settingsCache && (settingsCache.settings || settingsCache)) || settingsCache || {};
+    if ($("deskSlots") && !$("deskSlots").dataset.dirty) {
+      $("deskSlots").value = s.SCHEDULE_SLOTS || $("deskSlots").value || "10:00-11:30,14:30-16:30";
+    }
+    const qc = (queue && queue.counts) || {};
+    if ($("deskQueueStats")) {
+      $("deskQueueStats").innerHTML =
+        deskMetric(qc.followups_due || 0, "due цепочка") +
+        deskMetric(qc.first_touch_in_window || 0, "в окне") +
+        deskMetric(qc.first_touch_pending_total != null ? qc.first_touch_pending_total : qc.first_touch_pending || 0, "первые");
+    }
+    if ($("deskQueueHint")) {
+      $("deskQueueHint").textContent = queue && queue.send_order_ru ? String(queue.send_order_ru) : "";
+    }
+    renderDeskCalendar(cal);
+
+    const inboxN = (ops && ops.counts && ops.counts.inbox_unprocessed) || 0;
+    if ($("deskInboxTitle")) $("deskInboxTitle").textContent = inboxN ? `Ответы · ${inboxN}` : "Ответы";
+    const inboxBox = $("deskInboxList");
+    if (inboxBox) {
+      const inboxActs = ((ops && ops.actions) || []).filter((a) => a.kind === "inbox_reply").slice(0, 4);
+      inboxBox.innerHTML = inboxActs.length
+        ? inboxActs
+            .map(
+              (a) =>
+                `<button type="button" data-go="inbox"><div class="desk-item-title">${escapeHtml(
+                  a.title || "Входящее"
+                )}</div><div class="desk-item-detail">${escapeHtml(a.detail || "")}</div></button>`
+            )
+            .join("")
+        : `<p class="muted tight">Нет необработанных ответов</p>`;
+      inboxBox.querySelectorAll("[data-go]").forEach((el) => {
+        el.addEventListener("click", () => goToTab(el.dataset.go));
+      });
+    }
+
+    const e = (dash && dash.engagement) || {};
+    if ($("deskReportMeta")) {
+      $("deskReportMeta").textContent = `открыто ${e.opened || 0} · ответы ${e.replied || 0}`;
+    }
+    if ($("deskPackMeta")) {
+      const pack = (s.OUTREACH_SEQUENCE_PACK || selectedPackId || "—");
+      $("deskPackMeta").textContent = `Пакет: ${pack}`;
+    }
+  }
+
+  async function refreshDesk(dash, health, ops) {
+    if (!$("tab-home")) return;
+    let queue = {};
+    let cal = {};
+    try {
+      [queue, cal] = await Promise.all([
+        api("/api/modules/sequences/queue?limit=8"),
+        api("/api/modules/sequences/calendar?days=7"),
+      ]);
+    } catch (_) {}
+    if (!settingsCache) {
+      try {
+        const data = await api("/api/settings");
+        settingsCache = data.settings || data;
+      } catch (_) {}
+    }
+    renderDesk(dash || {}, health || {}, queue, cal, ops || {});
   }
 
   function renderOpsAlerts(alerts) {
@@ -769,33 +904,31 @@
 
   function renderOpsActions(data) {
     const section = $("opsActions");
-    const list = $("opsActionsList");
+    if (section) section.classList.add("hidden");
+    const list = $("deskActionsList") || $("opsActionsList");
     const meta = $("opsActionsMeta");
-    if (!section || !list) return;
+    if (!list) return;
     const actions = (data && data.actions) || [];
     const counts = (data && data.counts) || {};
+    if (meta) {
+      meta.textContent = actions.length
+        ? `Всего ${actions.length} · входящие ${counts.inbox_unprocessed || 0}`
+        : "";
+    }
     if (!actions.length) {
-      section.classList.add("hidden");
-      list.innerHTML = "";
-      if (meta) meta.textContent = "";
+      list.innerHTML = `<p class="muted tight">Пока нет срочных действий</p>`;
       return;
     }
-    section.classList.remove("hidden");
-    if (meta) {
-      meta.textContent = `Всего ${actions.length} · входящие ${counts.inbox_unprocessed || 0}`;
-    }
     list.innerHTML = actions
+      .slice(0, 5)
       .map(
-        (a) => `<button type="button" class="ops-action sev-${escapeHtml(a.severity || "medium")}" data-ops-action="${escapeHtml(a.id || "")}" data-ops-tab="${escapeHtml(a.tab || "")}">
-          <span class="ops-action-main">
-            <div class="ops-action-title">${escapeHtml(a.title || "")}</div>
-            <div class="ops-action-detail">${escapeHtml(a.detail || "")}</div>
-          </span>
-          <span class="muted">→</span>
+        (a) => `<button type="button" data-ops-tab="${escapeHtml(a.tab || "")}">
+          <div class="desk-item-title">${escapeHtml(a.title || "")}</div>
+          <div class="desk-item-detail">${escapeHtml(a.detail || "")}</div>
         </button>`
       )
       .join("");
-    list.querySelectorAll("[data-ops-action]").forEach((btn) => {
+    list.querySelectorAll("[data-ops-tab]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const tab = btn.dataset.opsTab;
         if (tab) goToTab(tab);
@@ -3220,15 +3353,19 @@
 
   function bindTabs() {
     bindInboxSubTabs();
-    document.querySelectorAll(".tabs button").forEach((btn) => {
+    document.querySelectorAll(".tabs button[data-tab]").forEach((btn) => {
       btn.addEventListener("click", () => {
-        document.querySelectorAll(".tabs button").forEach((b) => b.classList.remove("active"));
+        document.querySelectorAll(".tabs button[data-tab]").forEach((b) => b.classList.remove("active"));
         document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
         btn.classList.add("active");
         const tab = btn.dataset.tab;
-        $("tab-" + tab).classList.add("active");
+        const panel = $("tab-" + tab);
+        if (panel) panel.classList.add("active");
         $("pageTitle").textContent = titles[tab] || tab;
         if ($("pageHint")) $("pageHint").textContent = hints[tab] || "";
+        markNav(tab);
+        closeTabMore();
+        if (tab === "home") loadDash().catch(logAction);
         if (tab === "clients") loadClients().catch((e) => ($("clientsLog").textContent = String(e)));
         if (tab === "lpr") loadLprTab().catch((e) => { if ($("lprMeta")) $("lprMeta").textContent = String(e); });
         if (tab === "studio") loadStudioTab().catch(logAction);
@@ -3257,6 +3394,63 @@
         }
       });
     });
+  }
+
+  function bindDesk() {
+    document.querySelectorAll("[data-go]").forEach((el) => {
+      el.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        const tab = el.getAttribute("data-go");
+        if (tab) goToTab(tab);
+      });
+    });
+    if ($("tabMoreBtn")) {
+      $("tabMoreBtn").addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const menu = $("tabMoreMenu");
+        if (!menu) return;
+        const open = menu.classList.contains("hidden");
+        menu.classList.toggle("hidden", !open);
+        $("tabMoreBtn").setAttribute("aria-expanded", open ? "true" : "false");
+      });
+    }
+    document.addEventListener("click", (ev) => {
+      const wrap = $("tabMore");
+      if (wrap && !wrap.contains(ev.target)) closeTabMore();
+    });
+    if ($("deskSlots")) {
+      $("deskSlots").addEventListener("input", () => {
+        $("deskSlots").dataset.dirty = "1";
+      });
+    }
+    if ($("deskSlotsSave")) {
+      $("deskSlotsSave").addEventListener("click", async () => {
+        try {
+          const slots = (($("deskSlots") && $("deskSlots").value) || "").trim() || "10:00-11:30,14:30-16:30";
+          await api("/api/settings", {
+            method: "PUT",
+            body: JSON.stringify({ settings: { SCHEDULE_SLOTS: slots } }),
+          });
+          if ($("localSlots")) $("localSlots").value = slots;
+          if ($("deskSlots")) delete $("deskSlots").dataset.dirty;
+          logAction("Окна сохранены: " + slots);
+          await loadDash();
+        } catch (e) {
+          logAction(e);
+        }
+      });
+    }
+    if ($("deskPaceBtn")) {
+      $("deskPaceBtn").addEventListener("click", async () => {
+        try {
+          if ($("queuePaceDays") && $("deskPaceDays")) $("queuePaceDays").value = $("deskPaceDays").value;
+          await paceQueue();
+          await loadDash();
+        } catch (e) {
+          logAction(e);
+        }
+      });
+    }
   }
 
   function paintPreviewHtml(box, html) {
@@ -3364,6 +3558,7 @@
 
   async function boot() {
     bindTabs();
+    bindDesk();
     bindContactIcons();
     bindInnerWheelScroll();
     if ($("lprSearchBtn")) {

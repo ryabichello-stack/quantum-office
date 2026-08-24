@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops37" />
+  <link rel="stylesheet" href="styles.css?v=ops38" />
   <script>
     (function () {
       function parentBase() {
@@ -46,8 +46,8 @@
     <header class="top">
       <div>
         <p class="brand">Outreach</p>
-        <h1 id="pageTitle" class="page-title">Кампания</h1>
-        <p class="top-hint" id="pageHint">Отрасль, письмо, цепочка и отправка</p>
+        <h1 id="pageTitle" class="page-title">Пульт</h1>
+        <p class="top-hint" id="pageHint">Рабочий стол рассылки — статус, очередь, входящие</p>
       </div>
       <div class="top-actions">
         <span id="runStateBadge" class="badge stopped">Стоп</span>
@@ -61,18 +61,24 @@
     </header>
 
     <nav class="tabs" role="tablist">
-      <button type="button" data-tab="letter" class="active">Кампания</button>
-      <button type="button" data-tab="variants">Варианты</button>
+      <button type="button" data-tab="home" class="active">Пульт</button>
+      <button type="button" data-tab="letter">Кампания</button>
       <button type="button" data-tab="outbox">Очередь</button>
       <button type="button" data-tab="inbox">Входящие</button>
-      <button type="button" data-tab="report">Результат</button>
-      <button type="button" data-tab="clients">Клиенты</button>
-      <button type="button" data-tab="lpr">ЛПР</button>
-      <button type="button" data-tab="studio">Студия</button>
-      <button type="button" data-tab="settings">Настройки</button>
+      <div class="tab-more" id="tabMore">
+        <button type="button" id="tabMoreBtn" class="tab-more-btn" aria-expanded="false" aria-haspopup="true">Ещё</button>
+        <div id="tabMoreMenu" class="tab-more-menu hidden" role="menu">
+          <button type="button" data-tab="variants" role="menuitem">Варианты</button>
+          <button type="button" data-tab="report" role="menuitem">Результат</button>
+          <button type="button" data-tab="clients" role="menuitem">Клиенты</button>
+          <button type="button" data-tab="lpr" role="menuitem">ЛПР</button>
+          <button type="button" data-tab="studio" role="menuitem">Студия</button>
+          <button type="button" data-tab="settings" role="menuitem">Настройки</button>
+        </div>
+      </div>
     </nav>
 
-    <div id="headerKpi" class="kpi-strip" aria-label="Сводка рассылки"></div>
+    <div id="headerKpi" class="kpi-strip" hidden aria-hidden="true"></div>
 
     <div id="opsAlerts" class="ops-alerts hidden" role="alert" aria-live="polite"></div>
 
@@ -85,12 +91,110 @@
     </section>
 
     <main>
+      <!-- ========== ПУЛЬТ (рабочий стол) ========== -->
+      <section id="tab-home" class="panel active">
+        <div class="desk" id="desk">
+          <article class="tile tile-hero" id="deskRun">
+            <div class="tile-kicker">Сегодня</div>
+            <div class="desk-hero-row">
+              <div>
+                <p class="desk-hero-status" id="deskRunStatus">—</p>
+                <p class="muted tight" id="deskRunNote">Загрузка…</p>
+              </div>
+              <div class="desk-hero-metrics" id="deskRunMetrics"></div>
+            </div>
+            <div class="desk-hero-fields">
+              <label class="field">Окна отправки
+                <input id="deskSlots" type="text" placeholder="10:00-11:30,14:30-16:30" />
+              </label>
+              <label class="field">Рабочих дней
+                <input id="deskPaceDays" type="number" min="7" max="180" value="14" />
+              </label>
+              <div class="desk-hero-actions">
+                <button type="button" id="deskSlotsSave" class="btn-quiet">Сохранить окна</button>
+                <button type="button" id="deskPaceBtn" class="primary">Разложить очередь</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="tile tile-lg">
+            <div class="tile-head">
+              <div>
+                <div class="tile-kicker">Очередь</div>
+                <h3 class="tile-title">План на дни</h3>
+              </div>
+              <button type="button" class="btn-quiet small" data-go="outbox">Открыть</button>
+            </div>
+            <div class="desk-stats" id="deskQueueStats"></div>
+            <div class="desk-cal" id="deskCalendar"></div>
+            <p class="muted tight" id="deskQueueHint"></p>
+          </article>
+
+          <article class="tile tile-md">
+            <div class="tile-head">
+              <div>
+                <div class="tile-kicker">Входящие</div>
+                <h3 class="tile-title" id="deskInboxTitle">Ответы</h3>
+              </div>
+              <button type="button" class="btn-quiet small" data-go="inbox">Открыть</button>
+            </div>
+            <div id="deskInboxList" class="desk-list"></div>
+          </article>
+
+          <article class="tile tile-md">
+            <div class="tile-head">
+              <div>
+                <div class="tile-kicker">Действия</div>
+                <h3 class="tile-title">Что сделать сейчас</h3>
+              </div>
+            </div>
+            <div id="deskActionsList" class="desk-list"></div>
+          </article>
+
+          <button type="button" class="tile tile-sm tile-go" data-go="letter">
+            <div class="tile-kicker">Кампания</div>
+            <h3 class="tile-title">Отрасль и цепочка</h3>
+            <p class="muted tight" id="deskPackMeta">Пакет…</p>
+          </button>
+          <button type="button" class="tile tile-sm tile-go" data-go="variants">
+            <div class="tile-kicker">Письма</div>
+            <h3 class="tile-title">Варианты 7×7</h3>
+            <p class="muted tight">Темы и тексты первого касания</p>
+          </button>
+          <button type="button" class="tile tile-sm tile-go" data-go="report">
+            <div class="tile-kicker">Отчёт</div>
+            <h3 class="tile-title">Результат</h3>
+            <p class="muted tight" id="deskReportMeta">Открытия и ответы</p>
+          </button>
+          <button type="button" class="tile tile-sm tile-go" data-go="clients">
+            <div class="tile-kicker">База</div>
+            <h3 class="tile-title">Клиенты</h3>
+            <p class="muted tight">Bitrix, geo, TZ</p>
+          </button>
+          <button type="button" class="tile tile-sm tile-go" data-go="lpr">
+            <div class="tile-kicker">Сделки</div>
+            <h3 class="tile-title">ЛПР</h3>
+            <p class="muted tight">Комитет и покрытие ролей</p>
+          </button>
+          <button type="button" class="tile tile-sm tile-go" data-go="studio">
+            <div class="tile-kicker">Контент</div>
+            <h3 class="tile-title">Студия</h3>
+            <p class="muted tight">Radar, соцсети, видео</p>
+          </button>
+          <button type="button" class="tile tile-sm tile-go" data-go="settings">
+            <div class="tile-kicker">Система</div>
+            <h3 class="tile-title">Настройки</h3>
+            <p class="muted tight">Лимиты, anti-ban, IMAP</p>
+          </button>
+        </div>
+      </section>
+
       <!-- ========== КАМПАНИЯ (главное, как задание на звонок) ========== -->
-      <section id="tab-letter" class="panel active">
+      <section id="tab-letter" class="panel">
         <div class="surface task-form">
           <div class="task-intro compact-intro">
             <h2 class="section-title">Задание на рассылку</h2>
-            <p class="muted tight">Отрасль → цепочка писем → тест → Старт сверху → очередь уходит сама. Сводка — полоска над вкладками.</p>
+            <p class="muted tight">Отрасль и цепочка. Старт — в шапке. Варианты заголовков — плитка на пульте или вкладка «Ещё».</p>
           </div>
 
           <div id="campaignStrip" class="campaign-strip muted tight">Загрузка кампании…</div>
@@ -146,7 +250,7 @@
             </label>
           </div>
 
-          <details class="task-advanced" open>
+          <details class="task-advanced" id="letterBrandDetails">
             <summary>Подпись, контакты и брендинг</summary>
             <label class="field">Компания в подписи
               <input id="letterCompany" type="text" placeholder="Quantum Labs" />
@@ -330,13 +434,18 @@
             </div>
             <div class="actions wrap-actions">
               <button type="button" id="queuePaceBtn" class="primary">Разложить на будни</button>
-              <button type="button" id="outboxLoad" class="btn-quiet">Обновить</button>
-              <button type="button" class="btn-quiet" id="queueRebuildNamesBtn">ФИО в очередь</button>
-              <button type="button" id="syncBtn" class="btn-quiet">Bitrix sync</button>
-              <button type="button" id="checkRepliesBtn" class="btn-quiet">Проверить ответы</button>
-              <button type="button" id="dryRunBtn" class="btn-quiet">Пробный ×5</button>
               <button type="button" id="sendBtn" class="primary">Отправить пачку</button>
+              <button type="button" id="outboxLoad" class="btn-quiet">Обновить</button>
             </div>
+            <details class="task-advanced" id="queueMoreActions">
+              <summary>Ещё действия</summary>
+              <div class="actions wrap-actions">
+                <button type="button" class="btn-quiet" id="queueRebuildNamesBtn">ФИО в очередь</button>
+                <button type="button" id="syncBtn" class="btn-quiet">Bitrix sync</button>
+                <button type="button" id="checkRepliesBtn" class="btn-quiet">Проверить ответы</button>
+                <button type="button" id="dryRunBtn" class="btn-quiet">Пробный ×5</button>
+              </div>
+            </details>
             <pre id="queuePaceLog" class="log tight" hidden></pre>
           </fieldset>
 
@@ -1266,6 +1375,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=ops37"></script>
+  <script src="app.js?v=ops38"></script>
 </body>
 </html>
