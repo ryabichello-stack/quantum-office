@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops31" />
+  <link rel="stylesheet" href="styles.css?v=ops32" />
   <script>
     (function () {
       function parentBase() {
@@ -118,6 +118,9 @@
               <button type="button" id="letterResetChain" class="btn-quiet">Сбросить к базовым</button>
             </div>
             <p class="muted tight">Переключайте письма цепочки, меняйте текст и день отправки, добавляйте черновики. Порядок = порядок follow-up.</p>
+            <p class="muted tight" id="letterVariantsHint">
+              Первое письмо при отправке: <strong>7 тем × 7 текстов = 49 вариантов</strong> (выбор стабилен по email получателя). Редактор ниже — базовый смысл; на SMTP уходит комбинация из матрицы.
+            </p>
           </div>
 
           <div class="letter-editor" id="letterEditor">
@@ -1200,6 +1203,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=ops31"></script>
+  <script src="app.js?v=ops32"></script>
 </body>
 </html>

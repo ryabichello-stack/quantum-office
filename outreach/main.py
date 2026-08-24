@@ -1491,6 +1491,34 @@ def api_pack_get(pack_id: str) -> dict[str, Any]:
     return {"ok": True, "pack": tpl}
 
 
+@app.get("/api/letter-variants", dependencies=[Depends(require_ui_auth)])
+def api_letter_variants(pack_id: str = "lombards", email: str = "demo@example.com") -> dict[str, Any]:
+    """Preview 7×7 first-touch matrix and the combo for a sample email."""
+    from content.letter_variants import (
+        PACK_VARIANTS,
+        pick_first_touch_variant,
+        variant_stats,
+        variants_enabled,
+    )
+
+    pid = (pack_id or "lombards").strip()
+    bundle = PACK_VARIANTS.get(pid) or PACK_VARIANTS.get("lombards") or {}
+    picked = pick_first_touch_variant(email=email, company_id=email, pack_id=pid)
+    return {
+        "ok": True,
+        "enabled": variants_enabled(_rt()),
+        "stats": variant_stats(),
+        "pack_id": pid,
+        "subjects": bundle.get("subjects") or [],
+        "bodies_preview": [
+            (b.split("\n\n", 1)[0][:120] + "…") for b in (bundle.get("bodies") or [])
+        ],
+        "sample_email": email,
+        "picked": picked,
+        "note": "На отправке тема и текст выбираются стабильно по email (49 комбинаций).",
+    }
+
+
 @app.put("/api/packs/{pack_id}/letters", dependencies=[Depends(require_ui_auth)])
 def api_pack_letters_save(pack_id: str, body: PackLettersBody) -> dict[str, Any]:
     base = get_pack(pack_id)

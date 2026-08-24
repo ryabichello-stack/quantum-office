@@ -89,6 +89,7 @@
 - 2026-08-23 (cont.14): RSS ingest, optional LLM angle, flywheel auto-cycle; ops29
 - 2026-08-23 (cont.15): real Telegram public channel parser (t.me/s); ops30
 - 2026-08-24: anti-spam queue pacing — spread first-touch across days (not_before); calendar capacity warnings; ops31
+- 2026-08-24 (cont): first-touch letter variants 7×7 subjects×bodies (49 combos); ops32
 
 ## [0.2.0] — 2026-08-20
 

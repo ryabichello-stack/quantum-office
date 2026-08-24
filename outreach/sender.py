@@ -676,6 +676,26 @@ def send_batch(
             unsub_url = unsubscribe_url_for(unsub_token, settings)
 
         cb_url = _callback_url_for_row(outbox_id=row.id, email=row.email, settings=settings)
+        letter_subject = subject
+        letter_plain = plain_tpl or None
+        letter_html = html_tpl or None
+        variant_meta: dict[str, Any] | None = None
+        try:
+            from content.letter_variants import pick_first_touch_variant
+
+            variant_meta = pick_first_touch_variant(
+                email=row.email,
+                company_id=row.company_id or "",
+                settings=settings,
+            )
+            if variant_meta:
+                letter_subject = str(variant_meta["subject"])
+                letter_plain = str(variant_meta["plain"])
+                letter_html = None  # rebuild from plain
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("letter variant pick failed: %s", exc)
+            variant_meta = None
+
         plain, html = _render_letter(
             contact_name=row.contact_name,
             company=company,
@@ -683,8 +703,8 @@ def send_batch(
             phone=phone,
             unsubscribe_mailto=unsub_addr,
             unsubscribe_url=unsub_url,
-            plain_template=plain_tpl or None,
-            html_template=html_tpl or None,
+            plain_template=letter_plain,
+            html_template=letter_html,
             settings=settings,
             callback_url=cb_url,
         )
@@ -708,10 +728,16 @@ def send_batch(
             "plus_tag": plus_tag,
             "reply_to": reply_to,
         }
+        if variant_meta:
+            item["letter_variant"] = {
+                "combo": variant_meta.get("combo"),
+                "subject_idx": variant_meta.get("subject_idx"),
+                "body_idx": variant_meta.get("body_idx"),
+            }
         try:
             if dry_run:
                 item["status"] = "dry_run"
-                item["subject"] = subject
+                item["subject"] = letter_subject
                 item["preview_plain"] = plain[:500]
                 attach = _attachments_for_send(settings, step_wants=False)
                 if attach:
@@ -734,7 +760,7 @@ def send_batch(
                     attach = _attachments_for_send(settings, step_wants=False)
                     message_id = send_email(
                         to=row.email,
-                        subject=subject,
+                        subject=letter_subject,
                         plain=plain,
                         html=html,
                         unsubscribe_mailto=unsub_addr,
@@ -758,7 +784,7 @@ def send_batch(
                             message_id=message_id,
                             reply_to=reply_to,
                             plus_tag=plus_tag,
-                            subject=subject,
+                            subject=letter_subject,
                             open_token=open_token,
                             unsub_token=unsub_token,
                         )
@@ -781,7 +807,7 @@ def send_batch(
                             company_id=row.company_id,
                             company_title=row.contact_name or row.email,
                             to_email=row.email,
-                            subject=subject,
+                            subject=letter_subject,
                             plain=plain,
                             html=html,
                             message_id=message_id,
@@ -816,7 +842,7 @@ def send_batch(
                             email=row.email,
                             company_id=row.company_id or "",
                             contact_name=row.contact_name or "",
-                            subject_base=subject,
+                            subject_base=letter_subject,
                             outbox_id=row.id,
                             pack_id=pack_id,
                         )
@@ -825,7 +851,7 @@ def send_batch(
                                 int(lead["id"]),
                                 step=1,
                                 outbox_id=row.id,
-                                subject_base=subject,
+                                subject_base=letter_subject,
                                 timezone_name=_recipient_timezone(
                                     row.company_id or "", settings
                                 ),
