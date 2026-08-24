@@ -36,7 +36,9 @@ extras/quantum-outreach/
 | Warm-up | on | Effective daily cap ramps 3→15 (never 296/day) |
 | Daily limit | 15 | `OUTREACH_DAILY_LIMIT` — hard SMTP ceiling |
 | First-touch pace | auto | `POST /api/modules/sequences/pace-queue` spreads backlog via `not_before` |
-| Domain cap | 2/day | Max sends per recipient domain |
+| Domain cap (corporate) | 2/day | Unique @company.ru domains |
+| Domain cap (shared ISP) | = daily limit | mail.ru / yandex / gmail — иначе рассылка встанет |
+| Company cap | 1/day | Max one letter per company |
 | Delay jitter | 60–180s | Between messages |
 | Suppression | empty | unsub / bounce / manual |
 | Send window | optional | Schedule module |

@@ -50,6 +50,25 @@ def test_resolve_variant_dict():
     assert out["combinations"] == 49
 
 
+def test_save_and_reload_bundle(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    # reload path module constant used by letter_variants
+    import content.letter_variants as lv
+
+    monkeypatch.setattr(lv, "_variants_dir", lambda: tmp_path / "letter_variants")
+    saved = lv.save_bundle(
+        "lombards",
+        subjects=["Тема A", "Тема B"],
+        bodies=["{greeting}\n\nТекст A\n\n{signature}", "{greeting}\n\nТекст B\n\n{signature}"],
+    )
+    assert saved["source"] == "data_dir"
+    assert len(saved["subjects"]) == 2
+    loaded = lv.load_bundle("lombards")
+    assert loaded["subjects"][0] == "Тема A"
+    picked = lv.pick_first_touch_variant(email="x@y.ru", pack_id="lombards")
+    assert picked["subject"] in ("Тема A", "Тема B")
+
+
 def test_variants_can_disable(monkeypatch):
     monkeypatch.setenv("LETTER_VARIANTS_ENABLED", "false")
     assert variants_enabled() is False

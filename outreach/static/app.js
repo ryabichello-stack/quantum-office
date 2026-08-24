@@ -267,6 +267,122 @@
   let packsCache = [];
   let selectedPackId = "";
   /** @type {Array<{step:number,delay_days:number,label:string,subject:string,plain:string,html:string,attach_presentation:boolean}>} */
+  let letterVariantSubjects = [];
+  let letterVariantBodies = [];
+
+  function collectLetterVariantsFromDom() {
+    const subjects = Array.from(document.querySelectorAll("[data-lv-subject]")).map((el) =>
+      (el.value || "").trim()
+    );
+    const bodies = Array.from(document.querySelectorAll("[data-lv-body]")).map((el) =>
+      (el.value || "").trim()
+    );
+    letterVariantSubjects = subjects.filter(Boolean);
+    letterVariantBodies = bodies.filter(Boolean);
+    return { subjects: letterVariantSubjects, bodies: letterVariantBodies };
+  }
+
+  function renderLetterVariantEditors() {
+    const subBox = $("letterVariantSubjects");
+    const bodyBox = $("letterVariantBodies");
+    if (subBox) {
+      subBox.innerHTML = (letterVariantSubjects.length ? letterVariantSubjects : [""])
+        .map(
+          (s, i) => `<div class="letter-variant-row">
+            <header><span>Тема ${i + 1}</span>
+              <button type="button" class="btn-quiet small" data-lv-del-sub="${i}">×</button></header>
+            <input type="text" data-lv-subject value="${escapeHtml(s)}" />
+          </div>`
+        )
+        .join("");
+      subBox.querySelectorAll("[data-lv-del-sub]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          collectLetterVariantsFromDom();
+          const i = Number(btn.getAttribute("data-lv-del-sub"));
+          letterVariantSubjects.splice(i, 1);
+          if (!letterVariantSubjects.length) letterVariantSubjects = [""];
+          renderLetterVariantEditors();
+        });
+      });
+    }
+    if (bodyBox) {
+      bodyBox.innerHTML = (letterVariantBodies.length ? letterVariantBodies : [""])
+        .map(
+          (b, i) => `<div class="letter-variant-row">
+            <header><span>Текст ${i + 1}</span>
+              <button type="button" class="btn-quiet small" data-lv-del-body="${i}">×</button></header>
+            <textarea data-lv-body rows="8">${escapeHtml(b)}</textarea>
+          </div>`
+        )
+        .join("");
+      bodyBox.querySelectorAll("[data-lv-del-body]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          collectLetterVariantsFromDom();
+          const i = Number(btn.getAttribute("data-lv-del-body"));
+          letterVariantBodies.splice(i, 1);
+          if (!letterVariantBodies.length) letterVariantBodies = [""];
+          renderLetterVariantEditors();
+        });
+      });
+    }
+  }
+
+  async function loadLetterVariants() {
+    const pack = selectedPackId || (settingsCache && settingsCache.OUTREACH_SEQUENCE_PACK) || "lombards";
+    const email =
+      (($("letterVariantPreviewEmail") && $("letterVariantPreviewEmail").value) || "").trim() ||
+      "demo@mail.ru";
+    if ($("letterVariantPreviewEmail") && !$("letterVariantPreviewEmail").value) {
+      $("letterVariantPreviewEmail").value = email;
+    }
+    const data = await api(
+      `/api/letter-variants?pack_id=${encodeURIComponent(pack)}&email=${encodeURIComponent(email)}`
+    );
+    letterVariantSubjects = data.subjects || [];
+    letterVariantBodies = data.bodies || [];
+    renderLetterVariantEditors();
+    if ($("letterVariantsMeta")) {
+      $("letterVariantsMeta").textContent =
+        `${letterVariantSubjects.length} тем × ${letterVariantBodies.length} текстов = ${
+          data.combinations || letterVariantSubjects.length * letterVariantBodies.length
+        } комбинаций · источник: ${data.source || "—"} · ${data.enabled === false ? "выкл" : "вкл"}`;
+    }
+    if ($("letterVariantPicked")) {
+      const p = data.picked || {};
+      $("letterVariantPicked").textContent = p.subject
+        ? `combo ${p.combo}\nТема: ${p.subject}\n\n${(p.plain || "").slice(0, 500)}…`
+        : "Варианты выключены или пусты";
+    }
+    return data;
+  }
+
+  async function saveLetterVariants() {
+    collectLetterVariantsFromDom();
+    const pack = selectedPackId || (settingsCache && settingsCache.OUTREACH_SEQUENCE_PACK) || "lombards";
+    const data = await api("/api/letter-variants", {
+      method: "PUT",
+      body: JSON.stringify({
+        pack_id: pack,
+        subjects: letterVariantSubjects,
+        bodies: letterVariantBodies,
+      }),
+    });
+    if ($("letterVariantsLog")) $("letterVariantsLog").textContent = JSON.stringify(data, null, 2);
+    await loadLetterVariants();
+    return data;
+  }
+
+  async function resetLetterVariants() {
+    const pack = selectedPackId || (settingsCache && settingsCache.OUTREACH_SEQUENCE_PACK) || "lombards";
+    const data = await api(`/api/letter-variants/reset?pack_id=${encodeURIComponent(pack)}`, {
+      method: "POST",
+      body: "{}",
+    });
+    if ($("letterVariantsLog")) $("letterVariantsLog").textContent = JSON.stringify(data, null, 2);
+    await loadLetterVariants();
+    return data;
+  }
+
   let letterChain = [];
   let activeLetterIdx = 0;
   let letterDirty = false;
@@ -441,6 +557,7 @@
           await previewPack(active, true);
         }
       }
+      loadLetterVariants().catch(() => {});
     } catch (err) {
       if ($("packCards")) $("packCards").textContent = String(err.message || err);
     }
@@ -1336,6 +1453,12 @@
 
     $("warmupEnabled").checked = String(s.WARMUP_ENABLED || "true").toLowerCase() !== "false";
     $("domainCap").value = s.DOMAIN_DAILY_CAP || 2;
+    if ($("domainSharedCap")) {
+      $("domainSharedCap").value =
+        s.DOMAIN_SHARED_DAILY_CAP != null && s.DOMAIN_SHARED_DAILY_CAP !== ""
+          ? s.DOMAIN_SHARED_DAILY_CAP
+          : 0;
+    }
     $("plusReply").checked = String(s.TRACKING_PLUS_REPLY_TO || "false").toLowerCase() === "true" || s.TRACKING_PLUS_REPLY_TO === "1";
     $("openTracking").checked = String(s.OPEN_TRACKING_ENABLED || "true").toLowerCase() !== "false";
     if ($("letterAttachPdf")) {
@@ -4303,11 +4426,44 @@
       if (ev.key === "Escape" && peel && peel.classList.contains("is-open")) closeCompanyCard();
     });
 
+    if ($("letterVariantsSave")) {
+      $("letterVariantsSave").addEventListener("click", () => saveLetterVariants().catch(logAction));
+    }
+    if ($("letterVariantsReload")) {
+      $("letterVariantsReload").addEventListener("click", () => loadLetterVariants().catch(logAction));
+    }
+    if ($("letterVariantsReset")) {
+      $("letterVariantsReset").addEventListener("click", () => {
+        if (confirm("Сбросить темы и тексты к встроенным 7×7?")) {
+          resetLetterVariants().catch(logAction);
+        }
+      });
+    }
+    if ($("letterVariantAddSubject")) {
+      $("letterVariantAddSubject").addEventListener("click", () => {
+        collectLetterVariantsFromDom();
+        letterVariantSubjects.push("");
+        renderLetterVariantEditors();
+      });
+    }
+    if ($("letterVariantAddBody")) {
+      $("letterVariantAddBody").addEventListener("click", () => {
+        collectLetterVariantsFromDom();
+        letterVariantBodies.push("{greeting}\n\n\n\n{signature}");
+        renderLetterVariantEditors();
+      });
+    }
+    if ($("letterVariantPreviewEmail")) {
+      $("letterVariantPreviewEmail").addEventListener("change", () =>
+        loadLetterVariants().catch(logAction)
+      );
+    }
     $("antibanSave").addEventListener("click", async () => {
       try {
         const payload = {
           WARMUP_ENABLED: $("warmupEnabled").checked ? "true" : "false",
           DOMAIN_DAILY_CAP: String($("domainCap").value),
+          DOMAIN_SHARED_DAILY_CAP: String(($("domainSharedCap") && $("domainSharedCap").value) || "0"),
           TRACKING_PLUS_REPLY_TO: $("plusReply").checked ? "true" : "false",
           OPEN_TRACKING_ENABLED: $("openTracking").checked ? "true" : "false",
         };

@@ -26,6 +26,41 @@ from modules.deliverability.bounce import BounceClass, classify_bounce
 
 logger = logging.getLogger("ava-outreach.deliverability")
 
+# Consumer ISPs: half a B2B list may be @mail.ru — do not treat like corporate domain.
+SHARED_MAILBOX_DOMAINS = frozenset(
+    {
+        "mail.ru",
+        "inbox.ru",
+        "list.ru",
+        "bk.ru",
+        "internet.ru",
+        "xmail.ru",
+        "yandex.ru",
+        "yandex.com",
+        "ya.ru",
+        "gmail.com",
+        "googlemail.com",
+        "outlook.com",
+        "hotmail.com",
+        "live.com",
+        "icloud.com",
+        "me.com",
+        "rambler.ru",
+        "ro.ru",
+        "vk.com",
+        "ok.ru",
+    }
+)
+
+
+def is_shared_mailbox_domain(domain: str) -> bool:
+    d = (domain or "").strip().lower()
+    if not d:
+        return False
+    if d in SHARED_MAILBOX_DOMAINS:
+        return True
+    return any(d.endswith("." + root) for root in ("mail.ru", "yandex.ru", "yandex.com"))
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -439,10 +474,19 @@ class DeliverabilityStore:
         effective = self.effective_daily_limit(settings, configured_daily_limit)
         domain = self.domain_of(email)
         domain_n = self.domain_count_today(domain)
-        domain_cap = 2
+        # Corporate domains: keep low. Shared ISPs (mail.ru…): allow up to daily limit.
+        corp_cap = 2
+        shared_cap = effective
+        if settings is not None:
+            corp_cap = settings.get_int("DOMAIN_DAILY_CAP", 2)
+            shared_override = settings.get_int("DOMAIN_SHARED_DAILY_CAP", 0)
+            if shared_override and shared_override > 0:
+                shared_cap = shared_override
+            else:
+                shared_cap = effective
+        domain_cap = shared_cap if is_shared_mailbox_domain(domain) else corp_cap
         company_cap = 1
         if settings is not None:
-            domain_cap = settings.get_int("DOMAIN_DAILY_CAP", 2)
             company_cap = settings.get_int("COMPANY_DAILY_CAP", 1)
 
         paused, pause_reason = self.is_paused()
@@ -516,6 +560,11 @@ class DeliverabilityStore:
             "effective_daily_limit": self.effective_daily_limit(settings, configured),
             "configured_daily_limit": configured,
             "domain_daily_cap": settings.get_int("DOMAIN_DAILY_CAP", 2) if settings else 2,
+            "domain_shared_daily_cap": (
+                settings.get_int("DOMAIN_SHARED_DAILY_CAP", 0) if settings else 0
+            )
+            or (self.effective_daily_limit(settings, configured) if settings else configured),
+            "shared_mailbox_note": "mail.ru/yandex/gmail… используют shared cap (= дневной лимит)",
             "company_daily_cap": settings.get_int("COMPANY_DAILY_CAP", 1) if settings else 1,
             "oneshot_today": self.oneshot_today(),
             "oneshot_daily_limit": oneshot_limit,

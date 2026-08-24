@@ -1492,31 +1492,58 @@ def api_pack_get(pack_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/letter-variants", dependencies=[Depends(require_ui_auth)])
-def api_letter_variants(pack_id: str = "lombards", email: str = "demo@example.com") -> dict[str, Any]:
-    """Preview 7×7 first-touch matrix and the combo for a sample email."""
+def api_letter_variants(
+    pack_id: str = "lombards",
+    email: str = "demo@example.com",
+) -> dict[str, Any]:
+    """Full variant matrix for UI edit + sample pick for an email."""
     from content.letter_variants import (
-        PACK_VARIANTS,
+        load_bundle,
         pick_first_touch_variant,
         variant_stats,
         variants_enabled,
     )
 
-    pid = (pack_id or "lombards").strip()
-    bundle = PACK_VARIANTS.get(pid) or PACK_VARIANTS.get("lombards") or {}
-    picked = pick_first_touch_variant(email=email, company_id=email, pack_id=pid)
+    pid = (pack_id or "lombards").strip() or "lombards"
+    bundle = load_bundle(pid)
+    picked = pick_first_touch_variant(email=email, company_id=email, pack_id=pid, settings=_rt())
     return {
         "ok": True,
         "enabled": variants_enabled(_rt()),
         "stats": variant_stats(),
         "pack_id": pid,
         "subjects": bundle.get("subjects") or [],
-        "bodies_preview": [
-            (b.split("\n\n", 1)[0][:120] + "…") for b in (bundle.get("bodies") or [])
-        ],
+        "bodies": bundle.get("bodies") or [],
+        "source": bundle.get("source"),
+        "combinations": bundle.get("combinations"),
         "sample_email": email,
         "picked": picked,
-        "note": "На отправке тема и текст выбираются стабильно по email (49 комбинаций).",
+        "note": "Редактируйте темы и тексты ниже; на отправке выбирается пара по email (стабильно).",
     }
+
+
+class LetterVariantsBody(BaseModel):
+    pack_id: str = "lombards"
+    subjects: list[str] = Field(default_factory=list)
+    bodies: list[str] = Field(default_factory=list)
+
+
+@app.put("/api/letter-variants", dependencies=[Depends(require_ui_auth)])
+def api_letter_variants_save(body: LetterVariantsBody) -> dict[str, Any]:
+    from content.letter_variants import save_bundle
+
+    try:
+        saved = save_bundle(body.pack_id, subjects=body.subjects, bodies=body.bodies)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "bundle": saved}
+
+
+@app.post("/api/letter-variants/reset", dependencies=[Depends(require_ui_auth)])
+def api_letter_variants_reset(pack_id: str = "lombards") -> dict[str, Any]:
+    from content.letter_variants import reset_bundle
+
+    return {"ok": True, "bundle": reset_bundle(pack_id)}
 
 
 @app.put("/api/packs/{pack_id}/letters", dependencies=[Depends(require_ui_auth)])

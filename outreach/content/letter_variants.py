@@ -8,7 +8,10 @@ across the list it looks random.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
+import re
+from pathlib import Path
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -123,10 +126,86 @@ BODIES_LOMBARDS: list[str] = [
 ]
 
 PACK_VARIANTS: dict[str, dict[str, list[str]]] = {
-    "lombards": {"subjects": SUBJECTS_LOMBARDS, "bodies": BODIES_LOMBARDS},
-    # Aliases / other industry packs can reuse lombards wording until dedicated sets exist
-    "mfo": {"subjects": SUBJECTS_LOMBARDS, "bodies": BODIES_LOMBARDS},
+    "lombards": {"subjects": list(SUBJECTS_LOMBARDS), "bodies": list(BODIES_LOMBARDS)},
+    "mfo": {"subjects": list(SUBJECTS_LOMBARDS), "bodies": list(BODIES_LOMBARDS)},
 }
+
+TARGET_N = 7
+
+
+def _variants_dir() -> Path:
+    from core.paths import DATA_DIR
+
+    return Path(DATA_DIR) / "letter_variants"
+
+
+def _pack_path(pack_id: str) -> Path:
+    safe = re.sub(r"[^a-zA-Z0-9_-]+", "_", (pack_id or "lombards").strip()) or "lombards"
+    return _variants_dir() / f"{safe}.json"
+
+
+def _builtin_bundle(pack_id: str) -> dict[str, list[str]]:
+    base = PACK_VARIANTS.get(pack_id) or PACK_VARIANTS["lombards"]
+    return {
+        "subjects": list(base["subjects"]),
+        "bodies": list(base["bodies"]),
+    }
+
+
+def load_bundle(pack_id: str) -> dict[str, Any]:
+    """Load editable variants (DATA_DIR override) or builtin defaults."""
+    pid = (pack_id or "lombards").strip() or "lombards"
+    path = _pack_path(pid)
+    source = "builtin"
+    subjects: list[str] = []
+    bodies: list[str] = []
+    if path.is_file():
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            subjects = [str(s).strip() for s in (raw.get("subjects") or []) if str(s).strip()]
+            bodies = [str(b).strip() for b in (raw.get("bodies") or []) if str(b).strip()]
+            source = "data_dir"
+        except (OSError, json.JSONDecodeError):
+            subjects, bodies = [], []
+    if len(subjects) < 1 or len(bodies) < 1:
+        builtin = _builtin_bundle(pid)
+        subjects = builtin["subjects"]
+        bodies = builtin["bodies"]
+        source = "builtin"
+    return {
+        "pack_id": pid,
+        "subjects": subjects[:12],
+        "bodies": bodies[:12],
+        "source": source,
+        "path": str(path),
+        "combinations": len(subjects) * len(bodies),
+    }
+
+
+def save_bundle(pack_id: str, *, subjects: list[str], bodies: list[str]) -> dict[str, Any]:
+    """Persist variants to DATA_DIR (survives deploy of code defaults)."""
+    pid = (pack_id or "lombards").strip() or "lombards"
+    subs = [str(s).strip() for s in subjects if str(s).strip()][:12]
+    bods = [str(b).strip() for b in bodies if str(b).strip()][:12]
+    if len(subs) < 1 or len(bods) < 1:
+        raise ValueError("need_at_least_one_subject_and_body")
+    for i, b in enumerate(bods):
+        if "{greeting}" not in b:
+            bods[i] = "{greeting}\n\n" + b
+        if "{signature}" not in b:
+            bods[i] = bods[i].rstrip() + "\n\n{signature}"
+    path = _pack_path(pid)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"pack_id": pid, "subjects": subs, "bodies": bods}
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return load_bundle(pid)
+
+
+def reset_bundle(pack_id: str) -> dict[str, Any]:
+    path = _pack_path(pack_id)
+    if path.is_file():
+        path.unlink()
+    return load_bundle(pack_id)
 
 
 def variants_enabled(settings: Any = None) -> bool:
@@ -180,9 +259,7 @@ def pick_first_touch_variant(
     if not variants_enabled(settings):
         return None
     pid = resolve_pack_id(settings, pack_id)
-    bundle = PACK_VARIANTS.get(pid) or PACK_VARIANTS.get("lombards")
-    if not bundle:
-        return None
+    bundle = load_bundle(pid)
     subjects = bundle["subjects"]
     bodies = bundle["bodies"]
     si, bi = pick_indices(
@@ -199,13 +276,19 @@ def pick_first_touch_variant(
         "combinations": len(subjects) * len(bodies),
         "subject": subjects[si],
         "plain": bodies[bi],
-        "html": "",  # render_cooperation builds HTML from plain
+        "html": "",
+        "source": bundle.get("source"),
     }
 
 
 def variant_stats() -> dict[str, Any]:
     out: dict[str, Any] = {}
-    for pid, bundle in PACK_VARIANTS.items():
-        ns, nb = len(bundle["subjects"]), len(bundle["bodies"])
-        out[pid] = {"subjects": ns, "bodies": nb, "combinations": ns * nb}
+    for pid in sorted(set(list(PACK_VARIANTS.keys()) + ["lombards"])):
+        b = load_bundle(pid)
+        out[pid] = {
+            "subjects": len(b["subjects"]),
+            "bodies": len(b["bodies"]),
+            "combinations": b["combinations"],
+            "source": b["source"],
+        }
     return out
