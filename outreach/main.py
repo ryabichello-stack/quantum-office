@@ -922,6 +922,22 @@ def api_dashboard() -> dict[str, Any]:
     return _status_payload()
 
 
+def _first_touch_in_window_count(rt: Any, store: Any, *, sample: int = 80) -> int:
+    """How many pending first-touch rows are inside a local send slot right now."""
+    try:
+        from geo_schedule import window_status
+
+        n = 0
+        for row in store.list_pending(sample):
+            tz = (getattr(row, "timezone", None) or "Europe/Moscow") or "Europe/Moscow"
+            win = window_status(str(tz), settings=rt)
+            if win.get("in_window"):
+                n += 1
+        return n
+    except Exception:  # noqa: BLE001
+        return 0
+
+
 @app.get("/api/ops/summary", dependencies=[Depends(require_ui_auth)])
 def api_ops_summary() -> dict[str, Any]:
     """Operator alerts + prioritized next actions."""
@@ -942,6 +958,7 @@ def api_ops_summary() -> dict[str, Any]:
             "due": len(seq.list_due(50)),
             "upcoming": len(seq.list_upcoming(50)),
             "pending_first": int((store.counts() or {}).get("pending") or 0),
+            "first_touch_in_window": _first_touch_in_window_count(rt, store),
         },
         outbox_counts=(store.counts() or {}),
     )

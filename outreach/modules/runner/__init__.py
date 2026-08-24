@@ -157,19 +157,28 @@ class CampaignRunner(threading.Thread):
                         continue
                     batch = max(1, min(10, self._settings_int("SCHEDULE_BATCH_SIZE", 1)))
                     result = self._send_fn(batch)
+                    processed = int(result.get("processed") or 0)
+                    deferred = int(result.get("deferred_window_count") or 0)
                     self.last_tick = {
                         "at": datetime.utcnow().isoformat() + "Z",
                         "result": {
                             "ok": result.get("ok"),
-                            "processed": result.get("processed"),
+                            "processed": processed,
                             "error": result.get("error"),
                             "sent_today": result.get("sent_today"),
                             "effective_daily_limit": result.get("effective_daily_limit"),
+                            "deferred_window_count": deferred,
+                            "note": result.get("note")
+                            or (
+                                "outside local send windows — waiting next slot"
+                                if processed == 0 and deferred > 0
+                                else None
+                            ),
                         },
                     }
                     logger.info("campaign tick: %s", self.last_tick)
                     # If daily limit / nothing pending — back off
-                    if not result.get("ok") or int(result.get("processed") or 0) == 0:
+                    if not result.get("ok") or processed == 0:
                         self._shutdown.wait(
                             max(30, self._settings_int("SCHEDULE_TICK_SECONDS", 300))
                         )
