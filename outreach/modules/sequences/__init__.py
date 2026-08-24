@@ -593,7 +593,7 @@ class SequenceStore:
             due_n = sum(1 for x in items if x.get("due"))
             total_items += len(items)
             total_due += due_n
-            preview_limit = 8
+            preview_limit = 12
             day_rows.append(
                 {
                     "date": day,

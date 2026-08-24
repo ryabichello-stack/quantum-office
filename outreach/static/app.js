@@ -23,10 +23,11 @@
     studio: "Контент, соцсети, Radar и видео — с ручным утверждением",
     settings: "Локальные окна, лимиты, anti-ban",
   };
-  const MORE_TABS = new Set(["variants", "report", "clients"]);
+  const MORE_TABS = new Set(["variants", "clients"]);
 
   let outboxItemsCache = [];
   let outboxTotalCache = 0;
+  let queueLetterCache = {};
   let lastBatchMeta = { deferred_window_count: null, at: null };
   let accessPrincipal = null;
   let usageSnapshot = null;
@@ -535,13 +536,19 @@
     box.innerHTML = packsCache
       .map((p) => {
         const on = p.id === activeId ? "active" : "";
-        const draft = p.has_draft ? " · черновик" : "";
+        const draft = p.has_draft ? "черновик" : "";
+        const steps = p.steps || 3;
         return `<label class="pack-card ${on}">
           <input type="radio" name="packId" value="${escapeHtml(p.id)}" ${p.id === activeId ? "checked" : ""} />
-          <span>
-            <strong>${escapeHtml(p.title)}</strong>
-            <small>${escapeHtml(p.short || "")}${draft}</small>
-            <em>${escapeHtml(p.audience || "")} · ${p.steps || 3} письма</em>
+          <span class="pack-card-body">
+            <span class="pack-card-kicker">Отрасль</span>
+            <strong class="pack-card-title">${escapeHtml(p.title)}</strong>
+            <span class="pack-card-desc">${escapeHtml(p.short || "Цепочка писем для этой отрасли")}</span>
+            <span class="pack-card-meta">
+              <span class="pack-chip">${steps} ${steps === 1 ? "письмо" : "писем"}</span>
+              ${p.audience ? `<span class="pack-chip muted">${escapeHtml(p.audience)}</span>` : ""}
+              ${draft ? `<span class="pack-chip draft">${draft}</span>` : ""}
+            </span>
           </span>
         </label>`;
       })
@@ -986,7 +993,10 @@
         .filter(Boolean)
         .join("\n");
     }
-    if (htmlBox) htmlBox.innerHTML = "";
+    if (htmlBox) {
+        if (htmlBox.tagName === "IFRAME") htmlBox.srcdoc = "";
+        else htmlBox.innerHTML = "";
+      }
     try {
       const data = await loadDeskLetterPreview(item);
       if (meta) {
@@ -998,6 +1008,7 @@
       if (plain) plain.textContent = data.plain || "Текст недоступен";
       if (htmlBox) {
         if (data.html) paintPreviewHtml(htmlBox, data.html);
+        else if (htmlBox.tagName === "IFRAME") htmlBox.srcdoc = "";
         else htmlBox.innerHTML = "";
       }
     } catch (e) {
@@ -2273,6 +2284,28 @@
       .join("");
   }
 
+  function inboxClassLabel(cls) {
+    const c = String(cls || "").toLowerCase();
+    const labels = {
+      positive: "Интерес",
+      positive_interest: "Интерес",
+      human: "Человек",
+      human_unclassified: "Разбор",
+      interested: "Интерес",
+      negative: "Отказ",
+      unsub: "Отписка",
+      unsubscribe: "Отписка",
+      bounce: "Bounce",
+      ooo: "Автоответ",
+      out_of_office: "Автоответ",
+      auto: "Авто",
+      automatic: "Авто",
+      forward: "Переслано",
+      forwarded: "Переслано",
+    };
+    return labels[c] || cls || "—";
+  }
+
   function inboxClassBadge(cls) {
     const c = String(cls || "").toLowerCase();
     const map = {
@@ -2293,7 +2326,38 @@
       forwarded: "warn",
     };
     const tone = map[c] || "muted";
-    return `<span class="eng ${tone}">${escapeHtml(cls || "—")}</span>`;
+    return `<span class="eng ${tone}">${escapeHtml(inboxClassLabel(cls))}</span>`;
+  }
+
+  function inboxClassTone(cls) {
+    const c = String(cls || "").toLowerCase();
+    if (["positive", "positive_interest", "human", "human_unclassified", "interested"].includes(c)) return "tone-ok";
+    if (["negative", "unsub", "unsubscribe", "bounce"].includes(c)) return "tone-bad";
+    if (["ooo", "out_of_office", "forward", "forwarded"].includes(c)) return "tone-warn";
+    return "";
+  }
+
+  function toQueueLetterItem(r, kind) {
+    const isFollow = kind === "followup" || r.kind === "followup" || Number(r.next_step || 0) > 1;
+    return {
+      kind: isFollow ? "followup" : "first",
+      email: r.email || "",
+      contact_name: r.contact_name || r.director_greeting || "",
+      company_title: r.company_title || "",
+      company_id: r.company_id,
+      city: r.city || "",
+      timezone: r.timezone || r.timezone_raw || "",
+      pack_id: r.pack_id,
+      next_step: r.next_step,
+      next_label: r.next_label || (isFollow ? "follow-up" : "первое письмо"),
+      next_subject: r.next_subject || r.subject || "",
+    };
+  }
+
+  function rememberQueueLetter(key, item) {
+    if (!key || !item) return key;
+    queueLetterCache[key] = item;
+    return key;
   }
 
   function filterOutboxItems(items) {
@@ -2366,7 +2430,7 @@
     const outWin = items.length - inWin;
     const statusVal = ($("outboxStatus") && $("outboxStatus").value) || "";
     if ($("outboxMeta")) {
-      let meta = `Показано ${filtered.length} из ${items.length} (всего ${total})`;
+      let meta = `Показано ${filtered.length} из ${items.length} (всего ${total}) · клик по строке — открыть письмо`;
       if (!statusVal || statusVal === "pending") {
         meta += ` · в окне: ${inWin} · вне окна: ${outWin}`;
       }
@@ -2378,8 +2442,9 @@
     if ($("outboxBody")) {
       $("outboxBody").innerHTML = filtered.length
         ? filtered
-            .map(
-              (r) => `<tr>
+            .map((r) => {
+              const key = rememberQueueLetter(`outbox-${r.id}`, toQueueLetterItem(r, "first"));
+              return `<tr class="queue-clickable" data-queue-letter="${escapeHtml(key)}" tabindex="0">
           <td class="cell-check">${
             r.status === "pending"
               ? `<input type="checkbox" class="outbox-pick" data-id="${r.id}" />`
@@ -2395,8 +2460,8 @@
           <td class="cell-narrow">${escapeHtml(r.status)}</td>
           <td class="cell-narrow">${escapeHtml(r.sent_at || "")}</td>
           <td class="cell-actions">${outboxRowActions(r)}</td>
-        </tr>`
-            )
+        </tr>`;
+            })
             .join("")
         : `<tr><td colspan="11" class="muted">Нет строк по фильтру</td></tr>`;
     }
@@ -2584,6 +2649,7 @@
     const status = statusEl ? statusEl.value : "pending";
 
     let queue = { first_touch: [], followups_due: [], followups_upcoming: [], counts: {}, send_order_ru: "" };
+    queueLetterCache = {};
     try {
       queue = await api("/api/modules/sequences/queue?limit=100");
     } catch (e) {
@@ -2634,8 +2700,12 @@
       const due = queue.followups_due || [];
       $("queueDueBody").innerHTML = due.length
         ? due
-            .map(
-              (r) => `<tr>
+            .map((r) => {
+              const key = rememberQueueLetter(
+                `due-${r.email || ""}-${r.next_step || ""}-${r.next_action_at || ""}`,
+                toQueueLetterItem(r, "followup")
+              );
+              return `<tr class="queue-clickable" data-queue-letter="${escapeHtml(key)}" tabindex="0">
             <td class="cell-narrow">${escapeHtml(r.next_step || "—")}</td>
             <td class="cell-narrow">${fmtWhen(r.next_action_at)}</td>
             <td class="cell-wide">${escapeHtml(r.contact_name || "—")}<br><span class="muted">${escapeHtml(r.email || "")}</span></td>
@@ -2643,8 +2713,8 @@
             <td class="cell-tz">${fmtTimezone(r)}</td>
             <td class="cell-win">${fmtWindow(r)}</td>
             <td class="cell-wide">${escapeHtml(r.next_subject || "")}</td>
-          </tr>`
-            )
+          </tr>`;
+            })
             .join("")
         : `<tr><td colspan="7" class="muted">Нет due follow-up — сегодня уйдут только новые первые письма (если Старт).</td></tr>`;
     }
@@ -2653,8 +2723,12 @@
       const up = queue.followups_upcoming || [];
       $("queueUpcomingBody").innerHTML = up.length
         ? up
-            .map(
-              (r) => `<tr>
+            .map((r) => {
+              const key = rememberQueueLetter(
+                `up-${r.email || ""}-${r.next_step || ""}-${r.next_action_at || ""}`,
+                toQueueLetterItem(r, "followup")
+              );
+              return `<tr class="queue-clickable" data-queue-letter="${escapeHtml(key)}" tabindex="0">
             <td>${r.next_step || "—"}</td>
             <td>${fmtWhen(r.next_action_at)}</td>
             <td>${escapeHtml(r.contact_name || "")}<br><span class="muted">${escapeHtml(r.email || "")}</span></td>
@@ -2662,8 +2736,8 @@
             <td class="cell-tz">${fmtTimezone(r)}</td>
             <td class="cell-win">${fmtWindow(r)}</td>
             <td>${escapeHtml(r.next_label || "")}</td>
-          </tr>`
-            )
+          </tr>`;
+            })
             .join("")
         : `<tr><td colspan="7" class="muted">Пока нет запланированных следующих шагов.</td></tr>`;
     }
@@ -2697,20 +2771,76 @@
       .join("");
   }
 
+  function currentInboxUnprocessedOnly() {
+    const active = document.querySelector(".sub-tab.active[data-inbox-filter]");
+    if (active && active.dataset.inboxFilter === "all") return false;
+    return true;
+  }
+
+  function fmtInboxWhen(iso) {
+    if (!iso) return "—";
+    try {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return String(iso);
+      return d.toLocaleString("ru-RU", {
+        timeZone: "Europe/Moscow",
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch (_) {
+      return String(iso);
+    }
+  }
+
   async function loadInbox(unprocessedOnly = true) {
     const q = unprocessedOnly ? "unprocessed_only=true" : "unprocessed_only=false";
     const data = await api("/api/modules/replies/inbox?" + q + "&limit=80");
     const c = data.counts || {};
-    $("inboxStats").innerHTML = `
+    if ($("inboxStats")) {
+      $("inboxStats").innerHTML = `
       <div class="stat"><div class="n">${c.total || 0}</div><div class="l">Всего</div></div>
-      <div class="stat"><div class="n">${c.unprocessed || 0}</div><div class="l">Необработано</div></div>`;
-    $("inboxBody").innerHTML = (data.items || [])
-      .map((r) => {
-        const btn =
-          r.processed == 0
-            ? `<button type="button" data-inbox-id="${r.id}">Готово</button>`
-            : "";
-        return `<tr class="inbox-row" data-inbox-open="${r.id}" style="cursor:pointer">
+      <div class="stat"><div class="n">${c.unprocessed || 0}</div><div class="l">Ждут разбора</div></div>`;
+    }
+    const items = data.items || [];
+    if ($("inboxCardList")) {
+      $("inboxCardList").innerHTML = items.length
+        ? items
+            .map((r) => {
+              const open = Number(r.processed || 0) === 0;
+              const tone = inboxClassTone(r.classification);
+              const label = escapeHtml(inboxClassLabel(r.classification));
+              const snippet = String(r.snippet || r.preview || r.body_preview || r.classification_reason || "")
+                .replace(/\s+/g, " ")
+                .trim();
+              const doneBtn = open
+                ? `<button type="button" class="small btn-quiet inbox-mail-done" data-inbox-id="${r.id}">Готово</button>`
+                : "";
+              return `<div class="inbox-mail-card ${open ? "is-open" : "is-done"}" data-inbox-open="${r.id}" role="button" tabindex="0">
+          <span class="inbox-mail-badge ${tone}">${label}</span>
+          <span class="inbox-mail-main">
+            <span class="inbox-mail-from">${escapeHtml(r.from_email || r.from_name || "—")}</span>
+            <span class="inbox-mail-subject">${escapeHtml(r.subject || "Без темы")}</span>
+            ${snippet ? `<span class="inbox-mail-snippet">${escapeHtml(snippet)}</span>` : ""}
+            ${doneBtn}
+          </span>
+          <span class="inbox-mail-when">${escapeHtml(fmtInboxWhen(r.created_at))}</span>
+        </div>`;
+            })
+            .join("")
+        : `<p class="muted tight">${
+            unprocessedOnly ? "Нет писем, ждущих разбора." : "Входящих пока нет."
+          }</p>`;
+    }
+    if ($("inboxBody")) {
+      $("inboxBody").innerHTML = items
+        .map((r) => {
+          const btn =
+            r.processed == 0
+              ? `<button type="button" data-inbox-id="${r.id}">Готово</button>`
+              : "";
+          return `<tr class="inbox-row" data-inbox-open="${r.id}" style="cursor:pointer">
           <td>${escapeHtml(r.created_at || "")}</td>
           <td>${escapeHtml(r.from_email || "")}</td>
           <td>${inboxClassBadge(r.classification)} <span class="muted">(${Number(r.confidence || 0).toFixed(2)})</span></td>
@@ -2718,8 +2848,9 @@
           <td>${companyLink(r.company_id, r.company_id)}</td>
           <td>${btn}</td>
         </tr>`;
-      })
-      .join("");
+        })
+        .join("");
+    }
   }
 
   function activeTabName() {
@@ -3832,7 +3963,7 @@
         } else {
           if (classified) classified.hidden = false;
           if (replies) replies.hidden = true;
-          loadInbox(true).catch(logAction);
+          loadInbox(currentInboxUnprocessedOnly()).catch(logAction);
         }
       });
     });
@@ -3933,29 +4064,50 @@
   function paintPreviewHtml(box, html) {
     if (!box) return;
     const raw = String(html || "").trim();
+    const isFrame = box.tagName === "IFRAME";
     if (!raw) {
-      box.innerHTML =
-        "<p style='margin:0;color:#5a6b78;font:14px/1.45 Manrope,Segoe UI,sans-serif'>Нет HTML-версии — нажмите «Превью» ещё раз или примените отрасль.</p>";
+      const empty =
+        "<!doctype html><html><head><meta charset='utf-8'></head><body style='margin:0;padding:1rem;font:14px/1.45 Manrope,Segoe UI,sans-serif;color:#5a6e7a'>Нет HTML — нажмите «Превью» или примените отрасль.</body></html>";
+      if (isFrame) {
+        box.srcdoc = empty;
+      } else {
+        box.innerHTML =
+          "<p style='margin:0;color:#5a6b78;font:14px/1.45 Manrope,Segoe UI,sans-serif'>Нет HTML-версии — нажмите «Превью» ещё раз или примените отрасль.</p>";
+      }
       return;
     }
-    // Never assign a full <html> document via innerHTML — browsers drop it and the
-    // white preview looks empty while the dark plain pane still works.
+    if (isFrame) {
+      if (/<html[\s>]/i.test(raw)) {
+        let doc = raw;
+        if (!/<meta[^>]+charset/i.test(doc)) {
+          doc = doc.replace(/<head([^>]*)>/i, "<head$1><meta charset='utf-8'>");
+        }
+        box.srcdoc = doc;
+        return;
+      }
+      box.srcdoc =
+        "<!doctype html><html><head><meta charset='utf-8'><style>html,body{margin:0;padding:0;background:#ffffff}img{max-width:100%;height:auto}</style></head><body>" +
+        raw +
+        "</body></html>";
+      return;
+    }
     let inner = raw;
     const bodyMatch = raw.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
     if (bodyMatch) inner = bodyMatch[1];
-    inner = inner
-      .replace(/<!DOCTYPE[^>]*>/gi, "")
-      .replace(/<\/?(html|head)[^>]*>/gi, "")
-      .replace(/<meta[^>]*>/gi, "")
-      .trim();
-    if (!inner) {
-      box.innerHTML =
-        "<p style='margin:0;color:#5a6b78;font:14px/1.45 Manrope,Segoe UI,sans-serif'>HTML пустой после разбора шаблона.</p>";
-      return;
+    else {
+      inner = raw
+        .replace(/<!DOCTYPE[^>]*>/gi, "")
+        .replace(/<\/?(html|head)[^>]*>/gi, "")
+        .replace(/<meta[^>]*>/gi, "")
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+        .trim();
     }
+    const styleMatch = raw.match(/<style[^>]*>([\s\S]*?)<\/style>/gi);
+    const styles = styleMatch ? styleMatch.join("\n") : "";
     box.innerHTML =
+      styles +
       "<div class='email-preview-root' style='color:#1a1a1a;font:14px/1.5 Manrope,Segoe UI,Helvetica,Arial,sans-serif;background:#fff'>" +
-      inner +
+      (inner || "") +
       "</div>";
   }
 
@@ -4443,7 +4595,7 @@
     }
     $("repliesLoad").addEventListener("click", () => loadReplies().catch(logAction));
     if ($("inboxLoad")) {
-      $("inboxLoad").addEventListener("click", () => loadInbox(true).catch(logAction));
+      $("inboxLoad").addEventListener("click", () => loadInbox(currentInboxUnprocessedOnly()).catch(logAction));
       $("inboxLoadAll").addEventListener("click", () => loadInbox(false).catch(logAction));
       $("seqStatusBtn").addEventListener("click", async () => {
         try {
@@ -4453,27 +4605,67 @@
           logAction(String(e));
         }
       });
-      $("inboxBody").addEventListener("click", async (ev) => {
+      const markInboxProcessed = async (id) => {
+        await api("/api/modules/replies/inbox/" + id + "/processed", {
+          method: "POST",
+          body: "{}",
+        });
+        await loadInbox(currentInboxUnprocessedOnly());
+      };
+      const onInboxListClick = async (ev) => {
         const btn = ev.target.closest("button[data-inbox-id]");
         if (btn) {
           ev.stopPropagation();
           try {
-            await api("/api/modules/replies/inbox/" + btn.dataset.inboxId + "/processed", {
-              method: "POST",
-              body: "{}",
-            });
-            await loadInbox(true);
+            await markInboxProcessed(btn.dataset.inboxId);
           } catch (e) {
             logAction(String(e));
           }
           return;
         }
-        const row = ev.target.closest("tr[data-inbox-open]");
-        if (!row) return;
+        const card = ev.target.closest("[data-inbox-open]");
+        if (!card) return;
         if (ev.target.closest(".company-open")) return;
-        openInboxThread(row.dataset.inboxOpen).catch(logAction);
-      });
+        openInboxThread(card.dataset.inboxOpen).catch(logAction);
+      };
+      if ($("inboxBody")) $("inboxBody").addEventListener("click", onInboxListClick);
+      if ($("inboxCardList")) {
+        $("inboxCardList").addEventListener("click", onInboxListClick);
+        $("inboxCardList").addEventListener("keydown", (ev) => {
+          if (ev.key !== "Enter" && ev.key !== " ") return;
+          const card = ev.target.closest("[data-inbox-open]");
+          if (!card || ev.target.closest("button")) return;
+          ev.preventDefault();
+          openInboxThread(card.dataset.inboxOpen).catch(logAction);
+        });
+      }
     }
+    const openQueueLetterFromEvent = (ev) => {
+      if (ev.target.closest("button, a, input, label, .company-open, .row-actions")) return;
+      const row = ev.target.closest("[data-queue-letter]");
+      if (!row) return;
+      const key = row.getAttribute("data-queue-letter");
+      const item = key && queueLetterCache[key];
+      if (!item) {
+        logAction("Письмо очереди не найдено: " + key);
+        return;
+      }
+      openDeskLetterPreview(item).catch((e) => logAction(e));
+    };
+    ["queueDueBody", "queueUpcomingBody", "outboxBody"].forEach((id) => {
+      const el = $(id);
+      if (!el || el.dataset.queueLetterBound) return;
+      el.dataset.queueLetterBound = "1";
+      el.addEventListener("click", openQueueLetterFromEvent);
+      el.addEventListener("keydown", (ev) => {
+        if (ev.key !== "Enter" && ev.key !== " ") return;
+        if (ev.target.closest("button, a, input")) return;
+        const row = ev.target.closest("[data-queue-letter]");
+        if (!row) return;
+        ev.preventDefault();
+        openQueueLetterFromEvent({ target: row });
+      });
+    });
     if ($("outboxBody")) {
       $("outboxBody").addEventListener("change", (ev) => {
         if (ev.target && ev.target.classList && ev.target.classList.contains("outbox-pick")) {
@@ -4483,6 +4675,7 @@
       $("outboxBody").addEventListener("click", async (ev) => {
         const btn = ev.target.closest("button[data-action]");
         if (!btn) return;
+        ev.stopPropagation();
         const action = btn.dataset.action;
         try {
           if (action === "send-now") {
@@ -4557,8 +4750,6 @@
           body: JSON.stringify(campaignPreviewPayload()),
         });
         $("previewSubject").textContent = data.subject || "";
-        $("previewPlain").textContent = data.plain || "";
-        // Open <details> first — painting into a closed panel leaves the white preview blank.
         const adv = $("letterAdvanced");
         if (adv) adv.open = true;
         paintPreviewHtml($("previewFrame"), data.html || "");
