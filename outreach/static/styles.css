@@ -1229,6 +1229,12 @@ button.small { height: 26px; font-size: 0.72rem; padding: 0 0.45rem; }
   line-height: 1.3;
 }
 .cal-day-spam .cal-day-warn { color: #b91c1c; }
+.variants-jump {
+  padding: 0.75rem 0.9rem;
+  margin: 0.35rem 0 0.85rem;
+  border: 1px dashed rgba(37, 99, 235, 0.35);
+  border-radius: 10px;
+}
 .letter-variant-cols {
   display: grid;
   grid-template-columns: 1fr 1fr;

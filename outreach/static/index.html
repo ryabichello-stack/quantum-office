@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops35" />
+  <link rel="stylesheet" href="styles.css?v=ops36" />
   <script>
     (function () {
       function parentBase() {
@@ -62,6 +62,7 @@
 
     <nav class="tabs" role="tablist">
       <button type="button" data-tab="letter" class="active">Кампания</button>
+      <button type="button" data-tab="variants">Варианты</button>
       <button type="button" data-tab="outbox">Очередь</button>
       <button type="button" data-tab="inbox">Входящие</button>
       <button type="button" data-tab="report">Результат</button>
@@ -99,40 +100,12 @@
             <div id="packCards" class="pack-cards">Загрузка…</div>
           </fieldset>
 
-          <fieldset class="task-mode ops-panel" id="letterVariantsPanel">
-            <legend>Варианты заголовков и текстов (первое письмо)</legend>
-            <p class="muted tight" id="letterVariantsHint">
-              Матрица тем × текстов для первого касания (антиспам). Смотрите, правьте и сохраняйте здесь — не внутри цепочки.
+          <div class="ops-panel variants-jump">
+            <p class="muted tight" style="margin:0 0 0.45rem">
+              Темы и тексты первого письма — отдельная вкладка <strong>Варианты</strong> (7 заголовков × 7 текстов).
             </p>
-            <p class="muted tight" id="letterVariantsMeta">Загрузка…</p>
-            <div class="task-grid">
-              <label class="field">Превью для email
-                <input id="letterVariantPreviewEmail" type="email" placeholder="demo@mail.ru" />
-              </label>
-              <div class="field">
-                <span class="muted tight">Выбранная комбинация</span>
-                <pre id="letterVariantPicked" class="log tight" style="max-height:8rem;overflow:auto"></pre>
-              </div>
-            </div>
-            <div class="letter-variant-cols">
-              <div>
-                <p class="ros-pane-title">Темы (заголовки)</p>
-                <div id="letterVariantSubjects" class="letter-variant-list"></div>
-                <button type="button" id="letterVariantAddSubject" class="btn-quiet small">+ Тема</button>
-              </div>
-              <div>
-                <p class="ros-pane-title">Тексты</p>
-                <div id="letterVariantBodies" class="letter-variant-list"></div>
-                <button type="button" id="letterVariantAddBody" class="btn-quiet small">+ Текст</button>
-              </div>
-            </div>
-            <div class="actions wrap-actions" style="margin-top:0.5rem">
-              <button type="button" id="letterVariantsReload" class="btn-quiet">Обновить</button>
-              <button type="button" id="letterVariantsReset" class="btn-quiet">Сбросить к базовым</button>
-              <button type="button" id="letterVariantsSave" class="primary">Сохранить варианты</button>
-            </div>
-            <pre id="letterVariantsLog" class="log tight"></pre>
-          </fieldset>
+            <button type="button" id="openLetterVariantsBtn" class="primary">Открыть варианты заголовков</button>
+          </div>
 
           <details class="task-advanced campaign-chain" id="campaignChainDetails" open>
             <summary id="campaignChainSummary">Цепочка писем</summary>
@@ -152,7 +125,7 @@
               <button type="button" id="letterDelBtn" class="btn-quiet">Удалить</button>
               <button type="button" id="letterResetChain" class="btn-quiet">Сбросить к базовым</button>
             </div>
-            <p class="muted tight">Переключайте письма цепочки, меняйте текст и день отправки, добавляйте черновики. Порядок = порядок follow-up. Варианты первого письма — в блоке выше.</p>
+            <p class="muted tight">Переключайте письма цепочки, меняйте текст и день отправки, добавляйте черновики. Порядок = порядок follow-up. Заголовки первого письма — вкладка «Варианты».</p>
           </div>
 
           <div class="letter-editor" id="letterEditor">
@@ -279,6 +252,49 @@
           </fieldset>
 
           <pre id="letterLog" class="log" hidden></pre>
+        </div>
+      </section>
+
+      <!-- ========== ВАРИАНТЫ ЗАГОЛОВКОВ / ТЕКСТОВ ========== -->
+      <section id="tab-variants" class="panel">
+        <div class="surface task-form">
+          <div class="task-intro compact-intro">
+            <h2 class="section-title">Варианты заголовков и текстов</h2>
+            <p class="muted tight" id="letterVariantsHint">
+              Первое письмо: матрица тем × текстов. Получатель стабильно получает одну комбинацию (антиспам). Здесь можно смотреть, править и сохранять.
+            </p>
+          </div>
+          <fieldset class="task-mode ops-panel" id="letterVariantsPanel">
+            <legend>Темы × тексты первого письма</legend>
+            <p class="muted tight" id="letterVariantsMeta">Загрузка…</p>
+            <div class="task-grid">
+              <label class="field">Превью для email
+                <input id="letterVariantPreviewEmail" type="email" placeholder="demo@mail.ru" />
+              </label>
+              <div class="field">
+                <span class="muted tight">Выбранная комбинация</span>
+                <pre id="letterVariantPicked" class="log tight" style="max-height:8rem;overflow:auto"></pre>
+              </div>
+            </div>
+            <div class="letter-variant-cols">
+              <div>
+                <p class="ros-pane-title">Темы (заголовки)</p>
+                <div id="letterVariantSubjects" class="letter-variant-list"></div>
+                <button type="button" id="letterVariantAddSubject" class="btn-quiet small">+ Тема</button>
+              </div>
+              <div>
+                <p class="ros-pane-title">Тексты</p>
+                <div id="letterVariantBodies" class="letter-variant-list"></div>
+                <button type="button" id="letterVariantAddBody" class="btn-quiet small">+ Текст</button>
+              </div>
+            </div>
+            <div class="actions wrap-actions" style="margin-top:0.5rem">
+              <button type="button" id="letterVariantsReload" class="btn-quiet">Обновить</button>
+              <button type="button" id="letterVariantsReset" class="btn-quiet">Сбросить к базовым</button>
+              <button type="button" id="letterVariantsSave" class="primary">Сохранить варианты</button>
+            </div>
+            <pre id="letterVariantsLog" class="log tight"></pre>
+          </fieldset>
         </div>
       </section>
 
@@ -1250,6 +1266,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=ops35"></script>
+  <script src="app.js?v=ops36"></script>
 </body>
 </html>

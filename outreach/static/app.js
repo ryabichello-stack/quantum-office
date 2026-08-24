@@ -1,6 +1,7 @@
 (() => {
   const titles = {
     letter: "Кампания",
+    variants: "Варианты",
     outbox: "Очередь",
     inbox: "Входящие",
     report: "Результат",
@@ -11,6 +12,7 @@
   };
   const hints = {
     letter: "Отрасль, цепочка, тест — затем Старт и Очередь",
+    variants: "Темы и тексты первого письма: смотрите, правьте, сохраняйте",
     outbox: "Пачки, окна по TZ, фильтры и действия по строке",
     inbox: "Классификация ответов и привязка к письмам",
     report: "Воронка, динамика, последние письма",
@@ -3243,6 +3245,9 @@
             .then(() => loadPacks())
             .catch(logAction);
         }
+        if (tab === "variants") {
+          loadLetterVariants().catch(logAction);
+        }
         if (tab === "inbox") {
           const sub = document.querySelector('.sub-tab[data-inbox-view="classified"]');
           if (sub) sub.click();
@@ -4448,6 +4453,12 @@
       if (ev.key === "Escape" && peel && peel.classList.contains("is-open")) closeCompanyCard();
     });
 
+    if ($("openLetterVariantsBtn")) {
+      $("openLetterVariantsBtn").addEventListener("click", () => {
+        goToTab("variants");
+        loadLetterVariants().catch(logAction);
+      });
+    }
     if ($("letterVariantsSave")) {
       $("letterVariantsSave").addEventListener("click", () => saveLetterVariants().catch(logAction));
     }

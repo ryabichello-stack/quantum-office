@@ -1,24 +1,33 @@
 (() => {
   const titles = {
     letter: "Кампания",
+    variants: "Варианты",
     outbox: "Очередь",
     inbox: "Входящие",
     report: "Результат",
     clients: "Клиенты",
+    lpr: "ЛПР",
+    studio: "Студия",
     settings: "Настройки",
   };
   const hints = {
     letter: "Отрасль, цепочка, тест — затем Старт и Очередь",
+    variants: "Темы и тексты первого письма: смотрите, правьте, сохраняйте",
     outbox: "Пачки, окна по TZ, фильтры и действия по строке",
     inbox: "Классификация ответов и привязка к письмам",
     report: "Воронка, динамика, последние письма",
     clients: "Bitrix → geo → очередь; список с городом и TZ",
+    lpr: "Комитет ЛПР: поиск, покрытие ролей, approve / task",
+    studio: "Контент, соцсети, Radar и видео — с ручным утверждением",
     settings: "Локальные окна, лимиты, anti-ban",
   };
 
   let outboxItemsCache = [];
   let outboxTotalCache = 0;
   let lastBatchMeta = { deferred_window_count: null, at: null };
+  let accessPrincipal = null;
+  let usageSnapshot = null;
+
 
   function apiBase() {
     if (typeof window !== "undefined" && window.__QC_OUTREACH_API__) {
@@ -260,6 +269,122 @@
   let packsCache = [];
   let selectedPackId = "";
   /** @type {Array<{step:number,delay_days:number,label:string,subject:string,plain:string,html:string,attach_presentation:boolean}>} */
+  let letterVariantSubjects = [];
+  let letterVariantBodies = [];
+
+  function collectLetterVariantsFromDom() {
+    const subjects = Array.from(document.querySelectorAll("[data-lv-subject]")).map((el) =>
+      (el.value || "").trim()
+    );
+    const bodies = Array.from(document.querySelectorAll("[data-lv-body]")).map((el) =>
+      (el.value || "").trim()
+    );
+    letterVariantSubjects = subjects.filter(Boolean);
+    letterVariantBodies = bodies.filter(Boolean);
+    return { subjects: letterVariantSubjects, bodies: letterVariantBodies };
+  }
+
+  function renderLetterVariantEditors() {
+    const subBox = $("letterVariantSubjects");
+    const bodyBox = $("letterVariantBodies");
+    if (subBox) {
+      subBox.innerHTML = (letterVariantSubjects.length ? letterVariantSubjects : [""])
+        .map(
+          (s, i) => `<div class="letter-variant-row">
+            <header><span>Тема ${i + 1}</span>
+              <button type="button" class="btn-quiet small" data-lv-del-sub="${i}">×</button></header>
+            <input type="text" data-lv-subject value="${escapeHtml(s)}" />
+          </div>`
+        )
+        .join("");
+      subBox.querySelectorAll("[data-lv-del-sub]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          collectLetterVariantsFromDom();
+          const i = Number(btn.getAttribute("data-lv-del-sub"));
+          letterVariantSubjects.splice(i, 1);
+          if (!letterVariantSubjects.length) letterVariantSubjects = [""];
+          renderLetterVariantEditors();
+        });
+      });
+    }
+    if (bodyBox) {
+      bodyBox.innerHTML = (letterVariantBodies.length ? letterVariantBodies : [""])
+        .map(
+          (b, i) => `<div class="letter-variant-row">
+            <header><span>Текст ${i + 1}</span>
+              <button type="button" class="btn-quiet small" data-lv-del-body="${i}">×</button></header>
+            <textarea data-lv-body rows="8">${escapeHtml(b)}</textarea>
+          </div>`
+        )
+        .join("");
+      bodyBox.querySelectorAll("[data-lv-del-body]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          collectLetterVariantsFromDom();
+          const i = Number(btn.getAttribute("data-lv-del-body"));
+          letterVariantBodies.splice(i, 1);
+          if (!letterVariantBodies.length) letterVariantBodies = [""];
+          renderLetterVariantEditors();
+        });
+      });
+    }
+  }
+
+  async function loadLetterVariants() {
+    const pack = selectedPackId || (settingsCache && settingsCache.OUTREACH_SEQUENCE_PACK) || "lombards";
+    const email =
+      (($("letterVariantPreviewEmail") && $("letterVariantPreviewEmail").value) || "").trim() ||
+      "demo@mail.ru";
+    if ($("letterVariantPreviewEmail") && !$("letterVariantPreviewEmail").value) {
+      $("letterVariantPreviewEmail").value = email;
+    }
+    const data = await api(
+      `/api/letter-variants?pack_id=${encodeURIComponent(pack)}&email=${encodeURIComponent(email)}`
+    );
+    letterVariantSubjects = data.subjects || [];
+    letterVariantBodies = data.bodies || [];
+    renderLetterVariantEditors();
+    if ($("letterVariantsMeta")) {
+      $("letterVariantsMeta").textContent =
+        `${letterVariantSubjects.length} тем × ${letterVariantBodies.length} текстов = ${
+          data.combinations || letterVariantSubjects.length * letterVariantBodies.length
+        } комбинаций · источник: ${data.source || "—"} · ${data.enabled === false ? "выкл" : "вкл"}`;
+    }
+    if ($("letterVariantPicked")) {
+      const p = data.picked || {};
+      $("letterVariantPicked").textContent = p.subject
+        ? `combo ${p.combo}\nТема: ${p.subject}\n\n${(p.plain || "").slice(0, 500)}…`
+        : "Варианты выключены или пусты";
+    }
+    return data;
+  }
+
+  async function saveLetterVariants() {
+    collectLetterVariantsFromDom();
+    const pack = selectedPackId || (settingsCache && settingsCache.OUTREACH_SEQUENCE_PACK) || "lombards";
+    const data = await api("/api/letter-variants", {
+      method: "PUT",
+      body: JSON.stringify({
+        pack_id: pack,
+        subjects: letterVariantSubjects,
+        bodies: letterVariantBodies,
+      }),
+    });
+    if ($("letterVariantsLog")) $("letterVariantsLog").textContent = JSON.stringify(data, null, 2);
+    await loadLetterVariants();
+    return data;
+  }
+
+  async function resetLetterVariants() {
+    const pack = selectedPackId || (settingsCache && settingsCache.OUTREACH_SEQUENCE_PACK) || "lombards";
+    const data = await api(`/api/letter-variants/reset?pack_id=${encodeURIComponent(pack)}`, {
+      method: "POST",
+      body: "{}",
+    });
+    if ($("letterVariantsLog")) $("letterVariantsLog").textContent = JSON.stringify(data, null, 2);
+    await loadLetterVariants();
+    return data;
+  }
+
   let letterChain = [];
   let activeLetterIdx = 0;
   let letterDirty = false;
@@ -434,6 +559,7 @@
           await previewPack(active, true);
         }
       }
+      loadLetterVariants().catch(() => {});
     } catch (err) {
       if ($("packCards")) $("packCards").textContent = String(err.message || err);
     }
@@ -853,6 +979,7 @@
   }
 
   let activeInboxThreadId = null;
+  let activeInboxDraft = "";
 
   function closeInboxThread() {
     const peel = $("inboxThreadPeelAway");
@@ -863,8 +990,16 @@
     }, 260);
     document.body.classList.remove("peel-away-open");
     activeInboxThreadId = null;
+    activeInboxDraft = "";
     if ($("inboxReplyBody")) $("inboxReplyBody").value = "";
     if ($("inboxReplyStatus")) $("inboxReplyStatus").textContent = "";
+    const enrich = $("inboxThreadEnrichment");
+    if (enrich) {
+      enrich.hidden = true;
+      enrich.innerHTML = "";
+    }
+    const draftBtn = $("inboxReplyUseDraft");
+    if (draftBtn) draftBtn.hidden = true;
   }
 
   function renderInboxThreadMessages(messages) {
@@ -892,6 +1027,79 @@
       .join("");
   }
 
+  function renderInboxEnrichment(enrichment) {
+    const el = $("inboxThreadEnrichment");
+    const draftBtn = $("inboxReplyUseDraft");
+    activeInboxDraft = "";
+    if (!el) return;
+    if (!enrichment || !enrichment.ok) {
+      el.hidden = true;
+      el.innerHTML = "";
+      if (draftBtn) draftBtn.hidden = true;
+      return;
+    }
+    const acc = enrichment.account || null;
+    const person = enrichment.person || null;
+    const lead = enrichment.lead || null;
+    const next = enrichment.next_action || {};
+    const draft = enrichment.suggested_reply || {};
+    const bits = [];
+    if (acc) {
+      bits.push(
+        `<div><span class="muted">Account</span> ${escapeHtml(
+          acc.legal_name || acc.brand_name || acc.id
+        )} · <code>${escapeHtml(acc.lifecycle_status || "")}</code>` +
+          (acc.bitrix_company_id
+            ? ` · bx ${escapeHtml(String(acc.bitrix_company_id))}`
+            : "") +
+          `</div>`
+      );
+    } else {
+      bits.push(`<div class="muted">Account ещё не связан — появится после resolve inbound</div>`);
+    }
+    if (person) {
+      bits.push(
+        `<div><span class="muted">Person</span> ${escapeHtml(
+          person.full_name || person.id
+        )}</div>`
+      );
+    }
+    if (lead) {
+      bits.push(
+        `<div><span class="muted">Lead</span> ${escapeHtml(
+          lead.status || ""
+        )} · ${escapeHtml(lead.source || "")}</div>`
+      );
+    }
+    if (next.label) {
+      bits.push(
+        `<div class="inbox-next-action"><span class="muted">Next</span> <strong>${escapeHtml(
+          next.label
+        )}</strong> <span class="badge">${escapeHtml(next.priority || "")}</span></div>`
+      );
+    }
+    if (draft.approval_required && draft.body) {
+      bits.push(
+        `<div class="muted tight">Черновик ответа · APPROVAL_REQUIRED (не отправляется автоматически)</div>`
+      );
+      const cites = draft.citations || [];
+      if (cites.length) {
+        bits.push(
+          `<div class="muted tight">Цитаты: ${cites
+            .slice(0, 3)
+            .map((c) => escapeHtml((c.source || "") + " · " + (c.ref || "")))
+            .join("; ")}</div>`
+        );
+      }
+      activeInboxDraft = draft.body;
+      if (draftBtn) draftBtn.hidden = false;
+    } else if (draftBtn) {
+      draftBtn.hidden = true;
+    }
+    el.innerHTML = bits.join("");
+    el.hidden = false;
+  }
+
   async function openInboxThread(inboxId) {
     const peel = $("inboxThreadPeelAway");
     const title = $("inboxThreadTitle");
@@ -905,6 +1113,11 @@
     if (title) title.textContent = "Переписка";
     if (meta) meta.textContent = "Загрузка…";
     if (body) body.innerHTML = "<p class='muted tight'>Загрузка…</p>";
+    const enrichEl = $("inboxThreadEnrichment");
+    if (enrichEl) {
+      enrichEl.hidden = true;
+      enrichEl.innerHTML = "";
+    }
     try {
       const data = await api(`/api/modules/replies/inbox/${encodeURIComponent(inboxId)}/thread`);
       if (title) title.textContent = data.subject || "Переписка";
@@ -917,6 +1130,7 @@
           .filter(Boolean)
           .join(" · ");
       }
+      renderInboxEnrichment(data.enrichment);
       if (body) {
         body.innerHTML = `<div class="inbox-thread-messages">${renderInboxThreadMessages(
           data.messages
@@ -1099,7 +1313,9 @@
   }
 
   async function loadSettingsIntoForms() {
+    await loadAccessMeta().catch(() => {});
     const data = await api("/api/settings");
+
     settingsCache = data.settings || {};
     const s = settingsCache;
     $("letterSubject").value = s.OUTREACH_SUBJECT || "";
@@ -1239,6 +1455,12 @@
 
     $("warmupEnabled").checked = String(s.WARMUP_ENABLED || "true").toLowerCase() !== "false";
     $("domainCap").value = s.DOMAIN_DAILY_CAP || 2;
+    if ($("domainSharedCap")) {
+      $("domainSharedCap").value =
+        s.DOMAIN_SHARED_DAILY_CAP != null && s.DOMAIN_SHARED_DAILY_CAP !== ""
+          ? s.DOMAIN_SHARED_DAILY_CAP
+          : 0;
+    }
     $("plusReply").checked = String(s.TRACKING_PLUS_REPLY_TO || "false").toLowerCase() === "true" || s.TRACKING_PLUS_REPLY_TO === "1";
     $("openTracking").checked = String(s.OPEN_TRACKING_ENABLED || "true").toLowerCase() !== "false";
     if ($("letterAttachPdf")) {
@@ -1660,16 +1882,25 @@
       return;
     }
     const totals = (cal && cal.totals) || {};
+    const deliv = (cal && cal.deliverability) || {};
+    const eff = deliv.effective_daily_limit != null ? deliv.effective_daily_limit : "—";
+    const ftCap = deliv.first_touch_daily_cap != null ? deliv.first_touch_daily_cap : "—";
+    const sent = deliv.sent_today != null ? deliv.sent_today : "—";
     const meta =
-      totals.items != null
-        ? `<p class="muted tight">Всего ${totals.items} · due ${totals.due || 0} · дней с задачами ${totals.days_with_items || 0} (${cal.timezone || "Europe/Moscow"})</p>`
-        : "";
+      `<p class="muted tight">Всего ${totals.items != null ? totals.items : "—"} · due ${totals.due || 0} · дней с задачами ${totals.days_with_items || 0} (${cal.timezone || "Europe/Moscow"})</p>` +
+      `<p class="muted tight queue-cap-hint">Лимит SMTP сегодня: <strong>${escapeHtml(String(eff))}</strong> (уже ${escapeHtml(String(sent))}) · первые письма ~${escapeHtml(String(ftCap))}/день. 296 в один день <em>не уйдут</em> — только до лимита.</p>`;
     box.innerHTML =
       meta +
       days
         .map((day) => {
           const items = day.items || [];
           const dueN = day.due_count || 0;
+          const count = day.count || 0;
+          const over = day.over_capacity || day.spam_risk;
+          const riskCls = day.spam_risk ? "cal-day-spam" : over ? "cal-day-over" : dueN ? "cal-day-due" : "";
+          const capNote = over
+            ? `<div class="cal-day-warn">⚠ ${count} в плане · лимит ${escapeHtml(String(day.capacity || eff))} — разложите очередь</div>`
+            : "";
           const sample = items
             .slice(0, 4)
             .map(
@@ -1683,12 +1914,45 @@
             day.truncated || items.length > 4
               ? `<li class="muted">+${Math.max(0, (day.count || items.length) - 4)} ещё</li>`
               : "";
-          return `<div class="cal-day ${dueN ? "cal-day-due" : ""}">
-          <div class="cal-day-head"><strong>${escapeHtml(fmtDay(day.date))}</strong><span>${day.count || 0}</span></div>
+          return `<div class="cal-day ${riskCls}">
+          <div class="cal-day-head"><strong>${escapeHtml(fmtDay(day.date))}</strong><span>${count}</span></div>
+          ${capNote}
           <ul class="cal-day-list">${sample || "<li class='muted'>—</li>"}${more}</ul>
         </div>`;
         })
         .join("");
+  }
+
+  async function paceQueue() {
+    const log = $("queuePaceLog");
+    const daysEl = $("queuePaceDays");
+    const workdays = Math.max(7, Math.min(180, Number((daysEl && daysEl.value) || 14) || 14));
+    if (log) {
+      log.hidden = false;
+      log.textContent = `Раскладываю на ${workdays} будних дней (сб/вс пропускаю)…`;
+    }
+    try {
+      const data = await api("/api/modules/sequences/pace-queue", {
+        method: "POST",
+        body: JSON.stringify({ dry_run: false, workdays }),
+      });
+      const byDay = Object.entries(data.by_day || {})
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([d, n]) => `${d}: ${n}`)
+        .join(" · ");
+      const summary =
+        (data.note || `paced=${data.paced}`) +
+        `\nбудней=${data.workdays || workdays}, ~${data.per_day_target || "?"}/день, ` +
+        `сегодня=${data.today_unlocked || 0}, cap=${data.first_touch_daily_cap || "?"}` +
+        (byDay ? `\n${byDay}` : "");
+      if (log) log.textContent = summary;
+      logAction(data.note || data);
+      await loadQueueView();
+      return data;
+    } catch (e) {
+      if (log) log.textContent = String((e && e.message) || e);
+      throw e;
+    }
   }
 
   async function loadQueueView() {
@@ -1841,9 +2105,1076 @@
     return (btn && btn.dataset.tab) || "letter";
   }
 
+  let lprLastRunId = null;
+
+  function statusChip(st) {
+    const s = String(st || "proposed");
+    const map = {
+      proposed: "chip-neutral",
+      approved: "chip-ok",
+      rejected: "chip-bad",
+      cluster_pending: "chip-warn",
+      draft: "chip-neutral",
+      pending_approval: "chip-warn",
+      new: "chip-neutral",
+      uploaded_private: "chip-ok",
+    };
+    return `<span class="ros-chip ${map[s] || "chip-neutral"}">${escapeHtml(s)}</span>`;
+  }
+
+  function renderLprCoverage(coverage) {
+    const el = $("lprCoverage");
+    if (!el) return;
+    const roles = (coverage && coverage.roles) || [];
+    const missing = (coverage && coverage.missing_roles) || [];
+    if (!roles.length) {
+      el.innerHTML = `<p class="muted tight">Покрытие появится после поиска.</p>`;
+      return;
+    }
+    el.innerHTML =
+      `<div class="lpr-coverage-row">` +
+      roles
+        .map(
+          (r) =>
+            `<span class="lpr-role ${r.covered ? "ok" : "miss"}"><span class="lpr-role-id">${escapeHtml(
+              r.role_id || ""
+            )}</span>${r.covered ? " покрыта" : " нет"}</span>`
+        )
+        .join("") +
+      `</div>` +
+      (missing.length
+        ? `<p class="muted tight" style="margin-top:0.4rem">Не хватает: ${escapeHtml(missing.join(", "))}</p>`
+        : `<p class="muted tight" style="margin-top:0.4rem">Минимальный комитет закрыт.</p>`);
+  }
+
+  function renderLprCandidates(items) {
+    const box = $("lprCards");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Кандидатов нет — уточните company id или добавьте import.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map((c) => {
+        const st = c.status || "proposed";
+        const link = c.profile_url
+          ? `<a class="ros-link" href="${escapeHtml(c.profile_url)}" target="_blank" rel="noopener">профиль</a>`
+          : "";
+        let actions = "";
+        if (st === "rejected" || st === "merged") {
+          actions = `<span class="muted tight">${escapeHtml(st)}</span>`;
+        } else {
+          const mergeBtn = c.cluster_id
+            ? `<button type="button" class="small btn-quiet" data-lpr-merge="${escapeHtml(c.cluster_id)}" data-lpr-keep="${escapeHtml(c.id)}">Слить кластер сюда</button>`
+            : "";
+          actions = `<div class="ros-card-actions">
+                <button type="button" class="small primary" data-lpr-approve="${escapeHtml(c.id)}">Утвердить</button>
+                <button type="button" class="small btn-quiet" data-lpr-reject="${escapeHtml(c.id)}">Отклонить</button>
+                <button type="button" class="small btn-quiet" data-lpr-task="${escapeHtml(c.id)}">Task</button>
+                ${mergeBtn}
+              </div>`;
+        }
+        return `<article class="ros-card">
+          <div class="ros-card-head">
+            <div>
+              <div class="ros-card-title">${escapeHtml(c.full_name || "Без имени")}${
+          c.cluster_id ? ' <span class="badge">cluster</span>' : ""
+        }</div>
+              <div class="muted tight">${escapeHtml(c.role_guess || "роль ?")} · ${escapeHtml(
+          c.source || ""
+        )} · score ${Number(c.score || 0).toFixed(2)} ${link}</div>
+            </div>
+            ${statusChip(st)}
+          </div>
+          ${actions}
+        </article>`;
+      })
+      .join("");
+    box.querySelectorAll("[data-lpr-approve]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setLprStatus(btn.getAttribute("data-lpr-approve"), "approved").catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-lpr-reject]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setLprStatus(btn.getAttribute("data-lpr-reject"), "rejected").catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-lpr-task]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        createLprTask(btn.getAttribute("data-lpr-task")).catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-lpr-merge]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        mergeLprCluster(
+          btn.getAttribute("data-lpr-merge"),
+          btn.getAttribute("data-lpr-keep")
+        ).catch(logAction)
+      );
+    });
+  }
+
+  async function mergeLprCluster(clusterId, keepId) {
+    const data = await api(`/api/modules/social/clusters/${encodeURIComponent(clusterId)}/merge`, {
+      method: "POST",
+      body: JSON.stringify({ keep_candidate_id: keepId }),
+    });
+    if ($("lprMeta")) {
+      $("lprMeta").textContent = `Кластер слит · остался 1 кандидат · merged ${data.merged_count || 0}`;
+    }
+    if (lprLastRunId) await reloadLprRun(lprLastRunId);
+  }
+
+  async function setLprStatus(id, status) {
+    await api(`/api/modules/social/candidates/${encodeURIComponent(id)}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
+    if (lprLastRunId) await reloadLprRun(lprLastRunId);
+  }
+
+  async function createLprTask(id) {
+    const data = await api("/api/modules/social/tasks", {
+      method: "POST",
+      body: JSON.stringify({ candidate_id: id, draft_text: "", action_type: "open_profile" }),
+    });
+    if ($("lprMeta")) {
+      $("lprMeta").textContent = `Task создан · ${((data.task || {}).profile_url) || "без URL"}`;
+    }
+  }
+
+  async function reloadLprRun(runId) {
+    const data = await api(`/api/modules/social/runs/${encodeURIComponent(runId)}`);
+    renderLprCoverage(data.coverage);
+    renderLprCandidates(data.candidates || []);
+  }
+
+  async function loadLprTab() {
+    if ($("lprMeta") && !$("lprMeta").textContent) {
+      $("lprMeta").textContent = "Укажите company id или import и нажмите «Найти кандидатов».";
+    }
+  }
+
+  async function runLprSearch() {
+    const imports = [];
+    const webUrl = (($("lprWebUrl") && $("lprWebUrl").value) || "").trim();
+    if (webUrl) {
+      imports.push({
+        source: "web_import",
+        profile_url: webUrl,
+        full_name: ($("lprWebName") && $("lprWebName").value) || "",
+      });
+    }
+    const tg = (($("lprTgUser") && $("lprTgUser").value) || "").trim().replace(/^@/, "");
+    if (tg) {
+      imports.push({
+        source: "telegram",
+        username: tg,
+        full_name: ($("lprTgName") && $("lprTgName").value) || "",
+      });
+    }
+    const payload = {
+      bitrix_company_id: (($("lprCompanyId") && $("lprCompanyId").value) || "").trim() || null,
+      company_title: (($("lprCompanyTitle") && $("lprCompanyTitle").value) || "").trim(),
+      inn: (($("lprInn") && $("lprInn").value) || "").trim() || null,
+      sources: ["clients", "dadata", "web_import", "telegram"],
+      imports,
+    };
+    if ($("lprMeta")) $("lprMeta").textContent = "Ищем…";
+    const data = await api("/api/modules/social/search", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    lprLastRunId = (data.run && data.run.id) || null;
+    renderLprCoverage(data.coverage);
+    renderLprCandidates(data.candidates || []);
+    if ($("lprMeta")) {
+      const n = (data.candidates || []).length;
+      const miss = ((data.coverage && data.coverage.missing_roles) || []).length;
+      $("lprMeta").textContent = `${n} кандидат(ов) · cost ${
+        (data.run && data.run.cost_estimate) || 0
+      } · незакрытых ролей: ${miss}`;
+    }
+  }
+
+  async function loadLprCaps() {
+    const data = await api("/api/modules/social/capabilities");
+    const items = data.items || [];
+    if ($("lprMeta")) {
+      $("lprMeta").textContent = items
+        .map((c) => `${c.source_id}${c.search ? " (search)" : " (import)"}`)
+        .join(" · ");
+    }
+  }
+
+  function bindStudioSubTabs() {
+    document.querySelectorAll(".sub-tab[data-studio-view]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".sub-tab[data-studio-view]").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        const view = btn.dataset.studioView;
+        const content = $("studioViewContent");
+        const social = $("studioViewSocial");
+        const flywheel = $("studioViewFlywheel");
+        const radar = $("studioViewRadar");
+        const video = $("studioViewVideo");
+        if (content) content.hidden = view !== "content";
+        if (social) social.hidden = view !== "social";
+        if (flywheel) flywheel.hidden = view !== "flywheel";
+        if (radar) radar.hidden = view !== "radar";
+        if (video) video.hidden = view !== "video";
+        if (view === "content") loadContentDrafts().catch(logAction);
+        if (view === "social") loadSocialPublishTab().catch(logAction);
+        if (view === "flywheel") loadFlywheelTab().catch(logAction);
+        if (view === "radar") loadRadarSignals().catch(logAction);
+        if (view === "video") loadVideoDrafts().catch(logAction);
+      });
+    });
+  }
+
+  async function loadStudioTab() {
+    bindStudioSubTabs();
+    await loadAccessMeta().catch(() => {});
+    const active = document.querySelector(".sub-tab[data-studio-view].active");
+    const view = (active && active.dataset.studioView) || "content";
+    if (view === "content") await loadContentDrafts();
+    else if (view === "social") await loadSocialPublishTab();
+    else if (view === "flywheel") await loadFlywheelTab();
+    else if (view === "radar") await loadRadarSignals();
+    else await loadVideoDrafts();
+  }
+
+  function canWrite(perm) {
+    if (!accessPrincipal || !accessPrincipal.rbac_enabled) return true;
+    const perms = accessPrincipal.permissions || [];
+    return perms.indexOf(perm) >= 0;
+  }
+
+  function applyAccessGates() {
+    const studioWrite = canWrite("studio.write");
+    const settingsWrite = canWrite("outreach.settings");
+    const sendWrite = canWrite("outreach.send");
+    [
+      "csDraftBtn",
+      "radarIngestBtn",
+      "radarOwnedPollBtn",
+      "videoDraftBtn",
+      "spChannelAddBtn",
+      "spPostCreateBtn",
+      "fwPollBtn",
+      "fwRunCycleBtn",
+      "fwNewsIngestBtn",
+    ].forEach((id) => {
+      const el = $(id);
+      if (el) el.disabled = !studioWrite;
+    });
+    const saveBtn = $("saveSettingsBtn");
+    if (saveBtn) saveBtn.disabled = !settingsWrite;
+    ["startBtn", "pauseBtn", "stopBtn"].forEach((id) => {
+      const el = $(id);
+      if (el) el.disabled = !sendWrite && accessPrincipal && accessPrincipal.rbac_enabled;
+    });
+  }
+
+  function renderAccessUi() {
+    const role = (accessPrincipal && accessPrincipal.role) || "owner";
+    const rbac = !!(accessPrincipal && accessPrincipal.rbac_enabled);
+    const perms = (accessPrincipal && accessPrincipal.permissions) || [];
+    if ($("studioRoleChip")) {
+      $("studioRoleChip").textContent = rbac ? `роль: ${role}` : `роль: ${role} (rbac off)`;
+    }
+    if ($("studioUsageChip")) {
+      const items = (usageSnapshot && usageSnapshot.items) || [];
+      const today = new Date().toISOString().slice(0, 10);
+      const todayRows = items.filter((r) => r.day === today);
+      const total = todayRows.reduce((s, r) => s + (Number(r.value) || 0), 0);
+      $("studioUsageChip").textContent = todayRows.length
+        ? `usage сегодня: ${total}`
+        : "usage: нет данных";
+    }
+    if ($("settingsRoleLine")) {
+      $("settingsRoleLine").textContent = rbac
+        ? `Роль «${role}» · RBAC включён`
+        : `Роль «${role}» · RBAC выключен (все = owner)`;
+    }
+    if ($("settingsPermLine")) {
+      $("settingsPermLine").textContent = perms.length
+        ? `Права: ${perms.join(", ")}`
+        : "";
+    }
+    if ($("settingsUsageLine")) {
+      const items = (usageSnapshot && usageSnapshot.items) || [];
+      $("settingsUsageLine").textContent = items.length
+        ? `Метрики: ${items
+            .slice(0, 6)
+            .map((r) => `${r.day} ${r.metric}=${r.value}`)
+            .join(" · ")}`
+        : "Метрики usage пока пусты";
+    }
+    applyAccessGates();
+  }
+
+  async function loadAccessMeta() {
+    const [me, usage] = await Promise.all([
+      api("/api/v1/me"),
+      api("/api/v1/usage?days=7"),
+    ]);
+    accessPrincipal = me;
+    usageSnapshot = usage;
+    renderAccessUi();
+    return me;
+  }
+
+  async function pollOwnedPages() {
+    const data = await api("/api/modules/radar/owned/poll", {
+      method: "POST",
+      body: "{}",
+    });
+    logAction(data);
+    await loadRadarSignals();
+    return data;
+  }
+
+  const SP_TENANT = "quantum-labs";
+
+  function spImageUrl(img) {
+    if (!img || !img.filename) return "";
+    return `${BASE}/api/modules/social_publish/images/${SP_TENANT}/${encodeURIComponent(img.filename)}`;
+  }
+
+  function selectedSpPlatforms() {
+    return Array.from(document.querySelectorAll('input[name="spPlatform"]:checked')).map((el) => el.value);
+  }
+
+  function renderSpChannels(items) {
+    const box = $("spChannelList");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Каналов пока нет.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map(
+        (ch) => `<div class="sp-channel-row">
+          <label class="check tight sp-channel-pick">
+            <input type="checkbox" name="spRepostChannel" value="${escapeHtml(ch.id)}" checked />
+            <span class="sp-platform-badge sp-${escapeHtml(ch.platform)}">${escapeHtml(ch.platform)}</span>
+            <span>${escapeHtml(ch.title || ch.handle)}</span>
+            <span class="muted tight">${escapeHtml(ch.handle || "")}</span>
+          </label>
+          <button type="button" class="small btn-quiet" data-sp-del-ch="${escapeHtml(ch.id)}">×</button>
+        </div>`
+      )
+      .join("");
+    box.querySelectorAll("[data-sp-del-ch]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        deleteSpChannel(btn.getAttribute("data-sp-del-ch")).catch(logAction)
+      );
+    });
+  }
+
+  async function loadSpChannels() {
+    const data = await api("/api/modules/social_publish/channels");
+    renderSpChannels(data.items || []);
+    return data.items || [];
+  }
+
+  async function addSpChannel() {
+    const platform = ($("spChannelPlatform") && $("spChannelPlatform").value) || "telegram";
+    const title = (($("spChannelTitle") && $("spChannelTitle").value) || "").trim();
+    const handle = (($("spChannelHandle") && $("spChannelHandle").value) || "").trim();
+    if (!handle) throw new Error("Укажите handle канала");
+    await api("/api/modules/social_publish/channels", {
+      method: "POST",
+      body: JSON.stringify({ platform, title, handle, enabled: true }),
+    });
+    if ($("spChannelTitle")) $("spChannelTitle").value = "";
+    if ($("spChannelHandle")) $("spChannelHandle").value = "";
+    await loadSpChannels();
+  }
+
+  async function deleteSpChannel(id) {
+    if (!id) return;
+    await api(`/api/modules/social_publish/channels/${encodeURIComponent(id)}`, { method: "DELETE" });
+    await loadSpChannels();
+  }
+
+  function renderSpVariantPreview(variants) {
+    const keys = Object.keys(variants || {});
+    if (!keys.length) return "";
+    return keys
+      .map((k) => {
+        const v = variants[k] || {};
+        const text = (v.text || v.caption || "").slice(0, 160);
+        return `<details class="sp-variant"><summary>${escapeHtml(k)}</summary><pre class="sp-variant-text">${escapeHtml(text)}</pre></details>`;
+      })
+      .join("");
+  }
+
+  function renderSpPostCards(items) {
+    const box = $("spPostCards");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Создайте пост слева.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map((p) => {
+        const imgs = (p.images || []).slice(0, 2);
+        const thumbs = imgs
+          .map(
+            (img) =>
+              `<a href="${escapeHtml(spImageUrl(img))}" target="_blank" rel="noopener" class="sp-thumb-wrap"><img class="sp-thumb" src="${escapeHtml(spImageUrl(img))}" alt="" /></a>`
+          )
+          .join("");
+        const plats = (p.platforms || []).map((x) => `<span class="sp-platform-badge sp-${escapeHtml(x)}">${escapeHtml(x)}</span>`).join("");
+        const kb = (p.kb_context && p.kb_context.citations) || [];
+        const kbLine = kb.length
+          ? `<p class="muted tight fw-kb">KB: ${kb
+              .slice(0, 2)
+              .map((c) => escapeHtml((c.note || "").slice(0, 70)))
+              .join(" · ")}</p>`
+          : "";
+        let actions = "";
+        if (p.status === "approved") {
+          actions = `<button type="button" class="small primary" data-sp-repost="${escapeHtml(p.id)}">Репост в каналы</button>
+            <button type="button" class="small btn-quiet" data-sp-regen="${escapeHtml(p.id)}">Новые картинки</button>`;
+        } else if (p.status === "published") {
+          actions = `<span class="muted tight">опубликовано (stub/queue)</span>`;
+        } else {
+          actions = `<button type="button" class="small primary" data-sp-approve="${escapeHtml(p.id)}">Утвердить</button>
+            <button type="button" class="small btn-quiet" data-sp-reject="${escapeHtml(p.id)}">Отклонить</button>
+            <button type="button" class="small btn-quiet" data-sp-regen="${escapeHtml(p.id)}">Картинки</button>`;
+        }
+        return `<article class="ros-card sp-post-card">
+          <div class="ros-card-head">
+            <div>
+              <div class="ros-card-title">${escapeHtml(p.title || "Пост")}</div>
+              <div class="muted tight">${plats}</div>
+            </div>
+            ${statusChip(p.status)}
+          </div>
+          <p class="muted tight sp-brief">${escapeHtml((p.brief || "").slice(0, 140))}</p>
+          ${kbLine}
+          <div class="sp-thumbs">${thumbs}</div>
+          ${renderSpVariantPreview(p.variants)}
+          <div class="ros-card-actions">${actions}</div>
+        </article>`;
+      })
+      .join("");
+    box.querySelectorAll("[data-sp-approve]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setSpPostStatus(btn.getAttribute("data-sp-approve"), "approved").catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-sp-reject]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setSpPostStatus(btn.getAttribute("data-sp-reject"), "rejected").catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-sp-regen]").forEach((btn) => {
+      btn.addEventListener("click", () => regenSpImages(btn.getAttribute("data-sp-regen")).catch(logAction));
+    });
+    box.querySelectorAll("[data-sp-repost]").forEach((btn) => {
+      btn.addEventListener("click", () => repostSpPost(btn.getAttribute("data-sp-repost")).catch(logAction));
+    });
+  }
+
+  async function loadSpPosts() {
+    const data = await api("/api/modules/social_publish/posts?limit=30");
+    renderSpPostCards(data.items || []);
+    return data.items || [];
+  }
+
+  async function createSpPost() {
+    const title = (($("spPostTitle") && $("spPostTitle").value) || "").trim();
+    const brief = (($("spPostBrief") && $("spPostBrief").value) || "").trim();
+    if (!title || !brief) throw new Error("Заголовок и текст обязательны");
+    await api("/api/modules/social_publish/posts", {
+      method: "POST",
+      body: JSON.stringify({
+        title,
+        brief,
+        link: ($("spPostLink") && $("spPostLink").value) || "",
+        platforms: selectedSpPlatforms(),
+        generate_images: true,
+      }),
+    });
+    if ($("spPostBrief")) $("spPostBrief").value = "";
+    await loadSpPosts();
+  }
+
+  async function setSpPostStatus(id, status) {
+    await api(`/api/modules/social_publish/posts/${encodeURIComponent(id)}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
+    await loadSpPosts();
+  }
+
+  async function regenSpImages(id) {
+    await api(`/api/modules/social_publish/posts/${encodeURIComponent(id)}/generate-images`, {
+      method: "POST",
+      body: "{}",
+    });
+    await loadSpPosts();
+  }
+
+  async function repostSpPost(id) {
+    const picked = Array.from(document.querySelectorAll('input[name="spRepostChannel"]:checked')).map(
+      (el) => el.value
+    );
+    if (!picked.length) throw new Error("Выберите каналы для репоста (слева)");
+    const data = await api(`/api/modules/social_publish/posts/${encodeURIComponent(id)}/repost`, {
+      method: "POST",
+      body: JSON.stringify({ channel_ids: picked }),
+    });
+    logAction(data);
+    await loadSpPosts();
+  }
+
+  async function loadSocialPublishTab() {
+    await Promise.all([loadSpChannels(), loadSpPosts()]);
+  }
+
+  let fwThemeDraft = [];
+
+  function renderFwThemeRows() {
+    const box = $("fwThemeList");
+    if (!box) return;
+    const themes = fwThemeDraft || [];
+    if (!themes.length) {
+      box.innerHTML = `<p class="muted tight">Добавьте хотя бы одну тему с ключевыми словами.</p>`;
+      return;
+    }
+    box.innerHTML = themes
+      .map(
+        (t, idx) => `<div class="fw-theme-row" data-theme-idx="${idx}">
+          <input type="text" class="fw-theme-id" value="${escapeHtml(t.id || "")}" placeholder="id" title="id" />
+          <input type="text" class="fw-theme-label" value="${escapeHtml(t.label || "")}" placeholder="Название темы" />
+          <input type="text" class="fw-theme-keywords" value="${escapeHtml((t.keywords || []).join(", "))}" placeholder="ключевые, слова" />
+          <button type="button" class="small btn-quiet" data-theme-remove="${idx}">×</button>
+        </div>`
+      )
+      .join("");
+    box.querySelectorAll("[data-theme-remove]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const i = Number(btn.getAttribute("data-theme-remove"));
+        fwThemeDraft.splice(i, 1);
+        renderFwThemeRows();
+      });
+    });
+  }
+
+  function collectFwThemeDraft() {
+    const box = $("fwThemeList");
+    if (!box) return [];
+    return Array.from(box.querySelectorAll(".fw-theme-row")).map((row, idx) => {
+      const id = (row.querySelector(".fw-theme-id") && row.querySelector(".fw-theme-id").value) || `theme_${idx + 1}`;
+      const label = (row.querySelector(".fw-theme-label") && row.querySelector(".fw-theme-label").value) || id;
+      const kwRaw = (row.querySelector(".fw-theme-keywords") && row.querySelector(".fw-theme-keywords").value) || "";
+      const keywords = kwRaw
+        .split(/[,;]+/)
+        .map((k) => k.trim())
+        .filter(Boolean);
+      return { id: id.trim(), label: label.trim(), keywords, weight: 1.0 };
+    });
+  }
+
+  async function loadFwThemePresets() {
+    const data = await api("/api/modules/content_flywheel/themes/presets");
+    const sel = $("fwThemePreset");
+    if (!sel) return;
+    const items = data.items || [];
+    sel.innerHTML =
+      `<option value="">— выбрать пресет —</option>` +
+      items.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.lens_label || p.id)}</option>`).join("");
+  }
+
+  async function loadFwThemes() {
+    const data = await api("/api/modules/content_flywheel/themes/config");
+    const cfg = data.config || {};
+    if ($("fwThemeLens")) $("fwThemeLens").value = cfg.lens_label || "";
+    if ($("fwThemeBrand")) $("fwThemeBrand").value = cfg.brand_short || "";
+    if ($("fwThemeMinScore")) $("fwThemeMinScore").value = cfg.min_score != null ? cfg.min_score : 0.35;
+    if ($("fwThemeHashtags")) {
+      $("fwThemeHashtags").value = (cfg.hashtags || []).join(", ");
+    }
+    fwThemeDraft = (cfg.themes || []).map((t) => ({
+      id: t.id || "",
+      label: t.label || "",
+      keywords: t.keywords || [],
+      weight: t.weight || 1.0,
+    }));
+    renderFwThemeRows();
+  }
+
+  async function saveFwThemes() {
+    const themes = collectFwThemeDraft();
+    if (!themes.length) throw new Error("Добавьте хотя бы одну тему");
+    const payload = {
+      lens_id: "custom",
+      lens_label: (($("fwThemeLens") && $("fwThemeLens").value) || "").trim() || "Контент-тематика",
+      brand_short: (($("fwThemeBrand") && $("fwThemeBrand").value) || "").trim(),
+      min_score: parseFloat(($("fwThemeMinScore") && $("fwThemeMinScore").value) || "0.35") || 0.35,
+      hashtags: (($("fwThemeHashtags") && $("fwThemeHashtags").value) || "")
+        .split(/[,;]+/)
+        .map((h) => h.trim())
+        .filter(Boolean),
+      themes,
+    };
+    const data = await api("/api/modules/content_flywheel/themes/config", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+    logAction(data);
+    fwThemeDraft = (data.config && data.config.themes) || themes;
+    renderFwThemeRows();
+  }
+
+  async function applyFwThemePreset() {
+    const presetId = ($("fwThemePreset") && $("fwThemePreset").value) || "";
+    if (!presetId) throw new Error("Выберите пресет");
+    const data = await api("/api/modules/content_flywheel/themes/apply-preset", {
+      method: "POST",
+      body: JSON.stringify({ preset_id: presetId }),
+    });
+    logAction(data);
+    await loadFwThemes();
+  }
+
+  function addFwThemeRow() {
+    fwThemeDraft = collectFwThemeDraft();
+    fwThemeDraft.push({ id: `theme_${fwThemeDraft.length + 1}`, label: "", keywords: [], weight: 1.0 });
+    renderFwThemeRows();
+  }
+
+  async function loadFlywheelSlots() {
+    const data = await api("/api/modules/content_flywheel/slots");
+    const box = $("fwSlots");
+    if (!box) return;
+    const items = data.items || [];
+    box.innerHTML = items.length
+      ? items.map((s) => `<span class="ros-chip">${escapeHtml(s.label || s.slot_key)}</span>`).join(" ")
+      : "слотов нет";
+  }
+
+  function renderFwSources(items) {
+    const box = $("fwSourceList");
+    if (!box) return;
+    if (!items.length) {
+      box.innerHTML = `<p class="muted tight">Нет источников — добавьте или FLYWHEEL_SOURCE_TG в .env</p>`;
+      return;
+    }
+    box.innerHTML = items
+      .map(
+        (s) =>
+          `<div class="sp-channel-row"><span class="sp-platform-badge sp-${escapeHtml(s.platform)}">${escapeHtml(s.platform)}</span> ${escapeHtml(s.handle)}</div>`
+      )
+      .join("");
+  }
+
+  async function loadFwSources() {
+    const data = await api("/api/modules/content_flywheel/sources");
+    renderFwSources(data.items || []);
+  }
+
+  async function addFwSource() {
+    const platform = ($("fwSourcePlatform") && $("fwSourcePlatform").value) || "telegram";
+    const handle = (($("fwSourceHandle") && $("fwSourceHandle").value) || "").trim();
+    if (!handle) throw new Error("Укажите handle");
+    await api("/api/modules/content_flywheel/sources", {
+      method: "POST",
+      body: JSON.stringify({ platform, handle, title: handle }),
+    });
+    if ($("fwSourceHandle")) $("fwSourceHandle").value = "";
+    await loadFwSources();
+  }
+
+  function renderFwNews(items) {
+    const box = $("fwNewsList");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Новостей нет — Poll или Ingest.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map(
+        (n) => `<div class="fw-news-row">
+          <div><strong>${escapeHtml((n.title || "").slice(0, 60))}</strong>
+          <span class="muted tight"> · ${escapeHtml(n.status)} · theme ${Math.round((n.theme_score || 0) * 100)}%</span>
+          ${(n.theme_tags || []).slice(0, 2).map((t) => `<span class="ros-chip">${escapeHtml(t)}</span>`).join(" ")}
+          </div>
+          <button type="button" class="small btn-quiet" data-fw-process="${escapeHtml(n.id)}">Process</button>
+        </div>`
+      )
+      .join("");
+    box.querySelectorAll("[data-fw-process]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        processFwNews(btn.getAttribute("data-fw-process")).catch(logAction)
+      );
+    });
+  }
+
+  async function loadFwNews() {
+    const data = await api("/api/modules/content_flywheel/news?limit=25");
+    renderFwNews(data.items || []);
+  }
+
+  async function ingestFwNews() {
+    const title = (($("fwNewsTitle") && $("fwNewsTitle").value) || "").trim();
+    const body = (($("fwNewsBody") && $("fwNewsBody").value) || "").trim();
+    if (!title || !body) throw new Error("Заголовок и текст обязательны");
+    await api("/api/modules/content_flywheel/news", {
+      method: "POST",
+      body: JSON.stringify({ platform: "manual", title, body }),
+    });
+    if ($("fwNewsBody")) $("fwNewsBody").value = "";
+    await loadFwNews();
+  }
+
+  async function processFwNews(id) {
+    const data = await api(`/api/modules/content_flywheel/news/${encodeURIComponent(id)}/process`, {
+      method: "POST",
+      body: "{}",
+    });
+    logAction(data);
+    await Promise.all([loadFwNews(), loadFwProposals(), loadFwMemory()]);
+  }
+
+  function renderFwProposals(items) {
+    const box = $("fwProposalCards");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Предложений нет.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map((p) => {
+        const imgs = (p.image_options || []).length;
+        const vid = (p.video_brief && p.video_brief.format) === "talking_head";
+        const kb = (p.kb_context && p.kb_context.citations) || [];
+        const theme = p.theme_context || {};
+        const themeLine = theme.primary_label
+          ? `<p class="muted tight fw-theme">Тема: ${escapeHtml(theme.primary_label)} · ${Math.round((theme.theme_score || 0) * 100)}%</p>`
+          : "";
+        const llmLine =
+          theme.llm_angle && theme.llm_angle.used
+            ? `<p class="muted tight fw-llm">Угол: LLM + тематика</p>`
+            : "";
+        const kbLine = kb.length
+          ? `<p class="muted tight fw-kb">KB: ${kb
+              .slice(0, 2)
+              .map((c) => escapeHtml((c.note || "").slice(0, 70)))
+              .join(" · ")}</p>`
+          : "";
+        const actions =
+          p.status === "approved"
+            ? `<span class="muted tight">✓ пост ${escapeHtml((p.social_post_id || "").slice(0, 8))}</span>`
+            : `<button type="button" class="small primary" data-fw-approve="${escapeHtml(p.id)}">Approve → пост+видео</button>`;
+        return `<article class="ros-card">
+          <div class="ros-card-head">
+            <div><div class="ros-card-title">${escapeHtml((p.title || "").slice(0, 70))}</div>
+            <div class="muted tight">слот ${escapeHtml(p.slot_key || "")} · ${imgs} img · ${vid ? "talking-head" : ""}</div></div>
+            ${statusChip(p.status)}
+          </div>
+          ${themeLine}
+          ${llmLine}
+          ${kbLine}
+          <div class="ros-card-actions">${actions}</div>
+        </article>`;
+      })
+      .join("");
+    box.querySelectorAll("[data-fw-approve]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        approveFwProposal(btn.getAttribute("data-fw-approve")).catch(logAction)
+      );
+    });
+  }
+
+  async function loadFwProposals() {
+    const data = await api("/api/modules/content_flywheel/proposals");
+    renderFwProposals(data.items || []);
+  }
+
+  async function loadFwMemory() {
+    const data = await api("/api/modules/content_flywheel/memory?limit=12");
+    const box = $("fwMemoryList");
+    if (!box) return;
+    const items = data.items || [];
+    box.innerHTML = items.length
+      ? items
+          .map(
+            (m) =>
+              `<div class="fw-mem-row">· ${escapeHtml((m.topic || "").slice(0, 50))} <span class="muted">(${escapeHtml((m.published_at || "").slice(0, 10))})</span></div>`
+          )
+          .join("")
+      : "память пуста — после approve появятся темы";
+  }
+
+  async function approveFwProposal(id) {
+    const data = await api(`/api/modules/content_flywheel/proposals/${encodeURIComponent(id)}/approve`, {
+      method: "POST",
+      body: "{}",
+    });
+    logAction(data);
+    await Promise.all([loadFwProposals(), loadFwMemory()]);
+  }
+
+  async function runFlywheelCycle() {
+    const data = await api("/api/modules/content_flywheel/run-cycle", { method: "POST", body: "{}" });
+    logAction(data);
+    await loadFlywheelTab();
+  }
+
+  async function pollFlywheel() {
+    const data = await api("/api/modules/content_flywheel/poll", { method: "POST", body: "{}" });
+    logAction(data);
+    await loadFwNews();
+  }
+
+  async function loadFlywheelTab() {
+    await Promise.all([
+      loadFlywheelSlots(),
+      loadFwThemePresets(),
+      loadFwThemes(),
+      loadFwSources(),
+      loadFwNews(),
+      loadFwProposals(),
+      loadFwMemory(),
+    ]);
+  }
+
+  function renderContentCards(items) {
+    const box = $("csCards");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Пока пусто — создайте черновик слева.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map((d) => {
+        const letters = ((d.body && d.body.letters) || []).length;
+        const actions =
+          d.status === "approved"
+            ? `<span class="muted tight">утверждён</span>`
+            : `<button type="button" class="small primary" data-cs-approve="${escapeHtml(d.id)}">Утвердить</button>
+               <button type="button" class="small btn-quiet" data-cs-reject="${escapeHtml(d.id)}">Отклонить</button>`;
+        return `<article class="ros-card">
+          <div class="ros-card-head">
+            <div>
+              <div class="ros-card-title">${escapeHtml(d.title || "Черновик")}</div>
+              <div class="muted tight">${escapeHtml(d.industry_pack || "")} · ${letters} писем · ${escapeHtml(
+          (d.objection || "").slice(0, 80)
+        )}</div>
+            </div>
+            ${statusChip(d.status)}
+          </div>
+          <div class="ros-card-actions">${actions}</div>
+        </article>`;
+      })
+      .join("");
+    box.querySelectorAll("[data-cs-approve]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setContentStatus(btn.getAttribute("data-cs-approve"), "approved").catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-cs-reject]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setContentStatus(btn.getAttribute("data-cs-reject"), "rejected").catch(logAction)
+      );
+    });
+  }
+
+  async function setContentStatus(id, status) {
+    await api(`/api/modules/content_studio/drafts/${encodeURIComponent(id)}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
+    await loadContentDrafts();
+  }
+
+  async function loadContentDrafts() {
+    const data = await api("/api/modules/content_studio/drafts?limit=30");
+    renderContentCards(data.items || []);
+  }
+
+  async function createContentDraft() {
+    const objection = (($("csObjection") && $("csObjection").value) || "").trim();
+    if (!objection) throw new Error("Укажите возражение");
+    await api("/api/modules/content_studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({
+        objection,
+        industry_pack: ($("csPack") && $("csPack").value) || "lombards",
+      }),
+    });
+    if ($("csObjection")) $("csObjection").value = "";
+    await loadContentDrafts();
+  }
+
+  function renderRadarCards(items) {
+    const box = $("radarCards");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Сигналов пока нет.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map((s) => {
+        return `<article class="ros-card">
+          <div class="ros-card-head">
+            <div>
+              <div class="ros-card-title">${escapeHtml(s.company_title || s.signal_type || "Сигнал")}</div>
+              <div class="muted tight">${escapeHtml(s.signal_type || "")} · score ${Number(
+          s.score || 0
+        ).toFixed(2)} · ${escapeHtml((s.summary || "").slice(0, 100))}</div>
+            </div>
+            ${statusChip(s.status)}
+          </div>
+          <div class="ros-card-actions">
+            <button type="button" class="small primary" data-radar-verify="${escapeHtml(s.id)}">Проверить</button>
+            <button type="button" class="small btn-quiet" data-radar-dismiss="${escapeHtml(s.id)}">Скрыть</button>
+          </div>
+        </article>`;
+      })
+      .join("");
+    box.querySelectorAll("[data-radar-verify]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-radar-verify");
+        const data = await api(`/api/modules/radar/signals/${encodeURIComponent(id)}/verify`, {
+          method: "POST",
+          body: "{}",
+        });
+        btn.textContent = (data.suggested_action || "ok").replace(/_/g, " ");
+      });
+    });
+    box.querySelectorAll("[data-radar-dismiss]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        await api(`/api/modules/radar/signals/${encodeURIComponent(btn.getAttribute("data-radar-dismiss"))}/status`, {
+          method: "POST",
+          body: JSON.stringify({ status: "dismissed" }),
+        });
+        await loadRadarSignals();
+      });
+    });
+  }
+
+  async function loadRadarSignals() {
+    const data = await api("/api/modules/radar/signals?limit=40");
+    renderRadarCards(data.items || []);
+  }
+
+  async function ingestRadarSignal() {
+    const summary = (($("radarSummary") && $("radarSummary").value) || "").trim();
+    if (!summary) throw new Error("Укажите краткое описание");
+    await api("/api/modules/radar/signals", {
+      method: "POST",
+      body: JSON.stringify({
+        signal_type: ($("radarType") && $("radarType").value) || "manual",
+        company_title: ($("radarCompany") && $("radarCompany").value) || "",
+        summary,
+        score: Number(($("radarScore") && $("radarScore").value) || 0.5),
+      }),
+    });
+    if ($("radarSummary")) $("radarSummary").value = "";
+    await loadRadarSignals();
+  }
+
+  function renderVideoCards(items) {
+    const box = $("videoCards");
+    if (!box) return;
+    const list = items || [];
+    if (!list.length) {
+      box.innerHTML = `<p class="muted tight">Создайте первый черновик слева.</p>`;
+      return;
+    }
+    box.innerHTML = list
+      .map((d) => {
+        const actions =
+          d.status === "approved"
+            ? `<button type="button" class="small primary" data-video-upload="${escapeHtml(d.id)}">Private upload</button>`
+            : d.status === "uploaded_private"
+              ? `<span class="muted tight">private queue</span>`
+              : `<button type="button" class="small primary" data-video-approve="${escapeHtml(d.id)}">Утвердить</button>
+                 <button type="button" class="small btn-quiet" data-video-reject="${escapeHtml(d.id)}">Отклонить</button>`;
+        return `<article class="ros-card">
+          <div class="ros-card-head">
+            <div>
+              <div class="ros-card-title">${escapeHtml(d.title || "Video")}</div>
+              <div class="muted tight">${escapeHtml((d.brief || "").slice(0, 100))}</div>
+            </div>
+            ${statusChip(d.status)}
+          </div>
+          <div class="ros-card-actions">${actions}</div>
+        </article>`;
+      })
+      .join("");
+    box.querySelectorAll("[data-video-approve]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setVideoStatus(btn.getAttribute("data-video-approve"), "approved").catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-video-reject]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        setVideoStatus(btn.getAttribute("data-video-reject"), "rejected").catch(logAction)
+      );
+    });
+    box.querySelectorAll("[data-video-upload]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        await api(
+          `/api/modules/video_studio/drafts/${encodeURIComponent(btn.getAttribute("data-video-upload"))}/queue-private-upload`,
+          { method: "POST", body: "{}" }
+        );
+        await loadVideoDrafts();
+      });
+    });
+  }
+
+  async function setVideoStatus(id, status) {
+    await api(`/api/modules/video_studio/drafts/${encodeURIComponent(id)}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
+    await loadVideoDrafts();
+  }
+
+  async function loadVideoDrafts() {
+    const data = await api("/api/modules/video_studio/drafts?limit=30");
+    renderVideoCards(data.items || []);
+  }
+
+  async function createVideoDraft() {
+    const title = (($("videoTitle") && $("videoTitle").value) || "").trim();
+    if (!title) throw new Error("Укажите название");
+    await api("/api/modules/video_studio/drafts", {
+      method: "POST",
+      body: JSON.stringify({
+        title,
+        brief: ($("videoBrief") && $("videoBrief").value) || "",
+        script_text: ($("videoScript") && $("videoScript").value) || "",
+      }),
+    });
+    if ($("videoTitle")) $("videoTitle").value = "";
+    if ($("videoBrief")) $("videoBrief").value = "";
+    if ($("videoScript")) $("videoScript").value = "";
+    await loadVideoDrafts();
+  }
+
+
   function refreshActiveTab() {
     const tab = activeTabName();
     if (tab === "clients") loadClients().catch((e) => ($("clientsLog").textContent = String(e)));
+    else if (tab === "lpr") loadLprTab().catch((e) => { if ($("lprMeta")) $("lprMeta").textContent = String(e); });
+    else if (tab === "studio") loadStudioTab().catch(logAction);
     else if (tab === "outbox") loadOutbox().catch(logAction);
     else if (tab === "inbox") {
       const view = document.querySelector(".sub-tab.active");
@@ -1897,6 +3228,8 @@
         $("pageTitle").textContent = titles[tab] || tab;
         if ($("pageHint")) $("pageHint").textContent = hints[tab] || "";
         if (tab === "clients") loadClients().catch((e) => ($("clientsLog").textContent = String(e)));
+        if (tab === "lpr") loadLprTab().catch((e) => { if ($("lprMeta")) $("lprMeta").textContent = String(e); });
+        if (tab === "studio") loadStudioTab().catch(logAction);
         if (tab === "outbox") loadOutbox().catch(logAction);
         if (tab === "report") loadReport().catch(logAction);
         if (tab === "settings") {
@@ -1911,6 +3244,9 @@
           loadSettingsIntoForms()
             .then(() => loadPacks())
             .catch(logAction);
+        }
+        if (tab === "variants") {
+          loadLetterVariants().catch(logAction);
         }
         if (tab === "inbox") {
           const sub = document.querySelector('.sub-tab[data-inbox-view="classified"]');
@@ -2028,6 +3364,73 @@
     bindTabs();
     bindContactIcons();
     bindInnerWheelScroll();
+    if ($("lprSearchBtn")) {
+      $("lprSearchBtn").addEventListener("click", () => runLprSearch().catch((e) => {
+        if ($("lprMeta")) $("lprMeta").textContent = String(e);
+      }));
+    }
+    if ($("lprCapsBtn")) {
+      $("lprCapsBtn").addEventListener("click", () => loadLprCaps().catch((e) => {
+        if ($("lprMeta")) $("lprMeta").textContent = String(e);
+      }));
+    }
+    if ($("csDraftBtn")) {
+      $("csDraftBtn").addEventListener("click", () => createContentDraft().catch(logAction));
+    }
+    if ($("csListBtn")) {
+      $("csListBtn").addEventListener("click", () => loadContentDrafts().catch(logAction));
+    }
+    if ($("radarIngestBtn")) {
+      $("radarIngestBtn").addEventListener("click", () => ingestRadarSignal().catch(logAction));
+    }
+    if ($("radarListBtn")) {
+      $("radarListBtn").addEventListener("click", () => loadRadarSignals().catch(logAction));
+    }
+    if ($("radarOwnedPollBtn")) {
+      $("radarOwnedPollBtn").addEventListener("click", () => pollOwnedPages().catch(logAction));
+    }
+    if ($("videoDraftBtn")) {
+      $("videoDraftBtn").addEventListener("click", () => createVideoDraft().catch(logAction));
+    }
+    if ($("videoListBtn")) {
+      $("videoListBtn").addEventListener("click", () => loadVideoDrafts().catch(logAction));
+    }
+    if ($("spChannelAddBtn")) {
+      $("spChannelAddBtn").addEventListener("click", () => addSpChannel().catch(logAction));
+    }
+    if ($("spChannelListBtn")) {
+      $("spChannelListBtn").addEventListener("click", () => loadSpChannels().catch(logAction));
+    }
+    if ($("spPostCreateBtn")) {
+      $("spPostCreateBtn").addEventListener("click", () => createSpPost().catch(logAction));
+    }
+    if ($("spPostListBtn")) {
+      $("spPostListBtn").addEventListener("click", () => loadSpPosts().catch(logAction));
+    }
+    if ($("fwSourceAddBtn")) {
+      $("fwSourceAddBtn").addEventListener("click", () => addFwSource().catch(logAction));
+    }
+    if ($("fwPollBtn")) {
+      $("fwPollBtn").addEventListener("click", () => pollFlywheel().catch(logAction));
+    }
+    if ($("fwRunCycleBtn")) {
+      $("fwRunCycleBtn").addEventListener("click", () => runFlywheelCycle().catch(logAction));
+    }
+    if ($("fwNewsIngestBtn")) {
+      $("fwNewsIngestBtn").addEventListener("click", () => ingestFwNews().catch(logAction));
+    }
+    if ($("fwNewsListBtn")) {
+      $("fwNewsListBtn").addEventListener("click", () => loadFwNews().catch(logAction));
+    }
+    if ($("fwThemeSaveBtn")) {
+      $("fwThemeSaveBtn").addEventListener("click", () => saveFwThemes().catch(logAction));
+    }
+    if ($("fwThemeAddBtn")) {
+      $("fwThemeAddBtn").addEventListener("click", () => addFwThemeRow());
+    }
+    if ($("fwThemeApplyPresetBtn")) {
+      $("fwThemeApplyPresetBtn").addEventListener("click", () => applyFwThemePreset().catch(logAction));
+    }
     const adv = $("letterAdvanced");
     if (adv) {
       adv.addEventListener("toggle", () => {
@@ -2359,6 +3762,9 @@
           logAction(e);
         }
       });
+    }
+    if ($("queuePaceBtn")) {
+      $("queuePaceBtn").addEventListener("click", () => paceQueue().catch(logAction));
     }
     $("repliesLoad").addEventListener("click", () => loadReplies().catch(logAction));
     if ($("inboxLoad")) {
@@ -3005,7 +4411,6 @@
         });
       });
     }
-
     document.addEventListener("click", (ev) => {
       const btn = ev.target.closest("[data-company-id]");
       if (!btn || !btn.classList.contains("company-open")) return;
@@ -3028,6 +4433,16 @@
     if ($("inboxReplySend")) {
       $("inboxReplySend").addEventListener("click", () => sendInboxThreadReply().catch(logAction));
     }
+    if ($("inboxReplyUseDraft")) {
+      $("inboxReplyUseDraft").addEventListener("click", () => {
+        if (!activeInboxDraft) return;
+        if ($("inboxReplyBody")) $("inboxReplyBody").value = activeInboxDraft;
+        if ($("inboxReplyStatus")) {
+          $("inboxReplyStatus").textContent =
+            "Черновик вставлен — проверьте перед отправкой (APPROVAL_REQUIRED)";
+        }
+      });
+    }
     document.addEventListener("keydown", (ev) => {
       const peel = $("companyPeelAway");
       const thread = $("inboxThreadPeelAway");
@@ -3038,11 +4453,50 @@
       if (ev.key === "Escape" && peel && peel.classList.contains("is-open")) closeCompanyCard();
     });
 
+    if ($("openLetterVariantsBtn")) {
+      $("openLetterVariantsBtn").addEventListener("click", () => {
+        goToTab("variants");
+        loadLetterVariants().catch(logAction);
+      });
+    }
+    if ($("letterVariantsSave")) {
+      $("letterVariantsSave").addEventListener("click", () => saveLetterVariants().catch(logAction));
+    }
+    if ($("letterVariantsReload")) {
+      $("letterVariantsReload").addEventListener("click", () => loadLetterVariants().catch(logAction));
+    }
+    if ($("letterVariantsReset")) {
+      $("letterVariantsReset").addEventListener("click", () => {
+        if (confirm("Сбросить темы и тексты к встроенным 7×7?")) {
+          resetLetterVariants().catch(logAction);
+        }
+      });
+    }
+    if ($("letterVariantAddSubject")) {
+      $("letterVariantAddSubject").addEventListener("click", () => {
+        collectLetterVariantsFromDom();
+        letterVariantSubjects.push("");
+        renderLetterVariantEditors();
+      });
+    }
+    if ($("letterVariantAddBody")) {
+      $("letterVariantAddBody").addEventListener("click", () => {
+        collectLetterVariantsFromDom();
+        letterVariantBodies.push("{greeting}\n\n\n\n{signature}");
+        renderLetterVariantEditors();
+      });
+    }
+    if ($("letterVariantPreviewEmail")) {
+      $("letterVariantPreviewEmail").addEventListener("change", () =>
+        loadLetterVariants().catch(logAction)
+      );
+    }
     $("antibanSave").addEventListener("click", async () => {
       try {
         const payload = {
           WARMUP_ENABLED: $("warmupEnabled").checked ? "true" : "false",
           DOMAIN_DAILY_CAP: String($("domainCap").value),
+          DOMAIN_SHARED_DAILY_CAP: String(($("domainSharedCap") && $("domainSharedCap").value) || "0"),
           TRACKING_PLUS_REPLY_TO: $("plusReply").checked ? "true" : "false",
           OPEN_TRACKING_ENABLED: $("openTracking").checked ? "true" : "false",
         };

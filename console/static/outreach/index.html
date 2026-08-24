@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops16" />
+  <link rel="stylesheet" href="styles.css?v=ops36" />
   <script>
     (function () {
       function parentBase() {
@@ -62,10 +62,13 @@
 
     <nav class="tabs" role="tablist">
       <button type="button" data-tab="letter" class="active">Кампания</button>
+      <button type="button" data-tab="variants">Варианты</button>
       <button type="button" data-tab="outbox">Очередь</button>
       <button type="button" data-tab="inbox">Входящие</button>
       <button type="button" data-tab="report">Результат</button>
       <button type="button" data-tab="clients">Клиенты</button>
+      <button type="button" data-tab="lpr">ЛПР</button>
+      <button type="button" data-tab="studio">Студия</button>
       <button type="button" data-tab="settings">Настройки</button>
     </nav>
 
@@ -97,6 +100,13 @@
             <div id="packCards" class="pack-cards">Загрузка…</div>
           </fieldset>
 
+          <div class="ops-panel variants-jump">
+            <p class="muted tight" style="margin:0 0 0.45rem">
+              Темы и тексты первого письма — отдельная вкладка <strong>Варианты</strong> (7 заголовков × 7 текстов).
+            </p>
+            <button type="button" id="openLetterVariantsBtn" class="primary">Открыть варианты заголовков</button>
+          </div>
+
           <details class="task-advanced campaign-chain" id="campaignChainDetails" open>
             <summary id="campaignChainSummary">Цепочка писем</summary>
           <div class="stack letter-chain">
@@ -115,7 +125,7 @@
               <button type="button" id="letterDelBtn" class="btn-quiet">Удалить</button>
               <button type="button" id="letterResetChain" class="btn-quiet">Сбросить к базовым</button>
             </div>
-            <p class="muted tight">Переключайте письма цепочки, меняйте текст и день отправки, добавляйте черновики. Порядок = порядок follow-up.</p>
+            <p class="muted tight">Переключайте письма цепочки, меняйте текст и день отправки, добавляйте черновики. Порядок = порядок follow-up. Заголовки первого письма — вкладка «Варианты».</p>
           </div>
 
           <div class="letter-editor" id="letterEditor">
@@ -245,6 +255,49 @@
         </div>
       </section>
 
+      <!-- ========== ВАРИАНТЫ ЗАГОЛОВКОВ / ТЕКСТОВ ========== -->
+      <section id="tab-variants" class="panel">
+        <div class="surface task-form">
+          <div class="task-intro compact-intro">
+            <h2 class="section-title">Варианты заголовков и текстов</h2>
+            <p class="muted tight" id="letterVariantsHint">
+              Первое письмо: матрица тем × текстов. Получатель стабильно получает одну комбинацию (антиспам). Здесь можно смотреть, править и сохранять.
+            </p>
+          </div>
+          <fieldset class="task-mode ops-panel" id="letterVariantsPanel">
+            <legend>Темы × тексты первого письма</legend>
+            <p class="muted tight" id="letterVariantsMeta">Загрузка…</p>
+            <div class="task-grid">
+              <label class="field">Превью для email
+                <input id="letterVariantPreviewEmail" type="email" placeholder="demo@mail.ru" />
+              </label>
+              <div class="field">
+                <span class="muted tight">Выбранная комбинация</span>
+                <pre id="letterVariantPicked" class="log tight" style="max-height:8rem;overflow:auto"></pre>
+              </div>
+            </div>
+            <div class="letter-variant-cols">
+              <div>
+                <p class="ros-pane-title">Темы (заголовки)</p>
+                <div id="letterVariantSubjects" class="letter-variant-list"></div>
+                <button type="button" id="letterVariantAddSubject" class="btn-quiet small">+ Тема</button>
+              </div>
+              <div>
+                <p class="ros-pane-title">Тексты</p>
+                <div id="letterVariantBodies" class="letter-variant-list"></div>
+                <button type="button" id="letterVariantAddBody" class="btn-quiet small">+ Текст</button>
+              </div>
+            </div>
+            <div class="actions wrap-actions" style="margin-top:0.5rem">
+              <button type="button" id="letterVariantsReload" class="btn-quiet">Обновить</button>
+              <button type="button" id="letterVariantsReset" class="btn-quiet">Сбросить к базовым</button>
+              <button type="button" id="letterVariantsSave" class="primary">Сохранить варианты</button>
+            </div>
+            <pre id="letterVariantsLog" class="log tight"></pre>
+          </fieldset>
+        </div>
+      </section>
+
       <!-- ========== ОЧЕРЕДЬ + УПРАВЛЕНИЕ ОТПРАВКОЙ ========== -->
       <section id="tab-outbox" class="panel">
         <div class="surface task-form">
@@ -260,21 +313,31 @@
             </p>
           </div>
 
-          <fieldset class="task-mode ops-panel">
-            <legend>Действия</legend>
+          <fieldset class="task-mode ops-panel" id="queuePacePanel">
+            <legend>План отправки (антиспам)</legend>
+            <p class="muted tight">
+              Разложить первые письма на будни (по умолчанию 14, сб/вс пропускаем).
+              Мягко и ровно — без кучи на пн/вт. Если писем больше, чем дней×лимит,
+              горизонт сам удлинится (иначе неотправленные копятся).
+            </p>
             <div class="task-grid compact-grid">
+              <label class="field">Рабочих дней
+                <input id="queuePaceDays" type="number" min="7" max="180" value="14" />
+              </label>
               <label class="field">Писем в пачке
                 <input id="sendN" type="number" min="1" max="20" value="1" />
               </label>
             </div>
             <div class="actions wrap-actions">
-              <button type="button" id="outboxLoad" class="primary">Обновить</button>
+              <button type="button" id="queuePaceBtn" class="primary">Разложить на будни</button>
+              <button type="button" id="outboxLoad" class="btn-quiet">Обновить</button>
               <button type="button" class="btn-quiet" id="queueRebuildNamesBtn">ФИО в очередь</button>
               <button type="button" id="syncBtn" class="btn-quiet">Bitrix sync</button>
               <button type="button" id="checkRepliesBtn" class="btn-quiet">Проверить ответы</button>
               <button type="button" id="dryRunBtn" class="btn-quiet">Пробный ×5</button>
               <button type="button" id="sendBtn" class="primary">Отправить пачку</button>
             </div>
+            <pre id="queuePaceLog" class="log tight" hidden></pre>
           </fieldset>
 
           <div id="queueStats" class="stat-grid"></div>
@@ -282,7 +345,9 @@
 
           <details class="task-advanced" id="queueCalendarWrap" open>
             <summary>Календарь очереди (14 дней)</summary>
-            <p class="muted tight">Follow-up по дате next_action_at; первые письма — по ближайшему слоту окна.</p>
+            <p class="muted tight" id="queueCalendarHint">
+              Календарь = план после раскладки. Выходные пустые. Нажмите «Разложить на будни», если пн/вт переполнены.
+            </p>
             <div id="queueCalendar" class="queue-calendar"></div>
           </details>
 
@@ -476,6 +541,317 @@
         </div>
       </section>
 
+      <!-- ========== ЛПР / Social search ========== -->
+      <section id="tab-lpr" class="panel">
+        <div class="surface task-form">
+          <div class="task-intro compact-intro">
+            <h2 class="section-title">Комитет ЛПР</h2>
+            <p class="muted tight">Найдите лиц, принимающих решения. Кластеры — только с approve. Без auto-DM.</p>
+          </div>
+
+          <div class="ros-split">
+            <div class="ros-pane">
+              <p class="ros-pane-title">Компания</p>
+              <div class="task-grid">
+                <label class="field">Bitrix company id
+                  <input id="lprCompanyId" type="text" placeholder="12345" autocomplete="off" />
+                </label>
+                <label class="field">Название
+                  <input id="lprCompanyTitle" type="text" placeholder="Ломбард …" />
+                </label>
+                <label class="field">ИНН
+                  <input id="lprInn" type="text" placeholder="7707083893" maxlength="12" />
+                </label>
+              </div>
+              <p class="ros-pane-title" style="margin-top:0.85rem">Ручной import</p>
+              <div class="task-grid">
+                <label class="field">Web URL
+                  <input id="lprWebUrl" type="url" placeholder="https://…" />
+                </label>
+                <label class="field">ФИО (web)
+                  <input id="lprWebName" type="text" placeholder="Иван Петров" />
+                </label>
+                <label class="field">Telegram
+                  <input id="lprTgUser" type="text" placeholder="@boss" />
+                </label>
+                <label class="field">ФИО (TG)
+                  <input id="lprTgName" type="text" placeholder="Босс" />
+                </label>
+              </div>
+              <div class="task-actions ros-actions">
+                <button type="button" id="lprSearchBtn" class="primary">Найти кандидатов</button>
+                <button type="button" class="btn-quiet" id="lprCapsBtn">Источники</button>
+              </div>
+              <p class="muted tight" id="lprMeta"></p>
+            </div>
+            <div class="ros-pane">
+              <p class="ros-pane-title">Покрытие ролей</p>
+              <div id="lprCoverage" class="lpr-coverage"></div>
+              <p class="ros-pane-title" style="margin-top:0.85rem">Кандидаты</p>
+              <div id="lprCards" class="ros-cards">
+                <p class="muted tight">Запустите поиск — появятся карточки кандидатов.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== СТУДИЯ: Content / Radar / Video ========== -->
+      <section id="tab-studio" class="panel">
+        <div class="surface task-form">
+          <div class="task-intro compact-intro">
+            <h2 class="section-title">Студия</h2>
+            <p class="muted tight">Контент, соцсети, сигналы рынка и видео — с ручным утверждением.</p>
+            <div id="studioMetaBar" class="ros-meta-bar" aria-live="polite">
+              <span id="studioRoleChip" class="ros-chip">роль…</span>
+              <span id="studioUsageChip" class="ros-chip muted-chip">usage…</span>
+            </div>
+          </div>
+          <div class="sub-tabs" role="tablist" aria-label="Студия">
+            <button type="button" class="sub-tab active" data-studio-view="content">Контент</button>
+            <button type="button" class="sub-tab" data-studio-view="social">Соцсети</button>
+            <button type="button" class="sub-tab" data-studio-view="flywheel">Флайвил</button>
+            <button type="button" class="sub-tab" data-studio-view="radar">Radar</button>
+            <button type="button" class="sub-tab" data-studio-view="video">Видео</button>
+          </div>
+
+          <div id="studioViewSocial" hidden>
+            <div class="ros-split ros-split-triple">
+              <div class="ros-pane">
+                <p class="ros-pane-title">Канал</p>
+                <label class="field">Платформа
+                  <select id="spChannelPlatform">
+                    <option value="telegram">Telegram</option>
+                    <option value="vk">VKontakte</option>
+                    <option value="instagram">Instagram</option>
+                    <option value="youtube">YouTube</option>
+                  </select>
+                </label>
+                <label class="field">Название
+                  <input id="spChannelTitle" type="text" placeholder="Quantum Labs News" />
+                </label>
+                <label class="field">Handle / ID
+                  <input id="spChannelHandle" type="text" placeholder="@channel или club123" />
+                </label>
+                <div class="task-actions ros-actions">
+                  <button type="button" id="spChannelAddBtn" class="primary">Добавить канал</button>
+                  <button type="button" id="spChannelListBtn" class="btn-quiet">Обновить</button>
+                </div>
+                <div id="spChannelList" class="sp-channel-list">
+                  <p class="muted tight">Каналов пока нет.</p>
+                </div>
+              </div>
+              <div class="ros-pane">
+                <p class="ros-pane-title">Пост для всех платформ</p>
+                <label class="field">Заголовок
+                  <input id="spPostTitle" type="text" placeholder="Выплаты для ломбардов за 48 часов" />
+                </label>
+                <label class="field">Текст / бриф
+                  <textarea id="spPostBrief" rows="4" placeholder="Оффер, факты, CTA…"></textarea>
+                </label>
+                <label class="field">Ссылка (опц.)
+                  <input id="spPostLink" type="url" placeholder="https://quantumlabs.ru" />
+                </label>
+                <fieldset class="sp-platform-picks">
+                  <legend>Платформы</legend>
+                  <label class="check tight"><input type="checkbox" name="spPlatform" value="telegram" checked /> Telegram</label>
+                  <label class="check tight"><input type="checkbox" name="spPlatform" value="vk" checked /> VK</label>
+                  <label class="check tight"><input type="checkbox" name="spPlatform" value="instagram" checked /> Instagram</label>
+                  <label class="check tight"><input type="checkbox" name="spPlatform" value="youtube" checked /> YouTube</label>
+                </fieldset>
+                <div class="task-actions ros-actions">
+                  <button type="button" id="spPostCreateBtn" class="primary">Сгенерировать посты + картинки</button>
+                  <button type="button" id="spPostListBtn" class="btn-quiet">Обновить</button>
+                </div>
+                <p class="muted tight">Тексты и SVG-карточки — draft. Репост только после approve.</p>
+              </div>
+              <div class="ros-pane">
+                <p class="ros-pane-title">Черновики и репосты</p>
+                <div id="spPostCards" class="ros-cards">
+                  <p class="muted tight">Создайте пост слева.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="studioViewContent">
+            <div class="ros-split">
+              <div class="ros-pane">
+                <p class="ros-pane-title">Возражение → черновик</p>
+                <label class="field">Возражение клиента
+                  <textarea id="csObjection" rows="3" placeholder="Уже есть банк / дорого / не сейчас…"></textarea>
+                </label>
+                <label class="field">Отраслевой пакет
+                  <select id="csPack">
+                    <option value="lombards">Ломбарды</option>
+                    <option value="mfo">МФО</option>
+                    <option value="trade_in">Trade-in</option>
+                    <option value="gig">Гиг</option>
+                    <option value="scrap">Вторсырьё</option>
+                  </select>
+                </label>
+                <div class="task-actions ros-actions">
+                  <button type="button" id="csDraftBtn" class="primary">Собрать черновик</button>
+                  <button type="button" id="csListBtn" class="btn-quiet">Обновить список</button>
+                </div>
+                <p class="muted tight">Статус всегда APPROVAL_REQUIRED до вашей кнопки «Утвердить».</p>
+              </div>
+              <div class="ros-pane">
+                <p class="ros-pane-title">Черновики</p>
+                <div id="csCards" class="ros-cards">
+                  <p class="muted tight">Пока пусто — создайте черновик слева.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="studioViewFlywheel" hidden>
+            <div class="ros-split ros-split-triple">
+              <div class="ros-pane">
+                <p class="ros-pane-title">Источники новостей</p>
+                <label class="field">Платформа
+                  <select id="fwSourcePlatform">
+                    <option value="rss">RSS / Atom</option>
+                    <option value="telegram">Telegram</option>
+                    <option value="vk">VK</option>
+                  </select>
+                </label>
+                <label class="field">Handle / URL
+                  <input id="fwSourceHandle" type="text" placeholder="https://example.com/feed.xml или @channel" />
+                </label>
+                <div class="task-actions ros-actions">
+                  <button type="button" id="fwSourceAddBtn" class="btn-quiet">Добавить</button>
+                  <button type="button" id="fwPollBtn" class="primary">Poll sources</button>
+                </div>
+                <p class="muted tight">Telegram: публичный @channel (парсер t.me/s). RSS: URL фида.</p>
+                <p class="ros-pane-title" style="margin-top:0.75rem">Слоты сегодня</p>
+                <div id="fwSlots" class="fw-slots muted tight">…</div>
+                <details class="fw-theme-panel" open>
+                  <summary class="ros-pane-title">Тематика (ниша)</summary>
+                  <p class="muted tight">Задайте свои темы и ключевые слова — флайвил фильтрует новости и формулирует угол публикации под вашу нишу.</p>
+                  <label class="field">Линза
+                    <input id="fwThemeLens" type="text" placeholder="Например: B2B SaaS, недвижимость, финтех…" />
+                  </label>
+                  <label class="field">Бренд (коротко)
+                    <input id="fwThemeBrand" type="text" placeholder="опционально" />
+                  </label>
+                  <label class="field">Хэштеги (через запятую)
+                    <input id="fwThemeHashtags" type="text" placeholder="#новости, #отрасль, #бизнес" />
+                  </label>
+                  <label class="field">Порог релевантности (0–1)
+                    <input id="fwThemeMinScore" type="number" min="0" max="1" step="0.05" value="0.35" />
+                  </label>
+                  <label class="field">Пресет
+                    <select id="fwThemePreset"><option value="">— выбрать —</option></select>
+                  </label>
+                  <div class="task-actions ros-actions">
+                    <button type="button" id="fwThemeApplyPresetBtn" class="btn-quiet small">Применить пресет</button>
+                  </div>
+                  <div id="fwThemeList" class="fw-theme-list"></div>
+                  <div class="task-actions ros-actions">
+                    <button type="button" id="fwThemeAddBtn" class="btn-quiet small">+ Тема</button>
+                    <button type="button" id="fwThemeSaveBtn" class="primary small">Сохранить</button>
+                  </div>
+                </details>
+                <div class="task-actions ros-actions">
+                  <button type="button" id="fwRunCycleBtn" class="primary">Run cycle</button>
+                </div>
+              </div>
+              <div class="ros-pane">
+                <p class="ros-pane-title">Новости (ingest)</p>
+                <label class="field">Заголовок
+                  <input id="fwNewsTitle" type="text" placeholder="Заголовок новости" />
+                </label>
+                <label class="field">Текст
+                  <textarea id="fwNewsBody" rows="4" placeholder="Текст для обработки…"></textarea>
+                </label>
+                <div class="task-actions ros-actions">
+                  <button type="button" id="fwNewsIngestBtn" class="primary">Ingest</button>
+                  <button type="button" id="fwNewsListBtn" class="btn-quiet">Обновить</button>
+                </div>
+                <div id="fwNewsList" class="fw-scroll-list"></div>
+              </div>
+              <div class="ros-pane">
+                <p class="ros-pane-title">Предложения + память</p>
+                <div id="fwProposalCards" class="ros-cards">
+                  <p class="muted tight">Run cycle или Process новость.</p>
+                </div>
+                <p class="ros-pane-title">Уже публиковали</p>
+                <div id="fwMemoryList" class="fw-memory muted tight"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="studioViewRadar" hidden>
+            <div class="ros-split">
+              <div class="ros-pane">
+                <p class="ros-pane-title">Новый сигнал</p>
+                <div class="task-grid">
+                  <label class="field">Тип
+                    <input id="radarType" type="text" placeholder="hiring_payments" list="radarTypeHints" />
+                    <datalist id="radarTypeHints">
+                      <option value="hiring_payments"></option>
+                      <option value="competitor_switch"></option>
+                      <option value="expansion"></option>
+                      <option value="manual"></option>
+                    </datalist>
+                  </label>
+                  <label class="field">Компания
+                    <input id="radarCompany" type="text" />
+                  </label>
+                  <label class="field">Score
+                    <input id="radarScore" type="number" min="0" max="1" step="0.05" value="0.7" />
+                  </label>
+                </div>
+                <label class="field">Кратко
+                  <textarea id="radarSummary" rows="3" placeholder="Ищет интегратора выплат…"></textarea>
+                </label>
+                <div class="task-actions ros-actions">
+                  <button type="button" id="radarIngestBtn" class="primary">Записать</button>
+                  <button type="button" id="radarListBtn" class="btn-quiet">Обновить</button>
+                  <button type="button" id="radarOwnedPollBtn" class="btn-quiet">Owned poll</button>
+                </div>
+                <p class="muted tight">Сигналы не запускают рассылку сами — только подсказки оператору. Owned poll — TG/VK stub.</p>
+              </div>
+              <div class="ros-pane">
+                <p class="ros-pane-title">Очередь сигналов</p>
+                <div id="radarCards" class="ros-cards">
+                  <p class="muted tight">Сигналов пока нет.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="studioViewVideo" hidden>
+            <div class="ros-split">
+              <div class="ros-pane">
+                <p class="ros-pane-title">Видео-черновик</p>
+                <label class="field">Название
+                  <input id="videoTitle" type="text" placeholder="Выплаты для ломбардов — 60 сек" />
+                </label>
+                <label class="field">Бриф
+                  <textarea id="videoBrief" rows="3" placeholder="Для кого, оффер, тон…"></textarea>
+                </label>
+                <label class="field">Сценарий (опц.)
+                  <textarea id="videoScript" rows="4" placeholder="Оставьте пустым — соберём каркас из брифа"></textarea>
+                </label>
+                <div class="task-actions ros-actions">
+                  <button type="button" id="videoDraftBtn" class="primary">Создать private draft</button>
+                  <button type="button" id="videoListBtn" class="btn-quiet">Обновить</button>
+                </div>
+                <p class="muted tight">YouTube private upload — после approve. Публикация вручную.</p>
+              </div>
+              <div class="ros-pane">
+                <p class="ros-pane-title">Черновики видео</p>
+                <div id="videoCards" class="ros-cards">
+                  <p class="muted tight">Создайте первый черновик слева.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- ========== РЕЗУЛЬТАТ (отчёт + динамика) ========== -->
       <section id="tab-report" class="panel">
         <div class="surface task-form">
@@ -545,6 +921,12 @@
           <div class="task-intro compact-intro">
             <h2 class="section-title">Настройки рассылки</h2>
             <p class="muted tight">Локальные B2B-окна у получателя — главный режим. Старт / Пауза / Стоп — в шапке.</p>
+            <div id="settingsAccessCard" class="ros-access-card">
+              <p class="ros-pane-title">Доступ</p>
+              <p id="settingsRoleLine" class="muted tight">Загрузка роли…</p>
+              <p id="settingsPermLine" class="muted tight"></p>
+              <p id="settingsUsageLine" class="muted tight"></p>
+            </div>
           </div>
 
           <fieldset class="task-mode">
@@ -785,8 +1167,15 @@
               <input id="warmupEnabled" type="checkbox" />
               Плавный рост дневного лимита
             </label>
-            <label class="field">Лимит на один домен / сутки
-              <input id="domainCap" type="number" min="1" max="20" />
+            <label class="field">Лимит на корпоративный домен / сутки
+              <input id="domainCap" type="number" min="1" max="50" />
+            </label>
+            <p class="muted tight">
+              Для <strong>mail.ru / yandex / gmail</strong> лимит = дневному SMTP (не 2).
+              «2 на домен» — только для уникальных корпоративных доменов (@company.ru).
+            </p>
+            <label class="field">Лимит shared ISP / сутки (0 = как дневной лимит)
+              <input id="domainSharedCap" type="number" min="0" max="50" value="0" />
             </label>
             <label class="field check">
               <input id="openTracking" type="checkbox" />
@@ -847,11 +1236,13 @@
         </div>
         <button type="button" class="btn-quiet" id="inboxThreadClose" aria-label="Закрыть">✕</button>
       </header>
+      <div id="inboxThreadEnrichment" class="inbox-enrichment" hidden></div>
       <div id="inboxThreadBody" class="peel-away-body muted">Загрузка…</div>
       <footer class="inbox-reply-bar">
         <label class="field-label" for="inboxReplyBody">Ответ с office@</label>
         <textarea id="inboxReplyBody" rows="5" placeholder="Текст ответа…"></textarea>
         <div class="row-actions">
+          <button type="button" class="btn-quiet" id="inboxReplyUseDraft" hidden>Вставить черновик</button>
           <label class="check-inline"><input type="checkbox" id="inboxReplyMarkDone" checked /> Пометить «Готово» после отправки</label>
           <button type="button" class="primary" id="inboxReplySend">Отправить</button>
         </div>
@@ -875,6 +1266,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=ops16"></script>
+  <script src="app.js?v=ops36"></script>
 </body>
 </html>
