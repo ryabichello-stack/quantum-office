@@ -1924,7 +1924,7 @@
   async function paceQueue() {
     const log = $("queuePaceLog");
     const daysEl = $("queuePaceDays");
-    const workdays = Math.max(7, Math.min(60, Number((daysEl && daysEl.value) || 14) || 14));
+    const workdays = Math.max(7, Math.min(180, Number((daysEl && daysEl.value) || 14) || 14));
     if (log) {
       log.hidden = false;
       log.textContent = `Раскладываю на ${workdays} будних дней (сб/вс пропускаю)…`;

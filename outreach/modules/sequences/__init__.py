@@ -890,7 +890,7 @@ class SequencesModule:
                 outbox,
                 settings=rt,
                 effective_daily_limit=effective,
-                workdays=max(7, min(workdays, 60)),
+                workdays=max(7, min(workdays, 180)),
                 dry_run=bool(payload.dry_run),
             )
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -18,8 +19,6 @@ def test_first_touch_cap_reserves_followups():
 
 
 def test_weekday_horizon_skips_weekend():
-    from datetime import date
-
     # 2026-08-24 is Monday
     days = weekday_horizon(start=date(2026, 8, 24), workdays=10)
     assert len(days) == 10
@@ -62,3 +61,34 @@ def test_pace_spreads_evenly_over_workdays():
         assert len(all_pending) == 70
         held = [r for r in all_pending if r.not_before]
         assert len(held) >= 60
+
+
+def test_pace_large_backlog_extends_without_1_per_day():
+    """Large backlog must extend horizon in cap-sized batches, not 1/day."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store = OutboxStore(Path(tmp) / "o.db")
+        for i in range(300):
+            store.upsert_company(
+                email=f"big{i}@example.com",
+                company_id=str(i),
+                company_title=f"B{i}",
+            )
+        settings = MagicMock()
+        settings.get_int.side_effect = lambda k, d=0: {
+            "OUTREACH_FIRST_TOUCH_DAILY_CAP": 10,
+        }.get(k, d)
+
+        out = pace_first_touch_queue(
+            store,
+            settings=settings,
+            effective_daily_limit=15,
+            workdays=14,
+            dry_run=True,
+        )
+        assert out["paced"] == 300
+        assert out["horizon_extended"] is True
+        assert out["days_used"] == 30  # ceil(300/10)
+        assert max(out["by_day"].values()) <= 10
+        for day_iso in out["by_day"]:
+            y, m, d = map(int, day_iso.split("-"))
+            assert date(y, m, d).weekday() < 5
