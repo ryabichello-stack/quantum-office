@@ -1922,13 +1922,35 @@
   }
 
   async function paceQueue() {
-    const data = await api("/api/modules/sequences/pace-queue", {
-      method: "POST",
-      body: JSON.stringify({ dry_run: false, horizon_days: 60 }),
-    });
-    logAction(data);
-    await loadQueueView();
-    return data;
+    const log = $("queuePaceLog");
+    const daysEl = $("queuePaceDays");
+    const workdays = Math.max(7, Math.min(60, Number((daysEl && daysEl.value) || 14) || 14));
+    if (log) {
+      log.hidden = false;
+      log.textContent = `Раскладываю на ${workdays} будних дней (сб/вс пропускаю)…`;
+    }
+    try {
+      const data = await api("/api/modules/sequences/pace-queue", {
+        method: "POST",
+        body: JSON.stringify({ dry_run: false, workdays }),
+      });
+      const byDay = Object.entries(data.by_day || {})
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([d, n]) => `${d}: ${n}`)
+        .join(" · ");
+      const summary =
+        (data.note || `paced=${data.paced}`) +
+        `\nбудней=${data.workdays || workdays}, ~${data.per_day_target || "?"}/день, ` +
+        `сегодня=${data.today_unlocked || 0}, cap=${data.first_touch_daily_cap || "?"}` +
+        (byDay ? `\n${byDay}` : "");
+      if (log) log.textContent = summary;
+      logAction(data.note || data);
+      await loadQueueView();
+      return data;
+    } catch (e) {
+      if (log) log.textContent = String((e && e.message) || e);
+      throw e;
+    }
   }
 
   async function loadQueueView() {

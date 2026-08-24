@@ -1,13 +1,9 @@
-"""Pace first-touch queue — spread pending sends across days to avoid spam filters.
-
-Calendar may show hundreds of "ready" companies on Monday; actual SMTP is already
-capped by OUTREACH_DAILY_LIMIT + warmup. This module assigns outbox.not_before so
-only ~daily_cap first-touch rows become eligible each day (follow-ups stay priority).
-"""
+"""Pace first-touch queue — soft spread across weekdays (skip weekends)."""
 
 from __future__ import annotations
 
 import logging
+import math
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -28,14 +24,28 @@ def _day_start_utc(day: date, *, hour: int = 7) -> str:
 
 def first_touch_daily_cap(settings: Any, *, effective_daily_limit: int) -> int:
     """How many NEW first-touch emails may unlock per day (reserve room for follow-ups)."""
-    configured = effective_daily_limit
+    configured = max(1, int(effective_daily_limit or 15))
     if settings is not None and hasattr(settings, "get_int"):
         override = settings.get_int("OUTREACH_FIRST_TOUCH_DAILY_CAP", 0)
         if override and override > 0:
-            return max(1, min(override, configured))
-    # Keep ~40% of daily budget for follow-ups (min 3, max half)
-    reserve = max(3, min(configured // 2, configured - 1)) if configured > 1 else 0
+            return max(1, min(int(override), configured))
+    # Keep ~30% of daily budget for follow-ups
+    reserve = max(2, min(configured // 3, configured - 1)) if configured > 1 else 0
     return max(1, configured - reserve)
+
+
+def weekday_horizon(*, start: date | None = None, workdays: int = 14) -> list[date]:
+    """Next N Mon–Fri dates (today included if weekday). Weekends skipped."""
+    workdays = max(1, min(int(workdays or 14), 60))
+    d = start or _msk_today()
+    out: list[date] = []
+    guard = 0
+    while len(out) < workdays and guard < workdays * 4:
+        if d.weekday() < 5:  # Mon=0 … Fri=4
+            out.append(d)
+        d += timedelta(days=1)
+        guard += 1
+    return out
 
 
 def pace_first_touch_queue(
@@ -43,75 +53,68 @@ def pace_first_touch_queue(
     *,
     settings: Any = None,
     effective_daily_limit: int = 15,
-    horizon_days: int = 45,
+    workdays: int = 14,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Assign not_before across upcoming weekdays so backlog is not all 'today'.
+    """Assign not_before across the next ``workdays`` weekdays (skip Sat/Sun).
 
-    Does not send. Follow-up sequences are unchanged (they use next_action_at).
+    Soft even spread: ~ceil(pending / days) per day, never above first-touch SMTP cap.
+    If backlog is larger than days×cap, extend weekday horizon until it fits.
     """
-    from geo_schedule import schedule_config
-
-    cfg = schedule_config(settings)
-    allowed = list(cfg.get("allowed_weekdays") or [0, 1, 2, 3, 4])
-    preferred = list(cfg.get("preferred_weekdays") or [1, 2, 3])
-    # Prefer Tue–Thu when present, else any allowed weekday
-    day_preference = [d for d in preferred if d in allowed] or list(allowed)
-
     cap = first_touch_daily_cap(settings, effective_daily_limit=effective_daily_limit)
     today = _msk_today()
     pending = outbox.list_pending_all(limit=8000)
-    if not pending:
+    n = len(pending)
+    if not n:
         return {
             "ok": True,
             "paced": 0,
             "today_unlocked": 0,
             "days_used": 0,
+            "workdays": workdays,
+            "per_day_target": 0,
             "first_touch_daily_cap": cap,
             "effective_daily_limit": effective_daily_limit,
-            "note": "no pending",
+            "by_day": {},
+            "note": "Нет pending — раскладывать нечего",
         }
 
-    # Build list of send days (today + future preferred weekdays)
-    send_days: list = []
-    d = today
-    while len(send_days) < horizon_days:
-        if d.weekday() in day_preference or (not day_preference and d.weekday() in allowed):
-            send_days.append(d)
-        elif d == today and d.weekday() in allowed:
-            # Always allow today if it's a workday even if not preferred
-            send_days.append(d)
-        d += timedelta(days=1)
-        if (d - today).days > horizon_days + 14:
-            break
-
+    days_needed = max(int(workdays or 14), int(math.ceil(n / max(1, cap))))
+    days_needed = min(days_needed, 60)
+    send_days = weekday_horizon(start=today, workdays=days_needed)
     if not send_days:
         send_days = [today]
 
-    assignments: list[tuple[int, str | None, str]] = []  # id, not_before, day_iso
+    # Soft even spread across the chosen weekdays
+    per_day = int(math.ceil(n / len(send_days)))
+    per_day = max(1, min(per_day, cap))
+
+    assignments: list[tuple[int, str | None, str]] = []
     idx = 0
     for day in send_days:
-        if idx >= len(pending):
+        if idx >= n:
             break
         slot_n = 0
-        while idx < len(pending) and slot_n < cap:
+        while idx < n and slot_n < per_day:
             row = pending[idx]
             idx += 1
             if day == today:
-                # Unlock for today — eligible immediately
                 assignments.append((row.id, None, day.isoformat()))
             else:
                 assignments.append((row.id, _day_start_utc(day), day.isoformat()))
             slot_n += 1
 
-    # Any overflow beyond horizon: park on last day + staggered hours
+    # Overflow if any (should be rare after days_needed math)
     overflow = 0
-    while idx < len(pending):
+    while idx < n:
         row = pending[idx]
         idx += 1
         overflow += 1
-        last = send_days[-1] + timedelta(days=1 + (overflow // max(1, cap)))
-        assignments.append((row.id, _day_start_utc(last), last.isoformat()))
+        extra = send_days[-1] + timedelta(days=1)
+        while extra.weekday() >= 5:
+            extra += timedelta(days=1)
+        send_days.append(extra)
+        assignments.append((row.id, _day_start_utc(extra), extra.isoformat()))
 
     if not dry_run:
         for row_id, nb, _day in assignments:
@@ -127,14 +130,17 @@ def pace_first_touch_queue(
         "paced": len(assignments),
         "today_unlocked": today_unlocked,
         "days_used": len(by_day),
+        "workdays": len(send_days),
+        "per_day_target": per_day,
         "first_touch_daily_cap": cap,
         "effective_daily_limit": effective_daily_limit,
-        "by_day": dict(sorted(by_day.items())[:21]),
+        "by_day": dict(sorted(by_day.items())),
         "overflow": overflow,
         "dry_run": dry_run,
+        "weekends_skipped": True,
         "note": (
-            f"Первые письма разложены по ~{cap}/день "
-            f"(дневной лимит SMTP {effective_daily_limit}, часть слотов — follow-up). "
-            "296 в один день больше не уйдут."
+            f"Очередь разложена на {len(by_day)} будних дней (~{per_day}/день), "
+            f"выходные пропущены. Сегодня разблокировано {today_unlocked} "
+            f"(SMTP-лимит {effective_daily_limit}, first-touch cap {cap})."
         ),
     }

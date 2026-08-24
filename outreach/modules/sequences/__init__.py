@@ -860,18 +860,19 @@ class SequencesModule:
                 "note": (
                     "Календарь = план/бэклог. За сутки SMTP уйдёт не больше "
                     f"effective_daily_limit={effective} (warmup + OUTREACH_DAILY_LIMIT). "
-                    "Нажмите «Разложить очередь», если один день перегружен."
+                    "Нажмите «Разложить на будни», если один день перегружен (выходные пустые)."
                 ),
             }
             return snap
 
         class PaceBody(BaseModel):
             dry_run: bool = False
-            horizon_days: int = 45
+            workdays: int = 14
+            horizon_days: int | None = None  # legacy alias
 
         @router.post("/pace-queue")
         def pace_queue(body: PaceBody | None = None) -> dict[str, Any]:
-            """Spread pending first-touch across days (anti-spam pacing)."""
+            """Spread pending first-touch across weekdays (skip weekends)."""
             from modules.deliverability import DeliverabilityStore
             from modules.sequences.pace import pace_first_touch_queue
             from outbox import OutboxStore
@@ -884,11 +885,12 @@ class SequencesModule:
             deliver = DeliverabilityStore()
             configured = rt.get_int("OUTREACH_DAILY_LIMIT", 15)
             effective = deliver.effective_daily_limit(rt, configured)
+            workdays = int(payload.workdays or payload.horizon_days or 14)
             return pace_first_touch_queue(
                 outbox,
                 settings=rt,
                 effective_daily_limit=effective,
-                horizon_days=max(7, min(int(payload.horizon_days or 45), 90)),
+                workdays=max(7, min(workdays, 60)),
                 dry_run=bool(payload.dry_run),
             )
 
