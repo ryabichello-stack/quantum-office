@@ -1214,9 +1214,9 @@ button.ghost {
 }
 button.btn-quiet:hover,
 button.ghost:hover {
-  border-color: rgba(232, 90, 26, 0.45);
-  color: var(--accent-strong);
-  background: rgba(232, 90, 26, 0.05);
+  border-color: var(--line-strong);
+  color: var(--ink);
+  background: rgba(60, 60, 67, 0.05);
 }
 button.danger {
   background: #fff;
