@@ -917,18 +917,18 @@
           .join(" ");
         const ft = (day.items || []).filter((x) => x.kind !== "followup").length;
         const fu = (day.items || []).filter((x) => x.kind === "followup").length;
-        const sub =
-          n === 0
-            ? "пусто"
-            : [ft ? `1‑е×${ft || n}` : "", fu ? `цепь×${fu}` : ""].filter(Boolean).join(" · ") ||
-              `${n} писем`;
+        let sub = "—";
+        if (n > 0) {
+          if (ft || fu) sub = [ft ? `новые ${ft}` : "", fu ? `цепь ${fu}` : ""].filter(Boolean).join(" · ");
+          else sub = `${n} писем`;
+        }
         cells.push(
           `<button type="button" class="${cls}" data-desk-day="${escapeHtml(key)}" title="${escapeHtml(
             key
           )}">
             <span class="d">${cursor.getDate()}</span>
-            <strong>${n}</strong>
-            <span class="sub">${escapeHtml(sub)}</span>
+            <strong>${n || "·"}</strong>
+            <span class="sub">${escapeHtml(n ? sub : "")}</span>
           </button>`
         );
       }
@@ -977,10 +977,10 @@
     if ($("deskRunNote")) $("deskRunNote").textContent = tickNote;
     if ($("deskRunMetrics")) {
       $("deskRunMetrics").innerHTML =
-        deskMetric(sentToday, "сегодня") +
-        deskMetric(limit, "лимит/день") +
-        deskMetric(inWin, "готовы сейчас") +
-        deskMetric(pending, "весь бэклог");
+        deskMetric(sentToday, "Сегодня") +
+        deskMetric(limit, "Лимит") +
+        deskMetric(inWin, "В окне") +
+        deskMetric(pending, "Очередь");
     }
     const s = (settingsCache && (settingsCache.settings || settingsCache)) || settingsCache || {};
     if ($("deskSlots") && !$("deskSlots").dataset.dirty) {
@@ -991,11 +991,11 @@
     const totals = (cal && cal.totals) || {};
     if ($("deskQueueStats")) {
       $("deskQueueStats").innerHTML =
-        deskMetric(totals.items != null ? totals.items : pending, "в календаре") +
-        deskMetric(totals.days_with_items || 0, "дней с планом") +
-        deskMetric(qc.followups_due || 0, "due follow-up") +
-        deskMetric(deliv.first_touch_daily_cap || "—", "cap первых") +
-        deskMetric(qc.first_touch_in_window || 0, "в окне сейчас");
+        deskMetric(totals.items != null ? totals.items : pending, "План") +
+        deskMetric(totals.days_with_items || 0, "Дней") +
+        deskMetric(qc.followups_due || 0, "Due") +
+        deskMetric(deliv.first_touch_daily_cap || "—", "Cap") +
+        deskMetric(qc.first_touch_in_window || 0, "Сейчас");
     }
     if ($("deskQueueHint")) {
       const note = (deliv && deliv.note) || (queue && queue.send_order_ru) || "";

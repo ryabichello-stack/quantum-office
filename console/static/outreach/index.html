@@ -6,8 +6,8 @@
   <title>Outreach · Quantum Labs</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops39" />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=ops40" />
   <script>
     (function () {
       function parentBase() {
@@ -44,10 +44,9 @@
 
   <div id="app" class="app hidden">
     <header class="top">
-      <div>
+      <div class="top-copy">
         <p class="brand">Outreach</p>
         <h1 id="pageTitle" class="page-title">Пульт</h1>
-        <p class="top-hint" id="pageHint">Рабочий стол рассылки — статус, очередь, входящие</p>
       </div>
       <div class="top-actions">
         <span id="runStateBadge" class="badge stopped">Стоп</span>
@@ -56,15 +55,17 @@
           <button type="button" id="runPauseBtn" class="btn-quiet">Пауза</button>
           <button type="button" id="runStopBtn" class="danger">Стоп</button>
         </div>
-        <button type="button" class="btn-quiet" id="refreshBtn">Обновить</button>
+        <button type="button" class="btn-quiet icon-btn" id="refreshBtn" title="Обновить">↻</button>
       </div>
     </header>
 
     <nav class="tabs" role="tablist">
-      <button type="button" data-tab="home" class="active">Пульт</button>
-      <button type="button" data-tab="letter">Кампания</button>
-      <button type="button" data-tab="outbox">Очередь</button>
-      <button type="button" data-tab="inbox">Входящие</button>
+      <div class="tabs-seg">
+        <button type="button" data-tab="home" class="active">Пульт</button>
+        <button type="button" data-tab="letter">Кампания</button>
+        <button type="button" data-tab="outbox">Очередь</button>
+        <button type="button" data-tab="inbox">Входящие</button>
+      </div>
       <div class="tab-more" id="tabMore">
         <button type="button" id="tabMoreBtn" class="tab-more-btn" aria-expanded="false" aria-haspopup="true">Ещё</button>
         <div id="tabMoreMenu" class="tab-more-menu hidden" role="menu">
@@ -77,6 +78,8 @@
         </div>
       </div>
     </nav>
+
+    <p class="top-hint" id="pageHint">Рабочий стол — статус, календарь, ответы</p>
 
     <div id="headerKpi" class="kpi-strip" hidden aria-hidden="true"></div>
 
@@ -95,33 +98,36 @@
       <section id="tab-home" class="panel active">
         <div class="desk" id="desk">
           <article class="tile tile-hero" id="deskRun">
-            <div class="tile-kicker">Сегодня</div>
             <div class="desk-hero-row">
-              <div>
+              <div class="desk-hero-copy">
+                <p class="tile-kicker">Рассылка</p>
                 <p class="desk-hero-status" id="deskRunStatus">—</p>
-                <p class="muted tight" id="deskRunNote">Загрузка…</p>
+                <p class="desk-hero-note" id="deskRunNote">Загрузка…</p>
               </div>
               <div class="desk-hero-metrics" id="deskRunMetrics"></div>
             </div>
-            <div class="desk-hero-fields">
-              <label class="field">Окна отправки
-                <input id="deskSlots" type="text" placeholder="10:00-11:30,14:30-16:30" />
-              </label>
-              <label class="field">Рабочих дней
-                <input id="deskPaceDays" type="number" min="7" max="180" value="14" />
-              </label>
-              <div class="desk-hero-actions">
-                <button type="button" id="deskSlotsSave" class="btn-quiet">Сохранить окна</button>
-                <button type="button" id="deskPaceBtn" class="primary">Разложить очередь</button>
+            <details class="hero-plan" id="deskPlanDetails">
+              <summary>Окна и раскладка</summary>
+              <div class="desk-hero-fields">
+                <label class="field">Окна отправки
+                  <input id="deskSlots" type="text" placeholder="10:00-11:30,14:30-16:30" />
+                </label>
+                <label class="field">Рабочих дней
+                  <input id="deskPaceDays" type="number" min="7" max="180" value="14" />
+                </label>
+                <div class="desk-hero-actions">
+                  <button type="button" id="deskSlotsSave" class="btn-quiet">Сохранить</button>
+                  <button type="button" id="deskPaceBtn" class="primary">Разложить</button>
+                </div>
               </div>
-            </div>
+            </details>
           </article>
 
           <article class="tile tile-cal" id="deskQueueTile">
             <div class="tile-head">
               <div>
-                <div class="tile-kicker">Календарь очереди</div>
-                <h3 class="tile-title" id="deskCalTitle">Месяц вперёд</h3>
+                <p class="tile-kicker">Календарь</p>
+                <h3 class="tile-title" id="deskCalTitle">Месяц</h3>
               </div>
               <div class="desk-cal-tools">
                 <button type="button" class="btn-quiet small" id="deskCalRefresh">Обновить</button>
@@ -132,23 +138,26 @@
             <div class="desk-month" id="deskCalendar"></div>
             <div class="desk-day-panel" id="deskDayPanel">
               <div class="desk-day-head">
-                <strong id="deskDayTitle">Выберите день</strong>
-                <span class="muted tight" id="deskDayMeta"></span>
+                <strong id="deskDayTitle">День</strong>
+                <span class="muted tight" id="deskDayMeta">Выберите дату слева</span>
               </div>
               <ul class="desk-day-list" id="deskDayList">
-                <li class="muted">Кликните по дню — увидите, кто запланирован</li>
+                <li class="muted">Здесь появятся письма выбранного дня</li>
               </ul>
               <div class="desk-day-actions">
-                <button type="button" class="btn-quiet small" id="deskDayOpenQueue" hidden>Открыть в очереди</button>
+                <button type="button" class="btn-quiet small" id="deskDayOpenQueue" hidden>В очередь</button>
               </div>
             </div>
-            <p class="muted tight" id="deskQueueHint"></p>
+            <details class="hero-plan desk-hint-fold">
+              <summary>Как читается календарь</summary>
+              <p class="muted tight" id="deskQueueHint"></p>
+            </details>
           </article>
 
           <article class="tile tile-md">
             <div class="tile-head">
               <div>
-                <div class="tile-kicker">Входящие</div>
+                <p class="tile-kicker">Входящие</p>
                 <h3 class="tile-title" id="deskInboxTitle">Ответы</h3>
               </div>
               <button type="button" class="btn-quiet small" data-go="inbox">Открыть</button>
@@ -160,51 +169,51 @@
           <article class="tile tile-md">
             <div class="tile-head">
               <div>
-                <div class="tile-kicker">Действия</div>
-                <h3 class="tile-title">Что сделать сейчас</h3>
+                <p class="tile-kicker">Фокус</p>
+                <h3 class="tile-title">Сейчас</h3>
               </div>
             </div>
             <div id="deskActionsList" class="desk-list"></div>
           </article>
 
           <button type="button" class="tile tile-sm tile-go" data-go="letter">
-            <div class="tile-kicker">Кампания</div>
-            <h3 class="tile-title">Отрасль и цепочка</h3>
+            <p class="tile-kicker">Кампания</p>
+            <h3 class="tile-title">Отрасль</h3>
             <p class="desk-tile-line" id="deskPackMeta">Пакет…</p>
             <p class="desk-tile-line muted" id="deskPackLine2"></p>
           </button>
           <button type="button" class="tile tile-sm tile-go" data-go="variants">
-            <div class="tile-kicker">Письма</div>
+            <p class="tile-kicker">Письма</p>
             <h3 class="tile-title">Варианты</h3>
             <p class="desk-tile-line" id="deskVariantsMeta">7×7</p>
-            <p class="desk-tile-line muted" id="deskVariantsLine2">темы × тексты</p>
+            <p class="desk-tile-line muted" id="deskVariantsLine2"></p>
           </button>
           <button type="button" class="tile tile-sm tile-go" data-go="report">
-            <div class="tile-kicker">Отчёт</div>
+            <p class="tile-kicker">Отчёт</p>
             <h3 class="tile-title">Результат</h3>
             <p class="desk-tile-line" id="deskReportMeta">—</p>
             <p class="desk-tile-line muted" id="deskReportLine2"></p>
           </button>
           <button type="button" class="tile tile-sm tile-go" data-go="clients">
-            <div class="tile-kicker">База</div>
+            <p class="tile-kicker">База</p>
             <h3 class="tile-title">Клиенты</h3>
             <p class="desk-tile-line" id="deskClientsMeta">—</p>
             <p class="desk-tile-line muted" id="deskClientsLine2"></p>
           </button>
           <button type="button" class="tile tile-sm tile-go" data-go="lpr">
-            <div class="tile-kicker">Сделки</div>
+            <p class="tile-kicker">Сделки</p>
             <h3 class="tile-title">ЛПР</h3>
-            <p class="desk-tile-line" id="deskLprMeta">Комитет ролей</p>
-            <p class="desk-tile-line muted" id="deskLprLine2">поиск · approve · task</p>
+            <p class="desk-tile-line" id="deskLprMeta">Комитет</p>
+            <p class="desk-tile-line muted" id="deskLprLine2">роли · approve</p>
           </button>
           <button type="button" class="tile tile-sm tile-go" data-go="studio">
-            <div class="tile-kicker">Контент</div>
+            <p class="tile-kicker">Контент</p>
             <h3 class="tile-title">Студия</h3>
-            <p class="desk-tile-line" id="deskStudioMeta">Radar · соцсети</p>
-            <p class="desk-tile-line muted" id="deskStudioLine2">черновики с утверждением</p>
+            <p class="desk-tile-line" id="deskStudioMeta">Radar</p>
+            <p class="desk-tile-line muted" id="deskStudioLine2">с approve</p>
           </button>
           <button type="button" class="tile tile-sm tile-go" data-go="settings">
-            <div class="tile-kicker">Система</div>
+            <p class="tile-kicker">Система</p>
             <h3 class="tile-title">Настройки</h3>
             <p class="desk-tile-line" id="deskSettingsMeta">—</p>
             <p class="desk-tile-line muted" id="deskSettingsLine2"></p>
@@ -1398,6 +1407,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=ops39"></script>
+  <script src="app.js?v=ops40"></script>
 </body>
 </html>
