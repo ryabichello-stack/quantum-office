@@ -838,73 +838,117 @@
     if (!peel) return;
     peel.classList.remove("is-open");
     window.setTimeout(() => {
-      if (!peel.classList.contains("is-open")) peel.hidden = true;
+      if (!peel.classList.contains("is-open")) {
+        peel.hidden = true;
+        peel.setAttribute("hidden", "");
+      }
     }, 220);
     document.body.classList.remove("peel-away-open");
   }
 
   async function loadDeskLetterPreview(item) {
     const packId =
-      item.pack_id ||
+      (item.pack_id && String(item.pack_id).trim()) ||
       (settingsCache && (settingsCache.OUTREACH_SEQUENCE_PACK || (settingsCache.settings || {}).OUTREACH_SEQUENCE_PACK)) ||
       selectedPackId ||
       "lombards";
     const name = item.contact_name || "";
     const email = item.email || "";
     const company = item.company_title || name || email || "";
+    const kindLabel =
+      item.kind === "followup"
+        ? `Цепочка · шаг ${item.next_step || "?"} · ${item.next_label || "follow-up"}`
+        : `Первое письмо · ${item.next_label || "intro"}`;
 
-    if (item.kind === "followup") {
-      const data = await api(`/api/packs/${encodeURIComponent(packId)}`);
-      const steps = (data.pack && data.pack.steps) || [];
-      const stepNum = Number(item.next_step || 1);
-      const step =
-        steps.find((s) => Number(s.step) === stepNum) ||
-        steps.find((s) => Number(s.step) === stepNum - 1) ||
-        steps[Math.max(0, stepNum - 1)];
-      const subject = tplVars((step && step.subject) || item.next_subject || "", name, company);
-      const plain = tplVars((step && step.plain) || "", name, company);
-      if (plain) {
-        return {
-          subject,
-          plain,
-          html: (step && step.html) || "",
-          meta: `Цепочка · шаг ${stepNum} · ${item.next_label || "follow-up"}`,
-        };
-      }
-    }
+    const fallback = {
+      subject: item.next_subject || "Письмо",
+      plain:
+        [
+          whoLine(item),
+          email ? `Email: ${email}` : "",
+          company ? `Компания: ${company}` : "",
+          kindLabel,
+          item.next_subject ? `Тема: ${item.next_subject}` : "",
+          "",
+          "Полный текст шаблона сейчас недоступен — откройте Кампанию / Варианты.",
+        ]
+          .filter((x) => x !== "")
+          .join("\n"),
+      html: "",
+      meta: kindLabel,
+    };
 
     try {
-      const v = await api(
-        `/api/letter-variants?pack_id=${encodeURIComponent(packId)}&email=${encodeURIComponent(email || "demo@mail.ru")}`
-      );
-      if (v.picked && v.picked.subject) {
-        const preview = await api("/api/preview", {
-          method: "POST",
-          body: JSON.stringify({
-            contact_name: name,
-            subject: v.picked.subject,
-            plain: v.picked.plain,
-          }),
-        });
-        return {
-          subject: preview.subject || v.picked.subject,
-          plain: preview.plain || v.picked.plain,
-          html: preview.html || "",
-          meta: `Первое письмо · вариант ${v.picked.combo || ""}`,
-        };
+      if (item.kind === "followup") {
+        const data = await api(`/api/packs/${encodeURIComponent(packId)}`);
+        const steps = (data.pack && data.pack.steps) || [];
+        const stepNum = Number(item.next_step || 1);
+        const step =
+          steps.find((s) => Number(s.step) === stepNum) ||
+          steps[Math.max(0, stepNum - 1)] ||
+          null;
+        const subject = tplVars((step && step.subject) || item.next_subject || "", name, company);
+        const plain = tplVars((step && step.plain) || "", name, company);
+        if (subject || plain) {
+          return {
+            subject: subject || fallback.subject,
+            plain: plain || fallback.plain,
+            html: (step && step.html) || "",
+            meta: kindLabel,
+          };
+        }
+      } else {
+        try {
+          const v = await api(
+            `/api/letter-variants?pack_id=${encodeURIComponent(packId)}&email=${encodeURIComponent(
+              email || "demo@mail.ru"
+            )}`
+          );
+          if (v.picked && (v.picked.subject || v.picked.plain)) {
+            try {
+              const preview = await api("/api/preview", {
+                method: "POST",
+                body: JSON.stringify({
+                  contact_name: name || "коллега",
+                  subject: v.picked.subject,
+                  plain: v.picked.plain,
+                }),
+              });
+              return {
+                subject: preview.subject || v.picked.subject,
+                plain: preview.plain || v.picked.plain,
+                html: preview.html || "",
+                meta: `Первое письмо · вариант ${v.picked.combo || ""}`,
+              };
+            } catch (_) {
+              return {
+                subject: v.picked.subject || fallback.subject,
+                plain: v.picked.plain || fallback.plain,
+                html: "",
+                meta: `Первое письмо · вариант ${v.picked.combo || ""}`,
+              };
+            }
+          }
+        } catch (_) {}
+        try {
+          const preview = await api("/api/preview", {
+            method: "POST",
+            body: JSON.stringify({ contact_name: name || "коллега" }),
+          });
+          return {
+            subject: preview.subject || fallback.subject,
+            plain: preview.plain || fallback.plain,
+            html: preview.html || "",
+            meta: "Первое письмо",
+          };
+        } catch (_) {}
       }
     } catch (_) {}
+    return fallback;
+  }
 
-    const preview = await api("/api/preview", {
-      method: "POST",
-      body: JSON.stringify({ contact_name: name }),
-    });
-    return {
-      subject: preview.subject || "",
-      plain: preview.plain || "",
-      html: preview.html || "",
-      meta: "Первое письмо",
-    };
+  function whoLine(item) {
+    return item.contact_name || item.email || "Письмо";
   }
 
   async function openDeskLetterPreview(item) {
@@ -914,24 +958,39 @@
     const subj = $("deskLetterSubject");
     const plain = $("deskLetterPlain");
     const htmlBox = $("deskLetterHtml");
-    if (!peel || !item) return;
-    const who = item.contact_name || item.email || "Письмо";
+    if (!item) return;
+    if (!peel) {
+      logAction("Панель письма не найдена в DOM");
+      return;
+    }
+    const who = whoLine(item);
+    peel.removeAttribute("hidden");
     peel.hidden = false;
-    if (title) title.textContent = who;
-    if (meta) meta.textContent = "Загрузка текста…";
-    if (subj) subj.textContent = "";
-    if (plain) plain.textContent = "";
-    if (htmlBox) htmlBox.innerHTML = "";
-    requestAnimationFrame(() => peel.classList.add("is-open"));
+    peel.classList.add("is-open");
     document.body.classList.add("peel-away-open");
+    if (title) title.textContent = who;
+    if (meta) {
+      meta.textContent = [item.email || "", item.city || item.timezone || "", "загрузка…"]
+        .filter(Boolean)
+        .join(" · ");
+    }
+    if (subj) subj.textContent = item.next_subject || "Загрузка…";
+    if (plain) {
+      plain.textContent = [
+        item.kind === "followup"
+          ? `Шаг ${item.next_step || "?"} · ${item.next_label || "follow-up"}`
+          : item.next_label || "первое письмо",
+        item.email || "",
+        "Загружаю текст письма…",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }
+    if (htmlBox) htmlBox.innerHTML = "";
     try {
       const data = await loadDeskLetterPreview(item);
       if (meta) {
-        meta.textContent = [
-          data.meta,
-          item.email || "",
-          item.city || item.timezone || "",
-        ]
+        meta.textContent = [data.meta, item.email || "", item.city || item.timezone || ""]
           .filter(Boolean)
           .join(" · ");
       }
@@ -943,6 +1002,7 @@
       }
     } catch (e) {
       if (meta) meta.textContent = String(e.message || e);
+      if (plain && !plain.textContent) plain.textContent = String(e.message || e);
     }
   }
 
@@ -1030,14 +1090,11 @@
           </li>`;
         })
         .join("");
-      list.querySelectorAll("[data-desk-letter]").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const item = deskDayItemsCache[btn.getAttribute("data-desk-letter")];
-          if (item) openDeskLetterPreview(item).catch((e) => logAction(e));
-        });
-      });
       if (count > items.length) {
-        list.innerHTML += `<li class="muted">+${count - items.length} ещё в этот день</li>`;
+        const more = document.createElement("li");
+        more.className = "muted";
+        more.textContent = `+${count - items.length} ещё в этот день`;
+        list.appendChild(more);
       }
     }
     if (openBtn) {
@@ -3853,6 +3910,22 @@
       $("deskDayExpandBtn").addEventListener("click", () => {
         const panel = $("deskDayPanel");
         if (panel) setDeskDayPanelExpanded(!panel.classList.contains("is-expanded"));
+      });
+    }
+    if ($("deskDayList") && !$("deskDayList").dataset.letterBound) {
+      $("deskDayList").dataset.letterBound = "1";
+      $("deskDayList").addEventListener("click", (ev) => {
+        const btn = ev.target && ev.target.closest && ev.target.closest("[data-desk-letter]");
+        if (!btn) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        const key = btn.getAttribute("data-desk-letter");
+        const item = key && deskDayItemsCache[key];
+        if (!item) {
+          logAction("Письмо не найдено в кэше дня: " + key);
+          return;
+        }
+        openDeskLetterPreview(item).catch((e) => logAction(e));
       });
     }
   }

@@ -1906,11 +1906,12 @@ button.small { height: 26px; font-size: 0.72rem; padding: 0 0.45rem; }
 .peel-away {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  z-index: 4000;
   pointer-events: none;
 }
 .peel-away.is-open {
   pointer-events: auto;
+  visibility: visible;
 }
 .peel-away-backdrop {
   position: absolute;
