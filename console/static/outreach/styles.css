@@ -603,7 +603,8 @@ button.tile {
   gap: 0.28rem;
   flex: 1 1 auto;
   min-height: 0;
-  max-height: 11.1rem;
+  /* 4 compact rows visible (name + one meta line each) */
+  max-height: calc(4 * 2.95rem + 3 * 0.28rem);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -612,39 +613,62 @@ button.tile {
   max-height: min(26rem, 55vh);
 }
 .desk-day-list li {
-  padding: 0.42rem 0.5rem;
-  border-radius: 10px;
-  background: #fff;
-  border: 1px solid var(--line);
-  font-size: 0.78rem;
-  line-height: 1.3;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
   flex-shrink: 0;
 }
 .desk-day-list li.muted {
-  background: transparent;
-  border: 0;
   padding: 0.2rem 0.05rem;
   color: var(--muted);
   font-size: 0.74rem;
 }
-.desk-day-list .who {
+.desk-day-item {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.08rem;
+  width: 100%;
+  min-height: 2.95rem;
+  box-sizing: border-box;
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid var(--line);
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.desk-day-item:hover {
+  border-color: rgba(255, 90, 31, 0.4);
+  background: rgba(255, 90, 31, 0.05);
+}
+.desk-day-item:focus-visible {
+  outline: 2px solid rgba(255, 90, 31, 0.45);
+  outline-offset: 1px;
+}
+.desk-day-item .who {
   display: block;
   font-weight: 600;
   font-size: 0.78rem;
   letter-spacing: -0.015em;
+  line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.desk-day-list .meta {
+.desk-day-item .meta {
+  display: block;
   color: var(--muted);
   font-size: 0.7rem;
-  line-height: 1.28;
-  margin-top: 0.1rem;
+  line-height: 1.25;
   overflow: hidden;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  display: -webkit-box;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .desk-day-actions {
   display: flex;

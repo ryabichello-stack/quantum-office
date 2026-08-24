@@ -1002,6 +1002,7 @@
         (day.spam_risk ? " · риск спама" : "");
     }
     const items = day.items || [];
+    deskDayItemsCache = {};
     if (!items.length) {
       list.innerHTML =
         count > 0
@@ -1010,7 +1011,9 @@
     } else {
       list.innerHTML = items
         .slice(0, 12)
-        .map((r) => {
+        .map((r, idx) => {
+          const key = `${dayKey}:${idx}`;
+          deskDayItemsCache[key] = r;
           const who = r.contact_name || r.email || "—";
           const company = r.company_title || r.company_id || "";
           const kind =
@@ -1020,11 +1023,19 @@
           const place = [r.city, r.timezone].filter(Boolean).join(" · ");
           const line2 = [kind, r.email || "", company, place].filter(Boolean).join(" · ");
           return `<li>
-            <div class="who">${escapeHtml(String(who))}</div>
-            <div class="meta">${escapeHtml(line2)}</div>
+            <button type="button" class="desk-day-item" data-desk-letter="${escapeHtml(key)}" title="Открыть письмо">
+              <span class="who">${escapeHtml(String(who))}</span>
+              <span class="meta">${escapeHtml(line2)}</span>
+            </button>
           </li>`;
         })
         .join("");
+      list.querySelectorAll("[data-desk-letter]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const item = deskDayItemsCache[btn.getAttribute("data-desk-letter")];
+          if (item) openDeskLetterPreview(item).catch((e) => logAction(e));
+        });
+      });
       if (count > items.length) {
         list.innerHTML += `<li class="muted">+${count - items.length} ещё в этот день</li>`;
       }
