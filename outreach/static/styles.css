@@ -331,18 +331,50 @@ body.embedded .app { padding-top: 0.2rem; }
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(240px, 0.72fr);
-  gap: 0.75rem 1rem;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.45rem 1rem;
   align-items: stretch;
   min-height: 0;
+  overflow: hidden;
 }
 .tile-cal-left {
+  display: contents;
+}
+.tile-cal-left .desk-stats {
+  grid-column: 1;
+  grid-row: 1;
+  margin: 0;
+}
+.tile-cal-left .desk-month {
+  grid-column: 1;
+  grid-row: 2;
+  min-height: 0;
+  align-self: stretch;
+}
+.desk-day-head {
+  grid-column: 2;
+  grid-row: 1;
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 0.15rem;
   min-width: 0;
-  min-height: 0;
+  padding: 0.1rem 0 0;
 }
-.tile-cal-left .desk-stats { margin: 0; }
+.desk-day-head strong {
+  font-size: 0.92rem;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.desk-day-head .muted {
+  font-size: 0.72rem;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .desk-row-pair {
   grid-column: 1 / -1;
   display: grid;
@@ -577,25 +609,19 @@ button.tile {
 .desk-cal-day.hot { background: rgba(255, 90, 31, 0.08); }
 .desk-cal-day.over { background: rgba(255, 59, 48, 0.08); }
 .desk-day-panel {
+  grid-column: 2;
+  grid-row: 2;
   border: 1px solid var(--line);
   border-radius: 18px;
   background: rgba(60, 60, 67, 0.03);
-  padding: 0.85rem 0.9rem;
+  padding: 0.55rem 0.65rem 0.6rem;
   min-height: 0;
-  height: 100%;
-  align-self: stretch;
+  max-height: 100%;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-}
-.desk-day-head {
-  display: flex;
-  flex-direction: column;
-  gap: 0.18rem;
-}
-.desk-day-head strong {
-  font-size: 1rem;
-  letter-spacing: -0.02em;
+  gap: 0.35rem;
+  isolation: isolate;
 }
 .desk-day-list {
   margin: 0;
@@ -603,31 +629,41 @@ button.tile {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  max-height: none;
-  overflow: auto;
+  gap: 0.28rem;
+  overflow-x: hidden;
+  overflow-y: auto;
   flex: 1 1 auto;
   min-height: 0;
+  -webkit-overflow-scrolling: touch;
 }
 .desk-day-list li {
   margin: 0;
   padding: 0;
   border: 0;
   background: transparent;
-  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+.desk-day-list li.muted {
+  padding: 0.35rem 0.2rem;
+  font-size: 0.74rem;
   line-height: 1.35;
+  color: var(--muted);
 }
 .desk-day-item {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.12rem;
   width: 100%;
   text-align: left;
-  padding: 0.5rem 0.55rem;
-  border-radius: 12px;
+  padding: 0.42rem 0.48rem;
+  border-radius: 10px;
   background: #fff;
   border: 1px solid var(--line);
   font: inherit;
   color: inherit;
   cursor: pointer;
+  overflow: hidden;
   transition: border-color 0.18s var(--ease), background 0.18s var(--ease);
 }
 .desk-day-item:hover {
@@ -635,26 +671,29 @@ button.tile {
   background: rgba(255, 90, 31, 0.04);
 }
 .desk-day-item .who {
+  display: block;
   font-weight: 600;
+  font-size: 0.76rem;
   letter-spacing: -0.015em;
+  line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .desk-day-item .meta {
+  display: block;
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
+  line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.desk-day-item .hint {
-  margin-top: 0.12rem;
-  color: var(--accent-strong);
-  font-size: 0.66rem;
-  font-weight: 500;
+.desk-day-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-shrink: 0;
 }
-.desk-day-actions { display: flex; gap: 0.35rem; }
 .desk-tile-line {
   margin: 0;
   font-size: 0.74rem;

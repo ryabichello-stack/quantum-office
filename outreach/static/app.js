@@ -1011,14 +1011,11 @@
               ? `шаг ${r.next_step || "?"} · ${r.next_label || "follow-up"}`
               : r.next_label || "первое письмо";
           const place = [r.city, r.timezone].filter(Boolean).join(" · ");
+          const sub = [kind, r.email || "", company, place].filter(Boolean).join(" · ");
           return `<li>
-            <button type="button" class="desk-day-item" data-desk-letter="${escapeHtml(key)}">
-              <div class="who">${escapeHtml(String(who))}</div>
-              <div class="meta">${escapeHtml(String(r.email || ""))}${
-            company ? " · " + escapeHtml(String(company)) : ""
-          }</div>
-              <div class="meta">${escapeHtml(kind)}${place ? " · " + escapeHtml(place) : ""}</div>
-              <div class="hint">Открыть текст →</div>
+            <button type="button" class="desk-day-item" data-desk-letter="${escapeHtml(key)}" title="Открыть текст письма">
+              <span class="who">${escapeHtml(String(who))}</span>
+              <span class="meta">${escapeHtml(deskClip(sub, 72))}</span>
             </button>
           </li>`;
         })
