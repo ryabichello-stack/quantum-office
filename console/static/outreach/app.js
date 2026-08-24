@@ -154,6 +154,12 @@
       .replace(/"/g, "&quot;");
   }
 
+  function deskClip(s, max) {
+    const t = String(s || "").trim();
+    if (t.length <= max) return t;
+    return t.slice(0, Math.max(0, max - 1)).trim() + "…";
+  }
+
   function contactIconUrl(name) {
     // Through Console proxy when embedded; absolute outreach path otherwise.
     if (BASE) return BASE.replace(/\/$/, "") + "/assets/brand/icons/v2/" + name + ".png";
@@ -1074,8 +1080,8 @@
             .map(
               (a) =>
                 `<button type="button" data-go="inbox"><div class="desk-item-title">${escapeHtml(
-                  a.title || "Входящее"
-                )}</div><div class="desk-item-detail">${escapeHtml(a.detail || "")}</div></button>`
+                  deskClip(a.title || "Входящее", 52)
+                )}</div><div class="desk-item-detail">${escapeHtml(deskClip(a.detail || "", 64))}</div></button>`
             )
             .join("")
         : `<p class="muted tight">Нет необработанных ответов</p>`;
@@ -1203,8 +1209,8 @@
       .slice(0, 5)
       .map(
         (a) => `<button type="button" data-ops-tab="${escapeHtml(a.tab || "")}">
-          <div class="desk-item-title">${escapeHtml(a.title || "")}</div>
-          <div class="desk-item-detail">${escapeHtml(a.detail || "")}</div>
+          <div class="desk-item-title">${escapeHtml(deskClip(a.title || "", 52))}</div>
+          <div class="desk-item-detail">${escapeHtml(deskClip(a.detail || "", 64))}</div>
         </button>`
       )
       .join("");
