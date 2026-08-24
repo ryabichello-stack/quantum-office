@@ -958,6 +958,13 @@
     return map;
   }
 
+  function setDeskDayPanelExpanded(on) {
+    const panel = $("deskDayPanel");
+    const btn = $("deskDayExpandBtn");
+    if (panel) panel.classList.toggle("is-expanded", !!on);
+    if (btn) btn.textContent = on ? "Свернуть" : "Развернуть";
+  }
+
   function renderDeskDayPanel(dayKey, day) {
     const title = $("deskDayTitle");
     const meta = $("deskDayMeta");
@@ -969,8 +976,11 @@
       if (meta) meta.textContent = "";
       list.innerHTML = `<li class="muted">Кликните по дню — увидите, кто запланирован</li>`;
       if (openBtn) openBtn.hidden = true;
+      if ($("deskDayExpandBtn")) $("deskDayExpandBtn").hidden = true;
+      setDeskDayPanelExpanded(false);
       return;
     }
+    setDeskDayPanelExpanded(false);
     let label = dayKey;
     try {
       label = new Date(dayKey + "T12:00:00").toLocaleDateString("ru-RU", {
@@ -1022,6 +1032,10 @@
     if (openBtn) {
       openBtn.hidden = false;
       openBtn.onclick = () => goToTab("outbox");
+    }
+    const expandBtn = $("deskDayExpandBtn");
+    if (expandBtn) {
+      expandBtn.hidden = !(items.length || count > 0);
     }
   }
 
@@ -3823,6 +3837,12 @@
     }
     if ($("deskCalRefresh")) {
       $("deskCalRefresh").addEventListener("click", () => loadDash().catch(logAction));
+    }
+    if ($("deskDayExpandBtn")) {
+      $("deskDayExpandBtn").addEventListener("click", () => {
+        const panel = $("deskDayPanel");
+        if (panel) setDeskDayPanelExpanded(!panel.classList.contains("is-expanded"));
+      });
     }
   }
 

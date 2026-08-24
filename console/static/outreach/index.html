@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops48" />
+  <link rel="stylesheet" href="styles.css?v=ops49" />
   <script>
     (function () {
       function parentBase() {
@@ -137,20 +137,19 @@
                 <button type="button" class="btn-quiet small" data-go="outbox">Очередь</button>
               </div>
             </div>
-            <div class="tile-cal-main">
-              <div class="desk-stats" id="deskQueueStats"></div>
-              <div class="desk-month" id="deskCalendar"></div>
-              <div class="desk-day-panel" id="deskDayPanel">
-                <div class="desk-day-head">
-                  <strong id="deskDayTitle">День</strong>
-                  <span class="muted tight" id="deskDayMeta">Выберите дату слева</span>
-                </div>
-                <ul class="desk-day-list" id="deskDayList">
-                  <li class="muted">Здесь появятся письма выбранного дня</li>
-                </ul>
-                <div class="desk-day-actions">
-                  <button type="button" class="btn-quiet" id="deskDayOpenQueue" hidden>В очередь</button>
-                </div>
+            <div class="desk-stats" id="deskQueueStats"></div>
+            <div class="desk-month" id="deskCalendar"></div>
+            <div class="desk-day-panel" id="deskDayPanel">
+              <div class="desk-day-head">
+                <strong id="deskDayTitle">День</strong>
+                <span class="muted tight" id="deskDayMeta">Выберите дату слева</span>
+              </div>
+              <ul class="desk-day-list" id="deskDayList">
+                <li class="muted">Здесь появятся письма выбранного дня</li>
+              </ul>
+              <div class="desk-day-actions">
+                <button type="button" class="btn-quiet small" id="deskDayExpandBtn" hidden>Развернуть</button>
+                <button type="button" class="btn-quiet small" id="deskDayOpenQueue" hidden>В очередь</button>
               </div>
             </div>
             <details class="hero-plan desk-hint-fold">
@@ -1413,6 +1412,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=ops48"></script>
+  <script src="app.js?v=ops49"></script>
 </body>
 </html>
