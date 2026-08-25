@@ -330,6 +330,13 @@ def send_email(
         server.login(user, password)
         server.send_message(msg)
 
+    try:
+        from imap_sent import append_sent_copy
+
+        append_sent_copy(msg)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("IMAP save-sent hook failed: %s", exc)
+
     return mid_header.strip().strip("<>")
 
 
