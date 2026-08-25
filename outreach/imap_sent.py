@@ -71,6 +71,13 @@ def encode_imap_utf7(s: str) -> str:
     return "".join(out)
 
 
+def quote_mailbox(name: str) -> str:
+    """Quote IMAP mailbox atom (required when name has spaces)."""
+    if name.startswith('"') and name.endswith('"'):
+        return name
+    return '"' + name.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 def _folder_candidates(name: str) -> list[str]:
     """Try UTF-7 and raw forms — Mail.ru accepts both depending on server build."""
     enc = encode_imap_utf7(name)
@@ -85,14 +92,15 @@ def ensure_mailbox_folder(imap: imaplib.IMAP4, folder: str) -> str:
     """CREATE folder if missing; return the name form that SELECT works with."""
     last_err = ""
     for cand in _folder_candidates(folder):
-        typ, _ = imap.select(cand, readonly=True)
+        quoted = quote_mailbox(cand)
+        typ, _ = imap.select(quoted, readonly=True)
         if typ == "OK":
             try:
                 imap.close()
             except Exception:  # noqa: BLE001
                 pass
             return cand
-        typ, data = imap.create(cand)
+        typ, data = imap.create(quoted)
         if typ == "OK":
             return cand
         detail = b" ".join(x for x in (data or []) if isinstance(x, (bytes, bytearray))).decode(
@@ -100,7 +108,7 @@ def ensure_mailbox_folder(imap: imaplib.IMAP4, folder: str) -> str:
         )
         # already exists under another encoding
         if "exists" in detail.lower() or "already" in detail.lower():
-            typ2, _ = imap.select(cand, readonly=True)
+            typ2, _ = imap.select(quoted, readonly=True)
             if typ2 == "OK":
                 try:
                     imap.close()
@@ -145,7 +153,12 @@ def append_sent_copy(msg: Message, *, folder: str | None = None) -> dict[str, An
         resolved = ensure_mailbox_folder(imap, folder_name)
         payload = _message_bytes(msg)
         # \Seen — operator archive, not a new unread pile
-        typ, data = imap.append(resolved, "(\\Seen)", imaplib.Time2Internaldate(time.time()), payload)
+        typ, data = imap.append(
+            quote_mailbox(resolved),
+            "(\\Seen)",
+            imaplib.Time2Internaldate(time.time()),
+            payload,
+        )
         if typ != "OK":
             detail = b" ".join(x for x in (data or []) if isinstance(x, (bytes, bytearray))).decode(
                 "utf-8", errors="replace"

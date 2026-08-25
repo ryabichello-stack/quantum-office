@@ -12,6 +12,7 @@ from imap_sent import (
     encode_imap_utf7,
     ensure_mailbox_folder,
     imap_save_sent_enabled,
+    quote_mailbox,
     sent_folder_name,
 )
 
@@ -19,6 +20,11 @@ from imap_sent import (
 def test_encode_imap_utf7_ascii_passthrough():
     assert encode_imap_utf7("Outreach") == "Outreach"
     assert encode_imap_utf7("A&B") == "A&-B"
+
+
+def test_quote_mailbox_spaces():
+    assert quote_mailbox("рассылка Outreach") == '"рассылка Outreach"'
+    assert quote_mailbox('"already"') == '"already"'
 
 
 def test_encode_imap_utf7_cyrillic():
