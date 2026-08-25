@@ -2,7 +2,7 @@
 
 Mail.ru / most providers do not put SMTP-only sends into «Отправленные».
 After a successful SMTP send we APPEND the same RFC822 into a mailbox folder
-such as «Рассылка» so the operator can open and forward copies from webmail.
+such as «рассылка Outreach» so the operator can open and forward copies from webmail.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from typing import Any
 
 logger = logging.getLogger("ava-outreach.imap_sent")
 
-DEFAULT_FOLDER = "Рассылка"
+DEFAULT_FOLDER = "рассылка Outreach"
 
 
 def _env_true(name: str, default: str = "true") -> bool:

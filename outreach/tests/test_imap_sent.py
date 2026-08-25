@@ -22,10 +22,10 @@ def test_encode_imap_utf7_ascii_passthrough():
 
 
 def test_encode_imap_utf7_cyrillic():
-    enc = encode_imap_utf7("Рассылка")
+    enc = encode_imap_utf7("рассылка Outreach")
     assert enc.startswith("&")
-    assert enc.endswith("-")
-    assert "Рассылка" not in enc
+    assert "Outreach" in enc
+    assert "рассылка" not in enc
 
 
 def test_sent_folder_env(monkeypatch):
@@ -49,7 +49,7 @@ def test_ensure_mailbox_folder_creates():
     # first select fails, create ok
     imap.select.side_effect = [("NO", [b"no"]), ("OK", [b"1"])]
     imap.create.return_value = ("OK", [b""])
-    name = ensure_mailbox_folder(imap, "Рассылка")
+    name = ensure_mailbox_folder(imap, "рассылка Outreach")
     assert name
     assert imap.create.called
 
@@ -67,7 +67,7 @@ def test_append_sent_copy_ok(monkeypatch):
     monkeypatch.setenv("MAIL_PASSWORD", "secret")
     monkeypatch.setenv("IMAP_HOST", "imap.mail.ru")
     monkeypatch.setenv("IMAP_PORT", "993")
-    monkeypatch.setenv("IMAP_SENT_FOLDER", "Рассылка")
+    monkeypatch.setenv("IMAP_SENT_FOLDER", "рассылка Outreach")
 
     fake = MagicMock()
     fake.login.return_value = ("OK", [b""])
@@ -86,7 +86,7 @@ def test_append_sent_copy_ok(monkeypatch):
             out = append_sent_copy(msg)
 
     assert out.get("ok") is True
-    assert out.get("folder") == "Рассылка"
+    assert out.get("folder") == "рассылка Outreach"
     assert fake.append.called
     args = fake.append.call_args[0]
     assert args[1] == "(\\Seen)"
