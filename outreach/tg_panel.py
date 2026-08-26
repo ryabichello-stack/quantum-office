@@ -17,6 +17,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qsl
 
@@ -218,7 +219,169 @@ def build_outreach_stats(
         if isinstance(qc.get("sequences"), dict)
         else qc.get("sequences_active"),
         "webapp_url": public_webapp_url(settings),
+        "days": _calendar_days(outbox, days=21),
+        "selected_day": _default_day(outbox),
     }
+
+
+def _default_day(outbox: Any) -> str:
+    today = datetime.now(timezone.utc).date().isoformat()
+    try:
+        days = outbox.stats_daily(21) or []
+        with_sent = [d for d in days if int(d.get("sent") or 0) > 0]
+        if with_sent:
+            return str(with_sent[-1]["day"])
+    except Exception:  # noqa: BLE001
+        pass
+    return today
+
+
+def _calendar_days(outbox: Any, *, days: int = 21) -> list[dict[str, Any]]:
+    """Last N UTC days with send counts (zeros filled for navigation)."""
+    from datetime import date, timedelta
+
+    today = datetime.now(timezone.utc).date()
+    by_day: dict[str, dict[str, Any]] = {}
+    try:
+        for row in outbox.stats_daily(days) or []:
+            by_day[str(row["day"])] = {
+                "day": str(row["day"]),
+                "sent": int(row.get("sent") or 0),
+                "replied": int(row.get("replied") or 0),
+                "failed": int(row.get("failed") or 0),
+            }
+    except Exception:  # noqa: BLE001
+        pass
+    out: list[dict[str, Any]] = []
+    for i in range(days - 1, -1, -1):
+        d = (today - timedelta(days=i)).isoformat()
+        row = by_day.get(d) or {"day": d, "sent": 0, "replied": 0, "failed": 0}
+        row["is_today"] = d == today.isoformat()
+        out.append(row)
+    return out
+
+
+def _company_lookup(company_ids: list[str]) -> dict[str, dict[str, str]]:
+    ids = [str(x).strip() for x in company_ids if str(x or "").strip()]
+    if not ids:
+        return {}
+    db = Path(os.getenv("DATA_DIR", "/opt/ava-outreach/data")) / "clients.db"
+    # also try relative to module data
+    for cand in (
+        db,
+        Path(__file__).resolve().parent / "data" / "clients.db",
+    ):
+        if not cand.is_file():
+            continue
+        try:
+            import sqlite3
+
+            con = sqlite3.connect(str(cand))
+            con.row_factory = sqlite3.Row
+            qmarks = ",".join("?" for _ in ids)
+            rows = con.execute(
+                f"SELECT bitrix_id, title, city, inn, phones_json FROM companies WHERE bitrix_id IN ({qmarks})",
+                ids,
+            ).fetchall()
+            con.close()
+            out: dict[str, dict[str, str]] = {}
+            for r in rows:
+                phones = ""
+                try:
+                    arr = json.loads(r["phones_json"] or "[]")
+                    if isinstance(arr, list) and arr:
+                        phones = str(arr[0] if not isinstance(arr[0], dict) else arr[0].get("VALUE") or "")
+                except Exception:  # noqa: BLE001
+                    phones = ""
+                out[str(r["bitrix_id"])] = {
+                    "company": r["title"] or "",
+                    "city": r["city"] or "",
+                    "inn": r["inn"] or "",
+                    "phone": phones,
+                }
+            return out
+        except Exception:  # noqa: BLE001
+            continue
+    return {}
+
+
+def build_day_letters(
+    *,
+    outbox: Any,
+    day: str,
+    limit: int = 200,
+) -> dict[str, Any]:
+    """List sent letters/recipients for one UTC day."""
+    d = (day or "").strip()[:10] or _default_day(outbox)
+    rows = []
+    try:
+        rows = outbox.list_sent_on_day(d, limit=limit) or []
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)[:200], "day": d, "items": []}
+
+    company_ids = [getattr(r, "company_id", "") or "" for r in rows]
+    companies = _company_lookup(company_ids)
+    items: list[dict[str, Any]] = []
+    for r in rows:
+        cid = str(getattr(r, "company_id", "") or "")
+        co = companies.get(cid) or {}
+        sent_at = getattr(r, "sent_at", None) or ""
+        local_time = ""
+        if sent_at:
+            try:
+                # show HH:MM UTC and approx MSK (+3)
+                hhmm = sent_at[11:16] if len(sent_at) >= 16 else ""
+                local_time = hhmm
+                if hhmm and ":" in hhmm:
+                    h, m = hhmm.split(":")
+                    msk_h = (int(h) + 3) % 24
+                    local_time = f"{msk_h:02d}:{m} МСК"
+            except Exception:  # noqa: BLE001
+                local_time = sent_at
+        items.append(
+            {
+                "id": getattr(r, "id", None),
+                "email": getattr(r, "email", "") or "",
+                "contact_name": getattr(r, "contact_name", "") or "",
+                "company_id": cid,
+                "company": co.get("company") or "",
+                "city": co.get("city") or "",
+                "inn": co.get("inn") or "",
+                "phone": co.get("phone") or "",
+                "status": getattr(r, "status", "") or "",
+                "sent_at": sent_at,
+                "sent_at_local": local_time,
+                "message_id": getattr(r, "message_id", "") or "",
+            }
+        )
+    return {
+        "ok": True,
+        "day": d,
+        "count": len(items),
+        "items": items,
+        "days": _calendar_days(outbox, days=21),
+    }
+
+
+def require_tg_webapp_user(request: Any, settings: Any) -> str:
+    """Validate initData header; return allowlisted Telegram user id or raise ValueError."""
+    init_data = ""
+    try:
+        init_data = (request.headers.get("X-Telegram-Init-Data") or "").strip()
+    except Exception:  # noqa: BLE001
+        init_data = ""
+    token = resolve_bot_token(settings)
+    if not token:
+        raise ValueError("telegram_bot_not_configured")
+    if not init_data:
+        raise ValueError("open_via_bot_webapp")
+    checked = validate_webapp_init_data(init_data, token)
+    if not checked.get("ok"):
+        raise ValueError(str(checked.get("error") or "bad_init_data"))
+    user_id = str(checked.get("user_id") or "")
+    if not chat_allowed(user_id, settings):
+        raise ValueError("chat_not_allowlisted")
+    return user_id
 
 
 def format_stats_text(stats: dict[str, Any]) -> str:

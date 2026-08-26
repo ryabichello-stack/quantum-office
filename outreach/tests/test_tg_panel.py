@@ -51,18 +51,61 @@ def test_build_and_format_stats():
             "TRACKING_PUBLIC_BASE": "https://a.47z.ru/_ava_outreach",
         }
     )
+
+    class _OB(_FakeOutbox):
+        def stats_daily(self, days=14):
+            return [{"day": "2026-08-25", "sent": 15, "replied": 0, "failed": 0}]
+
+        def list_sent_on_day(self, day, limit=200):
+            return []
+
+        def count_sent_on_day(self, day):
+            return 15
+
     stats = build_outreach_stats(
         settings=s,
-        outbox=_FakeOutbox(),
+        outbox=_OB(),
         runner_status=lambda: {"state": "playing"},
         queue_snapshot=lambda: {"counts": {"followups_due": 2, "first_touch_in_window": 1}},
     )
     assert stats["sent_today"] == 3
     assert stats["pending"] == 12
     assert stats["delay_min_min"] == 10.0
+    assert isinstance(stats.get("days"), list)
+    assert stats.get("selected_day")
     text = format_stats_text(stats)
     assert "Идёт" in text
     assert "10.0–15.0 мин" in text
+
+
+def test_build_day_letters():
+    from types import SimpleNamespace
+
+    from tg_panel import build_day_letters
+
+    class _OB(_FakeOutbox):
+        def stats_daily(self, days=14):
+            return [{"day": "2026-08-25", "sent": 1, "replied": 0, "failed": 0}]
+
+        def list_sent_on_day(self, day, limit=200):
+            assert day == "2026-08-25"
+            return [
+                SimpleNamespace(
+                    id=1,
+                    email="a@b.ru",
+                    contact_name="Иван",
+                    company_id="1",
+                    status="sent",
+                    sent_at="2026-08-25T10:15:00+00:00",
+                    message_id="x",
+                )
+            ]
+
+    out = build_day_letters(outbox=_OB(), day="2026-08-25")
+    assert out["ok"] is True
+    assert out["count"] == 1
+    assert out["items"][0]["email"] == "a@b.ru"
+    assert "МСК" in out["items"][0]["sent_at_local"]
 
 
 def test_validate_webapp_init_data_ok():

@@ -1097,28 +1097,21 @@ def api_telegram_test(body: TelegramTestBody) -> dict[str, Any]:
 
 
 @app.get("/api/tg/stats")
-def api_tg_stats(request: Request) -> dict[str, Any]:
+def api_tg_stats(request: Request, date: str | None = None) -> dict[str, Any]:
     """Stats for Telegram Mini App / bot. Auth via WebApp initData + allowlisted user id."""
-    from tg_panel import (
-        build_outreach_stats,
-        chat_allowed,
-        resolve_bot_token,
-        validate_webapp_init_data,
-    )
+    from tg_panel import build_day_letters, build_outreach_stats, require_tg_webapp_user
 
     rt = _rt()
-    init_data = (request.headers.get("X-Telegram-Init-Data") or "").strip()
-    token = resolve_bot_token(rt)
-    if not token:
-        raise HTTPException(status_code=503, detail="telegram_bot_not_configured")
-    if not init_data:
-        raise HTTPException(status_code=401, detail="open_via_bot_webapp")
-    checked = validate_webapp_init_data(init_data, token)
-    if not checked.get("ok"):
-        raise HTTPException(status_code=401, detail=checked.get("error") or "bad_init_data")
-    user_id = str(checked.get("user_id") or "")
-    if not chat_allowed(user_id, rt):
-        raise HTTPException(status_code=403, detail="chat_not_allowlisted")
+    try:
+        require_tg_webapp_user(request, rt)
+    except ValueError as exc:
+        code = 401
+        detail = str(exc)
+        if detail == "telegram_bot_not_configured":
+            code = 503
+        elif detail == "chat_not_allowlisted":
+            code = 403
+        raise HTTPException(status_code=code, detail=detail) from exc
 
     def _runner() -> dict[str, Any]:
         if _runner_mod.controller:
@@ -1131,12 +1124,36 @@ def api_tg_stats(request: Request) -> dict[str, Any]:
         except Exception as exc:  # noqa: BLE001
             return {"error": str(exc)[:120]}
 
-    return build_outreach_stats(
+    stats = build_outreach_stats(
         settings=rt,
         outbox=_store(),
         runner_status=_runner,
         queue_snapshot=_queue,
     )
+    if date:
+        day = build_day_letters(outbox=_store(), day=date)
+        stats["selected_day"] = day.get("day") or date
+        stats["selected_day_count"] = day.get("count") or 0
+    return stats
+
+
+@app.get("/api/tg/day")
+def api_tg_day(request: Request, date: str = Query(..., min_length=10, max_length=10)) -> dict[str, Any]:
+    """Sent letters/recipients for one UTC day (Mini App drill-down)."""
+    from tg_panel import build_day_letters, require_tg_webapp_user
+
+    rt = _rt()
+    try:
+        require_tg_webapp_user(request, rt)
+    except ValueError as exc:
+        code = 401
+        detail = str(exc)
+        if detail == "telegram_bot_not_configured":
+            code = 503
+        elif detail == "chat_not_allowlisted":
+            code = 403
+        raise HTTPException(status_code=code, detail=detail) from exc
+    return build_day_letters(outbox=_store(), day=date)
 
 
 class TelegramBrandingBody(BaseModel):
