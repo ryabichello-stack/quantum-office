@@ -133,12 +133,11 @@ def wrong_pin_text() -> str:
 
 
 def channels_allow_training(channel: str) -> bool:
-    """Training unlock is for the consultant bot / API — not public client messengers."""
+    """Training unlock on consultant bots (Telegram + Max). Not on public client DMs."""
     ch = (channel or "").strip().lower()
+    # Client-facing surfaces: always guest (no employee PIN unlock).
     if ch in {
         "whatsapp",
-        "max",
-        "max_messenger",
         "vk",
         "vkontakte",
         "web",
@@ -148,4 +147,5 @@ def channels_allow_training(channel: str) -> bool:
         "b24",
     }:
         return False
+    # telegram, max, api — one bot can be both hotline (guest) and training (PIN).
     return True

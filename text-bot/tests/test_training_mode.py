@@ -35,6 +35,7 @@ def test_role_trainee_from_allowlist(monkeypatch):
     monkeypatch.setenv("SECRETARY_TRAINING_ENABLED", "true")
     load_scenarios()
     assert role_for("555", "telegram", chat_type="private") == ROLE_TRAINEE
+    assert role_for("555", "max", chat_type="private") == ROLE_TRAINEE
     assert role_for("555", "telegram_business", chat_type="private") == "guest"
     assert role_for("999", "telegram", chat_type="private") == "guest"
 
