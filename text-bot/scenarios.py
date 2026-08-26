@@ -131,7 +131,16 @@ def is_owner(
     ctype = (chat_type or "").strip().lower()
 
     # Public messenger channels are always guest (faq-safe Second Brain).
-    if ch in {"whatsapp", "max", "max_messenger", "vk", "vkontakte", "web", "widget"}:
+    if ch in {
+        "whatsapp",
+        "max",
+        "max_messenger",
+        "vk",
+        "vkontakte",
+        "web",
+        "widget",
+        "telegram_business",
+    }:
         return False
 
     # Groups / channels never get owner full-access, even if the speaker is the owner.

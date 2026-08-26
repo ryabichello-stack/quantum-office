@@ -24,7 +24,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from channels import channel_status, max_messenger, vk, whatsapp
+from channels import channel_status, max_messenger, telegram_business, vk, whatsapp
 from scenarios import looks_like_outbound_request
 from secretary import secretary
 
@@ -175,33 +175,118 @@ def _tg_post(method: str, payload: dict[str, Any], *, timeout: float = 30.0) -> 
         return json.loads(resp.read().decode("utf-8"))
 
 
-def send_telegram(chat_id: str | int, text: str) -> None:
-    _tg_post(
-        "sendMessage",
-        {"chat_id": chat_id, "text": str(text)[:4096]},
-        timeout=20.0,
-    )
+def send_telegram(
+    chat_id: str | int,
+    text: str,
+    *,
+    business_connection_id: str | None = None,
+) -> None:
+    payload: dict[str, Any] = {"chat_id": chat_id, "text": str(text)[:4096]}
+    if business_connection_id:
+        payload["business_connection_id"] = business_connection_id
+    _tg_post("sendMessage", payload, timeout=20.0)
 
 
-def _safe_send(chat_id: str | int, text: str) -> None:
+def _safe_send(
+    chat_id: str | int,
+    text: str,
+    *,
+    business_connection_id: str | None = None,
+) -> None:
     try:
-        send_telegram(chat_id, text)
+        send_telegram(chat_id, text, business_connection_id=business_connection_id)
     except Exception:
-        logger.exception("send_telegram failed chat_id=%s", chat_id)
-
-
-def _safe_typing(chat_id: str | int) -> None:
-    try:
-        _tg_post(
-            "sendChatAction",
-            {"chat_id": chat_id, "action": "typing"},
-            timeout=10.0,
+        logger.exception(
+            "send_telegram failed chat_id=%s business=%s",
+            chat_id,
+            bool(business_connection_id),
         )
+
+
+def _safe_typing(
+    chat_id: str | int,
+    *,
+    business_connection_id: str | None = None,
+) -> None:
+    try:
+        payload: dict[str, Any] = {"chat_id": chat_id, "action": "typing"}
+        if business_connection_id:
+            payload["business_connection_id"] = business_connection_id
+        _tg_post("sendChatAction", payload, timeout=10.0)
     except Exception:
         logger.debug("sendChatAction failed chat_id=%s", chat_id, exc_info=True)
 
 
+def handle_business_message(update: dict[str, Any]) -> None:
+    """Customer DM to the human Business account — reply *as the account*."""
+    if not telegram_business.enabled():
+        return
+    parsed = telegram_business.parse_business_message(update)
+    if not parsed:
+        return
+    conn_id = parsed["connection_id"]
+    chat_id = parsed["chat_id"]
+    text = parsed["text"]
+    user_id = parsed["user_id"]
+
+    conn = telegram_business.get_connection(conn_id)
+    owner_id = str((conn or {}).get("user_id") or "")
+
+    # Owner typed from the phone → pause auto-reply so we don't talk over them.
+    if owner_id and user_id == owner_id:
+        telegram_business.pause_chat(chat_id)
+        logger.info("business owner message chat_id=%s — auto-reply paused", chat_id)
+        return
+
+    if not text:
+        return
+    if not telegram_business.auto_reply_enabled():
+        logger.info("business auto-reply disabled; skip chat_id=%s", chat_id)
+        return
+    if telegram_business.is_paused(chat_id):
+        logger.info("business chat paused chat_id=%s — skip", chat_id)
+        return
+    if conn and not conn.get("is_enabled", True):
+        return
+
+    logger.info(
+        "business incoming chat_id=%s user_id=%s text=%r",
+        chat_id,
+        user_id,
+        text[:120],
+    )
+    _safe_typing(chat_id, business_connection_id=conn_id)
+    result = secretary.handle(
+        channel="telegram_business",
+        user_id=user_id,
+        text=text,
+        reply_to=str(chat_id),
+        chat_type=parsed.get("chat_type") or "private",
+    )
+    _safe_send(
+        chat_id,
+        result.get("reply") or "…",
+        business_connection_id=conn_id,
+    )
+    logger.info(
+        "business replied chat_id=%s user_id=%s ok=%s chars=%s",
+        chat_id,
+        user_id,
+        result.get("ok"),
+        len(result.get("reply") or ""),
+    )
+
+
 def handle_telegram_update(update: dict[str, Any]) -> None:
+    # Business connection lifecycle (connect / disconnect / rights change)
+    if "business_connection" in update:
+        telegram_business.upsert_connection(update.get("business_connection") or {})
+        return
+
+    if "business_message" in update or "edited_business_message" in update:
+        handle_business_message(update)
+        return
+
     message = update.get("message") or {}
     chat = message.get("chat") or {}
     from_user = message.get("from") or {}
@@ -269,7 +354,15 @@ def poll_loop() -> None:
             time.sleep(5)
             continue
         try:
-            payload: dict[str, Any] = {"timeout": 25, "allowed_updates": ["message"]}
+            payload: dict[str, Any] = {
+                "timeout": 25,
+                "allowed_updates": [
+                    "message",
+                    "business_connection",
+                    "business_message",
+                    "edited_business_message",
+                ],
+            }
             if offset is not None:
                 payload["offset"] = offset
             out = _tg_post("getUpdates", payload, timeout=35.0)
@@ -293,6 +386,7 @@ def poll_loop() -> None:
 def on_startup() -> None:
     global _poll_thread
     secretary.startup(OPENAI_API_KEY)
+    telegram_business.load_connections()
     if TELEGRAM_BOT_TOKEN:
         _poll_thread = threading.Thread(target=poll_loop, name="telegram-poll", daemon=True)
         _poll_thread.start()
@@ -300,11 +394,14 @@ def on_startup() -> None:
     else:
         logger.warning("TELEGRAM_BOT_TOKEN missing — API channel still available")
     ch = channel_status()
+    biz = telegram_business.status()
     logger.info(
-        "messenger channels whatsapp=%s max=%s vk=%s",
+        "messenger channels whatsapp=%s max=%s vk=%s telegram_business=%s conns=%s",
         ch["whatsapp"].get("enabled"),
         ch["max"].get("enabled"),
         ch["vk"].get("enabled"),
+        biz.get("enabled"),
+        biz.get("connections"),
     )
 
 
@@ -320,7 +417,10 @@ def health() -> dict[str, Any]:
 
     b = get_bundle()
     messengers = channel_status()
+    biz = telegram_business.status()
     enabled_channels = ["telegram", "api", "web", "bitrix"]
+    if biz.get("enabled"):
+        enabled_channels.append("telegram_business")
     for name, st in messengers.items():
         if st.get("enabled"):
             enabled_channels.append(name)
@@ -329,6 +429,7 @@ def health() -> dict[str, Any]:
         "service": "ava-text-bot",
         "role": "quantum-labs-secretary",
         "telegram_configured": bool(TELEGRAM_BOT_TOKEN),
+        "telegram_business": biz,
         "openai_configured": bool(OPENAI_API_KEY),
         "model": OPENAI_MODEL,
         "mailer_base": AVA_MAILER_BASE,

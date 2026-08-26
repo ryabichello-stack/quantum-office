@@ -96,6 +96,15 @@ def channel_overlay(channel: str, role: str = "guest") -> str:
         if role == "owner"
         else "Собеседник: ГОСТЬ/КЛИЕНТ (офисный тон)."
     )
+    if ch == "telegram_business":
+        return (
+            "КАНАЛ: Telegram Business — ответы от имени ВАШЕГО личного/бизнес-аккаунта "
+            "(собеседник не видит бота).\n"
+            f"{role_line}\n"
+            "Пиши как живой сотрудник офиса: коротко, по делу, без «я бот».\n"
+            "Факты о продукте — get_company_knowledge / Second Brain faq-safe.\n"
+            "Не обещай точные тарифы без квалификации клиента."
+        )
     if ch == "telegram":
         return (
             f"КАНАЛ: Telegram (@Quantum_office_bot).\n{role_line}\n"

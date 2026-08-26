@@ -12,12 +12,13 @@ Second Brain principal ``service:text-guest`` (faq-safe).
 from __future__ import annotations
 
 from channels.base import InboundMessage, channel_status
-from channels import max_messenger, vk, whatsapp
+from channels import max_messenger, telegram_business, vk, whatsapp
 
 __all__ = [
     "InboundMessage",
     "channel_status",
     "max_messenger",
+    "telegram_business",
     "vk",
     "whatsapp",
 ]

@@ -89,3 +89,20 @@ Nginx snippet: `scripts/nginx-ava-secretary.conf`.
 
 Для Max: зарегистрировать subscription на `https://a.47z.ru/_ava_secretary/webhooks/max`  
 (`POST https://platform-api2.max.ru/subscriptions`).
+
+
+## Telegram Business — ответы «как вы», не как бот
+
+Клиент пишет **вам в личку** (ваш аккаунт). Секретарь отвечает **от вашего имени**
+через официальный Business Connection — без Telethon/userbot.
+
+### Включение (один раз)
+
+1. Откройте **@BotFather** → `/mybots` → `@Quantum_office_bot` → **Bot Settings** → **Business Mode** → Enable  
+2. На телефоне: **Настройки → Telegram Business → Чат-боты** → добавьте `@Quantum_office_bot`  
+3. Права: читать сообщения + отвечать. Можно ограничить «только новые чаты».  
+4. `systemctl restart ava-text-bot` (уже поддерживает `business_message`)
+
+После этого новые входящие к вам видны в обычном Telegram, а автоответ уходит
+без пометки «бот» у собеседника. Если вы сами написали в чат — автоответ
+паузится на `TELEGRAM_BUSINESS_OWNER_PAUSE_SECONDS` (по умолчанию 30 мин).
