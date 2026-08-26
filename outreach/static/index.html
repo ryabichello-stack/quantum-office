@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=ops55" />
+  <link rel="stylesheet" href="styles.css?v=ops56" />
   <script>
     (function () {
       function parentBase() {
@@ -992,7 +992,7 @@
         <div class="surface task-form">
           <div class="task-intro compact-intro">
             <h2 class="section-title">Результат рассылки</h2>
-            <p class="muted tight">Воронка доставки, открытий и ответов. Следите за эффективностью кампании.</p>
+            <p class="muted tight">Полная воронка: очередь → отправка → открытия → ответы → CTA «Перезвонить» → звонки AVA.</p>
           </div>
           <div class="toolbar report-toolbar">
             <label class="field">Дней
@@ -1010,7 +1010,7 @@
           </div>
 
           <div class="report-panel">
-            <p class="report-panel-head">Воронка</p>
+            <p class="report-panel-head">Воронка (полная)</p>
             <div class="funnel-viz" id="reportFunnelBars" aria-label="Воронка"></div>
           </div>
 
@@ -1030,6 +1030,36 @@
             <div class="report-panel">
               <p class="report-panel-head">Что это значит</p>
               <ul class="notes-list" id="reportNotes"></ul>
+            </div>
+          </div>
+
+          <div class="report-panel">
+            <p class="report-panel-head">CTA «Перезвонить»</p>
+            <p class="muted tight">Заявки с кнопки в письме (форма ФИО + телефон).</p>
+            <div class="table-wrap table-wrap-flush">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Когда</th><th>ФИО</th><th>Телефон</th><th>Email</th><th>Дозвон</th>
+                  </tr>
+                </thead>
+                <tbody id="reportCallbacks"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="report-panel">
+            <p class="report-panel-head">Звонки AVA</p>
+            <p class="muted tight">Лиды из telephony_leads (входящие / обработанные звонки).</p>
+            <div class="table-wrap table-wrap-flush">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Когда</th><th>Имя</th><th>Телефон</th><th>Компания</th><th>Статус</th>
+                  </tr>
+                </thead>
+                <tbody id="reportCalls"></tbody>
+              </table>
             </div>
           </div>
 
@@ -1421,6 +1451,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=ops55"></script>
+  <script src="app.js?v=ops56"></script>
 </body>
 </html>

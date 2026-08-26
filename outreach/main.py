@@ -116,9 +116,9 @@ _registry.register(_tracking_mod)
 _registry.register(_deliver_mod)
 _registry.register(_runner_mod)
 _registry.register(_clients_mod)
-_registry.register(_analytics_mod)
 _registry.register(_dadata_mod)
 _registry.register(_telephony_mod)
+_registry.register(_analytics_mod)
 _registry.register(_verification_mod)
 _registry.register(_sequences_mod)
 _registry.register(_policy_mod)
@@ -293,11 +293,21 @@ def _bitrix_or_none() -> BitrixClient | None:
     return BitrixClient(url)
 
 
+def _callback_count_safe() -> int:
+    try:
+        from callback_cta import requests_count
+
+        return int(requests_count())
+    except Exception:  # noqa: BLE001
+        return 0
+
+
 def _status_payload() -> dict[str, Any]:
     store = _store()
     rt = _rt()
     webhook = bool(_webhook_url())
     portal = (os.getenv("BITRIX_PORTAL_URL") or "").strip()
+    tel_counts = _telephony_mod.store.counts() if hasattr(_telephony_mod, "store") else {}
     return {
         "ok": True,
         "service": "ava-outreach",
@@ -329,7 +339,11 @@ def _status_payload() -> dict[str, Any]:
         "reply_inbox": _replies_mod.health(),
         "consent": _consent_mod.health(),
         "deliverability": _deliver_mod.store.stats(rt, rt.get_int("OUTREACH_DAILY_LIMIT", 15)),
-        "engagement": _tracking_mod.store.engagement_counts(),
+        "engagement": {
+            **_tracking_mod.store.engagement_counts(),
+            "callbacks": _callback_count_safe(),
+            "calls": int(tel_counts.get("leads") or 0),
+        },
         "warmup_enabled": rt.get_bool("WARMUP_ENABLED", True),
         "primary_mailbox_protection": True,
         "run_respect_window": rt.get_bool("RUN_RESPECT_WINDOW", True),
