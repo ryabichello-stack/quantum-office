@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Outreach · Quantum Panel</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: var(--tg-theme-bg-color, #f4f5f7);
+      --text: var(--tg-theme-text-color, #1c1c1e);
+      --hint: var(--tg-theme-hint-color, #6e6e73);
+      --btn: var(--tg-theme-button-color, #ff5a1f);
+      --btn-text: var(--tg-theme-button-text-color, #fff);
+      --card: var(--tg-theme-secondary-bg-color, #ffffff);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Manrope, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 16px 16px 28px;
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 1.35rem;
+      letter-spacing: -0.03em;
+    }
+    .sub { margin: 0 0 16px; color: var(--hint); font-size: 0.85rem; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 14px 12px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.04);
+    }
+    .card.wide { grid-column: 1 / -1; }
+    .n {
+      font-size: 1.55rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+    }
+    .l {
+      margin-top: 4px;
+      font-size: 0.75rem;
+      color: var(--hint);
+      font-weight: 500;
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(255,90,31,.12);
+      color: #c2410c;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .status.ok { background: rgba(52,199,89,.14); color: #1b7a38; }
+    .status.warn { background: rgba(180,83,9,.12); color: #92400e; }
+    .err {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 12px;
+      background: rgba(255,59,48,.1);
+      color: #b42318;
+      font-size: 0.85rem;
+    }
+    button.refresh {
+      margin-top: 14px;
+      width: 100%;
+      height: 44px;
+      border: 0;
+      border-radius: 12px;
+      background: var(--btn);
+      color: var(--btn-text);
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+    .meta { margin-top: 10px; font-size: 0.72rem; color: var(--hint); }
+  </style>
+</head>
+<body>
+  <h1>Outreach</h1>
+  <p class="sub">Quantum Panel · статистика рассылки</p>
+  <div id="root"><p class="sub">Загрузка…</p></div>
+  <script>
+    (function () {
+      var tg = window.Telegram && window.Telegram.WebApp;
+      if (tg) {
+        tg.ready();
+        tg.expand();
+        try { tg.setHeaderColor("secondary_bg_color"); } catch (e) {}
+      }
+
+      function apiBase() {
+        var path = location.pathname || "";
+        var m = path.match(/^(.*)\/ui\/tg-stats\/?$/);
+        if (m) return m[1] || "";
+        if (path.indexOf("/_ava_outreach") === 0) return "/_ava_outreach";
+        if (path.indexOf("/_quantum_console") === 0) return "/_quantum_console/api/outreach";
+        return "";
+      }
+
+      function el(tag, cls, text) {
+        var n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (text != null) n.textContent = text;
+        return n;
+      }
+
+      function render(data) {
+        var root = document.getElementById("root");
+        root.innerHTML = "";
+        var st = (data.run_state || "").toLowerCase();
+        var badge = el("span", "status" + (st === "playing" ? " ok" : st === "paused" ? " warn" : ""), data.run_state_ru || data.run_state || "—");
+        var head = el("div", "card wide");
+        head.appendChild(el("div", "l", "Статус"));
+        head.appendChild(badge);
+        root.appendChild(head);
+
+        var grid = el("div", "grid");
+        function card(n, l, wide) {
+          var c = el("div", "card" + (wide ? " wide" : ""));
+          c.appendChild(el("div", "n", String(n)));
+          c.appendChild(el("div", "l", l));
+          grid.appendChild(c);
+        }
+        card(data.sent_today + " / " + data.daily_limit, "Сегодня / лимит");
+        card(data.remaining_today, "Осталось сегодня");
+        card(data.pending, "В очереди");
+        card(data.sent_total, "Всего отправлено");
+        card(data.followups_due, "Due follow-up");
+        card((data.delay_min_min || "?") + "–" + (data.delay_max_min || "?") + " мин", "Пауза между письмами");
+        root.appendChild(grid);
+
+        var btn = el("button", "refresh", "Обновить");
+        btn.type = "button";
+        btn.onclick = load;
+        root.appendChild(btn);
+        var meta = el("div", "meta", "обновлено " + (data.at || ""));
+        root.appendChild(meta);
+      }
+
+      function showErr(msg) {
+        var root = document.getElementById("root");
+        root.innerHTML = "";
+        root.appendChild(el("div", "err", msg));
+        var btn = el("button", "refresh", "Повторить");
+        btn.type = "button";
+        btn.onclick = load;
+        root.appendChild(btn);
+      }
+
+      function load() {
+        var initData = (tg && tg.initData) || "";
+        var headers = { "Accept": "application/json" };
+        if (initData) headers["X-Telegram-Init-Data"] = initData;
+        fetch(apiBase() + "/api/tg/stats", { headers: headers, credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              if (!r.ok || !j.ok) throw new Error((j && (j.error || j.detail)) || ("HTTP " + r.status));
+              return j;
+            });
+          })
+          .then(render)
+          .catch(function (e) {
+            showErr(String(e.message || e) + (initData ? "" : " Откройте через бота @Quantum_panel_bot → Статистика."));
+          });
+      }
+
+      load();
+    })();
+  </script>
+</body>
+</html>

@@ -1112,17 +1112,18 @@
             </div>
           </fieldset>
 
-          <div class="task-grid">
+            <div class="task-grid">
             <label class="field">Писем в сутки
               <input id="setDaily" type="number" min="1" max="500" />
             </label>
             <label class="field">Пауза мин, сек
-              <input id="setDelayMin" type="number" min="0" />
+              <input id="setDelayMin" type="number" min="0" step="60" />
             </label>
             <label class="field">Пауза макс, сек
-              <input id="setDelayMax" type="number" min="0" />
+              <input id="setDelayMax" type="number" min="0" step="60" />
             </label>
           </div>
+          <p class="muted tight">Случайная пауза между письмами (сек). Рекомендуем 600–900 ≈ 10–15 мин. Настройка также в «Настройки» → эти поля.</p>
 
           <label class="field check">
             <input id="setEnabled" type="checkbox" disabled />

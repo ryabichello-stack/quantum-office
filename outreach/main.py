@@ -88,6 +88,7 @@ ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 BRAND_DATA_DIR = DATA_DIR / "brand"
 
 _reply_thread: ReplyWatchThread | None = None
+_tg_panel_thread = None
 _settings: RuntimeSettings | None = None
 _registry = ModuleRegistry()
 _tracking_mod = TrackingModule()
@@ -166,7 +167,7 @@ def _ensure_ui_token() -> str:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    global _reply_thread, _settings, _app_ctx
+    global _reply_thread, _tg_panel_thread, _settings, _app_ctx
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     store = OutboxStore(DB_PATH)
     store.init_db()
@@ -211,6 +212,37 @@ async def lifespan(_app: FastAPI):
         _reply_thread = ReplyWatchThread(store, _webhook_url())
         _reply_thread.start()
 
+    try:
+        from tg_panel import TelegramPanelBot, build_outreach_stats
+
+        def _tg_stats() -> dict[str, Any]:
+            def _runner() -> dict[str, Any]:
+                if _runner_mod.controller:
+                    return _runner_mod.controller.status()
+                return {"state": _settings.get("OUTREACH_RUN_STATE", "stopped")}
+
+            def _queue() -> dict[str, Any]:
+                try:
+                    return _sequences_mod.store.queue_snapshot(due_limit=20, upcoming_limit=10)
+                except Exception as exc:  # noqa: BLE001
+                    return {"error": str(exc)[:120]}
+
+            return build_outreach_stats(
+                settings=_settings,
+                outbox=store,
+                runner_status=_runner,
+                queue_snapshot=_queue,
+            )
+
+        if (_settings.get("OPS_NOTIFY_TELEGRAM_BOT_TOKEN", "") or "").strip() or os.getenv(
+            "OPS_NOTIFY_TELEGRAM_BOT_TOKEN", ""
+        ):
+            _tg_panel_thread = TelegramPanelBot(settings=_settings, stats_fn=_tg_stats)
+            _tg_panel_thread.start()
+            logger.info("telegram panel bot thread started")
+    except Exception:  # noqa: BLE001
+        logger.exception("telegram panel bot failed to start")
+
     yield
 
     _registry.shutdown_all()
@@ -218,6 +250,10 @@ async def lifespan(_app: FastAPI):
         _reply_thread.stop()
         _reply_thread.join(timeout=5)
         _reply_thread = None
+    if _tg_panel_thread is not None:
+        _tg_panel_thread.shutdown()
+        _tg_panel_thread.join(timeout=8)
+        _tg_panel_thread = None
 
 
 app = FastAPI(title="AVA Outreach", version="0.10.0", lifespan=lifespan)
@@ -1058,6 +1094,49 @@ def api_telegram_test(body: TelegramTestBody) -> dict[str, Any]:
     if not out.get("ok"):
         raise HTTPException(status_code=400, detail=out.get("error") or "telegram_send_failed")
     return out
+
+
+@app.get("/api/tg/stats")
+def api_tg_stats(request: Request) -> dict[str, Any]:
+    """Stats for Telegram Mini App / bot. Auth via WebApp initData + allowlisted user id."""
+    from tg_panel import (
+        build_outreach_stats,
+        chat_allowed,
+        resolve_bot_token,
+        validate_webapp_init_data,
+    )
+
+    rt = _rt()
+    init_data = (request.headers.get("X-Telegram-Init-Data") or "").strip()
+    token = resolve_bot_token(rt)
+    if not token:
+        raise HTTPException(status_code=503, detail="telegram_bot_not_configured")
+    if not init_data:
+        raise HTTPException(status_code=401, detail="open_via_bot_webapp")
+    checked = validate_webapp_init_data(init_data, token)
+    if not checked.get("ok"):
+        raise HTTPException(status_code=401, detail=checked.get("error") or "bad_init_data")
+    user_id = str(checked.get("user_id") or "")
+    if not chat_allowed(user_id, rt):
+        raise HTTPException(status_code=403, detail="chat_not_allowlisted")
+
+    def _runner() -> dict[str, Any]:
+        if _runner_mod.controller:
+            return _runner_mod.controller.status()
+        return {"state": rt.get("OUTREACH_RUN_STATE", "stopped")}
+
+    def _queue() -> dict[str, Any]:
+        try:
+            return _sequences_mod.store.queue_snapshot(due_limit=20, upcoming_limit=10)
+        except Exception as exc:  # noqa: BLE001
+            return {"error": str(exc)[:120]}
+
+    return build_outreach_stats(
+        settings=rt,
+        outbox=_store(),
+        runner_status=_runner,
+        queue_snapshot=_queue,
+    )
 
 
 class TelegramBrandingBody(BaseModel):

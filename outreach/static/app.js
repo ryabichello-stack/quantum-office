@@ -2075,8 +2075,8 @@
     $("setEnabled").checked = String(s.OUTREACH_ENABLED).toLowerCase() === "true" || s.OUTREACH_ENABLED === "1";
     setRunStateBadge(s.OUTREACH_RUN_STATE || "stopped");
     $("setDaily").value = s.OUTREACH_DAILY_LIMIT || 20;
-    $("setDelayMin").value = s.OUTREACH_DELAY_MIN_SECONDS || 60;
-    $("setDelayMax").value = s.OUTREACH_DELAY_MAX_SECONDS || 180;
+    $("setDelayMin").value = s.OUTREACH_DELAY_MIN_SECONDS || 600;
+    $("setDelayMax").value = s.OUTREACH_DELAY_MAX_SECONDS || 900;
     $("setDeal").checked = String(s.BITRIX_CREATE_DEAL || "true").toLowerCase() !== "false";
     $("setAssigned").value = s.BITRIX_ASSIGNED_BY_ID || 1;
     $("setStage").value = s.BITRIX_DEAL_STAGE_ID || "NEW";
