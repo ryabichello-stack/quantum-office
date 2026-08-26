@@ -86,12 +86,14 @@ class Secretary:
         reply_to: Optional[str] = None,
         scenario: Optional[str] = None,
         chat_type: Optional[str] = None,
+        business_connection_id: Optional[str] = None,
     ) -> dict[str, Any]:
         """
         Process one user message in any channel.
         reply_to: for telegram file delivery = chat_id; otherwise optional.
         scenario: optional hard override for this turn (API).
         chat_type: telegram chat type (private|group|supergroup|channel).
+        business_connection_id: Telegram Business connection for sendDocument-as-account.
         """
         text = (text or "").strip()
         if not text:
@@ -221,6 +223,7 @@ class Secretary:
                 role=role,
                 scenario_id=active.id if active else "secretary",
                 sticky=sticky_now,
+                business_connection_id=business_connection_id,
             )
             return {
                 "ok": True,
@@ -366,6 +369,7 @@ class Secretary:
         role: str,
         scenario_id: str,
         sticky: bool,
+        business_connection_id: Optional[str] = None,
     ) -> str:
         assert self.client is not None
         sc = get_scenario(scenario_id)
@@ -382,6 +386,8 @@ class Secretary:
         tool_payloads: list[str] = []
         tools_used = 0
         continue_nudges = 0
+        tg_channels = {"telegram", "telegram_business"}
+        tg_chat_id = reply_to if (channel or "").strip().lower() in tg_channels else None
 
         for round_i in range(MAX_TOOL_ROUNDS):
             # gpt-5-mini rejects custom temperature
@@ -427,7 +433,8 @@ class Secretary:
                         fn.name,
                         args,
                         mailer_base=AVA_MAILER_BASE,
-                        telegram_chat_id=reply_to if channel == "telegram" else None,
+                        telegram_chat_id=tg_chat_id,
+                        business_connection_id=business_connection_id,
                         channel=channel,
                         role=role,
                     )

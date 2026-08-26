@@ -52,6 +52,14 @@ class FileSendRequest(BaseModel):
     subject: str = Field(default="", max_length=200, description="email subject only")
     ref: Optional[str] = Field(default=None, description="git ref for repo source")
     repo: Optional[str] = Field(default=None, description="owner/name override for repo source")
+    business_connection_id: Optional[str] = Field(
+        default=None,
+        description="Telegram Business connection id (send as human account)",
+    )
+    bot_token: Optional[str] = Field(
+        default=None,
+        description="Optional Telegram bot token override (e.g. commercial business bot)",
+    )
 
 
 class FileFetchRequest(BaseModel):
@@ -190,6 +198,8 @@ def files_send(
         f,
         caption=req.caption,
         subject=req.subject,
+        business_connection_id=(req.business_connection_id or "").strip(),
+        bot_token=(req.bot_token or "").strip() or None,
     )
     if not ok:
         return {

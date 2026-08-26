@@ -7,7 +7,6 @@ import logging
 import os
 import smtplib
 import urllib.error
-import urllib.parse
 import urllib.request
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
@@ -26,6 +25,7 @@ SMTP_TIMEOUT = float(os.getenv("MAIL_SMTP_TIMEOUT_SECONDS", "10") or "10")
 MAIL_FROM_NAME = os.getenv("MAIL_FROM_NAME", "Quantum Labs").strip() or "Quantum Labs"
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_BUSINESS_BOT_TOKEN = os.getenv("TELEGRAM_BUSINESS_BOT_TOKEN", "").strip()
 TELEGRAM_API = os.getenv("TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/")
 
 
@@ -34,7 +34,7 @@ def email_configured() -> bool:
 
 
 def telegram_configured() -> bool:
-    return bool(TELEGRAM_BOT_TOKEN)
+    return bool(TELEGRAM_BOT_TOKEN or TELEGRAM_BUSINESS_BOT_TOKEN)
 
 
 def send_email(to: str, file: FetchedFile, *, subject: str = "", caption: str = "") -> Tuple[bool, str]:
@@ -65,13 +65,25 @@ def send_email(to: str, file: FetchedFile, *, subject: str = "", caption: str = 
         return False, str(exc)
 
 
+def _resolve_telegram_token(*, bot_token: str | None = None, business: bool = False) -> str:
+    if (bot_token or "").strip():
+        return bot_token.strip()
+    if business and TELEGRAM_BUSINESS_BOT_TOKEN:
+        return TELEGRAM_BUSINESS_BOT_TOKEN
+    return TELEGRAM_BOT_TOKEN or TELEGRAM_BUSINESS_BOT_TOKEN
+
+
 def send_telegram(
     chat_id: str,
     file: FetchedFile,
     *,
     caption: str = "",
+    business_connection_id: str = "",
+    bot_token: str | None = None,
 ) -> Tuple[bool, str]:
-    if not telegram_configured():
+    business = bool((business_connection_id or "").strip())
+    token = _resolve_telegram_token(bot_token=bot_token, business=business)
+    if not token:
         return False, "telegram_not_configured"
     chat_id = (chat_id or "").strip()
     if not chat_id:
@@ -79,7 +91,7 @@ def send_telegram(
 
     # Telegram Bot API multipart/form-data via stdlib is awkward; use curl-like boundary.
     boundary = "----avafilesboundary7MA4YWxkTrZu0gW"
-    url = f"{TELEGRAM_API}/bot{TELEGRAM_BOT_TOKEN}/sendDocument"
+    url = f"{TELEGRAM_API}/bot{token}/sendDocument"
 
     def _field(name: str, value: str) -> bytes:
         return (
@@ -88,10 +100,14 @@ def send_telegram(
             f"{value}\r\n"
         ).encode("utf-8")
 
-    body = b"".join(
+    parts = [
+        _field("chat_id", chat_id),
+        _field("caption", (caption or file.filename)[:1024]),
+    ]
+    if business:
+        parts.append(_field("business_connection_id", business_connection_id.strip()))
+    parts.extend(
         [
-            _field("chat_id", chat_id),
-            _field("caption", (caption or file.filename)[:1024]),
             (
                 f"--{boundary}\r\n"
                 f'Content-Disposition: form-data; name="document"; filename="{file.filename}"\r\n'
@@ -101,6 +117,7 @@ def send_telegram(
             f"\r\n--{boundary}--\r\n".encode("utf-8"),
         ]
     )
+    body = b"".join(parts)
     req = urllib.request.Request(
         url,
         data=body,
@@ -121,12 +138,27 @@ def send_telegram(
         return False, str(exc)
 
 
-def deliver(via: str, to: str, file: FetchedFile, *, caption: str = "", subject: str = "") -> Tuple[bool, str]:
+def deliver(
+    via: str,
+    to: str,
+    file: FetchedFile,
+    *,
+    caption: str = "",
+    subject: str = "",
+    business_connection_id: str = "",
+    bot_token: str | None = None,
+) -> Tuple[bool, str]:
     via = (via or "").strip().lower()
     if via in ("email", "mail", "smtp"):
         return send_email(to, file, subject=subject, caption=caption)
     if via in ("telegram", "tg"):
-        return send_telegram(to, file, caption=caption)
+        return send_telegram(
+            to,
+            file,
+            caption=caption,
+            business_connection_id=business_connection_id,
+            bot_token=bot_token,
+        )
     return False, f"unknown_via:{via}"
 
 
@@ -134,4 +166,5 @@ def delivery_status() -> dict:
     return {
         "email_configured": email_configured(),
         "telegram_configured": telegram_configured(),
+        "telegram_business_token": bool(TELEGRAM_BUSINESS_BOT_TOKEN),
     }

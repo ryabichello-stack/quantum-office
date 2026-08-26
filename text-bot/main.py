@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from channels import channel_status, max_messenger, telegram_business, vk, whatsapp
 from scenarios import looks_like_outbound_request
 from secretary import secretary
+import voice_stt
 
 load_dotenv()
 
@@ -246,6 +247,56 @@ def _safe_typing(
         logger.debug("sendChatAction failed chat_id=%s", chat_id, exc_info=True)
 
 
+def _resolve_incoming_text(
+    *,
+    message: dict[str, Any],
+    text: str,
+    token: str,
+    chat_id: str | int,
+    business_connection_id: str | None = None,
+) -> str | None:
+    """Prefer explicit text; otherwise STT from voice/audio. None = nothing to handle."""
+    text = (text or "").strip()
+    if text:
+        return text
+    voice = voice_stt.extract_voice_file(message)
+    if not voice:
+        return None
+    if not voice_stt.enabled():
+        _safe_send(
+            chat_id,
+            "Голосовые сейчас недоступны — напишите текстом, пожалуйста.",
+            business_connection_id=business_connection_id,
+            token=token,
+        )
+        return None
+    if not OPENAI_API_KEY:
+        _safe_send(
+            chat_id,
+            "Не удалось распознать голос. Напишите текстом, пожалуйста.",
+            business_connection_id=business_connection_id,
+            token=token,
+        )
+        return None
+    try:
+        _safe_typing(chat_id, business_connection_id=business_connection_id, token=token)
+        transcript = voice_stt.transcribe_telegram_voice(
+            token=token,
+            file_id=voice["file_id"],
+            openai_api_key=OPENAI_API_KEY,
+        )
+        return voice_stt.format_voice_user_text(transcript, kind=voice.get("kind") or "voice")
+    except Exception:
+        logger.exception("voice stt failed chat_id=%s", chat_id)
+        _safe_send(
+            chat_id,
+            "Не расслышал голосовое — напишите текстом или повторите, пожалуйста.",
+            business_connection_id=business_connection_id,
+            token=token,
+        )
+        return None
+
+
 def handle_business_message(update: dict[str, Any]) -> None:
     """Customer DM to the human Business account — reply *as the account*."""
     if not telegram_business.enabled():
@@ -258,6 +309,7 @@ def handle_business_message(update: dict[str, Any]) -> None:
     text = parsed["text"]
     user_id = parsed["user_id"]
     biz_tok = _business_token()
+    message = parsed.get("message") or {}
 
     conn = telegram_business.get_connection(conn_id)
     owner_id = str((conn or {}).get("user_id") or "")
@@ -268,8 +320,6 @@ def handle_business_message(update: dict[str, Any]) -> None:
         logger.info("business owner message chat_id=%s — auto-reply paused", chat_id)
         return
 
-    if not text:
-        return
     if not telegram_business.auto_reply_enabled():
         logger.info("business auto-reply disabled; skip chat_id=%s", chat_id)
         return
@@ -277,6 +327,16 @@ def handle_business_message(update: dict[str, Any]) -> None:
         logger.info("business chat paused chat_id=%s — skip", chat_id)
         return
     if conn and not conn.get("is_enabled", True):
+        return
+
+    text = _resolve_incoming_text(
+        message=message if isinstance(message, dict) else {},
+        text=text,
+        token=biz_tok,
+        chat_id=chat_id,
+        business_connection_id=conn_id,
+    )
+    if not text:
         return
 
     logger.info(
@@ -292,6 +352,7 @@ def handle_business_message(update: dict[str, Any]) -> None:
         text=text,
         reply_to=str(chat_id),
         chat_type=parsed.get("chat_type") or "private",
+        business_connection_id=conn_id,
     )
     _safe_send(
         chat_id,
@@ -324,13 +385,19 @@ def handle_telegram_update(update: dict[str, Any], *, token: str | None = None) 
     chat_id = chat.get("id")
     if chat_id is None:
         return
-    text = str(message.get("text") or "").strip()
-    if not text:
-        return
-
+    text = str(message.get("text") or message.get("caption") or "").strip()
     chat_type = str(chat.get("type") or "private")
     user_id = str(from_user.get("id") or chat_id)
     tok = token or TELEGRAM_BOT_TOKEN
+
+    text = _resolve_incoming_text(
+        message=message if isinstance(message, dict) else {},
+        text=text,
+        token=tok,
+        chat_id=chat_id,
+    )
+    if not text:
+        return
 
     logger.info(
         "telegram incoming chat_id=%s user_id=%s chat_type=%s text=%r",
@@ -502,6 +569,7 @@ def health() -> dict[str, Any]:
         "telegram_configured": bool(TELEGRAM_BOT_TOKEN),
         "telegram_business_bot_configured": bool(TELEGRAM_BUSINESS_BOT_TOKEN),
         "telegram_business": biz,
+        "voice_stt": voice_stt.enabled(),
         "openai_configured": bool(OPENAI_API_KEY),
         "model": OPENAI_MODEL,
         "mailer_base": AVA_MAILER_BASE,

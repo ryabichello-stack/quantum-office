@@ -1585,6 +1585,7 @@ def run_tool(
     *,
     mailer_base: Optional[str] = None,
     telegram_chat_id: Optional[str] = None,
+    business_connection_id: Optional[str] = None,
     channel: Optional[str] = None,
     role: str = "guest",
 ) -> str:
@@ -1908,16 +1909,20 @@ def run_tool(
                     },
                     ensure_ascii=False,
                 )
+            body: dict[str, Any] = {
+                "source": str(arguments.get("source") or "local"),
+                "path": str(arguments.get("path") or ""),
+                "via": via,
+                "to": to,
+                "caption": str(arguments.get("caption") or ""),
+                "subject": str(arguments.get("subject") or ""),
+            }
+            biz = (business_connection_id or "").strip()
+            if via in ("telegram", "tg") and biz:
+                body["business_connection_id"] = biz
             data = _post_json(
                 f"{FILES_BASE}/api/files/send",
-                {
-                    "source": str(arguments.get("source") or "local"),
-                    "path": str(arguments.get("path") or ""),
-                    "via": via,
-                    "to": to,
-                    "caption": str(arguments.get("caption") or ""),
-                    "subject": str(arguments.get("subject") or ""),
-                },
+                body,
                 timeout=120.0,
             )
             return json.dumps(data, ensure_ascii=False)

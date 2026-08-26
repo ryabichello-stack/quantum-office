@@ -147,16 +147,28 @@ def parse_business_message(update: dict[str, Any]) -> Optional[dict[str, Any]]:
         return None
     chat = message.get("chat") or {}
     from_user = message.get("from") or {}
-    text = str(message.get("text") or "").strip()
+    text = str(message.get("text") or message.get("caption") or "").strip()
     chat_id = chat.get("id")
     if chat_id is None:
         return None
+    voice = None
+    for kind in ("voice", "audio", "video_note"):
+        block = message.get(kind)
+        if isinstance(block, dict) and block.get("file_id"):
+            voice = {
+                "file_id": str(block.get("file_id") or "").strip(),
+                "duration": int(block.get("duration") or 0),
+                "mime": str(block.get("mime_type") or ""),
+                "kind": kind,
+            }
+            break
     return {
         "connection_id": conn_id,
         "chat_id": chat_id,
         "user_id": str(from_user.get("id") or chat_id),
         "from_is_bot": bool(from_user.get("is_bot")),
         "text": text,
+        "voice": voice,
         "chat_type": str(chat.get("type") or "private"),
         "message": message,
     }
