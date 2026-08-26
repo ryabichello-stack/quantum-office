@@ -20,6 +20,7 @@ from ava_client import tools_for_role, run_tool
 from prompt_loader import channel_overlay, greeting_text, load_system_prompt
 from scenarios import (
     detect_scenario,
+    default_scenario_id,
     format_scenarios_help,
     get_scenario,
     load_scenarios,
@@ -34,7 +35,19 @@ from session_store import (
     get_session_meta,
     init_db,
     load_messages,
+    set_session_acl_role,
     set_session_scenario,
+)
+from training import (
+    ROLE_TRAINEE,
+    lock_ok_text,
+    parse_training_command,
+    training_enabled,
+    training_help_text,
+    unlock_ok_text,
+    verify_pin,
+    wrong_pin_text,
+    channels_allow_training,
 )
 
 logger = logging.getLogger("ava-secretary")
@@ -74,7 +87,13 @@ class Secretary:
     def reset(self, channel: str, user_id: str, *, chat_type: str | None = None) -> str:
         key = session_key(channel, user_id)
         clear_chat(SESSION_DB, key)
-        role = role_for(user_id, channel, chat_type=chat_type)
+        meta = get_session_meta(SESSION_DB, key)
+        role = role_for(
+            user_id,
+            channel,
+            chat_type=chat_type,
+            acl_role=meta.get("acl_role"),
+        )
         return greeting_text(AVA_CONFIG_PATH, role=role)
 
     def handle(
@@ -100,20 +119,90 @@ class Secretary:
             return {"ok": False, "error": "empty_text", "reply": ""}
 
         key = session_key(channel, user_id)
-        role = role_for(user_id, channel, chat_type=chat_type)
-        lowered = text.lower()
         meta = get_session_meta(SESSION_DB, key)
         sticky = bool(meta.get("sticky"))
         sticky_id = meta.get("scenario") if sticky else None
+        acl_role = meta.get("acl_role")
+
+        # Training PIN commands (before role resolution updates)
+        train_action, train_payload = parse_training_command(text)
+        if train_action and training_enabled() and channels_allow_training(channel):
+            base_role = role_for(user_id, channel, chat_type=chat_type, acl_role=acl_role)
+            if base_role == "owner":
+                reply = (
+                    "Вы владелец — полный доступ и так есть. "
+                    "Режим обучения рассчитан на сотрудников (/обучение <код>)."
+                )
+                return {"ok": True, "reply": reply, "session": key, "role": "owner"}
+            if train_action == "help":
+                reply = training_help_text(unlocked=(base_role == ROLE_TRAINEE))
+                append_message(SESSION_DB, key, {"role": "user", "content": text})
+                append_message(SESSION_DB, key, {"role": "assistant", "content": reply})
+                return {
+                    "ok": True,
+                    "reply": reply,
+                    "session": key,
+                    "role": base_role,
+                    "scenario": sticky_id or default_scenario_id(base_role),
+                }
+            if train_action == "lock":
+                set_session_acl_role(SESSION_DB, key, None)
+                set_session_scenario(SESSION_DB, key, None, sticky=False)
+                clear_chat(SESSION_DB, key)
+                reply = lock_ok_text()
+                append_message(SESSION_DB, key, {"role": "assistant", "content": reply})
+                return {
+                    "ok": True,
+                    "reply": reply,
+                    "session": key,
+                    "role": "guest",
+                    "scenario": "office",
+                    "training": False,
+                }
+            if train_action == "unlock":
+                if verify_pin(train_payload or ""):
+                    set_session_acl_role(SESSION_DB, key, ROLE_TRAINEE)
+                    set_session_scenario(SESSION_DB, key, "training", sticky=True)
+                    clear_chat(SESSION_DB, key)
+                    reply = unlock_ok_text()
+                    append_message(SESSION_DB, key, {"role": "assistant", "content": reply})
+                    return {
+                        "ok": True,
+                        "reply": reply,
+                        "session": key,
+                        "role": ROLE_TRAINEE,
+                        "scenario": "training",
+                        "sticky": True,
+                        "training": True,
+                    }
+                reply = wrong_pin_text()
+                return {
+                    "ok": False,
+                    "error": "bad_training_pin",
+                    "reply": reply,
+                    "session": key,
+                    "role": base_role,
+                }
+
+        role = role_for(
+            user_id,
+            channel,
+            chat_type=chat_type,
+            acl_role=acl_role,
+        )
+        lowered = text.lower()
 
         if lowered in ("/start", "/help", "start", "help", "помощь"):
             clear_chat(SESSION_DB, key)
             greet = greeting_text(AVA_CONFIG_PATH, role=role)
-            help_extra = (
-                "\n\nЯ ваш личный секретарь. Команды режимов: /режимы"
-                if role == "owner"
-                else "\n\nКоманды: /режимы"
-            )
+            if role == "owner":
+                help_extra = "\n\nЯ ваш личный секретарь. Команды режимов: /режимы"
+            elif role == ROLE_TRAINEE:
+                help_extra = (
+                    "\n\nРежим обучения. Команды: /режимы · выход: /обучение выход"
+                )
+            else:
+                help_extra = "\n\nКоманды: /режимы · сотрудникам: /обучение"
             reply = greet + help_extra
             append_message(SESSION_DB, key, {"role": "assistant", "content": reply})
             return {
@@ -122,7 +211,7 @@ class Secretary:
                 "session": key,
                 "reset": True,
                 "role": role,
-                "scenario": sticky_id or ("secretary" if role == "owner" else "office"),
+                "scenario": sticky_id or default_scenario_id(role),
             }
 
         if lowered in ("/reset", "reset", "сброс"):
@@ -135,13 +224,13 @@ class Secretary:
                 "session": key,
                 "reset": True,
                 "role": role,
-                "scenario": sticky_id or ("secretary" if role == "owner" else "office"),
+                "scenario": sticky_id or default_scenario_id(role),
             }
 
         # Scenario commands
         action, payload = parse_scenario_command(text, role)
         if action == "list":
-            current = sticky_id or (scenario or ("secretary" if role == "owner" else "office"))
+            current = sticky_id or (scenario or default_scenario_id(role))
             reply = format_scenarios_help(role, current, sticky)
             append_message(SESSION_DB, key, {"role": "user", "content": text})
             append_message(SESSION_DB, key, {"role": "assistant", "content": reply})
@@ -169,8 +258,17 @@ class Secretary:
                 "sticky": True,
             }
         if action == "clear":
-            set_session_scenario(SESSION_DB, key, None, sticky=False)
-            reply = "Режим сброшен — снова выбираю сценарий автоматически."
+            # Keep training sticky default if trainee
+            if role == ROLE_TRAINEE:
+                set_session_scenario(SESSION_DB, key, "training", sticky=True)
+                reply = "Подрежим сброшен — снова общий режим обучения (training)."
+                next_sc = "training"
+                sticky_out = True
+            else:
+                set_session_scenario(SESSION_DB, key, None, sticky=False)
+                reply = "Режим сброшен — снова выбираю сценарий автоматически."
+                next_sc = default_scenario_id(role)
+                sticky_out = False
             append_message(SESSION_DB, key, {"role": "user", "content": text})
             append_message(SESSION_DB, key, {"role": "assistant", "content": reply})
             return {
@@ -178,8 +276,8 @@ class Secretary:
                 "reply": reply,
                 "session": key,
                 "role": role,
-                "scenario": "secretary" if role == "owner" else "office",
-                "sticky": False,
+                "scenario": next_sc,
+                "sticky": sticky_out,
             }
         if action == "unknown":
             reply = f"Не знаю режим «{payload}». Напишите /режимы"
@@ -221,7 +319,7 @@ class Secretary:
                 user_text=text,
                 reply_to=reply_to,
                 role=role,
-                scenario_id=active.id if active else "secretary",
+                scenario_id=active.id if active else default_scenario_id(role),
                 sticky=sticky_now,
                 business_connection_id=business_connection_id,
             )

@@ -552,6 +552,7 @@ def on_shutdown() -> None:
 def health() -> dict[str, Any]:
     from ava_client import KNOWLEDGE_BASE, OPENAI_TOOLS
     from scenarios import get_bundle, list_scenarios
+    import training as training_mod
 
     b = get_bundle()
     messengers = channel_status()
@@ -575,7 +576,13 @@ def health() -> dict[str, Any]:
         "mailer_base": AVA_MAILER_BASE,
         "knowledge_base": KNOWLEDGE_BASE,
         "owners_configured": len(b.owners),
+        "training": {
+            "enabled": training_mod.training_enabled(),
+            "pin_configured": training_mod.pin_configured(),
+            "allowlist": len(training_mod.trainee_allowlist()),
+        },
         "scenarios": [s.id for s in list_scenarios("owner")],
+        "trainee_scenarios": [s.id for s in list_scenarios("trainee")],
         "channels": enabled_channels,
         "messengers": messengers,
         "endpoints": [

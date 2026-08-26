@@ -8,9 +8,23 @@
 | | |
 |--|--|
 | Владелец | `SECRETARY_OWNER_IDS` (Telegram chat_id) → личный секретарь |
+| Сотрудник (обучение) | `/обучение <PIN>` или `SECRETARY_TRAINEE_IDS` → тренер по продажам |
 | Гость | все остальные → офисный секретарь |
 
 Пока owners не заданы, Telegram по умолчанию считается owner (`SECRETARY_TELEGRAM_DEFAULT_OWNER=true`).
+
+### Режим обучения сотрудников
+
+Для менеджеров обзвона: продукт, скрипты, возражения, приглашение на ВКС.  
+**Нет** доступа к внутренней почте, контактам и диску Mail.ru — только Knowledge/FAQ.
+
+```
+/обучение 482917
+/режимы
+/обучение выход
+```
+
+Env: `SECRETARY_TRAINING_PIN`, опционально `SECRETARY_TRAINEE_IDS`, `SECRETARY_TRAINING_ENABLED`.
 
 ## Сценарии
 
@@ -21,13 +35,16 @@
 | `secretary` | owner | общий личный секретарь (default) |
 | `calendar` | owner/guest | запись / слоты |
 | `conference` | owner/guest | срочный Телемост |
-| `knowledge` | owner/guest | продукт / FAQ из Knowledge + Brain |
+| `knowledge` | owner/guest/trainee | продукт / FAQ из Knowledge + Brain |
 | `memory` | owner | почта / контакты / треды Second Brain |
 | `files` | owner/guest | презентации и файлы |
 | `briefing` | owner | «что сегодня / план» |
 | `client_prep` | owner | тезисы перед клиентом (+ почта) |
 | `outbound` | owner | исходящие звонки AVA + скрипт + отчёты |
 | `office` | guest | внешний офисный тон |
+| `training` | trainee | тренер по продажам (default) |
+| `training_script` | trainee | скрипт звонка |
+| `training_objections` | trainee | возражения |
 
 Owner tools: `search_office_memory`, `find_office_contact`, `list_office_threads` → `:8017/api/brain/*`.  
 Outbound (owner): `outbound_dial`, `get/update_outbound_scenario`, `list/get_outbound_call` → Quantum Console `:8013` (`X-Console-Token`).

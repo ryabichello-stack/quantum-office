@@ -666,9 +666,13 @@ _OFFICE_TOOLS: list[dict[str, Any]] = [
 
 
 def tools_for_role(role: str) -> list[dict[str, Any]]:
-    """Guests get FAQ knowledge; owners also get mail/contacts + outbound console tools."""
+    """Guests get FAQ + office helpers; trainees = Knowledge only; owners = full."""
+    role_l = (role or "").strip().lower()
+    if role_l == "trainee":
+        # Sales training: product Knowledge / FAQ only — no mail, disk, dial, calendar.
+        return list(_KNOWLEDGE_TOOLS)
     tools = list(_KNOWLEDGE_TOOLS) + list(_OFFICE_TOOLS)
-    if (role or "").strip().lower() == "owner":
+    if role_l == "owner":
         owner_extra: list[dict[str, Any]] = []
         if BRAIN_ENABLED:
             owner_extra.extend(_BRAIN_OWNER_TOOLS)
@@ -1173,7 +1177,7 @@ def _get_json(url: str, *, timeout: float = 15.0, brain_principal: str | None = 
 
 
 def _brain_principal_for_role(role: str) -> str:
-    """Owner private DM → full brain; everyone else → public FAQ only."""
+    """Owner private DM → full brain; trainee/guest → public FAQ only."""
     if (role or "").strip().lower() == "owner":
         return "service:text-owner"
     return "service:text-guest"
@@ -1592,8 +1596,23 @@ def run_tool(
     mailer = (mailer_base or MAILER_BASE).rstrip("/")
     knowledge = KNOWLEDGE_BASE.rstrip("/")
     principal = _brain_principal_for_role(role)
-    is_owner = (role or "").strip().lower() == "owner"
+    role_l = (role or "").strip().lower()
+    is_owner = role_l == "owner"
+    is_trainee = role_l == "trainee"
     try:
+        if is_trainee and name not in ("get_company_knowledge", "list_knowledge_topics"):
+            return json.dumps(
+                {
+                    "ok": False,
+                    "error": "forbidden",
+                    "message": (
+                        "В режиме обучения доступна только база знаний о продукте. "
+                        "Нет доступа к почте, диску и внутренним файлам."
+                    ),
+                },
+                ensure_ascii=False,
+            )
+
         if name == "list_knowledge_topics":
             try:
                 data = _get_json(f"{knowledge}/api/knowledge/topics")
