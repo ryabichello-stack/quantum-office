@@ -34,6 +34,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("ava-text-bot")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_BUSINESS_BOT_TOKEN = os.getenv("TELEGRAM_BUSINESS_BOT_TOKEN", "").strip()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip()
 AVA_MAILER_BASE = os.getenv("AVA_MAILER_BASE", "http://127.0.0.1:8000").strip()
@@ -43,6 +44,7 @@ TG_HANDLE_WORKERS = max(1, int(os.getenv("TELEGRAM_HANDLE_WORKERS", "4")))
 
 app = FastAPI(title="Quantum Labs Secretary", version="0.3.0")
 _poll_thread: threading.Thread | None = None
+_business_poll_thread: threading.Thread | None = None
 _stop_event = threading.Event()
 _update_pool = ThreadPoolExecutor(
     max_workers=TG_HANDLE_WORKERS, thread_name_prefix="tg-handle"
@@ -162,8 +164,17 @@ async def vk_webhook(request: Request):
 # --------------------
 
 
-def _tg_post(method: str, payload: dict[str, Any], *, timeout: float = 30.0) -> dict[str, Any]:
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/{method}"
+def _tg_post(
+    method: str,
+    payload: dict[str, Any],
+    *,
+    token: str | None = None,
+    timeout: float = 30.0,
+) -> dict[str, Any]:
+    tok = (token or TELEGRAM_BOT_TOKEN or "").strip()
+    if not tok:
+        raise RuntimeError("telegram_token_missing")
+    url = f"https://api.telegram.org/bot{tok}/{method}"
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(
         url,
@@ -175,16 +186,24 @@ def _tg_post(method: str, payload: dict[str, Any], *, timeout: float = 30.0) -> 
         return json.loads(resp.read().decode("utf-8"))
 
 
+def _business_token() -> str:
+    return (TELEGRAM_BUSINESS_BOT_TOKEN or TELEGRAM_BOT_TOKEN or "").strip()
+
+
 def send_telegram(
     chat_id: str | int,
     text: str,
     *,
     business_connection_id: str | None = None,
+    token: str | None = None,
 ) -> None:
     payload: dict[str, Any] = {"chat_id": chat_id, "text": str(text)[:4096]}
     if business_connection_id:
         payload["business_connection_id"] = business_connection_id
-    _tg_post("sendMessage", payload, timeout=20.0)
+    tok = token
+    if business_connection_id:
+        tok = tok or _business_token()
+    _tg_post("sendMessage", payload, token=tok, timeout=20.0)
 
 
 def _safe_send(
@@ -192,9 +211,15 @@ def _safe_send(
     text: str,
     *,
     business_connection_id: str | None = None,
+    token: str | None = None,
 ) -> None:
     try:
-        send_telegram(chat_id, text, business_connection_id=business_connection_id)
+        send_telegram(
+            chat_id,
+            text,
+            business_connection_id=business_connection_id,
+            token=token,
+        )
     except Exception:
         logger.exception(
             "send_telegram failed chat_id=%s business=%s",
@@ -207,12 +232,16 @@ def _safe_typing(
     chat_id: str | int,
     *,
     business_connection_id: str | None = None,
+    token: str | None = None,
 ) -> None:
     try:
         payload: dict[str, Any] = {"chat_id": chat_id, "action": "typing"}
         if business_connection_id:
             payload["business_connection_id"] = business_connection_id
-        _tg_post("sendChatAction", payload, timeout=10.0)
+        tok = token
+        if business_connection_id:
+            tok = tok or _business_token()
+        _tg_post("sendChatAction", payload, token=tok, timeout=10.0)
     except Exception:
         logger.debug("sendChatAction failed chat_id=%s", chat_id, exc_info=True)
 
@@ -228,6 +257,7 @@ def handle_business_message(update: dict[str, Any]) -> None:
     chat_id = parsed["chat_id"]
     text = parsed["text"]
     user_id = parsed["user_id"]
+    biz_tok = _business_token()
 
     conn = telegram_business.get_connection(conn_id)
     owner_id = str((conn or {}).get("user_id") or "")
@@ -255,7 +285,7 @@ def handle_business_message(update: dict[str, Any]) -> None:
         user_id,
         text[:120],
     )
-    _safe_typing(chat_id, business_connection_id=conn_id)
+    _safe_typing(chat_id, business_connection_id=conn_id, token=biz_tok)
     result = secretary.handle(
         channel="telegram_business",
         user_id=user_id,
@@ -267,6 +297,7 @@ def handle_business_message(update: dict[str, Any]) -> None:
         chat_id,
         result.get("reply") or "…",
         business_connection_id=conn_id,
+        token=biz_tok,
     )
     logger.info(
         "business replied chat_id=%s user_id=%s ok=%s chars=%s",
@@ -277,7 +308,7 @@ def handle_business_message(update: dict[str, Any]) -> None:
     )
 
 
-def handle_telegram_update(update: dict[str, Any]) -> None:
+def handle_telegram_update(update: dict[str, Any], *, token: str | None = None) -> None:
     # Business connection lifecycle (connect / disconnect / rights change)
     if "business_connection" in update:
         telegram_business.upsert_connection(update.get("business_connection") or {})
@@ -299,6 +330,7 @@ def handle_telegram_update(update: dict[str, Any]) -> None:
 
     chat_type = str(chat.get("type") or "private")
     user_id = str(from_user.get("id") or chat_id)
+    tok = token or TELEGRAM_BOT_TOKEN
 
     logger.info(
         "telegram incoming chat_id=%s user_id=%s chat_type=%s text=%r",
@@ -308,11 +340,12 @@ def handle_telegram_update(update: dict[str, Any]) -> None:
         text[:120],
     )
 
-    _safe_typing(chat_id)
+    _safe_typing(chat_id, token=tok)
     if looks_like_outbound_request(text):
         _safe_send(
             chat_id,
             "Принял. Готовлю/веду звонок — напишу, как будет результат (это может занять 1–2 мин).",
+            token=tok,
         )
 
     result = secretary.handle(
@@ -322,7 +355,7 @@ def handle_telegram_update(update: dict[str, Any]) -> None:
         reply_to=str(chat_id),
         chat_type=chat_type,
     )
-    _safe_send(chat_id, result.get("reply") or "…")
+    _safe_send(chat_id, result.get("reply") or "…", token=tok)
     logger.info(
         "telegram replied chat_id=%s user_id=%s role=%s ok=%s chars=%s",
         chat_id,
@@ -333,75 +366,113 @@ def handle_telegram_update(update: dict[str, Any]) -> None:
     )
 
 
-def _handle_update_safe(update: dict[str, Any]) -> None:
+def _handle_update_safe(update: dict[str, Any], *, token: str | None = None) -> None:
     try:
-        handle_telegram_update(update)
+        handle_telegram_update(update, token=token)
     except Exception:
         logger.exception("update failed: %s", update.get("update_id"))
 
 
-def poll_loop() -> None:
+def poll_loop(*, token: str, name: str, allow_direct_messages: bool = True) -> None:
     offset: int | None = None
-    logger.info("Telegram poll loop started workers=%s", TG_HANDLE_WORKERS)
+    logger.info("Telegram poll loop started name=%s workers=%s", name, TG_HANDLE_WORKERS)
     try:
-        _tg_post("deleteWebhook", {"drop_pending_updates": False}, timeout=15.0)
-        logger.info("webhook cleared for polling")
+        _tg_post(
+            "deleteWebhook",
+            {"drop_pending_updates": False},
+            token=token,
+            timeout=15.0,
+        )
+        logger.info("webhook cleared for polling name=%s", name)
     except Exception:
-        logger.exception("deleteWebhook failed")
+        logger.exception("deleteWebhook failed name=%s", name)
+
+    allowed = [
+        "business_connection",
+        "business_message",
+        "edited_business_message",
+    ]
+    if allow_direct_messages:
+        allowed.insert(0, "message")
 
     while not _stop_event.is_set():
-        if not TELEGRAM_BOT_TOKEN:
+        if not token:
             time.sleep(5)
             continue
         try:
-            payload: dict[str, Any] = {
-                "timeout": 25,
-                "allowed_updates": [
-                    "message",
-                    "business_connection",
-                    "business_message",
-                    "edited_business_message",
-                ],
-            }
+            payload: dict[str, Any] = {"timeout": 25, "allowed_updates": allowed}
             if offset is not None:
                 payload["offset"] = offset
-            out = _tg_post("getUpdates", payload, timeout=35.0)
+            out = _tg_post("getUpdates", payload, token=token, timeout=35.0)
             if not out.get("ok"):
-                logger.warning("getUpdates not ok: %s", out)
+                logger.warning("getUpdates not ok name=%s: %s", name, out)
                 time.sleep(3)
                 continue
             for upd in out.get("result") or []:
                 offset = int(upd.get("update_id", 0)) + 1
-                _update_pool.submit(_handle_update_safe, upd)
+                _update_pool.submit(_handle_update_safe, upd, token=token)
         except urllib.error.URLError as exc:
-            logger.warning("poll error: %s", exc)
+            logger.warning("poll error name=%s: %s", name, exc)
             time.sleep(3)
         except Exception:
-            logger.exception("poll unexpected")
+            logger.exception("poll unexpected name=%s", name)
             time.sleep(3)
         time.sleep(POLL_INTERVAL_S)
 
 
 @app.on_event("startup")
 def on_startup() -> None:
-    global _poll_thread
+    global _poll_thread, _business_poll_thread
     secretary.startup(OPENAI_API_KEY)
     telegram_business.load_connections()
     if TELEGRAM_BOT_TOKEN:
-        _poll_thread = threading.Thread(target=poll_loop, name="telegram-poll", daemon=True)
+        _poll_thread = threading.Thread(
+            target=poll_loop,
+            kwargs={
+                "token": TELEGRAM_BOT_TOKEN,
+                "name": "personal",
+                "allow_direct_messages": True,
+            },
+            name="telegram-poll",
+            daemon=True,
+        )
         _poll_thread.start()
-        logger.info("telegram channel enabled model=%s", OPENAI_MODEL)
+        logger.info("telegram personal bot enabled model=%s", OPENAI_MODEL)
     else:
-        logger.warning("TELEGRAM_BOT_TOKEN missing — API channel still available")
+        logger.warning("TELEGRAM_BOT_TOKEN missing — personal bot off")
+
+    if TELEGRAM_BUSINESS_BOT_TOKEN:
+        # Commercial bot: primarily Business / Secretary Mode updates.
+        # Also accept direct /start to the bot itself.
+        same = TELEGRAM_BUSINESS_BOT_TOKEN == TELEGRAM_BOT_TOKEN
+        if not same:
+            _business_poll_thread = threading.Thread(
+                target=poll_loop,
+                kwargs={
+                    "token": TELEGRAM_BUSINESS_BOT_TOKEN,
+                    "name": "business",
+                    "allow_direct_messages": True,
+                },
+                name="telegram-business-poll",
+                daemon=True,
+            )
+            _business_poll_thread.start()
+            logger.info("telegram business bot poller enabled")
+        else:
+            logger.info("telegram business token same as personal — single poller")
+    else:
+        logger.warning("TELEGRAM_BUSINESS_BOT_TOKEN missing — connect commercial bot later")
+
     ch = channel_status()
     biz = telegram_business.status()
     logger.info(
-        "messenger channels whatsapp=%s max=%s vk=%s telegram_business=%s conns=%s",
+        "messenger channels whatsapp=%s max=%s vk=%s telegram_business=%s conns=%s biz_token=%s",
         ch["whatsapp"].get("enabled"),
         ch["max"].get("enabled"),
         ch["vk"].get("enabled"),
         biz.get("enabled"),
         biz.get("connections"),
+        bool(TELEGRAM_BUSINESS_BOT_TOKEN),
     )
 
 
@@ -429,6 +500,7 @@ def health() -> dict[str, Any]:
         "service": "ava-text-bot",
         "role": "quantum-labs-secretary",
         "telegram_configured": bool(TELEGRAM_BOT_TOKEN),
+        "telegram_business_bot_configured": bool(TELEGRAM_BUSINESS_BOT_TOKEN),
         "telegram_business": biz,
         "openai_configured": bool(OPENAI_API_KEY),
         "model": OPENAI_MODEL,
