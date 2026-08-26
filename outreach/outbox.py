@@ -592,6 +592,42 @@ class OutboxStore:
             for r in rows
         ]
 
+    def list_sent_on_day(self, day: str, *, limit: int = 200) -> list[OutboxRow]:
+        """Recipients sent/replied on UTC calendar day ``YYYY-MM-DD``."""
+        d = (day or "").strip()[:10]
+        if len(d) != 10 or d[4] != "-" or d[7] != "-":
+            return []
+        lim = max(1, min(int(limit or 200), 500))
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM outbox
+                WHERE status IN ('sent', 'replied')
+                  AND sent_at IS NOT NULL
+                  AND sent_at LIKE ?
+                ORDER BY sent_at DESC, id DESC
+                LIMIT ?
+                """,
+                (f"{d}%", lim),
+            ).fetchall()
+        return [self._row(r) for r in rows]
+
+    def count_sent_on_day(self, day: str) -> int:
+        d = (day or "").strip()[:10]
+        if len(d) != 10:
+            return 0
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS n FROM outbox
+                WHERE status IN ('sent', 'replied')
+                  AND sent_at IS NOT NULL
+                  AND sent_at LIKE ?
+                """,
+                (f"{d}%",),
+            ).fetchone()
+        return int(row["n"] or 0)
+
     def list_inbound(self, *, limit: int = 50, offset: int = 0) -> tuple[list[dict[str, Any]], int]:
         with self.connect() as conn:
             total = conn.execute("SELECT COUNT(*) AS n FROM inbound_replies").fetchone()["n"]

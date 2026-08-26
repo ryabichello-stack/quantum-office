@@ -347,8 +347,8 @@ def make_outbound_message_id() -> str:
 
 
 def _delay_between_sends(settings: Any = None) -> None:
-    lo = _cfg_int(settings, "OUTREACH_DELAY_MIN_SECONDS", 60)
-    hi = _cfg_int(settings, "OUTREACH_DELAY_MAX_SECONDS", 180)
+    lo = _cfg_int(settings, "OUTREACH_DELAY_MIN_SECONDS", 600)
+    hi = _cfg_int(settings, "OUTREACH_DELAY_MAX_SECONDS", 900)
     if hi < lo:
         hi = lo
     seconds = random.randint(lo, hi) if hi > 0 else 0

@@ -1304,10 +1304,10 @@
 
     const e = (dash && dash.engagement) || {};
     if ($("deskReportMeta")) {
-      $("deskReportMeta").textContent = `отпр. ${e.sent || 0} · откр. ${e.opened || 0}`;
+      $("deskReportMeta").textContent = `отпр. ${e.sent || 0} · откр. ${e.opened || 0} · CTA ${e.callbacks || 0}`;
     }
     if ($("deskReportLine2")) {
-      $("deskReportLine2").textContent = `ответы ${e.replied || 0} · bounce ${e.bounced || 0}`;
+      $("deskReportLine2").textContent = `ответы ${e.replied || 0} · звонки ${e.calls || 0}`;
     }
 
     const pack = s.OUTREACH_SEQUENCE_PACK || selectedPackId || "—";
@@ -1484,10 +1484,10 @@
       ["В очереди", f.queued || 0],
       ["Отправлено", f.sent || 0],
       ["Доставлено≈", f.delivered || 0],
-      ["Не доставлено", f.not_delivered || 0],
       ["Открыто", f.opened || 0],
-      ["Не открыто", f.not_opened || 0],
       ["Ответы", f.replied || 0],
+      ["CTA «Перезвонить»", f.callbacks || 0],
+      ["Звонки AVA", f.calls || 0],
       ["Failed SMTP", f.failed || 0],
     ];
     $("reportFunnel").innerHTML = funnelCards
@@ -1500,6 +1500,8 @@
       ["Открытия", fmtPct(r.open_rate_pct)],
       ["Ответы", fmtPct(r.reply_rate_pct)],
       ["Ответ / открытие", fmtPct(r.reply_of_opened_pct)],
+      ["CTA / открытие", fmtPct(r.callback_of_opened_pct)],
+      ["CTA / отправка", fmtPct(r.callback_of_sent_pct)],
     ]
       .map(
         ([l, v]) =>
@@ -1508,10 +1510,13 @@
       .join("") || `<div class="rate-card"><div class="n">—</div><div class="l">нет данных</div></div>`;
 
     const stages = [
+      ["В очереди", f.queued || 0],
       ["Отправлено", f.sent || 0],
       ["Доставлено≈", f.delivered || 0],
       ["Открыто", f.opened || 0],
       ["Ответ", f.replied || 0],
+      ["CTA «Перезвонить»", f.callbacks || 0],
+      ["Звонки AVA", f.calls || 0],
     ];
     const maxF = Math.max(1, ...stages.map(([, n]) => n));
     $("reportFunnelBars").innerHTML = stages
@@ -1573,6 +1578,40 @@
           })
           .join("")
       : `<p class="muted tight" style="padding:0.35rem 0">Нет отправок за период</p>`;
+
+    const cbRows = (data.callbacks && data.callbacks.recent) || [];
+    if ($("reportCallbacks")) {
+      $("reportCallbacks").innerHTML = cbRows.length
+        ? cbRows
+            .map(
+              (row) => `<tr>
+            <td>${escapeHtml(String(row.created_at || "").slice(0, 16))}</td>
+            <td>${escapeHtml(row.fio || "—")}</td>
+            <td>${escapeHtml(row.phone || "—")}</td>
+            <td>${escapeHtml(row.source_email || "—")}</td>
+            <td>${row.dial_ok ? "ok" : row.dial_mode ? escapeHtml(String(row.dial_mode)) : "—"}</td>
+          </tr>`
+            )
+            .join("")
+        : `<tr><td colspan="5" class="muted">Пока нет заявок CTA</td></tr>`;
+    }
+
+    const callRows = (data.calls && data.calls.recent) || [];
+    if ($("reportCalls")) {
+      $("reportCalls").innerHTML = callRows.length
+        ? callRows
+            .map(
+              (row) => `<tr>
+            <td>${escapeHtml(String(row.created_at || "").slice(0, 16))}</td>
+            <td>${escapeHtml(row.name || "—")}</td>
+            <td>${escapeHtml(row.phone || "—")}</td>
+            <td>${escapeHtml(row.company || "—")}</td>
+            <td>${escapeHtml(row.status || "—")}</td>
+          </tr>`
+            )
+            .join("")
+        : `<tr><td colspan="5" class="muted">Пока нет звонков AVA</td></tr>`;
+    }
 
     $("reportRecent").innerHTML = (data.recent || [])
       .map(
@@ -2075,8 +2114,8 @@
     $("setEnabled").checked = String(s.OUTREACH_ENABLED).toLowerCase() === "true" || s.OUTREACH_ENABLED === "1";
     setRunStateBadge(s.OUTREACH_RUN_STATE || "stopped");
     $("setDaily").value = s.OUTREACH_DAILY_LIMIT || 20;
-    $("setDelayMin").value = s.OUTREACH_DELAY_MIN_SECONDS || 60;
-    $("setDelayMax").value = s.OUTREACH_DELAY_MAX_SECONDS || 180;
+    $("setDelayMin").value = s.OUTREACH_DELAY_MIN_SECONDS || 600;
+    $("setDelayMax").value = s.OUTREACH_DELAY_MAX_SECONDS || 900;
     $("setDeal").checked = String(s.BITRIX_CREATE_DEAL || "true").toLowerCase() !== "false";
     $("setAssigned").value = s.BITRIX_ASSIGNED_BY_ID || 1;
     $("setStage").value = s.BITRIX_DEAL_STAGE_ID || "NEW";

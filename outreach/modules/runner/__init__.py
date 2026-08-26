@@ -183,10 +183,12 @@ class CampaignRunner(threading.Thread):
                             max(30, self._settings_int("SCHEDULE_TICK_SECONDS", 300))
                         )
                     else:
-                        # Between batches use configured delay floor
-                        self._shutdown.wait(
-                            max(5, self._settings_int("OUTREACH_DELAY_MIN_SECONDS", 60))
-                        )
+                        # Between batches: random pause in [min, max] (default 10–15 min)
+                        lo = max(5, self._settings_int("OUTREACH_DELAY_MIN_SECONDS", 600))
+                        hi = max(lo, self._settings_int("OUTREACH_DELAY_MAX_SECONDS", 900))
+                        import random
+
+                        self._shutdown.wait(random.randint(lo, hi))
                 elif state == "paused":
                     self.last_tick = {
                         "at": datetime.utcnow().isoformat() + "Z",

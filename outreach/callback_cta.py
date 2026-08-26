@@ -405,6 +405,12 @@ def recent_requests(*, limit: int = 30) -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+def requests_count() -> int:
+    init_db()
+    with _connect() as conn:
+        return int(conn.execute("SELECT COUNT(*) AS n FROM callback_requests").fetchone()["n"])
+
+
 def process_callback_request(
     *,
     token: str,
