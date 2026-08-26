@@ -110,6 +110,14 @@
     </div>
     <div id="dayBody"></div>
   </div>
+  <div id="view-engage" class="hidden">
+    <div class="nav">
+      <button type="button" id="engageBack">←</button>
+      <div class="label" id="engageTitle">Звонки</div>
+      <span></span>
+    </div>
+    <div id="engageBody"></div>
+  </div>
   <script>
     (function () {
       var tg = window.Telegram && window.Telegram.WebApp;
@@ -160,8 +168,9 @@
         state.view = name;
         document.getElementById("view-home").classList.toggle("hidden", name !== "home");
         document.getElementById("view-day").classList.toggle("hidden", name !== "day");
+        document.getElementById("view-engage").classList.toggle("hidden", name !== "engage");
         if (tg && tg.BackButton) {
-          if (name === "day") {
+          if (name === "day" || name === "engage") {
             tg.BackButton.show();
             tg.BackButton.onClick(goHome);
           } else {
@@ -180,6 +189,23 @@
         return -1;
       }
 
+      function fmtWhen(iso) {
+        if (!iso) return "—";
+        try {
+          var d = new Date(iso);
+          if (isNaN(d.getTime())) return String(iso).slice(0, 16);
+          return d.toLocaleString("ru-RU", {
+            timeZone: "Europe/Moscow",
+            day: "numeric",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit"
+          });
+        } catch (e) {
+          return String(iso).slice(0, 16);
+        }
+      }
+
       function renderHome(data) {
         state.stats = data;
         var root = document.getElementById("home");
@@ -193,16 +219,19 @@
         root.appendChild(head);
 
         var grid = el("div", "grid");
-        function card(n, l) {
-          var c = el("div", "card");
+        function card(n, l, onClick) {
+          var c = el("div", "card" + (onClick ? " tap" : ""));
           c.appendChild(el("div", "n", String(n)));
           c.appendChild(el("div", "l", l));
+          if (onClick) c.onclick = onClick;
           grid.appendChild(c);
         }
         card((data.sent_today || 0) + " / " + (data.daily_limit || "—"), "Сегодня / лимит");
         card(data.remaining_today, "Осталось сегодня");
         card(data.pending, "В очереди");
         card(data.sent_total, "Всего отправлено");
+        card(data.callback_requests || 0, "Кнопка «Перезвонить»", function () { openEngage("callbacks"); });
+        card(data.calls_total || 0, "Звонки AVA", function () { openEngage("calls"); });
         root.appendChild(grid);
 
         root.appendChild(el("div", "sub", "Дни отправки — нажмите, чтобы открыть письма"));
@@ -224,11 +253,106 @@
         open.onclick = function () { openDay(selected); };
         root.appendChild(open);
 
+        var eng = el("button", "ghost", "Заявки на звонок и звонки AVA");
+        eng.type = "button";
+        eng.onclick = function () { openEngage("callbacks"); };
+        root.appendChild(eng);
+
         var btn = el("button", "ghost", "Обновить");
         btn.type = "button";
         btn.onclick = loadHome;
         root.appendChild(btn);
         root.appendChild(el("div", "meta", "дни по UTC · время писем — МСК"));
+      }
+
+      function renderEngage(payload, tab) {
+        state.engage = payload;
+        var title = tab === "calls" ? "Звонки AVA" : "Кнопка «Перезвонить»";
+        document.getElementById("engageTitle").textContent = title;
+        var body = document.getElementById("engageBody");
+        body.innerHTML = "";
+
+        var tabs = el("div", "days");
+        [["callbacks", "Заявки"], ["calls", "Звонки"]].forEach(function (pair) {
+          var chip = el("button", "day-chip" + (tab === pair[0] ? " on" : ""));
+          chip.type = "button";
+          chip.appendChild(el("div", "d", pair[1]));
+          var n = pair[0] === "calls"
+            ? ((payload.summary && payload.summary.calls_total) || 0)
+            : ((payload.summary && payload.summary.callback_requests) || 0);
+          chip.appendChild(el("div", "c", String(n)));
+          chip.onclick = function () { renderEngage(payload, pair[0]); };
+          tabs.appendChild(chip);
+        });
+        body.appendChild(tabs);
+
+        var list = el("div", "list");
+        if (tab === "calls") {
+          var calls = (payload.calls && payload.calls.items) || [];
+          if (!calls.length) {
+            body.appendChild(el("div", "card wide", "Звонков пока нет (или ещё не поступали в Outreach)."));
+          } else {
+            calls.forEach(function (it) {
+              var row = el("div", "row");
+              var top = el("div", "row-top");
+              top.appendChild(el("div", "who", it.name || it.phone || "Звонок"));
+              top.appendChild(el("div", "when", fmtWhen(it.created_at)));
+              row.appendChild(top);
+              if (it.company) row.appendChild(el("div", "co", it.company));
+              row.appendChild(el("div", "mail", it.phone || ""));
+              var bits = [];
+              if (it.interest) bits.push(it.interest);
+              if (it.duration != null) bits.push(it.duration + " с");
+              if (it.qualified) bits.push("qualified");
+              if (it.meeting) bits.push("встреча");
+              if (it.deal_id) bits.push("сделка " + it.deal_id);
+              if (bits.length) row.appendChild(el("div", "meta-line", bits.join(" · ")));
+              if (it.summary) row.appendChild(el("div", "meta-line", it.summary));
+              list.appendChild(row);
+            });
+            body.appendChild(list);
+          }
+        } else {
+          var cbs = (payload.callbacks && payload.callbacks.recent) || [];
+          if (!cbs.length) {
+            body.appendChild(el("div", "card wide", "Заявок с кнопки «Перезвонить» пока нет."));
+          } else {
+            cbs.forEach(function (it) {
+              var row = el("div", "row");
+              var top = el("div", "row-top");
+              top.appendChild(el("div", "who", it.fio || "Заявка"));
+              top.appendChild(el("div", "when", fmtWhen(it.created_at)));
+              row.appendChild(top);
+              row.appendChild(el("div", "mail", it.phone || ""));
+              var bits = [];
+              if (it.source_email) bits.push(it.source_email);
+              if (it.dial_mode) bits.push(it.dial_mode);
+              bits.push(it.dial_ok ? "дозвон ok" : "дозвон fail");
+              row.appendChild(el("div", "meta-line", bits.join(" · ")));
+              list.appendChild(row);
+            });
+            body.appendChild(list);
+          }
+        }
+        showView("engage");
+      }
+
+      function openEngage(tab) {
+        fetch(apiBase() + "/api/tg/engagement", { headers: headers(), credentials: "same-origin" })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              if (!r.ok || !j.ok) throw new Error((j && (j.error || j.detail)) || ("HTTP " + r.status));
+              return j;
+            });
+          })
+          .then(function (j) { renderEngage(j, tab || "callbacks"); })
+          .catch(function (e) {
+            showView("engage");
+            document.getElementById("engageTitle").textContent = "Звонки";
+            var body = document.getElementById("engageBody");
+            body.innerHTML = "";
+            body.appendChild(el("div", "err", String(e.message || e)));
+          });
       }
 
       function renderDay(payload) {
@@ -323,6 +447,7 @@
       }
 
       document.getElementById("backBtn").onclick = goHome;
+      document.getElementById("engageBack").onclick = goHome;
       document.getElementById("dayPrev").onclick = function () { shiftDay(-1); };
       document.getElementById("dayNext").onclick = function () { shiftDay(1); };
 

@@ -134,6 +134,49 @@ class TelephonyLeadStore:
             ).fetchone()["n"]
         return {"leads": int(total), "ok": int(ok)}
 
+    def list_recent(self, *, limit: int = 30) -> list[dict[str, Any]]:
+        lim = max(1, min(int(limit or 30), 100))
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT call_id, created_at, payload_json, result_json, contact_id,
+                       company_id, deal_id, status
+                FROM telephony_leads
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (lim,),
+            ).fetchall()
+        items: list[dict[str, Any]] = []
+        for r in rows:
+            payload: dict[str, Any] = {}
+            result: dict[str, Any] = {}
+            try:
+                payload = json.loads(r["payload_json"] or "{}")
+            except Exception:  # noqa: BLE001
+                payload = {}
+            try:
+                result = json.loads(r["result_json"] or "{}")
+            except Exception:  # noqa: BLE001
+                result = {}
+            items.append(
+                {
+                    "call_id": r["call_id"],
+                    "created_at": r["created_at"],
+                    "status": r["status"],
+                    "phone": payload.get("phone") or payload.get("caller_number") or "",
+                    "name": payload.get("name") or "",
+                    "company": payload.get("company") or "",
+                    "interest": payload.get("interest") or "",
+                    "summary": (payload.get("summary") or "")[:280],
+                    "duration": payload.get("call_duration"),
+                    "qualified": bool(result.get("qualified")),
+                    "deal_id": r["deal_id"] or result.get("deal_id"),
+                    "meeting": bool(payload.get("meeting")),
+                }
+            )
+        return items
+
 
 def _lead_name(lead: dict[str, Any]) -> str:
     return str(

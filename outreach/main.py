@@ -232,6 +232,7 @@ async def lifespan(_app: FastAPI):
                 outbox=store,
                 runner_status=_runner,
                 queue_snapshot=_queue,
+                telephony_store=_telephony_mod.store,
             )
 
         if (_settings.get("OPS_NOTIFY_TELEGRAM_BOT_TOKEN", "") or "").strip() or os.getenv(
@@ -1129,12 +1130,32 @@ def api_tg_stats(request: Request, date: str | None = None) -> dict[str, Any]:
         outbox=_store(),
         runner_status=_runner,
         queue_snapshot=_queue,
+        telephony_store=_telephony_mod.store,
     )
     if date:
         day = build_day_letters(outbox=_store(), day=date)
         stats["selected_day"] = day.get("day") or date
         stats["selected_day_count"] = day.get("count") or 0
     return stats
+
+
+@app.get("/api/tg/engagement")
+def api_tg_engagement(request: Request) -> dict[str, Any]:
+    """Callback CTA requests + AVA telephony leads for Mini App."""
+    from tg_panel import build_engagement, require_tg_webapp_user
+
+    rt = _rt()
+    try:
+        require_tg_webapp_user(request, rt)
+    except ValueError as exc:
+        code = 401
+        detail = str(exc)
+        if detail == "telegram_bot_not_configured":
+            code = 503
+        elif detail == "chat_not_allowlisted":
+            code = 403
+        raise HTTPException(status_code=code, detail=detail) from exc
+    return build_engagement(telephony_store=_telephony_mod.store)
 
 
 @app.get("/api/tg/day")

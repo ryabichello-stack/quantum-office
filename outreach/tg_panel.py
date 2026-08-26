@@ -149,6 +149,7 @@ def build_outreach_stats(
     outbox: Any,
     runner_status: Callable[[], dict[str, Any]] | None = None,
     queue_snapshot: Callable[[], dict[str, Any]] | None = None,
+    telephony_store: Any = None,
 ) -> dict[str, Any]:
     """Compact operator stats for Telegram text / Mini App."""
     run = {"state": _cfg(settings, "OUTREACH_RUN_STATE", "stopped") or "stopped"}
@@ -199,6 +200,9 @@ def build_outreach_stats(
     state = (run.get("state") or "stopped").lower()
     state_ru = {"playing": "Идёт", "paused": "Пауза", "stopped": "Стоп"}.get(state, state)
 
+    engagement = build_engagement(telephony_store=telephony_store)
+    eng = engagement.get("summary") or {}
+
     return {
         "ok": True,
         "at": datetime.now(timezone.utc).isoformat(),
@@ -221,6 +225,9 @@ def build_outreach_stats(
         "webapp_url": public_webapp_url(settings),
         "days": _calendar_days(outbox, days=21),
         "selected_day": _default_day(outbox),
+        "callback_requests": eng.get("callback_requests") or 0,
+        "calls_total": eng.get("calls_total") or 0,
+        "engagement": engagement,
     }
 
 
@@ -363,6 +370,66 @@ def build_day_letters(
     }
 
 
+def callback_stats(*, limit: int = 30) -> dict[str, Any]:
+    """Counts + recent «Заказать звонок» form submits."""
+    try:
+        from callback_cta import recent_requests
+
+        items = recent_requests(limit=limit) or []
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)[:160], "total": 0, "items": []}
+    dial_ok = sum(1 for x in items if x.get("dial_ok"))
+    return {
+        "ok": True,
+        "total": len(items),  # recent window; also expose all-time below
+        "recent": items,
+        "dial_ok_recent": dial_ok,
+        "all_time": _callback_all_time_count(),
+    }
+
+
+def _callback_all_time_count() -> int:
+    try:
+        from callback_cta import requests_count
+
+        return int(requests_count())
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def telephony_stats(*, store: Any = None, limit: int = 30) -> dict[str, Any]:
+    if store is None:
+        return {"ok": False, "error": "no_store", "total": 0, "items": []}
+    try:
+        counts = store.counts() if hasattr(store, "counts") else {}
+        items = store.list_recent(limit=limit) if hasattr(store, "list_recent") else []
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)[:160], "total": 0, "items": []}
+    return {
+        "ok": True,
+        "total": int(counts.get("leads") or 0),
+        "ok_count": int(counts.get("ok") or 0),
+        "items": items,
+    }
+
+
+def build_engagement(*, telephony_store: Any = None) -> dict[str, Any]:
+    """CTA callback requests + AVA telephony leads for Mini App."""
+    cb = callback_stats(limit=40)
+    tel = telephony_stats(store=telephony_store, limit=40)
+    return {
+        "ok": True,
+        "callbacks": cb,
+        "calls": tel,
+        "summary": {
+            "callback_requests": cb.get("all_time") or 0,
+            "callback_recent": len(cb.get("recent") or []),
+            "calls_total": tel.get("total") or 0,
+            "calls_ok": tel.get("ok_count") or 0,
+        },
+    }
+
+
 def require_tg_webapp_user(request: Any, settings: Any) -> str:
     """Validate initData header; return allowlisted Telegram user id or raise ValueError."""
     init_data = ""
@@ -395,6 +462,8 @@ def format_stats_text(stats: dict[str, Any]) -> str:
         f"В очереди (pending): {stats.get('pending', 0)}",
         f"Due follow-up: {stats.get('followups_due', 0)}",
         f"Пауза между письмами: {stats.get('delay_min_min')}–{stats.get('delay_max_min')} мин",
+        f"Кнопка «Перезвонить»: {stats.get('callback_requests', 0)} заявок",
+        f"Звонки AVA: {stats.get('calls_total', 0)}",
     ]
     if stats.get("first_touch_in_window") is not None:
         lines.append(f"Первые в окне сейчас: {stats.get('first_touch_in_window')}")
