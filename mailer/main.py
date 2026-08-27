@@ -763,6 +763,44 @@ def _process_post_call_payload(payload: dict) -> None:
             }
         )
         try:
+            from owner_alert_client import notify_owner as _owner_alert
+
+            name = (structured.get("name") or "").strip() or "без имени"
+            phone = (structured.get("phone") or caller_number or "").strip()
+            company = (structured.get("company") or "").strip()
+            interest = (structured.get("interest") or "").strip()
+            summary = (structured.get("summary") or "").strip()
+            lines = [
+                f"Имя: {name}",
+                f"Телефон: {phone}",
+            ]
+            if company:
+                lines.append(f"Компания: {company}")
+            email_v = (structured.get("email") or "").strip()
+            if email_v:
+                lines.append(f"Email: {email_v}")
+            if interest:
+                lines.append(f"Интерес: {interest}")
+            if summary:
+                lines.append("")
+                lines.append(summary[:1200])
+            _owner_alert(
+                kind="inbound_call",
+                title=name if name != "без имени" else (phone or str(call_id)),
+                body="\n".join(lines),
+                meta={
+                    "phone": phone,
+                    "email": email_v,
+                    "company": company,
+                    "from": name,
+                },
+                dedupe_key=f"inbound_call:{call_id or phone}",
+            )
+        except Exception:
+            logger.exception(
+                "[POST CALL] owner alert failed call_id=%s", call_id
+            )
+        try:
             _fanout_lead_to_crm(structured, payload)
         except Exception:
             logger.exception("[POST CALL] CRM fan-out wrapper failed call_id=%s", call_id)
