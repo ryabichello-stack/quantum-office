@@ -45,10 +45,18 @@ def init_db(db_path: Path) -> None:
                     chat_id TEXT PRIMARY KEY,
                     scenario TEXT,
                     sticky INTEGER DEFAULT 0,
+                    acl_role TEXT,
                     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
                 """
             )
+            # Migrate older DBs that lack acl_role
+            cols = {
+                str(r[1])
+                for r in conn.execute("PRAGMA table_info(session_meta)").fetchall()
+            }
+            if "acl_role" not in cols:
+                conn.execute("ALTER TABLE session_meta ADD COLUMN acl_role TEXT")
             conn.commit()
         finally:
             conn.close()
@@ -59,17 +67,47 @@ def get_session_meta(db_path: Path, chat_id: str) -> dict[str, Any]:
         conn = _connect(db_path)
         try:
             row = conn.execute(
-                "SELECT scenario, sticky FROM session_meta WHERE chat_id = ?",
+                "SELECT scenario, sticky, acl_role FROM session_meta WHERE chat_id = ?",
                 (str(chat_id),),
             ).fetchone()
         finally:
             conn.close()
     if not row:
-        return {"scenario": None, "sticky": False}
+        return {"scenario": None, "sticky": False, "acl_role": None}
     return {
         "scenario": row["scenario"],
         "sticky": bool(row["sticky"]),
+        "acl_role": (row["acl_role"] or None),
     }
+
+
+def set_session_acl_role(db_path: Path, chat_id: str, acl_role: Optional[str]) -> None:
+    """Persist unlocked role override (e.g. trainee). None clears it."""
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            existing = conn.execute(
+                "SELECT scenario, sticky FROM session_meta WHERE chat_id = ?",
+                (str(chat_id),),
+            ).fetchone()
+            scenario = existing["scenario"] if existing else None
+            sticky = int(existing["sticky"] or 0) if existing else 0
+            if acl_role is None and scenario is None and not sticky:
+                conn.execute("DELETE FROM session_meta WHERE chat_id = ?", (str(chat_id),))
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO session_meta (chat_id, scenario, sticky, acl_role, updated_at)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(chat_id) DO UPDATE SET
+                      acl_role=excluded.acl_role,
+                      updated_at=CURRENT_TIMESTAMP
+                    """,
+                    (str(chat_id), scenario, sticky, acl_role),
+                )
+            conn.commit()
+        finally:
+            conn.close()
 
 
 def set_session_scenario(
@@ -82,19 +120,24 @@ def set_session_scenario(
     with _lock:
         conn = _connect(db_path)
         try:
-            if scenario is None and not sticky:
+            existing = conn.execute(
+                "SELECT acl_role FROM session_meta WHERE chat_id = ?",
+                (str(chat_id),),
+            ).fetchone()
+            acl_role = existing["acl_role"] if existing else None
+            if scenario is None and not sticky and not acl_role:
                 conn.execute("DELETE FROM session_meta WHERE chat_id = ?", (str(chat_id),))
             else:
                 conn.execute(
                     """
-                    INSERT INTO session_meta (chat_id, scenario, sticky, updated_at)
-                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                    INSERT INTO session_meta (chat_id, scenario, sticky, acl_role, updated_at)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
                     ON CONFLICT(chat_id) DO UPDATE SET
                       scenario=excluded.scenario,
                       sticky=excluded.sticky,
                       updated_at=CURRENT_TIMESTAMP
                     """,
-                    (str(chat_id), scenario, 1 if sticky else 0),
+                    (str(chat_id), scenario, 1 if sticky else 0, acl_role),
                 )
             conn.commit()
         finally:

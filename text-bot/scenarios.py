@@ -33,6 +33,7 @@ class Scenario:
 class ScenarioBundle:
     default_owner: str = "secretary"
     default_guest: str = "office"
+    default_trainee: str = "training"
     owners: set[str] = field(default_factory=set)
     scenarios: dict[str, Scenario] = field(default_factory=dict)
 
@@ -96,6 +97,7 @@ def load_scenarios(path: Optional[Path] = None) -> ScenarioBundle:
     bundle = ScenarioBundle(
         default_owner=str(data.get("default_owner") or "secretary"),
         default_guest=str(data.get("default_guest") or "office"),
+        default_trainee=str(data.get("default_trainee") or "training"),
         owners=owners,
         scenarios=scenarios,
     )
@@ -130,6 +132,19 @@ def is_owner(
     ch = (channel or "").strip().lower()
     ctype = (chat_type or "").strip().lower()
 
+    # Public messenger channels are always guest (faq-safe Second Brain).
+    if ch in {
+        "whatsapp",
+        "max",
+        "max_messenger",
+        "vk",
+        "vkontakte",
+        "web",
+        "widget",
+        "telegram_business",
+    }:
+        return False
+
     # Groups / channels never get owner full-access, even if the speaker is the owner.
     if ch == "telegram" and ctype and ctype != "private":
         return False
@@ -154,8 +169,28 @@ def role_for(
     channel: str = "",
     *,
     chat_type: str | None = None,
+    acl_role: str | None = None,
 ) -> str:
-    return "owner" if is_owner(user_id, channel, chat_type=chat_type) else "guest"
+    """Resolve ACL role: owner > trainee (PIN/allowlist/session) > guest."""
+    if is_owner(user_id, channel, chat_type=chat_type):
+        return "owner"
+    # Import locally to avoid circular import at module load
+    from training import (
+        ROLE_TRAINEE,
+        channels_allow_training,
+        is_allowlisted_trainee,
+        training_enabled,
+    )
+
+    if not training_enabled():
+        return "guest"
+    if not channels_allow_training(channel):
+        return "guest"
+    if (acl_role or "").strip().lower() == ROLE_TRAINEE:
+        return ROLE_TRAINEE
+    if is_allowlisted_trainee(user_id):
+        return ROLE_TRAINEE
+    return "guest"
 
 
 def list_scenarios(role: str) -> list[Scenario]:
@@ -179,8 +214,18 @@ def resolve_by_alias(name: str, role: str) -> Optional[Scenario]:
 
 def default_scenario(role: str) -> Scenario:
     b = get_bundle()
-    sid = b.default_owner if role == "owner" else b.default_guest
+    role = (role or "guest").lower()
+    if role == "owner":
+        sid = b.default_owner
+    elif role == "trainee":
+        sid = b.default_trainee
+    else:
+        sid = b.default_guest
     return get_scenario(sid) or next(iter(b.scenarios.values()))
+
+
+def default_scenario_id(role: str) -> str:
+    return default_scenario(role).id
 
 
 _OUTBOUND_CALL_RE = re.compile(

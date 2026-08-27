@@ -666,9 +666,13 @@ _OFFICE_TOOLS: list[dict[str, Any]] = [
 
 
 def tools_for_role(role: str) -> list[dict[str, Any]]:
-    """Guests get FAQ knowledge; owners also get mail/contacts + outbound console tools."""
+    """Guests get FAQ + office helpers; trainees = Knowledge only; owners = full."""
+    role_l = (role or "").strip().lower()
+    if role_l == "trainee":
+        # Sales training: product Knowledge / FAQ only — no mail, disk, dial, calendar.
+        return list(_KNOWLEDGE_TOOLS)
     tools = list(_KNOWLEDGE_TOOLS) + list(_OFFICE_TOOLS)
-    if (role or "").strip().lower() == "owner":
+    if role_l == "owner":
         owner_extra: list[dict[str, Any]] = []
         if BRAIN_ENABLED:
             owner_extra.extend(_BRAIN_OWNER_TOOLS)
@@ -811,7 +815,7 @@ def _await_outbound_result(
     phone: str,
     *,
     dialed_after: str | None = None,
-    timeout_sec: int = 180,
+    timeout_sec: int = 90,
     poll_sec: float = 4.0,
 ) -> dict[str, Any]:
     phone_n = _normalize_dial_phone(phone)
@@ -826,7 +830,8 @@ def _await_outbound_result(
     # Small skew: accept calls starting a few seconds before dialed_at
     if after_ts is not None:
         after_ts -= 15
-    timeout_sec = max(15, min(int(timeout_sec or 180), 300))
+    # Cap hard: long waits freeze the Telegram turn and feel like a hung bot.
+    timeout_sec = max(15, min(int(timeout_sec or 90), 120))
     deadline = time.time() + timeout_sec
     last_seen: dict[str, Any] | None = None
 
@@ -1172,7 +1177,7 @@ def _get_json(url: str, *, timeout: float = 15.0, brain_principal: str | None = 
 
 
 def _brain_principal_for_role(role: str) -> str:
-    """Owner private DM → full brain; everyone else → public FAQ only."""
+    """Owner private DM → full brain; trainee/guest → public FAQ only."""
     if (role or "").strip().lower() == "owner":
         return "service:text-owner"
     return "service:text-guest"
@@ -1584,14 +1589,30 @@ def run_tool(
     *,
     mailer_base: Optional[str] = None,
     telegram_chat_id: Optional[str] = None,
+    business_connection_id: Optional[str] = None,
     channel: Optional[str] = None,
     role: str = "guest",
 ) -> str:
     mailer = (mailer_base or MAILER_BASE).rstrip("/")
     knowledge = KNOWLEDGE_BASE.rstrip("/")
     principal = _brain_principal_for_role(role)
-    is_owner = (role or "").strip().lower() == "owner"
+    role_l = (role or "").strip().lower()
+    is_owner = role_l == "owner"
+    is_trainee = role_l == "trainee"
     try:
+        if is_trainee and name not in ("get_company_knowledge", "list_knowledge_topics"):
+            return json.dumps(
+                {
+                    "ok": False,
+                    "error": "forbidden",
+                    "message": (
+                        "В режиме обучения доступна только база знаний о продукте. "
+                        "Нет доступа к почте, диску и внутренним файлам."
+                    ),
+                },
+                ensure_ascii=False,
+            )
+
         if name == "list_knowledge_topics":
             try:
                 data = _get_json(f"{knowledge}/api/knowledge/topics")
@@ -1907,16 +1928,20 @@ def run_tool(
                     },
                     ensure_ascii=False,
                 )
+            body: dict[str, Any] = {
+                "source": str(arguments.get("source") or "local"),
+                "path": str(arguments.get("path") or ""),
+                "via": via,
+                "to": to,
+                "caption": str(arguments.get("caption") or ""),
+                "subject": str(arguments.get("subject") or ""),
+            }
+            biz = (business_connection_id or "").strip()
+            if via in ("telegram", "tg") and biz:
+                body["business_connection_id"] = biz
             data = _post_json(
                 f"{FILES_BASE}/api/files/send",
-                {
-                    "source": str(arguments.get("source") or "local"),
-                    "path": str(arguments.get("path") or ""),
-                    "via": via,
-                    "to": to,
-                    "caption": str(arguments.get("caption") or ""),
-                    "subject": str(arguments.get("subject") or ""),
-                },
+                body,
                 timeout=120.0,
             )
             return json.dumps(data, ensure_ascii=False)
@@ -2126,13 +2151,20 @@ def run_tool(
                         "use_default_script": use_default and not bool(override),
                     },
                     "hint": (
-                        "Звонок ЗАПУЩЕН. НЕ вызывай list/get сразу — там будет СТАРЫЙ звонок. "
-                        "Для отчёта вызови await_outbound_result(phone, dialed_after=dialed_at). "
-                        "Сводку пиши только по conversation из await."
-                    ),
+                        "Звонок ЗАПУЩЕН. Сначала коротко скажи владельцу: "
+                        "«Звоню на {phone}, жду результат». "
+                        "Потом await_outbound_result(phone, dialed_after=dialed_at, timeout_sec=90). "
+                        "НЕ вызывай list/get сразу — там будет СТАРЫЙ звонок. "
+                        "Сводку пиши только по conversation из await. "
+                        "Если await вернул timeout — так и скажи, предложи проверить позже."
+                    ).format(phone=phone),
                     "next_tool": {
                         "name": "await_outbound_result",
-                        "arguments": {"phone": phone, "dialed_after": dialed_at},
+                        "arguments": {
+                            "phone": phone,
+                            "dialed_after": dialed_at,
+                            "timeout_sec": 90,
+                        },
                     },
                 }
             return json.dumps(data, ensure_ascii=False)
@@ -2242,7 +2274,7 @@ def run_tool(
                 _await_outbound_result(
                     str(arguments.get("phone") or ""),
                     dialed_after=str(arguments.get("dialed_after") or "") or None,
-                    timeout_sec=int(arguments.get("timeout_sec") or 180),
+                    timeout_sec=int(arguments.get("timeout_sec") or 90),
                 ),
                 ensure_ascii=False,
             )
