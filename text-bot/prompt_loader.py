@@ -219,22 +219,13 @@ def greeting_text(config_path: Path, role: str = "guest") -> str:
             "Команды: /режимы · выход: /обучение выход\n"
             "С чего начнём — скрипт, продукт или разбор возражения?"
         )
-    g = ""
-    try:
-        raw = config_path.read_text(encoding="utf-8")
-        data = yaml.safe_load(raw) or {}
-        ctx = (data.get("contexts") or {}).get("default") or {}
-        g = str(ctx.get("greeting") or "").strip()
-    except Exception:
-        g = ""
-    if not g:
-        return (
-            "Здравствуйте! Я ИИ-секретарь Quantum Labs.\n"
-            "Могу рассказать про массовые выплаты, прислать презентацию и помочь "
-            "подобрать условия под ваш кейс.\n"
-            "Чем занята ваша организация?"
-        )
-    g = g.replace("Вы позвонили", "Здравствуйте").replace("позвонили", "написали")
-    if "секретар" not in g.lower():
-        g = "Я ИИ-секретарь Quantum Labs.\n" + g
-    return g
+    # Guest / client hotline — company intro, not "AI secretary" voice greeting.
+    return (
+        "Здравствуйте! Это Quantum Labs.\n\n"
+        "Мы помогаем бизнесу с массовыми выплатами на карты и по СБП: "
+        "подключение к банкам, согласование условий, работа через интеграцию "
+        "или личный кабинет.\n\n"
+        "Могу кратко рассказать про сервис, ответить на вопросы по продукту "
+        "или предложить короткий созвон с экспертом.\n\n"
+        "Чем занимается ваша организация?"
+    )
