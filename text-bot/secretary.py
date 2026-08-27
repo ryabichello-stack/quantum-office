@@ -202,7 +202,8 @@ class Secretary:
                     "\n\nРежим обучения. Команды: /режимы · выход: /обучение выход"
                 )
             else:
-                help_extra = "\n\nКоманды: /режимы · сотрудникам: /обучение"
+                # Guest / client hotline — no internal command hints in greeting.
+                help_extra = ""
             reply = greet + help_extra
             append_message(SESSION_DB, key, {"role": "assistant", "content": reply})
             return {
