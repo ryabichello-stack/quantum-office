@@ -431,6 +431,24 @@ button.tile {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.desk-send-explain {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(180, 83, 9, 0.08);
+  border: 1px solid rgba(180, 83, 9, 0.22);
+  color: #78350f;
+  font-size: 0.84rem;
+  line-height: 1.4;
+  max-width: 40rem;
+}
+.desk-send-explain.hidden { display: none; }
+.desk-send-explain strong { display: block; margin-bottom: 4px; }
+.desk-send-explain .explain-list {
+  margin: 0;
+  padding-left: 1.1em;
+}
+.desk-send-explain .explain-list li { margin: 0.25em 0; }
 .desk-hero-metrics {
   display: flex;
   gap: 0.55rem;

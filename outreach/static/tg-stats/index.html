@@ -234,6 +234,21 @@
         card(data.calls_total || 0, "Звонки AVA", function () { openEngage("calls"); });
         root.appendChild(grid);
 
+        var explain = data.send_explain || {};
+        var lines = explain.lines || (explain.text ? [explain.text] : []);
+        if (lines.length) {
+          var box = el("div", "card wide");
+          box.appendChild(el("div", "l", explain.title || "Почему не все письма ушли сегодня"));
+          lines.forEach(function (ln) {
+            var p = el("div", "sub");
+            p.style.margin = "6px 0 0";
+            p.style.color = "var(--text)";
+            p.textContent = ln;
+            box.appendChild(p);
+          });
+          root.appendChild(box);
+        }
+
         root.appendChild(el("div", "sub", "Дни отправки — нажмите, чтобы открыть письма"));
         var days = data.days || [];
         var strip = el("div", "days");

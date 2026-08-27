@@ -21,6 +21,8 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qsl
 
+from send_explain import build_send_explain
+
 logger = logging.getLogger("ava-outreach.tg_panel")
 
 BTN_STATS = "📊 Статистика"
@@ -202,6 +204,7 @@ def build_outreach_stats(
 
     engagement = build_engagement(telephony_store=telephony_store)
     eng = engagement.get("summary") or {}
+    explain = build_send_explain(outbox, settings, daily_limit=daily)
 
     return {
         "ok": True,
@@ -228,6 +231,7 @@ def build_outreach_stats(
         "callback_requests": eng.get("callback_requests") or 0,
         "calls_total": eng.get("calls_total") or 0,
         "engagement": engagement,
+        "send_explain": explain,
     }
 
 
@@ -469,6 +473,12 @@ def format_stats_text(stats: dict[str, Any]) -> str:
         lines.append(f"Первые в окне сейчас: {stats.get('first_touch_in_window')}")
     if stats.get("sequences_active") is not None:
         lines.append(f"Активных цепочек: {stats.get('sequences_active')}")
+    explain = stats.get("send_explain") or {}
+    expl_lines = explain.get("lines") if isinstance(explain, dict) else None
+    if expl_lines:
+        lines.append("")
+        lines.append("Пояснение:")
+        lines.extend(f"• {ln}" for ln in expl_lines)
     return "\n".join(lines)
 
 
