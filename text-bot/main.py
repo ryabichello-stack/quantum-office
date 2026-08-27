@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from channels import channel_status, max_messenger, telegram_business, vk, whatsapp
 from scenarios import looks_like_outbound_request
 from secretary import secretary
+import owner_alerts
 import voice_stt
 
 load_dotenv()
@@ -105,6 +106,96 @@ def api_chat_reset(req: ChatResetRequest, x_webhook_token: Optional[str] = Heade
     _check_api_token(x_webhook_token)
     reply = secretary.reset(req.channel, req.user_id)
     return {"ok": True, "reply": reply, "channel": req.channel, "user_id": req.user_id}
+
+
+# --------------------
+# Owner alerts (Telegram + Max fan-out)
+# --------------------
+
+
+class OwnerAlertRequest(BaseModel):
+    kind: str = Field(
+        ...,
+        description="outreach_reply|new_chat|inbound_call|form_callback",
+        min_length=1,
+        max_length=80,
+    )
+    title: str = Field(default="", max_length=500)
+    body: str = Field(default="", max_length=4000)
+    meta: Optional[dict[str, Any]] = None
+    dedupe_key: Optional[str] = Field(default=None, max_length=400)
+
+
+class FormCallbackRequest(BaseModel):
+    """Website / Bitrix «заказать звонок» → owner Telegram + Max."""
+
+    name: str = Field(default="", max_length=200)
+    phone: str = Field(default="", max_length=80)
+    email: str = Field(default="", max_length=200)
+    company: str = Field(default="", max_length=300)
+    comment: str = Field(default="", max_length=2000)
+    source: str = Field(default="website", max_length=120)
+    page: str = Field(default="", max_length=500)
+
+
+@app.post("/api/owner-alert")
+def api_owner_alert(req: OwnerAlertRequest, x_webhook_token: Optional[str] = Header(None)):
+    _check_api_token(x_webhook_token)
+    return owner_alerts.notify_owner(
+        kind=req.kind,
+        title=req.title,
+        body=req.body,
+        meta=req.meta,
+        dedupe_key=req.dedupe_key,
+    )
+
+
+@app.post("/api/owner-alert/form")
+def api_owner_alert_form(
+    req: FormCallbackRequest, x_webhook_token: Optional[str] = Header(None)
+):
+    """Ingest callback / lead form → notify owner in Telegram and Max."""
+    _check_api_token(x_webhook_token)
+    lines = []
+    if req.name:
+        lines.append(f"Имя: {req.name}")
+    if req.phone:
+        lines.append(f"Телефон: {req.phone}")
+    if req.email:
+        lines.append(f"Email: {req.email}")
+    if req.company:
+        lines.append(f"Компания: {req.company}")
+    if req.source:
+        lines.append(f"Источник: {req.source}")
+    if req.page:
+        lines.append(f"Страница: {req.page}")
+    if req.comment:
+        lines.append("")
+        lines.append(req.comment)
+    if not lines:
+        lines.append("(пустая заявка)")
+    dedupe = "|".join(
+        [
+            "form",
+            (req.phone or "").strip(),
+            (req.email or "").strip().lower(),
+            (req.name or "").strip().lower()[:80],
+            (req.comment or "").strip()[:80],
+        ]
+    )
+    return owner_alerts.notify_owner(
+        kind="form_callback",
+        title=req.company or req.name or req.phone or "форма",
+        body="\n".join(lines),
+        meta={
+            "phone": req.phone,
+            "email": req.email,
+            "company": req.company,
+            "source": req.source,
+            "from": req.name,
+        },
+        dedupe_key=dedupe if (req.phone or req.email or req.comment) else None,
+    )
 
 
 # --------------------
@@ -571,6 +662,7 @@ def health() -> dict[str, Any]:
         "telegram_business_bot_configured": bool(TELEGRAM_BUSINESS_BOT_TOKEN),
         "telegram_business": biz,
         "voice_stt": voice_stt.enabled(),
+        "owner_alerts": owner_alerts.status(),
         "openai_configured": bool(OPENAI_API_KEY),
         "model": OPENAI_MODEL,
         "mailer_base": AVA_MAILER_BASE,

@@ -38,6 +38,7 @@ from session_store import (
     set_session_acl_role,
     set_session_scenario,
 )
+import owner_alerts
 from training import (
     ROLE_TRAINEE,
     lock_ok_text,
@@ -191,6 +192,19 @@ class Secretary:
             acl_role=acl_role,
         )
         lowered = text.lower()
+
+        # First touch in a messenger session → notify owner (TG + Max).
+        try:
+            history = load_messages(SESSION_DB, key)
+            owner_alerts.maybe_alert_new_chat(
+                channel=channel,
+                user_id=str(user_id),
+                role=role,
+                text=text,
+                history_empty=not history,
+            )
+        except Exception:
+            logger.exception("owner new_chat alert failed session=%s", key)
 
         if lowered in ("/start", "/help", "start", "help", "помощь"):
             clear_chat(SESSION_DB, key)

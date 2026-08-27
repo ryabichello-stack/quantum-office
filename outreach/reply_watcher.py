@@ -593,6 +593,37 @@ def check_replies(
                     logger.warning("reply notify email failed: %s", exc)
                     item["notify_error"] = str(exc)[:300]
 
+            if classified.should_notify:
+                try:
+                    from owner_alert_client import notify_owner as _owner_alert
+
+                    alert = _owner_alert(
+                        kind="outreach_reply",
+                        title=f"{classified.classification}: {from_email}",
+                        body=(
+                            f"Класс: {classified.classification} "
+                            f"({classified.confidence:.2f})\n"
+                            f"От: {from_email}\n"
+                            f"Компания: {row.contact_name} "
+                            f"(company_id={row.company_id})\n"
+                            f"Сделка Bitrix: "
+                            f"{item.get('deal_id') or row.deal_id or '—'}\n"
+                            f"Тема: {subject}\n\n"
+                            f"{preview[:1200]}"
+                        ),
+                        meta={
+                            "email": from_email,
+                            "company": row.contact_name,
+                            "classification": classified.classification,
+                            "from": from_email,
+                        },
+                        dedupe_key=f"outreach_reply:{mid}",
+                    )
+                    item["owner_alert"] = bool(alert.get("ok") or alert.get("deduped"))
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("reply owner alert failed: %s", exc)
+                    item["owner_alert_error"] = str(exc)[:300]
+
             if classified.classification not in ("automatic", "out_of_office", "bounce"):
                 store.mark_replied(row.id)
             try:
