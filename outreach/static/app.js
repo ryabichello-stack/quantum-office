@@ -1248,6 +1248,22 @@
         ? `${inWin} контактов в окне сейчас · слоты ${slots}`
         : `В окне 0 · слоты ${slots} — письма ждут следующий слот`);
     if ($("deskRunNote")) $("deskRunNote").textContent = tickNote;
+    const explain = (dash && dash.send_explain) || {};
+    const explainBox = $("deskSendExplain");
+    if (explainBox) {
+      const lines = explain.lines || (explain.text ? [explain.text] : []);
+      if (lines.length) {
+        explainBox.classList.remove("hidden");
+        explainBox.innerHTML =
+          `<strong>${escapeHtml(explain.title || "Почему не все письма ушли сегодня")}</strong>` +
+          `<ul class="explain-list">${lines
+            .map((ln) => `<li>${escapeHtml(ln)}</li>`)
+            .join("")}</ul>`;
+      } else {
+        explainBox.classList.add("hidden");
+        explainBox.innerHTML = "";
+      }
+    }
     if ($("deskRunMetrics")) {
       $("deskRunMetrics").innerHTML =
         deskMetric(sentToday, "Сегодня") +

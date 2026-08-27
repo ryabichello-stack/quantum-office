@@ -155,8 +155,19 @@ def build_report(
             "callbacks": "кнопка «Перезвонить» в письме → форма → заявка (+ автодозвон)",
             "calls": "входящие/обработанные звонки AVA → telephony_leads",
             "spam": "high bounce or near-zero open rate → check content/warmup/domain reputation",
+            "failed": "SMTP-отклонение адреса/сервера. Детали — last_error в Очереди.",
+            "queued": "Ждут слот: окна отправки, лимит/день и расписание (not_before).",
         },
     }
+    try:
+        from send_explain import build_send_explain
+
+        explain = build_send_explain(outbox, settings)
+        if explain.get("text"):
+            funnel["notes"]["today"] = explain["text"]
+            funnel["send_explain"] = explain
+    except Exception:
+        logger.exception("send_explain failed")
     rates = {
         "delivery_rate_pct": _pct(funnel["delivered"], funnel["sent"]),
         "bounce_rate_pct": _pct(funnel["bounced"], funnel["sent"]),

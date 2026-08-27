@@ -49,6 +49,7 @@ from modules.social_publish import SocialPublishModule
 from modules.content_flywheel import ContentFlywheelModule
 from modules.rbac import RbacModule, attach_principal, rbac_enabled
 from outbox import OutboxStore
+from send_explain import build_send_explain
 from reply_watcher import ReplyWatchThread, check_replies, imap_configured, reply_watch_status
 from ops_center import build_ops_summary
 from runtime_settings import RuntimeSettings
@@ -381,6 +382,14 @@ def _status_payload() -> dict[str, Any]:
         "modules": _registry.catalog(),
         "outbox": store.status_report(),
         "daily": store.stats_daily(14),
+        "send_explain": build_send_explain(
+            store,
+            rt,
+            daily_limit=rt.get_int("OUTREACH_DAILY_LIMIT", 15),
+            effective_daily_limit=_deliver_mod.store.effective_daily_limit(
+                rt, rt.get_int("OUTREACH_DAILY_LIMIT", 15)
+            ),
+        ),
     }
 
 
