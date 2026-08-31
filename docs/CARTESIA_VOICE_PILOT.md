@@ -39,17 +39,17 @@ Also `Task was destroyed but it is pending!` on the overlap playback task.
 **Mitigation:** `pipeline_filler_enabled: false` (verified: multi-turn dialog continues).
 
 ## Roadmap to feel more “live”
-Current stack is still hybrid (not full duplex like Garik Realtime), but P1 is live on prod:
-
 | Priority | Change | Status |
 |----------|--------|--------|
 | P0 | Keep filler off / safe TTS gating | Done |
-| P1 | Cartesia **websocket** TTS (`pcm_mulaw` 8 kHz, reused per call) | Done |
-| P1 | Cartesia Ink Whisper **streaming STT** (RU + silence finalize) | Done |
-| P2 | Shorter replies + stronger “answer the last turn” prompt | Done (tune further) |
-| P3 | True duplex (Realtime / Cartesia S2S when RU-ready) | Next ceiling |
+| P1 | Cartesia websocket TTS + reused socket | Done (~0.25–0.3s TTFB warm) |
+| P1 | Cartesia Ink Whisper streaming STT (RU) | Done |
+| P2 | Sales persona + expressive text; speed/volume | Done (RU emotion tags N/A) |
+| P2 | Drop garbage single-token STT | Done |
+| P3 | Domain script/KB for on-topic sales facts | Next |
+| P3 | True duplex / Cartesia S2S when RU-ready | Ceiling |
 
-Measured on pilot: TTS TTFB often ~0.8–1.2s; STT finals land as whole phrases (e.g. «Расскажи какую-нибудь историю.») instead of 2.8s REST scrapes.
+Honest: “не в попад” is mostly STT noise + weak grounding. Next big win = company script/KB + optional Deepgram Flux when a key is available.
 
 ## Prerequisites
 1. `CARTESIA_API_KEY` in `/root/ava/.env`

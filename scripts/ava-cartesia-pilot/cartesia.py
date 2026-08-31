@@ -163,25 +163,35 @@ class CartesiaSTTAdapter(STTComponent):
             raise RuntimeError("Cartesia STT requires CARTESIA_API_KEY")
 
         api_version = str(merged.get("api_version") or "2026-08-14")
-        query = {
-            "model": merged.get("model") or "ink-whisper",
-            "encoding": merged.get("encoding") or "pcm_s16le",
-            "sample_rate": str(int(merged.get("sample_rate") or 16000)),
-            "language": merged.get("language") or "ru",
-            "cartesia_version": api_version,
-            "max_silence_duration_secs": str(
-                merged.get("max_silence_duration_secs", 0.55)
+        query_items: list[tuple[str, str]] = [
+            ("model", str(merged.get("model") or "ink-whisper")),
+            ("encoding", str(merged.get("encoding") or "pcm_s16le")),
+            ("sample_rate", str(int(merged.get("sample_rate") or 16000))),
+            ("language", str(merged.get("language") or "ru")),
+            ("cartesia_version", api_version),
+            (
+                "max_silence_duration_secs",
+                str(merged.get("max_silence_duration_secs", 0.7)),
             ),
-            "min_volume": str(merged.get("min_volume", 0.02)),
-        }
-        ws_url = f"{_ws_base(str(merged.get('base_url')))}/stt/websocket?{urlencode(query)}"
+            ("min_volume", str(merged.get("min_volume", 0.035))),
+        ]
+        keyterms = merged.get("keyterms") or []
+        if isinstance(keyterms, str):
+            keyterms = [k.strip() for k in keyterms.split(",") if k.strip()]
+        for term in keyterms:
+            query_items.append(("keyterm", str(term)))
+        ws_url = (
+            f"{_ws_base(str(merged.get('base_url')))}/stt/websocket?"
+            f"{urlencode(query_items)}"
+        )
 
         logger.info(
             "Cartesia STT opening streaming session",
             call_id=call_id,
-            model=query["model"],
-            language=query["language"],
-            silence_secs=query["max_silence_duration_secs"],
+            model=dict(query_items).get("model"),
+            language=dict(query_items).get("language"),
+            silence_secs=dict(query_items).get("max_silence_duration_secs"),
+            keyterm_count=len(keyterms) if isinstance(keyterms, list) else 0,
         )
 
         try:
@@ -324,7 +334,7 @@ class CartesiaSTTAdapter(STTComponent):
 
         async def _delayed() -> None:
             try:
-                await asyncio.sleep(0.18)
+                await asyncio.sleep(0.12)
                 await self._flush_pending(call_id, session)
             except asyncio.CancelledError:
                 return
@@ -339,6 +349,13 @@ class CartesiaSTTAdapter(STTComponent):
             session.pending_final = ""
             if not text or session.transcript_queue is None:
                 return
+            if self._is_garbage_transcript(text):
+                logger.info(
+                    "Cartesia STT dropped low-quality transcript",
+                    call_id=call_id,
+                    transcript_preview=text[:80],
+                )
+                return
             logger.info(
                 "Cartesia STT transcript received",
                 call_id=call_id,
@@ -352,6 +369,54 @@ class CartesiaSTTAdapter(STTComponent):
                 except asyncio.QueueEmpty:
                     pass
                 await session.transcript_queue.put(text)
+
+    @staticmethod
+    def _is_garbage_transcript(text: str) -> bool:
+        """Drop noise/echo scraps that pull the LLM off-topic."""
+        cleaned = " ".join((text or "").strip().split())
+        if not cleaned:
+            return True
+        letters = sum(ch.isalpha() for ch in cleaned)
+        if letters < 3:
+            return True
+        low = cleaned.lower().replace("ё", "е")
+        if low in {"а", "у", "м", "мм", "ммм", "ээ", "эээ", "эм", "...", "…"}:
+            return True
+        tokens = [
+            t.strip(".,!?…:;\"'«»")
+            for t in cleaned.replace(",", " ").split()
+            if t.strip(".,!?…:;\"'«»")
+        ]
+        if not tokens:
+            return True
+        short_ok = {
+            "да",
+            "нет",
+            "ок",
+            "ладно",
+            "привет",
+            "пока",
+            "спасибо",
+            "угу",
+            "ага",
+            "хорошо",
+            "понял",
+            "поняла",
+            "ясно",
+            "стоп",
+            "алло",
+            "слушай",
+            "конечно",
+            "отлично",
+        }
+        if len(tokens) == 1:
+            tok = tokens[0].lower().replace("ё", "е")
+            if tok in short_ok:
+                return False
+            # Lone unexpected noun like «Редактор» from noise — ignore
+            if len(tok) <= 12:
+                return True
+        return False
 
     def _compose_options(self, runtime_options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         runtime_options = runtime_options or {}
@@ -387,14 +452,17 @@ class CartesiaSTTAdapter(STTComponent):
                 "max_silence_duration_secs",
                 self._pipeline_defaults.get(
                     "max_silence_duration_secs",
-                    getattr(pc, "stt_max_silence_secs", 0.55),
+                    getattr(pc, "stt_max_silence_secs", 0.7),
                 ),
             ),
             "min_volume": runtime_options.get(
                 "min_volume",
                 self._pipeline_defaults.get(
-                    "min_volume", getattr(pc, "stt_min_volume", 0.02)
+                    "min_volume", getattr(pc, "stt_min_volume", 0.035)
                 ),
+            ),
+            "keyterms": runtime_options.get(
+                "keyterms", self._pipeline_defaults.get("keyterms", [])
             ),
             "streaming": runtime_options.get(
                 "streaming", self._pipeline_defaults.get("streaming", True)
@@ -532,6 +600,7 @@ class CartesiaTTSAdapter(TTSComponent):
                 "encoding": "pcm_mulaw",
                 "sample_rate": 8000,
             },
+            "generation_config": self._generation_config(merged),
         }
 
         logger.info(
@@ -674,6 +743,7 @@ class CartesiaTTSAdapter(TTSComponent):
                 "encoding": "pcm_s16le",
                 "sample_rate": sample_rate,
             },
+            "generation_config": self._generation_config(merged),
         }
         headers = {
             "X-API-Key": api_key,
@@ -779,7 +849,36 @@ class CartesiaTTSAdapter(TTSComponent):
                     getattr(self._provider_config, "tts_transport", "websocket"),
                 ),
             ),
+            "speed": runtime_options.get(
+                "speed",
+                self._pipeline_defaults.get(
+                    "speed", getattr(self._provider_config, "tts_speed", 1.08)
+                ),
+            ),
+            "volume": runtime_options.get(
+                "volume",
+                self._pipeline_defaults.get(
+                    "volume", getattr(self._provider_config, "tts_volume", 1.15)
+                ),
+            ),
         }
+
+    @staticmethod
+    def _generation_config(merged: Dict[str, Any]) -> Dict[str, Any]:
+        # Emotion tags are English-only on Cartesia; for RU we lean on expressive
+        # transcript + speed/volume so Sonic still sounds engaged.
+        cfg: Dict[str, Any] = {}
+        try:
+            speed = float(merged.get("speed", 1.08))
+            cfg["speed"] = max(0.6, min(1.5, speed))
+        except (TypeError, ValueError):
+            cfg["speed"] = 1.08
+        try:
+            volume = float(merged.get("volume", 1.15))
+            cfg["volume"] = max(0.5, min(2.0, volume))
+        except (TypeError, ValueError):
+            cfg["volume"] = 1.15
+        return cfg
 
     def _chunk_audio(self, audio: bytes, chunk_ms: int = 20) -> list[bytes]:
         # μ-law: 1 byte/sample @ 8 kHz

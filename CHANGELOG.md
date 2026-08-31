@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Cartesia voice pilot
-- Free-talk Cartesia pilot (`cartesia_pilot` / dialplan `cartesia`·`9901`): Denis clone TTS; no knowledge base / tools yet.
-- **Low-latency path**: Cartesia Ink Whisper **streaming STT** (RU, silence finalize) + Sonic **websocket TTS** (`pcm_mulaw` 8 kHz); OpenAI only for LLM.
-- Disabled `pipeline_filler`: filler↔TTS gating race deafened the bot mid-call.
-- Streaming overlap on; TalkDetect barge-in off; short free-talk prompt for turn coherence.
+- Sales-style Cartesia pilot (`cartesia_pilot`): Denis clone; streaming Ink Whisper STT + Sonic websocket TTS.
+- Engaged salesperson prompt + expressive punctuation; TTS speed/volume (RU emotion tags unsupported by Cartesia).
+- STT quality gate drops lone noise tokens that derailed context; silence finalize ~0.7s.
+- Filler off; reused TTS websocket (warm TTFB often ~0.25–0.3s).

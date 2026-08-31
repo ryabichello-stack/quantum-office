@@ -1,20 +1,21 @@
 # Snippet merged into /root/ava/config/ai-agent.local.yaml (pilot)
-# Free-talk Cartesia STT+TTS pilot — low-latency streaming, no KB/tools yet.
+# Engaged sales-style Cartesia STT+TTS pilot — emotional delivery, tighter context.
 
 contexts:
   cartesia_pilot:
     profile: telephony_ulaw_8k
     pipeline: hybrid_cartesia
-    greeting: Привет! Это Денис, пилот голоса Quantum Labs. О чём поговорим?
+    greeting: Привет! Денис на связи, Quantum Labs. Рад вас слышать — чем могу помочь?
     prompt: |
-      Ты — Денис, живой собеседник по телефону. Русский. Можно болтать на любую тему — шутки, еда, пиво, спорт, быт, что угодно безопасное.
-      Не отказывай от болтовни («не могу помочь» запрещено для обычных тем). Это свободный разговор, не служба поддержки.
-      Компании, скрипта и базы знаний пока нет — не выдумывай факты о Quantum Labs и не уводи в продажи.
-      Говори коротко и естественно, обычно 1 предложение, максимум 2. Без списков и канцелярита.
-      Держи нить разговора: отвечай именно на последнюю реплику человека, не уходи в сторону.
-      Если шум или не расслышал — одной фразой переспроси. Не повторяй одно и то же.
-      Календарь и tools в этом пилоте отключены — не обещай запись встреч.
-      Если абонент прощается — попрощайся кратко.
+      Ты — Денис, живой телефонный продажник Quantum Labs. Русский. Говори тепло, заинтересованно, с энергией.
+      Тон: вовлечённый продажник, не робот. Пиши живо: восклицания, тепло, интерес («отлично!», «понял вас!», «супер»). Без монотонных канцелярских фраз.
+      Отвечай коротко: обычно 1 предложение, максимум 2. Без списков.
+      ГЛАВНОЕ — держи нить: отвечай именно на последнюю реплику человека и на контекст разговора.
+      Если реплика обрывок, шум или неясна — одной фразой переспроси, не выдумывай новую тему.
+      Не уходи в сторону из одного странного слова. Не повторяй одно и то же.
+      Базы знаний/скрипта пока нет: не выдумывай цены, тарифы и факты о продуктах Quantum Labs.
+      Можно болтать и продавать интерес: уточняй потребность, предлагай следующий шаг разговора.
+      Не отказывай от обычной болтовни. Если прощаются — тепло и кратко попрощайся.
     tools: []
 
 providers:
@@ -32,13 +33,14 @@ providers:
     api_version: "2026-08-14"
     pcm_sample_rate: 16000
     tts_transport: websocket
+    tts_speed: 1.12
+    tts_volume: 1.25
     stt_model: ink-whisper
-    stt_max_silence_secs: 0.55
-    stt_min_volume: 0.02
+    stt_max_silence_secs: 0.7
+    stt_min_volume: 0.035
 
 pipelines:
   hybrid_cartesia:
-    # Streaming Cartesia Ink Whisper STT (RU) + Sonic websocket TTS
     stt: cartesia_stt
     llm: openai_llm
     tts: cartesia_tts
@@ -50,27 +52,19 @@ pipelines:
         encoding: pcm_s16le
         sample_rate: 16000
         chunk_ms: 160
-        max_silence_duration_secs: 0.55
-        min_volume: 0.02
+        max_silence_duration_secs: 0.7
+        min_volume: 0.035
       llm:
         base_url: https://api.openai.com/v1
         model: gpt-4o-mini
-        temperature: 0.7
-        max_tokens: 80
-        aggregation_timeout_sec: 0.45
+        temperature: 0.75
+        max_tokens: 90
+        aggregation_timeout_sec: 0.35
       tts:
         language: ru
         transport: websocket
-        base_url: https://api.cartesia.ai
+        speed: 1.12
+        volume: 1.25
         format:
           encoding: mulaw
           sample_rate: 8000
-
-# Global streaming (merge under existing `streaming:` / `barge_in:`)
-# streaming:
-#   pipeline_streaming_overlap: true
-#   pipeline_filler_enabled: false
-# barge_in:
-#   pipeline_talk_detect_enabled: false
-#   greeting_protection_ms: 6000
-#   post_tts_end_protection_ms: 800
