@@ -1,15 +1,19 @@
 # Snippet merged into /root/ava/config/ai-agent.local.yaml (pilot)
+# Free-talk Cartesia TTS pilot — no knowledge base / no in-call tools yet.
 
 contexts:
   cartesia_pilot:
     profile: telephony_ulaw_8k
     pipeline: hybrid_cartesia
-    greeting: Здравствуйте! Это Quantum Labs, пилот голоса Cartesia. Чем могу помочь?
+    greeting: Здравствуйте! На связи Quantum Labs, пилот голоса. О чём поговорим?
     prompt: |
-      Ты — ИИ-секретарь Quantum Labs на пилотном контуре Cartesia TTS.
-      Говори коротко и по делу на русском. Не притворяйся человеком.
-      Если просят созвон — уточни день/время и скажи, что на основном
-      контуре запишем встречу (в этом пилоте календарные tools могут быть ограничены).
+      Ты — дружелюбный голосовой ассистент Quantum Labs на пилотном контуре Cartesia.
+      Говори по-русски, коротко (1–2 предложения), живо и по делу.
+      Свободно отвечай на любые темы: вопросы, болтовня, объяснения, шутки.
+      Не притворяйся человеком. Не ссылайся на базу знаний компании.
+      Не выдумывай факты о продуктах/ценах Quantum Labs — если не уверен, скажи прямо.
+      Календарь и tools в этом пилоте отключены — не обещай запись встреч.
+      Если абонент прощается — попрощайся кратко.
     tools: []
 
 providers:
@@ -19,8 +23,8 @@ providers:
     capabilities:
       - tts
     api_key: ${CARTESIA_API_KEY}
-    voice_id: ${CARTESIA_VOICE_ID:-f786b574-daa5-4673-aa0c-cbe3e8534c02}
-    model_id: ${CARTESIA_MODEL_ID:-sonic-3}
+    voice_id: ${CARTESIA_VOICE_ID:-631151e9-7ae9-4324-b8e7-c72cb52e6cb1}
+    model_id: ${CARTESIA_MODEL_ID:-sonic-3.6}
     language: ru
     base_url: https://api.cartesia.ai
     api_version: "2026-08-14"
@@ -28,20 +32,23 @@ providers:
 
 pipelines:
   hybrid_cartesia:
-    stt: local_stt
+    # local vosk STT on this host is broken → OpenAI REST STT
+    stt: openai_stt
     llm: openai_llm
     tts: cartesia_tts
     options:
       stt:
-        chunk_ms: 160
-        mode: stt
-        streaming: true
-        stream_format: pcm16_16k
+        # REST STT: larger chunks = fewer mid-phrase cuts (latency tradeoff)
+        model: gpt-4o-mini-transcribe
+        language: ru
+        chunk_ms: 2800
+        streaming: false
       llm:
         base_url: https://api.openai.com/v1
         model: gpt-4o-mini
-        temperature: 0.5
-        max_tokens: 220
+        temperature: 0.7
+        max_tokens: 120
+        aggregation_timeout_sec: 0.9
       tts:
         language: ru
         base_url: https://api.cartesia.ai

@@ -1,56 +1,71 @@
-# Cartesia voice pilot — drop into /root/ava (DO NOT replace default Mango path)
+# Cartesia voice pilot — drop into `/root/ava` (DO NOT replace default Mango path)
 
 ## Goal
 A/B listen **Cartesia Sonic** as TTS while **keeping** live inbound on `openai_realtime`.
 
+Current phase: free conversation (any topic), no knowledge base / no calendar tools.
+Script + vault come later.
+
 ## Architecture (pilot only)
 ```
-SIP test → AI_CONTEXT=cartesia_pilot
+SIP cartesia / 9901 → AI_CONTEXT=cartesia_pilot
   → pipeline hybrid_cartesia
-      STT: local_stt (local_ai_server)
-      LLM: openai_llm (gpt-4o-mini)
-      TTS: cartesia_tts (Sonic → μ-law 8 kHz)
+      STT: openai_stt (gpt-4o-mini-transcribe, ~2.8s chunks)
+      LLM: openai_llm (gpt-4o-mini, streaming overlap)
+      TTS: cartesia_tts (Sonic → μ-law 8 kHz, voice Denis by default)
 ```
 
-Prod Mango `from-mango` stays on `openai_realtime` / voice `cedar`.
+Prod Mango `from-mango` / `garik` stays on `openai_realtime` / voice `cedar`.
+
+## Why not local_stt
+On this host `local_ai_server` Vosk emits `STT unavailable` → empty transcripts.
+Pilot uses OpenAI REST STT until local STT is fixed.
+
+## Latency notes
+Hybrid STT→LLM→TTS is slower than Realtime. Mitigations in pilot:
+- utterance-sized STT chunks (`chunk_ms: 2800`) instead of 800ms scrapes
+- LLM `aggregation_timeout_sec: 0.9` + short `max_tokens`
+- engine `streaming.pipeline_streaming_overlap` + optional filler phrases
+- softer / disabled pipeline TalkDetect barge-in (echo was cutting replies)
 
 ## Prerequisites
 1. `CARTESIA_API_KEY` in `/root/ava/.env`
-2. Optional: `CARTESIA_VOICE_ID` (Russian-capable voice UUID)
-3. `local_ai_server` healthy (already on this host)
-4. `OPENAI_API_KEY` present (LLM)
+2. `CARTESIA_VOICE_ID` (Denis clone: `631151e9-7ae9-4324-b8e7-c72cb52e6cb1`)
+3. Optional stock RU: `CARTESIA_VOICE_STOCK_RU=1e4176b1-3db9-44d6-a601-4fe68b041942` (Sergei)
+4. `OPENAI_API_KEY` for STT + LLM
 
 ## Offline listen (no call)
 ```bash
 export CARTESIA_API_KEY=...
 python3 scripts/cartesia_tts_smoke.py --list-voices
 python3 scripts/cartesia_tts_smoke.py --voice-id <uuid>
-# → scripts/ava-cartesia-pilot/samples/cartesia_*_8k.wav
 ```
 
 ## Install on AVA host
-See `deploy_to_ava.sh` (backs up, copies adapter, patches config/orchestrator,
-merges local yaml snippet, adds dialplan `cartesia`, restarts `ai_engine`).
+`scripts/ava-cartesia-pilot/deploy_to_ava.sh` (backs up, copies adapter, patches
+config/orchestrator, merges snippet, dialplan `cartesia`/`9901`, recreates `ai_engine`).
 
-## Test call
-From host / SIP test:
+After yaml-only tune:
 ```bash
-# Dialplan extension (after install):
-#   cartesia → AI_CONTEXT=cartesia_pilot → Stasis
-asterisk -rx "dialplan show cartesia@from-ai-agent"
-# or originate via quantum_sip_test_call targeting extension cartesia
+# edit /root/ava/config/ai-agent.local.yaml then:
+cd /root/ava && docker compose restart ai_engine
+```
+
+## How to talk (human)
+Softphone dial `9901` does **not** reach Asterisk (Mango cloud). Use:
+```bash
+asterisk -rx "channel originate PJSIP/<79…>@mango-employee extension cartesia@from-ai-agent"
 ```
 
 ## Success criteria
-- Greeting plays in Cartesia voice within ~1–2 s of answer
-- Russian intelligible on 8 kHz phone path
-- Barge-in acceptable
-- Mango inbound still openai_realtime (unchanged)
+- Greeting in Denis/Cartesia within ~1–2 s
+- Russian dialog on free topics (no tools)
+- Fewer mid-phrase STT cuts than 800ms mode
+- Mango inbound still openai_realtime
 
 ## Rollback
 ```bash
-# restore backups written by deploy_to_ava.sh under /root/ava/backups/cartesia-pilot-*
-# remove CARTESIA_* from .env if desired
-docker restart ai_engine
+# restore /root/ava/backups/cartesia-pilot-*
+docker compose -f /root/ava/docker-compose.yml restart ai_engine
 asterisk -rx "dialplan reload"
 ```
