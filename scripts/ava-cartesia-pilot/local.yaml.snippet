@@ -1,0 +1,50 @@
+# Snippet merged into /root/ava/config/ai-agent.local.yaml (pilot)
+
+contexts:
+  cartesia_pilot:
+    profile: telephony_ulaw_8k
+    pipeline: hybrid_cartesia
+    greeting: Здравствуйте! Это Quantum Labs, пилот голоса Cartesia. Чем могу помочь?
+    prompt: |
+      Ты — ИИ-секретарь Quantum Labs на пилотном контуре Cartesia TTS.
+      Говори коротко и по делу на русском. Не притворяйся человеком.
+      Если просят созвон — уточни день/время и скажи, что на основном
+      контуре запишем встречу (в этом пилоте календарные tools могут быть ограничены).
+    tools: []
+
+providers:
+  cartesia_tts:
+    type: cartesia
+    enabled: true
+    capabilities:
+      - tts
+    api_key: ${CARTESIA_API_KEY}
+    voice_id: ${CARTESIA_VOICE_ID:-f786b574-daa5-4673-aa0c-cbe3e8534c02}
+    model_id: ${CARTESIA_MODEL_ID:-sonic-3}
+    language: ru
+    base_url: https://api.cartesia.ai
+    api_version: "2026-08-14"
+    pcm_sample_rate: 16000
+
+pipelines:
+  hybrid_cartesia:
+    stt: local_stt
+    llm: openai_llm
+    tts: cartesia_tts
+    options:
+      stt:
+        chunk_ms: 160
+        mode: stt
+        streaming: true
+        stream_format: pcm16_16k
+      llm:
+        base_url: https://api.openai.com/v1
+        model: gpt-4o-mini
+        temperature: 0.5
+        max_tokens: 220
+      tts:
+        language: ru
+        base_url: https://api.cartesia.ai
+        format:
+          encoding: mulaw
+          sample_rate: 8000
