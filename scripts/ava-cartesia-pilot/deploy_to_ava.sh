@@ -54,9 +54,11 @@ class CartesiaProviderConfig(BaseModel):
     api_version: str = Field(default="2026-08-14")
     pcm_sample_rate: int = Field(default=16000)
     tts_transport: str = Field(default="websocket")
+    tts_speed: float = Field(default=1.18)
+    tts_volume: float = Field(default=1.4)
     stt_model: str = Field(default="ink-whisper")
-    stt_max_silence_secs: float = Field(default=0.55)
-    stt_min_volume: float = Field(default=0.02)
+    stt_max_silence_secs: float = Field(default=0.6)
+    stt_min_volume: float = Field(default=0.04)
     farewell_hangup_delay_sec: Optional[float] = None
 
 '''

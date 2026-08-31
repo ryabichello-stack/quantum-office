@@ -15,6 +15,7 @@ import asyncio
 import base64
 import json
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -178,6 +179,17 @@ class CartesiaSTTAdapter(STTComponent):
         keyterms = merged.get("keyterms") or []
         if isinstance(keyterms, str):
             keyterms = [k.strip() for k in keyterms.split(",") if k.strip()]
+        # ink-whisper rejects keyterm prompting (HTTP 400). Keep the option for
+        # future models, but never send keyterms on ink-whisper.
+        model_name = str(merged.get("model") or "ink-whisper").lower()
+        if "ink-whisper" in model_name:
+            if keyterms:
+                logger.info(
+                    "Cartesia STT skipping keyterms (unsupported by ink-whisper)",
+                    call_id=call_id,
+                    keyterm_count=len(keyterms),
+                )
+            keyterms = []
         for term in keyterms:
             query_items.append(("keyterm", str(term)))
         ws_url = (
@@ -334,7 +346,8 @@ class CartesiaSTTAdapter(STTComponent):
 
         async def _delayed() -> None:
             try:
-                await asyncio.sleep(0.12)
+                # Coalesce finals fast — every 80ms here is end-of-turn latency.
+                await asyncio.sleep(0.08)
                 await self._flush_pending(call_id, session)
             except asyncio.CancelledError:
                 return
@@ -370,17 +383,33 @@ class CartesiaSTTAdapter(STTComponent):
                     pass
                 await session.transcript_queue.put(text)
 
-    @staticmethod
-    def _is_garbage_transcript(text: str) -> bool:
-        """Drop noise/echo scraps that pull the LLM off-topic."""
+    # Narrow Whisper hallucination list only. Imperfect ASR must reach the LLM;
+    # a "clarify if unclear" prompt previously caused endless «Не расслышал».
+    _STT_HALLUCINATIONS = frozenset(
+        {
+            "редактор",
+            "субтитры",
+            "продолжение следует",
+            "thanks for watching",
+            "thank you for watching",
+            "subscribe",
+            "подписывайтесь",
+        }
+    )
+
+    @classmethod
+    def _is_garbage_transcript(cls, text: str) -> bool:
+        """Drop only clear noise scraps; let imperfect ASR through to the LLM."""
         cleaned = " ".join((text or "").strip().split())
         if not cleaned:
             return True
-        letters = sum(ch.isalpha() for ch in cleaned)
-        if letters < 3:
-            return True
         low = cleaned.lower().replace("ё", "е")
         if low in {"а", "у", "м", "мм", "ммм", "ээ", "эээ", "эм", "...", "…"}:
+            return True
+        bare = low.strip(".,!?…:;\"'«» ")
+        if bare in cls._STT_HALLUCINATIONS:
+            return True
+        if "продолжение следует" in bare or "thanks for watching" in bare:
             return True
         tokens = [
             t.strip(".,!?…:;\"'«»")
@@ -408,14 +437,28 @@ class CartesiaSTTAdapter(STTComponent):
             "слушай",
             "конечно",
             "отлично",
+            "давай",
+            "можно",
+            "нужно",
+            "хочу",
+            "деньги",
+            "выплаты",
+            "карта",
+            "сбп",
         }
         if len(tokens) == 1:
             tok = tokens[0].lower().replace("ё", "е")
             if tok in short_ok:
                 return False
-            # Lone unexpected noun like «Редактор» from noise — ignore
-            if len(tok) <= 12:
+            if tok in cls._STT_HALLUCINATIONS:
                 return True
+            letters = sum(ch.isalpha() for ch in tok)
+            if letters < 3:
+                return True
+            # Only drop very short lone noise nouns («Редактор»).
+            if len(tok) <= 10:
+                return True
+            return False
         return False
 
     def _compose_options(self, runtime_options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -549,10 +592,11 @@ class CartesiaTTSAdapter(TTSComponent):
             yield
 
         merged = self._compose_options(options)
+        spoken = self._prepare_spoken_text(text or "")
         transport = str(merged.get("transport") or "websocket").lower()
         if transport in ("websocket", "ws", "stream"):
             try:
-                async for chunk in self._synthesize_websocket(call_id, text, merged):
+                async for chunk in self._synthesize_websocket(call_id, spoken, merged):
                     if chunk:
                         yield chunk
                 return
@@ -563,7 +607,7 @@ class CartesiaTTSAdapter(TTSComponent):
                     error=str(exc),
                 )
 
-        async for chunk in self._synthesize_bytes(call_id, text, merged):
+        async for chunk in self._synthesize_bytes(call_id, spoken, merged):
             if chunk:
                 yield chunk
 
@@ -852,16 +896,36 @@ class CartesiaTTSAdapter(TTSComponent):
             "speed": runtime_options.get(
                 "speed",
                 self._pipeline_defaults.get(
-                    "speed", getattr(self._provider_config, "tts_speed", 1.08)
+                    "speed", getattr(self._provider_config, "tts_speed", 1.18)
                 ),
             ),
             "volume": runtime_options.get(
                 "volume",
                 self._pipeline_defaults.get(
-                    "volume", getattr(self._provider_config, "tts_volume", 1.15)
+                    "volume", getattr(self._provider_config, "tts_volume", 1.4)
                 ),
             ),
         }
+
+    @staticmethod
+    def _prepare_spoken_text(text: str) -> str:
+        """Make RU TTS a bit more 'sales-live' without English emotion tags.
+
+        Cartesia emotion SSML is English-only; for RU we rely on punctuation
+        and light speed/volume SSML so Sonic doesn't flatten everything.
+        """
+        cleaned = " ".join((text or "").strip().split())
+        if not cleaned:
+            return cleaned
+        # Drop accidental English emotion/SSML the LLM might emit.
+        if "<emotion" in cleaned.lower() or "</emotion>" in cleaned.lower():
+            cleaned = re.sub(r"</?emotion[^>]*>", "", cleaned, flags=re.I)
+            cleaned = " ".join(cleaned.split())
+        # Mild delivery boost for short sales lines (RU-safe SSML).
+        if "<speed" not in cleaned.lower() and "<volume" not in cleaned.lower():
+            # Slightly brighter than generation_config alone on clones.
+            cleaned = f'<speed ratio="1.05"/><volume ratio="1.08"/> {cleaned}'
+        return cleaned
 
     @staticmethod
     def _generation_config(merged: Dict[str, Any]) -> Dict[str, Any]:
@@ -869,15 +933,15 @@ class CartesiaTTSAdapter(TTSComponent):
         # transcript + speed/volume so Sonic still sounds engaged.
         cfg: Dict[str, Any] = {}
         try:
-            speed = float(merged.get("speed", 1.08))
+            speed = float(merged.get("speed", 1.18))
             cfg["speed"] = max(0.6, min(1.5, speed))
         except (TypeError, ValueError):
-            cfg["speed"] = 1.08
+            cfg["speed"] = 1.18
         try:
-            volume = float(merged.get("volume", 1.15))
+            volume = float(merged.get("volume", 1.4))
             cfg["volume"] = max(0.5, min(2.0, volume))
         except (TypeError, ValueError):
-            cfg["volume"] = 1.15
+            cfg["volume"] = 1.4
         return cfg
 
     def _chunk_audio(self, audio: bytes, chunk_ms: int = 20) -> list[bytes]:
