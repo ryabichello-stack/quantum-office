@@ -21,12 +21,19 @@ Prod Mango `from-mango` / `garik` stays on `openai_realtime` / voice `cedar`.
 On this host `local_ai_server` Vosk emits `STT unavailable` → empty transcripts.
 Pilot uses OpenAI REST STT until local STT is fixed.
 
-## Latency notes
+## Latency / stability notes
 Hybrid STT→LLM→TTS is slower than Realtime. Mitigations in pilot:
 - utterance-sized STT chunks (`chunk_ms: 2800`) instead of 800ms scrapes
 - LLM `aggregation_timeout_sec: 0.9` + short `max_tokens`
-- engine `streaming.pipeline_streaming_overlap` + optional filler phrases
-- softer / disabled pipeline TalkDetect barge-in (echo was cutting replies)
+- `streaming.pipeline_streaming_overlap: true`
+- **Do not enable `pipeline_filler`** with Cartesia overlap: filler↔real TTS race left
+  `audio_capture_enabled=False` (bot went deaf mid-call; no further STT)
+- pipeline TalkDetect barge-in off (echo was cutting replies)
+
+### Known failure mode (2026-08-31)
+After “пиво” turn: filler stream end fired late while real `pipeline-tts` gating token
+was still active → capture stuck off → ~23s silence until caller hangup.
+Also `Task was destroyed but it is pending!` on the overlap playback task.
 
 ## Prerequisites
 1. `CARTESIA_API_KEY` in `/root/ava/.env`
