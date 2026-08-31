@@ -24,7 +24,7 @@ Pilot uses OpenAI REST STT until local STT is fixed.
 ## Latency / stability notes
 Hybrid STT→LLM→TTS is slower than Realtime. Mitigations in pilot:
 - utterance-sized STT chunks (`chunk_ms: 2800`) instead of 800ms scrapes
-- LLM `aggregation_timeout_sec: 0.9` + short `max_tokens`
+- LLM `aggregation_timeout_sec: 1.1` + short `max_tokens`
 - `streaming.pipeline_streaming_overlap: true`
 - **Do not enable `pipeline_filler`** with Cartesia overlap: filler↔real TTS race left
   `audio_capture_enabled=False` (bot went deaf mid-call; no further STT)
@@ -34,6 +34,20 @@ Hybrid STT→LLM→TTS is slower than Realtime. Mitigations in pilot:
 After “пиво” turn: filler stream end fired late while real `pipeline-tts` gating token
 was still active → capture stuck off → ~23s silence until caller hangup.
 Also `Task was destroyed but it is pending!` on the overlap playback task.
+**Mitigation:** `pipeline_filler_enabled: false` (verified: multi-turn dialog continues).
+
+## Roadmap to feel more “live”
+Current stack is turn-based hybrid; Garik feels livelier because `openai_realtime` is duplex.
+
+| Priority | Change | Effect |
+|----------|--------|--------|
+| P0 | Keep filler off / safe TTS gating | Stability (no mid-call deafness) |
+| P1 | Cartesia **websocket** TTS (stream chunks) instead of `/tts/bytes` | Lower time-to-first-audio (~0.5–1s vs ~2s full bytes) |
+| P1 | Streaming STT + VAD end-of-utterance (Deepgram or OpenAI streaming) | Less wait than fixed 2.8s REST chunks; better context |
+| P2 | Shorter replies + stronger “answer the last turn” prompt | Less context drift |
+| P3 | True duplex (Realtime / Cartesia S2S if available) | Closest to human phone dialog |
+
+Honest ceiling: Cartesia Sonic as **TTS-only** in hybrid will stay a beat slower than Garik Realtime until streaming STT+TTS (or full S2S) lands.
 
 ## Prerequisites
 1. `CARTESIA_API_KEY` in `/root/ava/.env`
