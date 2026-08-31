@@ -1,5 +1,5 @@
 # Snippet merged into /root/ava/config/ai-agent.local.yaml (pilot)
-# Free-talk Cartesia TTS pilot — no knowledge base / no in-call tools yet.
+# Free-talk Cartesia STT+TTS pilot — low-latency streaming, no KB/tools yet.
 
 contexts:
   cartesia_pilot:
@@ -23,6 +23,7 @@ providers:
     enabled: true
     capabilities:
       - tts
+      - stt
     api_key: ${CARTESIA_API_KEY}
     voice_id: ${CARTESIA_VOICE_ID:-631151e9-7ae9-4324-b8e7-c72cb52e6cb1}
     model_id: ${CARTESIA_MODEL_ID:-sonic-3.6}
@@ -30,28 +31,36 @@ providers:
     base_url: https://api.cartesia.ai
     api_version: "2026-08-14"
     pcm_sample_rate: 16000
+    tts_transport: websocket
+    stt_model: ink-whisper
+    stt_max_silence_secs: 0.55
+    stt_min_volume: 0.02
 
 pipelines:
   hybrid_cartesia:
-    # local vosk STT on this host is broken → OpenAI REST STT
-    stt: openai_stt
+    # Streaming Cartesia Ink Whisper STT (RU) + Sonic websocket TTS
+    stt: cartesia_stt
     llm: openai_llm
     tts: cartesia_tts
     options:
       stt:
-        # REST STT: larger chunks = fewer mid-phrase cuts (latency tradeoff)
-        model: gpt-4o-mini-transcribe
+        streaming: true
+        model: ink-whisper
         language: ru
-        chunk_ms: 2800
-        streaming: false
+        encoding: pcm_s16le
+        sample_rate: 16000
+        chunk_ms: 160
+        max_silence_duration_secs: 0.55
+        min_volume: 0.02
       llm:
         base_url: https://api.openai.com/v1
         model: gpt-4o-mini
         temperature: 0.7
-        max_tokens: 120
-        aggregation_timeout_sec: 1.1
+        max_tokens: 80
+        aggregation_timeout_sec: 0.45
       tts:
         language: ru
+        transport: websocket
         base_url: https://api.cartesia.ai
         format:
           encoding: mulaw
@@ -60,7 +69,6 @@ pipelines:
 # Global streaming (merge under existing `streaming:` / `barge_in:`)
 # streaming:
 #   pipeline_streaming_overlap: true
-#   # NEVER enable filler with Cartesia overlap — race deafens mid-call STT
 #   pipeline_filler_enabled: false
 # barge_in:
 #   pipeline_talk_detect_enabled: false

@@ -10,21 +10,23 @@ Script + vault come later.
 ```
 SIP cartesia / 9901 → AI_CONTEXT=cartesia_pilot
   → pipeline hybrid_cartesia
-      STT: openai_stt (gpt-4o-mini-transcribe, ~2.8s chunks)
-      LLM: openai_llm (gpt-4o-mini, streaming overlap)
-      TTS: cartesia_tts (Sonic → μ-law 8 kHz, voice Denis by default)
+      STT: cartesia_stt (Ink Whisper WS, RU, silence auto-finalize ~0.55s)
+      LLM: openai_llm (gpt-4o-mini, streaming overlap, short replies)
+      TTS: cartesia_tts (Sonic websocket → pcm_mulaw 8 kHz, Denis)
 ```
 
 Prod Mango `from-mango` / `garik` stays on `openai_realtime` / voice `cedar`.
 
-## Why not local_stt
+## Why not local_stt / OpenAI REST chunks
 On this host `local_ai_server` Vosk emits `STT unavailable` → empty transcripts.
-Pilot uses OpenAI REST STT until local STT is fixed.
+Fixed 2.8s OpenAI REST chunks caused both delay and “off-topic” replies.
+Pilot now uses **Cartesia streaming STT** (same API key) with silence endpointing.
 
 ## Latency / stability notes
-Hybrid STT→LLM→TTS is slower than Realtime. Mitigations in pilot:
-- utterance-sized STT chunks (`chunk_ms: 2800`) instead of 800ms scrapes
-- LLM `aggregation_timeout_sec: 1.1` + short `max_tokens`
+Hybrid is still not duplex Realtime, but much closer after streaming STT+TTS:
+- STT ends a turn ~0.55s after silence (not a fixed 2.8s buffer + REST round-trip)
+- TTS websocket yields first audio ASAP (`pcm_mulaw` @ 8 kHz, no resample wait)
+- LLM `aggregation_timeout_sec: 0.45` + `max_tokens: 80`
 - `streaming.pipeline_streaming_overlap: true`
 - **Do not enable `pipeline_filler`** with Cartesia overlap: filler↔real TTS race left
   `audio_capture_enabled=False` (bot went deaf mid-call; no further STT)
@@ -37,23 +39,23 @@ Also `Task was destroyed but it is pending!` on the overlap playback task.
 **Mitigation:** `pipeline_filler_enabled: false` (verified: multi-turn dialog continues).
 
 ## Roadmap to feel more “live”
-Current stack is turn-based hybrid; Garik feels livelier because `openai_realtime` is duplex.
+Current stack is still hybrid (not full duplex like Garik Realtime), but P1 is live on prod:
 
-| Priority | Change | Effect |
+| Priority | Change | Status |
 |----------|--------|--------|
-| P0 | Keep filler off / safe TTS gating | Stability (no mid-call deafness) |
-| P1 | Cartesia **websocket** TTS (stream chunks) instead of `/tts/bytes` | Lower time-to-first-audio (~0.5–1s vs ~2s full bytes) |
-| P1 | Streaming STT + VAD end-of-utterance (Deepgram or OpenAI streaming) | Less wait than fixed 2.8s REST chunks; better context |
-| P2 | Shorter replies + stronger “answer the last turn” prompt | Less context drift |
-| P3 | True duplex (Realtime / Cartesia S2S if available) | Closest to human phone dialog |
+| P0 | Keep filler off / safe TTS gating | Done |
+| P1 | Cartesia **websocket** TTS (`pcm_mulaw` 8 kHz, reused per call) | Done |
+| P1 | Cartesia Ink Whisper **streaming STT** (RU + silence finalize) | Done |
+| P2 | Shorter replies + stronger “answer the last turn” prompt | Done (tune further) |
+| P3 | True duplex (Realtime / Cartesia S2S when RU-ready) | Next ceiling |
 
-Honest ceiling: Cartesia Sonic as **TTS-only** in hybrid will stay a beat slower than Garik Realtime until streaming STT+TTS (or full S2S) lands.
+Measured on pilot: TTS TTFB often ~0.8–1.2s; STT finals land as whole phrases (e.g. «Расскажи какую-нибудь историю.») instead of 2.8s REST scrapes.
 
 ## Prerequisites
 1. `CARTESIA_API_KEY` in `/root/ava/.env`
 2. `CARTESIA_VOICE_ID` (Denis clone: `631151e9-7ae9-4324-b8e7-c72cb52e6cb1`)
 3. Optional stock RU: `CARTESIA_VOICE_STOCK_RU=1e4176b1-3db9-44d6-a601-4fe68b041942` (Sergei)
-4. `OPENAI_API_KEY` for STT + LLM
+4. `OPENAI_API_KEY` for LLM (STT/TTS are Cartesia)
 
 ## Offline listen (no call)
 ```bash
