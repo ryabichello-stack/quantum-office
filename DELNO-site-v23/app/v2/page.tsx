@@ -1,6 +1,7 @@
 import { ArrowRight, CalendarDays, Check, ChevronRight, CircleCheck, FileText, Globe, Mail, MessageCircle, Mic, Phone, Play, Search, Send, ShieldCheck, Sparkles, UserRound, Zap } from "lucide-react";
 import Link from "next/link";
 import "./v2.css";
+import "./mobile.css";
 import { ActiveNav, LeadFormTrigger } from "./SiteControls";
 import { FaqSection, type FaqItem } from "./FaqSection";
 import VoiceDemo from "./VoiceDemo";

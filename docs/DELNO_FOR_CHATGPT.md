@@ -48,7 +48,8 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | 2 | **Master plan** | Стратегия, архитектура, guardrails, E0–E10 | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DELNO_MASTER_PLAN.md |
 | 3 | **Roadmap** | Checklist, что ✅ сделано, Sprint 3, API endpoints | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DELNO_IMPLEMENTATION_ROADMAP.md |
 | 4 | **Domains** | dlno.ru, DNS reg.ru, nginx | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DLNO_DOMAINS.md |
-| 5 | **Clarity test** | P1.9 протокол и таблица результатов | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/P1.9_CLARITY_TEST.md |
+| 5 | **Clarity test** | P1.9 протокол (⏸ deferred) | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/P1.9_CLARITY_TEST.md |
+| 6 | **Mobile pass** | P1.5 checklist 375/390px | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/P1.5_MOBILE_PASS.md |
 
 **Проверка версии master plan:** строка `DELNO-MASTER-PLAN-REV-3.2` + секция `Rev.3 — Implementation Status`.
 
@@ -63,7 +64,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 1. ~~E0.15 operational events~~ ✅  
 2. ~~E0.14 formal exit~~ ✅  
 3. ~~E1.11 end-to-end~~ ✅  
-4. P1.5 mobile pass  
+4. P1.5 mobile pass 🔄 (`mobile.css`, viewport — manual verify)
 5. P1.8 privacy/terms для dlno.ru  
 6. P1.9 clarity test — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
 
@@ -187,7 +188,7 @@ ChatGPT, проверь эти пункты особенно:
 
 **Без DNS (можно сейчас):**
 
-1. **P1.5 Mobile UX** — lighthouse, 375px, no overflow
+1. **P1.5 Mobile UX** — 🔄 code done; manual verify 375/390px ([`P1.5_MOBILE_PASS.md`](P1.5_MOBILE_PASS.md))
 2. **P1.8 Privacy/terms** — dlno.ru / office@dlno.ru
 3. **E1.4 Provenance** — unified API contract
 4. **P1.9 Clarity test** — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))

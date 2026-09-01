@@ -35,7 +35,7 @@
 | P1.2 | Блок каналов: телефон, сайт, Telegram, MAX, email | ✅ v4 product stage |
 | P1.3 | CTA «Попробовать» → voice demo + lead form | ✅ lead form + «Спросить вслух» |
 | P1.4 | Leads с сайта → **delno-api** | ✅ route + form + deploy scripts |
-| P1.5 | Mobile UX / lighthouse pass | ⬜ |
+| P1.5 | Mobile UX / lighthouse pass | 🔄 mobile.css + viewport; manual verify |
 | P1.6 | `dlno.ru` DNS **reg.ru** → `5.35.86.62` | ⏸ **S3 P0 #5** deferred |
 | P1.7 | SSL на origin (certbot / reg.ru) | ⏸ **S3 P0 #5** deferred |
 | P1.8 | Privacy/terms актуальны для dlno.ru | ⬜ |
