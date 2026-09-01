@@ -1,3 +1,4 @@
+from app.models.cms import CmsPage, CmsRevision
 from app.models.audit import AuditLog
 from app.models.channel_account import ChannelAccount
 from app.models.conversation import Conversation, Message
@@ -11,6 +12,8 @@ from app.models.usage_record import UsageRecord
 from app.models.user import User
 
 __all__ = [
+    "CmsPage",
+    "CmsRevision",
     "AuditLog",
     "ChannelAccount",
     "Conversation",

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.db import SessionLocal
 from app.core.security import hash_password
+from app.models.cms import CmsPage
 from app.models.feature_flag import FeatureFlag
 from app.models.tenant import Tenant
 from app.models.user import User
@@ -65,5 +66,27 @@ def seed_demo_tenant() -> None:
             )
 
         db.commit()
+
+        _seed_cms_pages(db)
+        db.commit()
     finally:
         db.close()
+
+
+def _seed_cms_pages(db: Session) -> None:
+    if db.query(CmsPage).filter(CmsPage.slug == "faq", CmsPage.tenant_id.is_(None)).one_or_none():
+        return
+    db.add(
+        CmsPage(
+            slug="faq",
+            title="FAQ",
+            locale="ru",
+            status="published",
+            blocks={
+                "sections": [
+                    {"q": "Что такое DELNO?", "a": "ИИ-сотрудник первой линии для бизнеса."},
+                    {"q": "Какие каналы?", "a": "Сайт, телефон, Telegram, MAX, email."},
+                ]
+            },
+        )
+    )

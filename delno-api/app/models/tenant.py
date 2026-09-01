@@ -1,3 +1,4 @@
+import secrets
 import uuid
 from datetime import datetime
 
@@ -8,12 +9,18 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.db import Base
 
 
+def _new_public_key() -> str:
+    return secrets.token_urlsafe(24)
+
+
 class Tenant(Base):
     __tablename__ = "tenants"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     slug: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
+    public_key: Mapped[str] = mapped_column(String(64), unique=True, index=True, default=_new_public_key)
+    plan: Mapped[str] = mapped_column(String(32), default="trial")
     settings: Mapped[dict] = mapped_column(JSONB, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

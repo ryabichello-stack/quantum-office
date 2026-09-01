@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     openai_api_key: str | None = None
     openai_model: str = "gpt-4.1-mini"
+    model_provider: str = "openai"
 
 
 @lru_cache
