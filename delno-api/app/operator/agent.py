@@ -170,9 +170,13 @@ def _generate_reply(
     if completion.get("ok"):
         try:
             reply = str(completion["data"]["choices"][0]["message"]["content"]).strip()
-            if reply:
-                tool_calls.append({"tool": "llm", "ok": True, "provider": completion.get("provider")})
+            provider_name = str(completion.get("provider") or "")
+            stub_echo = provider_name == "stub" and reply.startswith("[stub]")
+            if reply and not stub_echo:
+                tool_calls.append({"tool": "llm", "ok": True, "provider": provider_name})
                 return reply, tool_calls, sources
+            if stub_echo:
+                tool_calls.append({"tool": "llm", "ok": False, "provider": provider_name, "error": "stub_echo"})
         except (KeyError, IndexError, TypeError):
             tool_calls.append({"tool": "llm", "ok": False, "error": "invalid_completion_shape"})
 

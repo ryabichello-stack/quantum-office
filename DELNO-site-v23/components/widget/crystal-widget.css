@@ -598,3 +598,55 @@
 @media(prefers-reduced-motion:reduce){
   .breath,.fire,.chat,.dots i,.wave i{animation:none!important}
 }
+
+/* Live voice — phase-driven UI instead of fixed 11.1s demo timeline */
+.delno-crystal-mount[data-voice-phase] #delno-crystal-voice:checked ~ .widget .mic,
+.delno-crystal-mount[data-voice-phase] #delno-crystal-voice:checked ~ .widget .dots,
+.delno-crystal-mount[data-voice-phase] #delno-crystal-voice:checked ~ .widget .wave,
+.delno-crystal-mount[data-voice-phase] #delno-crystal-voice:checked ~ .widget .state,
+.delno-crystal-mount[data-voice-phase] #delno-crystal-voice:checked ~ .widget .state span {
+  animation: none !important;
+}
+
+.delno-crystal-mount[data-voice-phase] #delno-crystal-voice:checked ~ .widget .mic,
+.delno-crystal-mount[data-voice-phase] #delno-crystal-voice:checked ~ .widget .dots,
+.delno-crystal-mount[data-voice-phase] #delno-crystal-voice:checked ~ .widget .wave {
+  opacity: 0;
+}
+
+.delno-crystal-mount[data-voice-phase] #delno-crystal-voice:checked ~ .widget .state {
+  opacity: 1;
+  transform: translate3d(-50%, 0, 0);
+}
+
+.delno-crystal-mount[data-voice-phase="listen"] #delno-crystal-voice:checked ~ .widget .mic,
+.delno-crystal-mount[data-voice-phase="listen"] #delno-crystal-voice:checked ~ .widget .state .listen {
+  opacity: 1;
+}
+.delno-crystal-mount[data-voice-phase="listen"] #delno-crystal-voice:checked ~ .widget .state {
+  width: 58px;
+}
+
+.delno-crystal-mount[data-voice-phase="think"] #delno-crystal-voice:checked ~ .widget .dots,
+.delno-crystal-mount[data-voice-phase="think"] #delno-crystal-voice:checked ~ .widget .state .think {
+  opacity: 1;
+}
+.delno-crystal-mount[data-voice-phase="think"] #delno-crystal-voice:checked ~ .widget .state {
+  width: 54px;
+}
+
+.delno-crystal-mount[data-voice-phase="speak"] #delno-crystal-voice:checked ~ .widget .wave,
+.delno-crystal-mount[data-voice-phase="speak"] #delno-crystal-voice:checked ~ .widget .state .speak {
+  opacity: 1;
+}
+.delno-crystal-mount[data-voice-phase="speak"] #delno-crystal-voice:checked ~ .widget .state {
+  width: 66px;
+}
+
+.delno-crystal-mount[data-voice-phase="error"] #delno-crystal-voice:checked ~ .widget .dots,
+.delno-crystal-mount[data-voice-phase="error"] #delno-crystal-voice:checked ~ .widget .state .think {
+  opacity: 1;
+}
+.delno-crystal-mount[data-voice-phase="error"] #delno-crystal-voice:checked ~ .widget .state {
+  width: 54px;
+}

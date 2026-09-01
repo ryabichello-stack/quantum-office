@@ -50,6 +50,27 @@ def test_generate_reply_fallback_without_llm():
     assert sources == []
 
 
+def test_generate_reply_ignores_stub_echo():
+    ctx = TenantContext(tenant_id=uuid.uuid4(), tenant_slug="delno-demo", role="tenant_owner")
+    db = MagicMock()
+
+    with patch("app.operator.agent.registry") as mock_registry:
+        mock_registry.run.return_value = ToolResult(
+            ok=True,
+            data={"text": "Тариф Диалоги — 2 990 ₽/мес."},
+        )
+        with patch("app.operator.agent.get_model_provider") as mock_provider:
+            mock_provider.return_value.chat_completion.return_value = {
+                "ok": True,
+                "provider": "stub",
+                "data": {"choices": [{"message": {"content": "[stub] Сколько стоит?"}}]},
+            }
+            reply, tool_calls, _sources = _generate_reply(db, ctx, "Сколько стоит?")
+
+    assert "2 990" in reply
+    assert any(t.get("tool") == "llm" and t.get("ok") is False for t in tool_calls)
+
+
 def test_run_operator_turn_commits_messages():
     ctx = TenantContext(tenant_id=uuid.uuid4(), tenant_slug="delno-demo", role="tenant_owner")
     db = MagicMock()

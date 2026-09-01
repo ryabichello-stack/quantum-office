@@ -806,7 +806,7 @@ h1 em{font-style:normal;color:#8e959d;font-weight:430}
       }
     }
     if(!c)c=parseColor(getComputedStyle(document.body).backgroundColor)||{r:255,g:255,b:255,a:1};
-    root.setAttribute('data-contrast',lum(c)<145?'dark':'light');
+    root.setAttribute('data-contrast',lum(c)<145?'light':'dark');
   }
   if(toggle)toggle.addEventListener('change',detect);
   window.addEventListener('resize',detect,{passive:true});

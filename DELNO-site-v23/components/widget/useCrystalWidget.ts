@@ -4,6 +4,37 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 type ChatMessage = { role: "user" | "assistant"; text: string; typing?: boolean };
 
+export type VoicePhase = "idle" | "listen" | "think" | "speak" | "error";
+
+type WidgetAnswer = {
+  message?: string;
+  conversation_id?: string;
+  next_step?: string;
+};
+
+type SpeechRecognitionResultEvent = {
+  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+};
+
+type SpeechRecognitionInstance = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onstart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
+type SpeechWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
+
 const SITE_KEY = process.env.NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY || "demo_dlno";
 
 function cryptoSafeId() {
@@ -29,12 +60,32 @@ function personalizedGreeting(name: string) {
     : "Приятно познакомиться. Что ещё хотите уточнить?";
 }
 
+function speakWithDeviceVoice(text: string, onStart: () => void, onEnd: () => void) {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return false;
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "ru-RU";
+  utterance.rate = 0.93;
+  utterance.pitch = 1;
+  const voices = window.speechSynthesis.getVoices();
+  utterance.voice =
+    voices.find((voice) => /ru-RU/i.test(voice.lang) && /natural|enhanced|milena|alena|svetlana|irina/i.test(voice.name)) ||
+    voices.find((voice) => /ru/i.test(voice.lang)) ||
+    null;
+  utterance.onstart = onStart;
+  utterance.onend = onEnd;
+  utterance.onerror = onEnd;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utterance);
+  return true;
+}
+
 export function useCrystalWidgetChat(apiPath: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: "assistant", text: "Здравствуйте. Чем могу помочь?" },
   ]);
   const [busy, setBusy] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
   const visitorIdRef = useRef("");
   const nameRef = useRef("");
   const askedNameRef = useRef(false);
@@ -47,12 +98,72 @@ export function useCrystalWidgetChat(apiPath: string) {
     nameRef.current = localStorage.getItem("delno_widget_name") || "";
     askedNameRef.current = localStorage.getItem("delno_widget_asked_name") === "1";
     const storedSession = localStorage.getItem("delno_widget_session");
-    if (storedSession) setSessionId(storedSession);
+    if (storedSession) {
+      sessionIdRef.current = storedSession;
+      setSessionId(storedSession);
+    }
   }, []);
 
   const persistSession = useCallback((id: string) => {
+    sessionIdRef.current = id;
     setSessionId(id);
     localStorage.setItem("delno_widget_session", id);
+  }, []);
+
+  const requestAnswer = useCallback(
+    async (value: string): Promise<{ answer: string | null; payload: WidgetAnswer | null; error?: string }> => {
+      try {
+        const res = await fetch(apiPath, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            site_key: SITE_KEY,
+            session_id: sessionIdRef.current,
+            visitor_id: visitorIdRef.current,
+            message: value,
+            visitor: {
+              name: nameRef.current || null,
+              page_url: typeof window !== "undefined" ? window.location.href : null,
+              referrer: typeof document !== "undefined" ? document.referrer || null : null,
+            },
+            channel: "web",
+          }),
+        });
+        const raw = await res.text();
+        if (!res.ok) {
+          let detail = raw.slice(0, 200);
+          try {
+            const parsed = JSON.parse(raw) as { error?: string; detail?: string };
+            detail = parsed.detail || parsed.error || detail;
+          } catch {
+            /* ignore */
+          }
+          return { answer: null, payload: null, error: detail || `HTTP ${res.status}` };
+        }
+        const payload = JSON.parse(raw) as WidgetAnswer;
+        if (payload.conversation_id) persistSession(payload.conversation_id);
+        return { answer: payload.message || null, payload };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "fetch failed";
+        console.warn("DELNO widget:", err);
+        return { answer: null, payload: null, error: message };
+      }
+    },
+    [apiPath, persistSession],
+  );
+
+  const maybeAskName = useCallback(async (payload: WidgetAnswer | null, messageLength: number) => {
+    const backendRequestsName = payload?.next_step === "ask_name";
+    if (!nameRef.current && (!askedNameRef.current || backendRequestsName) && messageLength >= 8) {
+      await new Promise((r) => setTimeout(r, 260));
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: "Кстати, как я могу к вам обращаться?" },
+      ]);
+      awaitingNameRef.current = true;
+      askedNameRef.current = true;
+      localStorage.setItem("delno_widget_asked_name", "1");
+    }
   }, []);
 
   const sendMessage = useCallback(
@@ -76,67 +187,177 @@ export function useCrystalWidgetChat(apiPath: string) {
 
       setMessages((prev) => [...prev, { role: "assistant", text: "", typing: true }]);
 
-      let payload: {
-        message?: string;
-        conversation_id?: string;
-        next_step?: string;
-      } | null = null;
+      const { answer, payload, error } = await requestAnswer(value);
+      await new Promise((r) => setTimeout(r, payload ? 120 : 320));
 
-      try {
-        const res = await fetch(apiPath, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            site_key: SITE_KEY,
-            session_id: sessionId,
-            visitor_id: visitorIdRef.current,
-            message: value,
-            visitor: {
-              name: nameRef.current || null,
-              page_url: typeof window !== "undefined" ? window.location.href : null,
-              referrer: typeof document !== "undefined" ? document.referrer || null : null,
-            },
-            channel: "web",
-          }),
-        });
-        if (res.ok) payload = await res.json();
-      } catch (err) {
-        console.warn("DELNO widget:", err);
-      }
-
-      await new Promise((r) => setTimeout(r, payload ? 120 : 620));
-
-      const answer =
-        payload?.message ||
-        (value.length < 8
-          ? "Да, могу помочь. Уточните, пожалуйста, вопрос чуть подробнее."
-          : "Понял ваш вопрос. Я могу ответить по базе знаний компании и, если нужно, передать обращение сотруднику.");
-
-      if (payload?.conversation_id) persistSession(payload.conversation_id);
+      const reply =
+        answer ||
+        (error
+          ? "Сейчас не удалось получить ответ. Попробуйте ещё раз или напишите вопрос чуть иначе."
+          : value.length < 8
+            ? "Да, могу помочь. Уточните, пожалуйста, вопрос чуть подробнее."
+            : "Понял ваш вопрос. Я могу ответить по базе знаний компании и, если нужно, передать обращение сотруднику.");
 
       setMessages((prev) => {
         const withoutTyping = prev.filter((m) => !m.typing);
-        return [...withoutTyping, { role: "assistant", text: answer }];
+        return [...withoutTyping, { role: "assistant", text: reply }];
       });
 
-      const backendRequestsName = payload?.next_step === "ask_name";
-      if (!nameRef.current && (!askedNameRef.current || backendRequestsName)) {
-        await new Promise((r) => setTimeout(r, 260));
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", text: "Кстати, как я могу к вам обращаться?" },
-        ]);
-        awaitingNameRef.current = true;
-        askedNameRef.current = true;
-        localStorage.setItem("delno_widget_asked_name", "1");
-      }
-
+      await maybeAskName(payload, value.length);
       setBusy(false);
     },
-    [apiPath, busy, persistSession, sessionId],
+    [busy, maybeAskName, requestAnswer],
   );
 
-  return { messages, busy, sendMessage };
+  const sendVoiceQuery = useCallback(
+    async (raw: string): Promise<string> => {
+      const value = raw.trim();
+      if (!value) return "Не удалось распознать вопрос. Попробуйте ещё раз.";
+
+      if (awaitingNameRef.current && isLikelyName(value)) {
+        nameRef.current = value;
+        localStorage.setItem("delno_widget_name", value);
+        awaitingNameRef.current = false;
+        return personalizedGreeting(value);
+      }
+
+      const { answer, payload, error } = await requestAnswer(value);
+      const reply =
+        answer ||
+        (error
+          ? "Сейчас не удалось получить ответ. Попробуйте ещё раз."
+          : "Понял ваш вопрос. Могу ответить по базе знаний компании или передать обращение сотруднику.");
+
+      void maybeAskName(payload, value.length);
+      return reply;
+    },
+    [maybeAskName, requestAnswer],
+  );
+
+  const appendExchange = useCallback((userText: string, assistantText: string) => {
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", text: userText },
+      { role: "assistant", text: assistantText },
+    ]);
+  }, []);
+
+  return { messages, busy, sendMessage, sendVoiceQuery, appendExchange, sessionId };
+}
+
+export function useCrystalWidgetVoice(options: {
+  mountRef: React.RefObject<HTMLElement | null>;
+  sendVoiceQuery: (text: string) => Promise<string>;
+  appendExchange: (userText: string, assistantText: string) => void;
+}) {
+  const { mountRef, sendVoiceQuery, appendExchange } = options;
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [voicePhase, setVoicePhase] = useState<VoicePhase>("idle");
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const heardRef = useRef(false);
+  const speakingRef = useRef(false);
+
+  const setPhase = useCallback(
+    (phase: VoicePhase) => {
+      setVoicePhase(phase);
+      const root = mountRef.current;
+      if (!root) return;
+      if (phase === "idle" || phase === "error") {
+        root.removeAttribute("data-voice-phase");
+      } else {
+        root.setAttribute("data-voice-phase", phase);
+      }
+    },
+    [mountRef],
+  );
+
+  const stopVoice = useCallback(() => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+    speakingRef.current = false;
+    setVoiceActive(false);
+    setPhase("idle");
+  }, [setPhase]);
+
+  useEffect(() => () => stopVoice(), [stopVoice]);
+
+  const answerVoiceQuestion = useCallback(
+    async (transcript: string) => {
+      setPhase("think");
+      const answer = await sendVoiceQuery(transcript);
+      appendExchange(transcript, answer);
+      setPhase("speak");
+      speakingRef.current = true;
+      const started = speakWithDeviceVoice(
+        answer,
+        () => setPhase("speak"),
+        () => {
+          speakingRef.current = false;
+          stopVoice();
+        },
+      );
+      if (!started) {
+        await new Promise((r) => setTimeout(r, Math.min(3200, 900 + answer.length * 28)));
+        stopVoice();
+      }
+    },
+    [appendExchange, sendVoiceQuery, setPhase, stopVoice],
+  );
+
+  const toggleVoice = useCallback(() => {
+    if (voiceActive) {
+      stopVoice();
+      return;
+    }
+
+    const speechWindow = window as SpeechWindow;
+    const SpeechRecognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setVoiceActive(true);
+      setPhase("error");
+      appendExchange(
+        "Голосовой режим",
+        "Браузер не поддерживает распознавание речи. Используйте Chrome, Edge или Safari, либо текстовый чат.",
+      );
+      window.setTimeout(() => stopVoice(), 2400);
+      return;
+    }
+
+    heardRef.current = false;
+    setVoiceActive(true);
+    setPhase("listen");
+
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+    recognition.lang = "ru-RU";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.onstart = () => setPhase("listen");
+    recognition.onresult = (event: SpeechRecognitionResultEvent) => {
+      heardRef.current = true;
+      const transcript = event.results[0][0].transcript.trim();
+      recognitionRef.current = null;
+      void answerVoiceQuestion(transcript);
+    };
+    recognition.onerror = () => {
+      heardRef.current = true;
+      recognitionRef.current = null;
+      setPhase("error");
+      appendExchange(
+        "Голосовой режим",
+        "Не удалось получить доступ к микрофону. Разрешите микрофон в браузере и нажмите на шар ещё раз.",
+      );
+      window.setTimeout(() => stopVoice(), 2600);
+    };
+    recognition.onend = () => {
+      recognitionRef.current = null;
+      if (!heardRef.current && !speakingRef.current) stopVoice();
+    };
+    recognition.start();
+  }, [answerVoiceQuestion, appendExchange, setPhase, stopVoice, voiceActive]);
+
+  return { voiceActive, voicePhase, toggleVoice, stopVoice };
 }
 
 export function useCrystalContrast(mountRef: React.RefObject<HTMLElement | null>) {
@@ -172,7 +393,7 @@ export function useCrystalContrast(mountRef: React.RefObject<HTMLElement | null>
         if (c) break;
       }
       if (!c) c = parseColor(getComputedStyle(document.body).backgroundColor) || { r: 255, g: 255, b: 255, a: 1 };
-      root.setAttribute("data-contrast", lum(c) < 145 ? "dark" : "light");
+      root.setAttribute("data-contrast", lum(c) < 145 ? "light" : "dark");
     }
 
     detect();

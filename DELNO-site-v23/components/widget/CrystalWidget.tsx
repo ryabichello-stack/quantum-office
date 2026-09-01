@@ -7,10 +7,9 @@ import {
   useAutoResizeTextarea,
   useCrystalContrast,
   useCrystalWidgetChat,
+  useCrystalWidgetVoice,
 } from "./useCrystalWidget";
 import "./crystal-widget.css";
-
-const VOICE_DURATION_MS = 11100;
 
 export function CrystalWidget() {
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
@@ -22,10 +21,14 @@ export function CrystalWidget() {
   const chatBodyRef = useRef<HTMLDivElement>(null);
 
   const [textOpen, setTextOpen] = useState(false);
-  const [voiceActive, setVoiceActive] = useState(false);
   const [input, setInput] = useState("");
 
-  const { messages, busy, sendMessage } = useCrystalWidgetChat(apiPath);
+  const { messages, busy, sendMessage, sendVoiceQuery, appendExchange } = useCrystalWidgetChat(apiPath);
+  const { voiceActive, toggleVoice } = useCrystalWidgetVoice({
+    mountRef,
+    sendVoiceQuery,
+    appendExchange,
+  });
   useCrystalContrast(mountRef);
   useAutoResizeTextarea(textareaRef, input);
 
@@ -53,12 +56,6 @@ export function CrystalWidget() {
       el.scrollTop = el.scrollHeight;
     });
   }, [messages, textOpen]);
-
-  function startVoice() {
-    if (voiceActive) return;
-    setVoiceActive(true);
-    window.setTimeout(() => setVoiceActive(false), VOICE_DURATION_MS);
-  }
 
   return (
     <div className="delno-crystal-mount" ref={mountRef}>
@@ -89,7 +86,13 @@ export function CrystalWidget() {
         </button>
 
         <div className="orb-anchor">
-          <button type="button" className="orb-hit" aria-label="Говорить с DELNO" onClick={startVoice} />
+          <button
+            type="button"
+            className="orb-hit"
+            aria-label={voiceActive ? "Остановить голосовой режим" : "Говорить с DELNO"}
+            aria-pressed={voiceActive}
+            onClick={toggleVoice}
+          />
 
           <div className="motion">
             <span className="ground" />
