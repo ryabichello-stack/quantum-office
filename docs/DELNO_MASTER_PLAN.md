@@ -4,7 +4,8 @@
 **Revision:** `DELNO-MASTER-PLAN-REV-2`  
 **Commit:** `103b015` (см. также актуальный tip ветки)  
 **Статус:** canonical — по этому документу начинаем реализацию  
-**Prod staging:** https://a.47z.ru/delno/ · https://a.47z.ru/delno-api/
+**Prod staging:** https://a.47z.ru/delno/ · https://a.47z.ru/delno-api/  
+**Production domain (купленный):** **https://dlno.ru** — см. [`docs/DLNO_DOMAINS.md`](DLNO_DOMAINS.md)
 
 > **Если вы ChatGPT / ревьюер:** это **НЕ rev.1**. Проверка: в документе есть секции  
 > `Product North Star`, `Product Roadmap vs Engineering Roadmap`,  
