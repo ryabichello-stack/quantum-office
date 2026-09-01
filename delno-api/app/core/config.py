@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4.1-mini"
     model_provider: str = "openai"
 
+    dadata_api_key: str | None = None
+    dadata_secret_key: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:

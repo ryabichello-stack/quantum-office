@@ -11,6 +11,8 @@ from app.scripts.seed import seed_demo_tenant
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    import app.models  # noqa: F401 — register ORM tables for create_all
+
     Base.metadata.create_all(bind=engine)
     seed_demo_tenant()
     register_builtin_tools()

@@ -2,7 +2,7 @@
 
 **Canonical strategy:** [`DELNO_MASTER_PLAN.md`](DELNO_MASTER_PLAN.md)  
 **Домены:** [`DLNO_DOMAINS.md`](DLNO_DOMAINS.md)  
-**Обновлено:** 2026-09-01 · **Revision REV-3.3** (Sprint 3 mid-flight + DaData party enrichment plan)
+**Обновлено:** 2026-09-01 · **Revision REV-3.4** (dlno.ru DNS schema + nginx ingress)
 
 Легенда: ✅ done · 🔄 in progress · ⬜ todo
 
@@ -89,7 +89,7 @@
 | E1.9 | Per-tenant vault path isolation | ⬜ |
 | E1.10 | **delno-admin** scaffold: login + tenants + CMS | ✅ |
 | E1.11 | **Exit E1:** KB search works; CMS FAQ from admin end-to-end | ✅ CMS chain tests + smoke |
-| E1.12 | **PartyLookupAdapter** (DaData) + PG cache + lookup API | ⬜ [`E1.12_DADATA_PARTY_ENRICHMENT.md`](E1.12_DADATA_PARTY_ENRICHMENT.md) |
+| E1.12 | **PartyLookupAdapter** (DaData) + PG cache + lookup API | ✅ `GET /v1/tenant/party/lookup` |
 | E1.13 | Lead enrichment: `inn`, `party_json`, operator `lookup_company_by_inn` | ⬜ depends E1.12 |
 | E1.14 | Site party suggest proxy + optional INN in lead form | ⬜ depends E1.13 |
 | E1.15 | Tenant legal profile in `settings` (onboarding E5.1) | ⬜ depends E1.12 |
@@ -179,20 +179,18 @@
 | GET | `/v1/public/cms/pages/{slug}` | published CMS |
 | GET/PATCH | `/v1/tenant/feature-flags` | tenant flags |
 | GET | `/v1/tenant/me` | tenant context |
+| GET | `/v1/tenant/party/lookup?inn=` | DaData findById + PG cache (E1.12) |
 | POST | `/v1/leads` | tenant-scoped leads |
 | POST | `/v1/operator/chat` | operator MVP |
 
-### API endpoints (planned — E1.12 DaData)
+### API endpoints (planned — DaData E1.13+)
 
 | Method | Path | Назначение |
 |--------|------|------------|
-| GET | `/v1/tenant/party/lookup?inn=` | DaData findById + PG cache |
 | GET | `/v1/tenant/party/suggest?q=` | DaData suggest (cabinet) |
 | POST | `/delno/api/party/suggest` | site proxy (ключ server-side) |
 
 ---
-
-## Sprint 3 — исполнимый план (строго по порядку)
 
 **Принцип:** P0 backend core в основном закрыт; остаются formal E0/E1 exit, events, Product P1 exit, DNS (deferred).  
 **E0/E1 formal exit** — E0.14, E1.11, E1.4 provenance — ещё не закрыты.

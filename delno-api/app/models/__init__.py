@@ -3,7 +3,7 @@ from app.models.audit import AuditLog
 from app.models.channel_account import ChannelAccount
 from app.models.conversation import Conversation, Message
 from app.models.feature_flag import FeatureFlag
-from app.models.lead import Lead
+from app.models.party_cache import PartyCache
 from app.models.phone_number import PhoneNumber
 from app.models.platform_event import PlatformEvent
 from app.models.tenant import Tenant
@@ -19,6 +19,7 @@ __all__ = [
     "Conversation",
     "FeatureFlag",
     "Lead",
+    "PartyCache",
     "Message",
     "PhoneNumber",
     "PlatformEvent",

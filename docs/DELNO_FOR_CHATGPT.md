@@ -1,6 +1,6 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-3.3 · 2026-09-01 (Sprint 3 mid-flight · DaData party enrichment in plan)
+**Revision:** REV-3.4 · 2026-09-01 (dlno.ru DNS + nginx ingress all subdomains)
 
 ---
 
@@ -137,7 +137,8 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | 10 | Basic Operator LLM (read-only KB) | ✅ | `/v1/operator/chat`, 22 pytest pass |
 | 11 | Operational events (E0.15) | ✅ | lead.created, auth.failed, operator.error, knowledge.search_failed |
 | 12 | Docs/status sync | ✅ | REV-3.3: entry + roadmap + master + DaData spec |
-| 13 | Party enrichment (DaData) E1.12–E1.15 | ⬜ | adapter → leads → site suggest → tenant legal — [`E1.12_DADATA_PARTY_ENRICHMENT.md`](E1.12_DADATA_PARTY_ENRICHMENT.md) |
+| 13 | Party enrichment E1.12 | ✅ | adapter + `GET /v1/tenant/party/lookup` |
+| 14 | Party enrichment E1.13–E1.15 | ⬜ | leads, site suggest, tenant legal |
 
 ### Sprint 3 exit criteria (чеклист)
 
@@ -181,7 +182,8 @@ ChatGPT, проверь эти пункты особенно:
 | **P1.8 legal** | Privacy/terms для dlno.ru | ✅ ИП Рябов Д.В. (DaData) |
 | **P1.9 clarity** | Нет результатов теста 3+ людей | **blocker P1 exit** |
 | **E0.15 events** | ~~Operational event bus~~ | ✅ done |
-| **E1.12–E1.15 DaData** | Party enrichment — spec ✅, код ⬜ | P2 parallel |
+| **E1.12 DaData** | Party lookup adapter + endpoint | ✅ |
+| **E1.13–E1.15** | Lead enrich, site suggest, tenant legal | ⬜ |
 | **delno-site-root** | Prod root `:18022` не пересобран последним deploy | P1 |
 | **PR #20 merge** | draft + merge conflict с main | P1 |
 
@@ -195,7 +197,7 @@ ChatGPT, проверь эти пункты особенно:
 2. ~~**P1.8 Privacy/terms**~~ ✅ — ИП Рябов Д.В., реквизиты из DaData
 3. **E1.4 Provenance** — unified API contract
 4. **P1.9 Clarity test** — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
-5. **E1.12 DaData party enrichment** — adapter + lead enrich ([`E1.12_DADATA_PARTY_ENRICHMENT.md`](E1.12_DADATA_PARTY_ENRICHMENT.md))
+5. **E1.13 Lead enrichment** — inn on leads + operator tool ([`E1.12_DADATA_PARTY_ENRICHMENT.md`](E1.12_DADATA_PARTY_ENRICHMENT.md))
 
 **После DNS (reg.ru):**
 

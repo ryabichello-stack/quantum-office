@@ -16,6 +16,8 @@ OPERATIONAL_EVENT_TYPES = frozenset(
         "auth.login",
         "operator.error",
         "knowledge.search_failed",
+        "party.lookup",
+        "party.lookup_failed",
     }
 )
 

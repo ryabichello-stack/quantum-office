@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_tenant_context_auth
@@ -8,6 +8,7 @@ from app.core.db import get_db
 from app.core.tenant import TenantContext
 from app.models.feature_flag import FeatureFlag
 from app.services.events import emit_event
+from app.services.party_enrichment import lookup_party_by_inn
 
 router = APIRouter(prefix="/tenant", tags=["tenant"])
 
@@ -67,3 +68,23 @@ def tenant_me(ctx: TenantContext = Depends(get_tenant_context_auth)) -> dict:
         "user_id": str(ctx.user_id) if ctx.user_id else None,
         "role": ctx.role,
     }
+
+
+@router.get("/party/lookup")
+def tenant_party_lookup(
+    inn: str = Query(..., min_length=10, max_length=14),
+    force: bool = False,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """E1.12 — lookup legal entity by INN (DaData + PG cache)."""
+    result = lookup_party_by_inn(
+        db,
+        inn,
+        tenant_id=ctx.tenant_id,
+        force=force,
+    )
+    if not result.get("ok") and result.get("error") == "invalid_inn":
+        raise HTTPException(status_code=400, detail="INN must be 10 or 12 digits")
+    db.commit()
+    return result
