@@ -1,63 +1,54 @@
-# DELNO — документ для ChatGPT (entry point)
+# DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-3 · 2026-09-01  
-**Repo:** [quantum-office](https://github.com/ryabichello-stack/quantum-office) · PR [#20](https://github.com/ryabichello-stack/quantum-office/pull/20)
-
-Отправь ChatGPT **этот файл** и **оба** raw URL ниже.
+**Revision:** REV-3 · 2026-09-01
 
 ---
 
-## 0. Этот файл (entry point)
+## Что отправлять ChatGPT
+
+**Одна ссылка — только эту:**
 
 https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DELNO_FOR_CHATGPT.md
 
----
-
-## 1. Master plan (стратегия + архитектура)
-
-https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DELNO_MASTER_PLAN.md
-
-Содержит: Product North Star, dual roadmap, Second Brain / ACL, monorepo strategy, guardrails, phases E0–E10, Sprint 0–3 status.
-
-**Проверка версии:** строка `DELNO-MASTER-PLAN-REV-3` + секция `Rev.3 — Implementation Status`.
+Мастер-план, роудмап и домены **отдельно не отправляй** — они перечислены ниже, ChatGPT сам откроет по raw URL.
 
 ---
 
-## 2. Implementation roadmap (checklist + статус)
-
-https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DELNO_IMPLEMENTATION_ROADMAP.md
-
-Содержит: что ✅ сделано (Sprint 0–2), что ⬜ дальше, API endpoints, Sprint 3.
-
----
-
-## 3. Домены
-
-https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DLNO_DOMAINS.md
-
----
-
-## Промпт для ChatGPT
+## Промпт (скопируй целиком)
 
 ```
-Прочитай три документа по raw URL (REV-3, 2026-09-01):
-1. DELNO_FOR_CHATGPT.md — entry point
-2. DELNO_MASTER_PLAN.md — стратегия
-3. DELNO_IMPLEMENTATION_ROADMAP.md — статус и checklist
+Прочитай entry point и все связанные документы по raw URL из него (REV-3):
 
-Подтверди revision REV-3. Дай feedback по Sprint 3 приоритетам.
-Не предлагай CRM/marketplace/telephony до E3/E4.
+https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DELNO_FOR_CHATGPT.md
+
+Открой каждый raw URL из секции «Карта документов».
+Подтверди revision REV-3.
+Дай feedback по Sprint 3 приоритетам.
+Не предлагай CRM / marketplace / telephony до E3/E4.
 ```
 
 ---
 
-## Краткий контекст (если не открывает URL)
+## Карта документов
+
+| # | Документ | Зачем | Raw URL |
+|---|----------|-------|---------|
+| 1 | **Этот файл** | Точка входа, промпт, краткий контекст | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DELNO_FOR_CHATGPT.md |
+| 2 | **Master plan** | Стратегия, архитектура, guardrails, E0–E10 | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DELNO_MASTER_PLAN.md |
+| 3 | **Roadmap** | Checklist, что ✅ сделано, Sprint 3, API endpoints | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DELNO_IMPLEMENTATION_ROADMAP.md |
+| 4 | **Domains** | dlno.ru, DNS, nginx (справочно) | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DLNO_DOMAINS.md |
+
+**Проверка версии master plan:** строка `DELNO-MASTER-PLAN-REV-3` + секция `Rev.3 — Implementation Status`.
+
+---
+
+## Краткий контекст
 
 - **DELNO** — multi-tenant SaaS «ИИ-сотрудник» (телефон, сайт, мессенджеры, KB, голос per tenant)
 - **KB foundation:** Second Brain (`brain_platform`) — не писать с нуля
-- **Prod:** `/opt/delno` на 5.35.86.62; staging https://a.47z.ru/delno/; prod domain https://dlno.ru (DNS pending)
-- **Repo:** quantum-office monorepo (временно), потом delno-platform
+- **Prod:** `/opt/delno` на 5.35.86.62; staging https://a.47z.ru/delno/; prod https://dlno.ru (DNS pending)
+- **Repo:** quantum-office monorepo (временно) → потом delno-platform · PR [#20](https://github.com/ryabichello-stack/quantum-office/pull/20)
 - **Done (S0–S2):** delno-api, delno-knowledge, auth, CMS, public leads, channel router, admin/web scaffolds, prod stack
-- **Next (S3):** Cloudflare DNS, site→api leads on prod rebuild, FAQ from CMS, brain init-db + ACL tests, Operator LLM
+- **Next (S3):** Cloudflare DNS, site→api leads, FAQ from CMS, brain ACL tests, Operator LLM
 
 **Dev credentials (seeded):** `admin@delno.one` / `admin123456`, `owner@delno.one` / `demo123456`
