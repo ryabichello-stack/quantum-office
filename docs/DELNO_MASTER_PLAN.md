@@ -1,445 +1,658 @@
 # DELNO — единый мастер-план
 
-**Версия:** 2026-09-01  
+**Версия:** 2026-09-01 (rev. 2 — product + engineering)  
 **Статус:** canonical — по этому документу начинаем реализацию  
 **Prod staging:** https://a.47z.ru/delno/ · https://a.47z.ru/delno-api/
 
 ---
 
-## 1. Что мы строим (одной фразой)
+## Product North Star
 
-**DELNO** — коммерческий multi-tenant SaaS «ИИ-сотрудник»: у каждого клиента свой телефон, мессенджеры, сайт/виджет, голос и база знаний с **уровнями доступа** (внутреннее для кабинета vs публичное для клиентов).
+**Сегодня:** DELNO — ИИ-сотрудник первой линии для бизнеса: отвечает клиентам на сайте, по телефону, в Telegram, MAX и email, консультирует, принимает заявки и записывает.
+
+**Долгосрочно:** DELNO развивается в **AI Operating Layer for SMB** — единый разговорный интерфейс, через который предприниматель управляет коммуникациями, CRM, booking, автоматизациями и подключёнными бизнес-сервисами.
+
+Пользователь не должен вручную настраивать десятки интерфейсов. Он формулирует задачу естественным языком, а DELNO выполняет действия через backend tools, интеграции и automations.
+
+**Принцип scope:** архитектура текущих этапов **не блокирует** это развитие, но будущие модули **не попадают** в scope текущего milestone без явного approval.
+
+Мы строим **не contact-center SaaS**, а основу более широкой системы.
+
+---
+
+## Product Roadmap vs Engineering Roadmap
+
+У DELNO параллельно существуют **два roadmap**. Не путать их приоритеты.
+
+### Product Roadmap
+
+| Product Phase | Milestone | Цель |
+|---------------|-----------|------|
+| **P1 — Selling Website** ⬅️ **текущий** | Clarity test | За 5–10 сек новый пользователь понимает: DELNO = ИИ-сотрудник; отвечает клиентам; работает по телефону, на сайте, в мессенджерах; консультирует, принимает заявки, записывает; как попробовать |
+| P2 | First Value | Регистрация → KB → widget/voice demo → первый lead |
+| P3 | Paid pilots | Billing + 1–2 канала per tenant |
+| P4 | Scale | Telephony multi-tenant, self-service |
+
+**Правило:** инженерная работа **не сдвигает** product milestone. До прохождения clarity-test сайта продукт считается в **Product Phase 1**.
+
+### Engineering Roadmap
+
+| Eng Phase | Фокус |
+|-----------|-------|
+| E0 | Foundation + repo boundaries + auth/tenant primitives |
+| E1 | Knowledge / Second Brain v1 |
+| E2 | Unified Communication Core + Telegram/MAX/email |
+| E3 | **Web Widget + Voice Widget MVP** + Tenant Operator |
+| E4 | Telephony multi-tenant (PSTN/SIP) |
+| E5 | Self-service onboarding + billing + usage |
+| E6 | Supervisor + self-healing |
+| E7 | Partner / referral |
+| E8 | CRM Lite / Booking — **только при triggers** |
+| E9 | Marketplace / bank distribution |
+| E10 | Business OS expansion |
+
+Engineering Phase 0–1 может идти **параллельно** Product Phase 1, но не отменяет его.
+
+---
+
+## Product Guardrails
+
+До подтверждённого usage **нельзя** начинать крупную реализацию:
+
+- CRM (full)
+- marketplace
+- ERP
+- marketing platform
+- собственных payment rails
+- полной booking platform
+- banking layer
+
+**Правило новых модулей:** `PARTNER → LEARN → BUILD`
+
+1. Интегрировать партнёра  
+2. Дать клиентам использовать  
+3. Измерить adoption, revenue, support burden  
+4. Только потом — собственная реализация  
+
+---
+
+## 1. Что мы строим (кратко)
+
+**DELNO** — multi-tenant SaaS «ИИ-сотрудник»: у каждого клиента свой телефон, мессенджеры, сайт/виджет, голос и KB с **уровнями доступа**.
 
 **Один platform backend** (`delno-api`) + **три UI** (site, cabinet, admin).
 
 ---
 
-## 2. Три знаменателя (чтобы не путаться)
+## 2. Три знаменателя
 
 | Категория | Смысл | Примеры |
 |-----------|-------|---------|
-| **A. Есть и работает** | Уже на prod, используем как есть или как reference | Second Brain, AVA Voice, delno-site stack |
-| **B. Переносим** | Код/логика с prod → в git → адаптируем под multi-tenant | `brain_platform`, паттерны text-bot, voice |
-| **C. Строим новое** | DELNO-специфика, которой нет | Auth, channel router, billing, CMS, delno-web/admin |
+| **A. Есть** | На prod, as-is или reference | Second Brain, AVA Voice, delno-site stack |
+| **B. Переносим** | prod → git → multi-tenant | `brain_platform`, text-bot loop, voice patterns |
+| **C. Строим** | DELNO-специфика | Auth, channel router, CMS, billing, events |
 
-**Правило:** не писать KB и ACL с нуля — **переносим Second Brain (B)**. Не coupling с Quantum Office runtime — **изолированный stack `/opt/delno` (C)**.
+**Правило:** KB/ACL не с нуля — **переносим Second Brain (B)**. Runtime Quantum Office не coupling — **изолированный `/opt/delno` (C)**.
 
 ---
 
-## 3. Что есть СЕЙЧАС (inventory prod)
+## 3. Inventory prod (что есть)
 
-### 3.1. DELNO stack (изолированный, уже на prod)
+### 3.1. DELNO stack
 
 | Компонент | Путь / URL | Состояние |
 |-----------|------------|-----------|
 | delno-site | `/opt/delno/site`, `:18019`, `/delno/` | ✅ лендинг v23 |
-| delno-api | `/opt/delno/api`, `:18020`, `/delno-api/` | ✅ scaffold (PG, leads, operator stub) |
-| delno-postgres | Docker `delno-internal` | ✅ отдельная БД |
-| systemd | `delno-stack.service` | ✅ |
+| delno-api | `/opt/delno/api`, `:18020`, `/delno-api/` | ✅ scaffold |
+| delno-postgres | Docker `delno-internal` | ✅ |
 | secrets | `/opt/delno/.env` | ✅ только DELNO |
 
-**Ограничения:** нет auth, нет multi-tenant channels, leads локально в site, KB demo — статика.
-
-### 3.2. Second Brain — наша KB (Quantum Office, prod)
+### 3.2. Second Brain (наша KB)
 
 | Параметр | Значение |
 |----------|----------|
-| Сервис | `ava-knowledge.service` → `127.0.0.1:8017` |
-| Код | `/opt/ava-knowledge/brain_platform/` (~62 файла, ~9656 строк) |
+| Сервис | `ava-knowledge.service` → `:8017` |
+| Код | `/opt/ava-knowledge/brain_platform/` (~62 файла) |
 | **Не в git** | prod опережает репозиторий |
-| Данные | SQLite 324 MB: 1530 docs, 8493 chunks (все embedded), 728 emails, 418 threads, 136 contacts |
-| Поиск | Hybrid: FTS5 + vector (`text-embedding-3-small`) + RRF |
-| Ingest | FAQ, vault, files, IMAP — timer ~15 мин |
-| Tenant сейчас | один: `quantum-labs` |
+| Данные | 1530 docs, 8493 chunks (embedded), hybrid FTS+vector+RRF |
+| Tenant | один: `quantum-labs` |
 
-**API:** `/api/brain/*` (новый) + `/api/knowledge/*` (legacy для AVA Voice).
+### 3.3. Quantum Office (reference)
 
-**Потребители:** ava-text-bot, ava-mailer, AVA Voice (legacy).
-
-### 3.3. Quantum Office (reference, single-tenant)
-
-| Сервис | Порт | Переносим? |
-|--------|------|------------|
-| AVA Voice (Asterisk+Mango+Realtime) | — | **B** паттерны → `delno-voice` |
-| ava-text-bot | 8011 | **B** agent loop, principals → delno-api operator |
-| ava-knowledge (Second Brain) | 8017 | **B** → `delno-knowledge` |
-| ava-mailer | 8000 | reference (post-call) |
-| ava-calendar / conference | 8014/8016 | reference |
-| ava-outreach | 8012 | не трогаем |
-
-**Не ломать на prod:** `/opt/polyhub`, `/root/ava`, Asterisk, Mango, VPN.
+| Сервис | Переносим? |
+|--------|------------|
+| ava-knowledge (Second Brain) | **B** → `delno-knowledge` |
+| ava-text-bot | **B** agent loop, principals |
+| AVA Voice | **B** patterns → `delno-voice` |
+| ava-outreach, polyhub, `/root/ava` | **не трогаем** |
 
 ---
 
-## 4. Целевая архитектура
+## 4. Temporary repository strategy
+
+DELNO **временно** разрабатывается внутри `quantum-office`. Это **организационное** решение, не целевая архитектура.
+
+**Причины:**
+- рядом работающие телефония, Telegram, MAX, email, knowledge, AI;
+- Cursor быстрее анализирует существующий код;
+- проще поэтапный перенос компонентов;
+- не дробим codebase преждевременно.
+
+**Требования (проектировать как отдельный продукт):**
+- собственный namespace/packages (`delno-api/`, `delno-knowledge/`, …);
+- собственные config/env, migrations, API routes;
+- **нет** жёстких импортов из бизнес-слоёв Quantum Office;
+- интеграции только через **explicit adapters/interfaces**;
+- отдельный build/deploy (`/opt/delno`).
+
+**Целевое состояние:**
 
 ```
-                         ┌─────────────────────────────────────────┐
-                         │              delno-api                   │
-                         │  Auth │ Tenants │ Channels │ Operator   │
-                         │  CMS  │ Billing hooks │ Channel Router   │
-                         └───────────┬─────────────┬─────────────────┘
-                                     │             │
-              ┌──────────────────────┼─────────────┼──────────────────┐
-              │                      │             │                  │
-        delno-web              delno-admin    delno-site         delno-voice
-     (кабинет клиента)         (admin+CMS)   (marketing)      (Realtime worker)
-              │                      │             │                  │
-              └──────────────────────┴─────────────┴──────────────────┘
-                                     │
-                         ┌───────────▼───────────┐
-                         │    delno-knowledge     │  ← fork brain_platform
-                         │  /api/brain/* + ACL    │
-                         │  per-tenant vault+ingest │
-                         └───────────────────────┘
+repos/
+├── quantum-office
+└── delno-platform      ← после стабилизации core
 ```
 
-**Prod layout (staging):**
+### Repository split triggers
 
-```
-/opt/delno/
-├── .env
-├── docker-compose.yml      # site + api + postgres + knowledge (phase 1)
-├── site/
-├── api/
-├── knowledge/              # delno-knowledge (phase 1)
-└── data/
-    ├── pg/
-    └── brain/              # per-tenant brain DB / vault
-```
+Перенос в `delno-platform`, когда выполняется **большинство**:
+
+1. стабилен package boundary DELNO;
+2. tenant/auth/knowledge/communication abstractions перестали существенно меняться;
+3. DELNO запускается отдельно от Quantum Office;
+4. собственные migrations + environment config;
+5. собственный CI/test contour;
+6. зависимости от QO вынесены в adapters;
+7. совместная разработка создаёт риск случайных изменений prod QO.
+
+**Не переносить** только ради архитектурной чистоты раньше времени.
 
 ---
 
-## 5. Second Brain → delno-knowledge (перенос, не переписывание)
+## 5. Целевая архитектура
 
-### 5.1. Что переносим as-is (B)
+```
+delno-web / delno-admin / delno-site / delno-voice-widget
+         ↓
+    delno-api
+    Auth │ Tenants │ Channels │ Operator │ Events │ Usage │ Billing
+    Channel Router │ Tool Registry │ Model Provider Abstraction
+         ↓
+    delno-knowledge  ← fork brain_platform (ACL, hybrid search)
+```
 
-Из `/opt/ava-knowledge/brain_platform/`:
+**Prod layout:** `/opt/delno/` — site, api, postgres, knowledge (изолированно).
 
-- `security/acl.py` — principals, visibility, default deny
-- `security/zones.py` — public/private/secret index zones
-- `search/` — hybrid engine (FTS + vector + RRF)
-- `ingest/` — vault, mail, files, FAQ
-- `db/` — schema (SQLite v1 → Postgres/pgvector v2)
-- `schemas/models.py` — DocumentFrontmatter, ACL, Classification
-- `api/router.py` — `/api/brain/*`
-- `mcp/` — опционально для Cursor/admin tools
-- Tests — `test_security_contracts.py`, hybrid tests
+---
 
-### 5.2. Что адаптируем (B → C)
+## 6. Second Brain → delno-knowledge
 
-| Было (Quantum Office) | Станет (DELNO) |
-|-----------------------|----------------|
-| `BRAIN_TENANT_ID=quantum-labs` | tenant_id из delno-api JWT / channel router |
-| Hardcoded SERVICE_PRINCIPALS | + principals per DELNO channel (см. §6) |
-| Один vault `quantum-brain` | vault per tenant: `vault/{tenant_slug}/` |
-| Ingest IMAP office@ | Ingest per tenant (optional, phase 5+) |
-| `channels: [office-assistant]` | + auto-ingest **настроек кабинета** |
-| Single SQLite | SQLite per tenant (v1) → Postgres pgvector (v2) |
+### 6.1. Переносим as-is (B)
 
-### 5.3. Уровни базы знаний (уже реализованы — используем)
+`security/acl.py`, `security/zones.py`, `search/`, `ingest/`, `db/`, `schemas/`, `api/router.py`, security tests.
 
-Каждый документ имеет **visibility** + **channels** + **ACL**:
+### 6.2. Адаптируем (B → C)
 
-| Visibility | Кто видит (типично) |
-|------------|---------------------|
-| `public` | Внешние клиенты — **только после publish** |
-| `company` | Внутренние документы tenant |
-| `team:sales`, `team:ops` | Команды / outreach |
-| `restricted` | Explicit ACL (mail, CRM, PII) |
-| `secret` | Admin + explicit ACL |
+| Было | Станет |
+|------|--------|
+| `quantum-labs` single tenant | tenant_id per client |
+| Hardcoded principals | + DELNO channel principals (§6.4) |
+| Один vault | `vault/{tenant_slug}/` |
+| `office-assistant` channel | + auto-ingest настроек кабинета |
 
-| Канал (tag) | Назначение |
-|-------------|------------|
-| `office-assistant` | Настройки кабинета, runbooks — **видит голосовой помощник владельца, не видят гости** |
+### 6.3. Knowledge v1 guardrail
 
-**Index zones:** mail/contacts/PII **никогда** не попадают в public zone.
+**DELNO Knowledge v1** prioritizes:
 
-**ACL in-query:** фильтр в SQL до vector search, не post-filter. Audit log на каждый search.
+- reliable tenant isolation;
+- retrieval quality;
+- source provenance;
+- tenant scope;
+- versioning.
 
-### 5.4. Principals — mapping для DELNO
+**Не в v1:** long-term episodic memory, adaptive memory, cross-conversation inference — только после подтверждённого usage.
 
-delno-api **никогда** не доверяет tenant_id из body клиента. Router определяет tenant + principal:
+### 6.4. ACL levels (уже реализованы)
+
+**Visibility:** `public` → `company` → `team:*` → `restricted` → `secret`  
+**Channel:** `office-assistant` — настройки кабинета (voice-office видит, voice-public — нет)  
+**ACL in-query** + audit log.
 
 | Сценарий | Principal | Видит |
 |----------|-----------|-------|
-| Входящий звонок (внешний) | `service:delno-voice-public` | `public` (published FAQ) |
-| Голосовой помощник в кабинете / owner | `service:delno-voice-office` | `public` + `channels: office-assistant` |
-| Widget / site chat (anon) | `service:delno-widget-guest` | `public` + assistant_safe |
-| Telegram guest (не owner) | `service:delno-text-guest` | `public` + assistant_safe |
-| Owner / tenant_admin в cabinet | `service:delno-text-owner` | **вся KB tenant** |
-| Outreach bot | `service:delno-outreach` | `public` + `team:sales` |
-| Platform admin (Cursor/support) | `service:delno-admin` + `X-Admin` | full tenant (audit) |
+| Внешний звонок / widget guest | `service:delno-voice-public` / `delno-widget-guest` | `public` (published) |
+| Голосовой помощник в кабинете | `service:delno-voice-office` | `public` + `office-assistant` |
+| Owner в cabinet | `service:delno-text-owner` | вся KB tenant |
+| Platform admin | `service:delno-admin` + `X-Admin` | full (audit) |
 
-Legacy names (`service:voice-public`, `service:text-owner`, …) сохраняем как aliases на переходный период.
+### 6.5. Knowledge Provenance
 
-### 5.5. Auto-ingest настроек кабинета
-
-При изменении в delno-web (часы работы, скрипты, FAQ, тарифы):
+Каждый AI answer должен нести metadata источника:
 
 ```
-delno-api (tenant settings save)
-  → POST delno-knowledge /api/brain/ingest/tenant-settings
-  → document: visibility=company, channels=[office-assistant]
-  → voice-office видит, voice-public — нет
+document_id, chunk_id, source_type, source_url, version, updated_at
 ```
 
-Публичный FAQ клиента:
-
-```
-delno-web KB → visibility=public → publish flow → voice-public + widget видят
-```
+Нужно для: доверия, debug, hallucination analysis, UI «Источник ответа».
 
 ---
 
-## 6. Карта переноса (A → B → C)
+## 7. Voice Widget vs Telephony (разные продукты)
 
-| Источник (prod) | Цель (git/deploy) | Действие | Фаза |
-|-----------------|-------------------|----------|------|
-| `/opt/ava-knowledge/brain_platform/` | `delno-knowledge/` | rsync → git, multi-tenant | **0** |
-| `delno-api/` scaffold | `delno-api/` | auth, channels, router | **0–1** |
-| `DELNO-site-v23/` | `delno-site/` | CMS fetch, leads → api | **1** |
-| ava-text-bot agent loop | `delno-api/operator/` | LLM + tools + principals | **2** |
-| AVA Realtime patterns | `delno-voice/` | per-tenant session config | **4** |
-| ava-text-bot webhooks | `delno-api/webhooks/` | token → tenant router | **3** |
-| — | `delno-web/` | cabinet UI | **2** |
-| — | `delno-admin/` | admin + CMS UI | **1** |
+| | Voice Widget | Telephony (PSTN/SIP) |
+|---|--------------|----------------------|
+| **Инфра** | браузер, WebRTC, Realtime | SIP/PSTN, Mango/Asterisk |
+| **Eng phase** | **E3** (раньше) | **E4** (позже) |
+| **Зависимости** | KB, tenant context, widget key | номер, billing/min, transfer |
+| **MVP** | text + voice в браузере | incoming/outgoing calls |
 
-**Не переносим как runtime dependency:** shared `.env`, импорт Python из `/opt/ava-*`.
+**Web Voice Widget MVP does not depend on full multi-tenant telephony rollout.**
 
----
+Telephony infrastructure может оставаться позже; widget — **главный sales differentiator**, переносим в E3.
 
-## 7. Репозитории
+### Fallback architecture (voice + channels)
 
-| Repo | Содержимое | Статус |
-|------|------------|--------|
-| `quantum-office` | monorepo staging: delno-api, docs, site export | текущий |
-| `delno-knowledge` | brain_platform fork | **создать в фазе 0** (можно папка в monorepo сначала) |
-| `delno-web` | cabinet frontend | фаза 2 |
-| `delno-admin` | admin + CMS frontend | фаза 1 |
-| `delno-site` | marketing (уже есть export) | фаза 1 |
-| `delno-voice` | voice worker | фаза 4 |
-
-**Решение v1:** всё в `quantum-office` как пакеты (`delno-api/`, `delno-knowledge/`, …), split repos когда команда вырастет.
-
----
-
-## 8. Модель данных delno-api (commercial v1)
-
-### Core (уже есть / добавить)
+При сбое (TTS, Realtime, channel timeout, LLM error) пользователь **не в тупике**:
 
 ```
-tenants, users, audit_logs          ✅ частично
-leads, conversations, messages      ✅ частично
-channel_accounts                    ⬜ фаза 0
-phone_numbers                       ⬜ фаза 0
-tenant_voice_profiles               ⬜ фаза 0
-tenant_settings (→ brain ingest)    ⬜ фаза 1
-cms_pages, cms_revisions            ⬜ фаза 1
-subscriptions, usage_records        ⬜ фаза 6
+voice failed → show text → retry → alternate provider → graceful handoff
 ```
 
-**Правило:** LLM tools **никогда** не принимают `tenant_id` из prompt — только backend context.
-
-KB documents/chunks живут в **delno-knowledge**, не дублируем в delno-api PG (кроме metadata/sync pointers).
+Обязательная часть production architecture с E3.
 
 ---
 
-## 9. Channel Router (критический компонент)
+## 8. Каналы
+
+### 8.1. Channel Adapter contract
+
+```python
+class ChannelAdapter:
+    connect()
+    disconnect()
+    send_message()
+    receive_event()
+    healthcheck()
+    validate_credentials()
+```
+
+Telegram / MAX / email / telephony — взаимозаменяемые реализации.
+
+### 8.2. Telegram — два режима
+
+| Режим | Описание |
+|-------|----------|
+| **Instant** | Общий DELNO bot / Mini App — быстрый conversion, demo |
+| **Branded** | Бот клиента — commercial product |
+
+### 8.3. MAX onboarding
+
+- MAX bot **принадлежит клиенту** — клиент создаёт/верифицирует сам;
+- DELNO получает token/key → validation → webhook → agent → knowledge → test → production;
+- **Не создавать** тысячи MAX bots от аккаунта DELNO.
+
+### 8.4. Channel Router
 
 | Вход | Lookup | Principal |
 |------|--------|-----------|
-| Inbound call `+7…` | `phone_numbers.e164` → tenant | voice-public или voice-office |
+| Widget | `tenant_public_key` | widget-guest |
 | Telegram webhook | bot token → channel_account | text-guest / text-owner |
 | MAX webhook | token → channel_account | text-guest / text-owner |
-| Web widget | `tenant_public_key` | widget-guest |
-| Cabinet operator | JWT session | text-owner |
-| Internal voice worker | service token | voice-office |
-
-После lookup: brain search с правильным principal + voice_profile + tools.
+| Inbound call | `phone_numbers.e164` | voice-public / voice-office |
+| Cabinet operator | JWT | text-owner |
 
 ---
 
-## 10. Roadmap — фазы реализации
+## 9. AI Operator + Tool Registry
 
-### PHASE 0 — Foundation + Brain port ⬅️ **СТАРТ ЗДЕСЬ**
+### 9.1. Роль Operator
 
-**Цель:** единый фундамент, KB не с нуля.
+**Сейчас:** setup + support assistant в кабинете.
 
-| # | Задача | Тип |
-|---|--------|-----|
-| 0.1 | Extract `brain_platform` с prod → `delno-knowledge/` в git | B |
-| 0.2 | Docker: delno-knowledge в `/opt/delno` stack (:18021) | C |
-| 0.3 | delno-api: Auth JWT + roles (platform_admin, tenant_owner, …) | C |
-| 0.4 | Migrations: channel_accounts, phone_numbers, tenant_voice_profiles | C |
-| 0.5 | KnowledgeAdapter → `/api/brain/search` + principal header | C |
-| 0.6 | Channel router skeleton + tenant seed CLI | C |
-| 0.7 | Tests: cross-tenant isolation + ACL smoke | C |
+**Долгосрочно:** natural-language control plane для CRM, booking, automation, marketing, analytics, partner services.
 
-**Exit criteria:**
-- [ ] `brain_platform` в git, тесты проходят локально
-- [ ] delno-api ищет KB с principal, guest не видит `office-assistant`
-- [ ] Admin создаёт tenant через API
-- [ ] Stack на prod: site + api + postgres + knowledge
+Не воспринимать как «чат настроек» — **extensible tool architecture**.
 
----
-
-### PHASE 1 — Admin + CMS
-
-| # | Задача |
-|---|--------|
-| 1.1 | `/admin/v1/tenants` CRUD + audit |
-| 1.2 | `/admin/v1/cms/pages` draft/publish |
-| 1.3 | delno-admin: login, tenants, CMS editor |
-| 1.4 | delno-site: FAQ/pricing из CMS API |
-| 1.5 | Leads: site → delno-api (не local) |
-
-**Exit:** marketing site редактируется из admin; leads в PG.
-
----
-
-### PHASE 2 — Tenant cabinet + Operator
-
-| # | Задача |
-|---|--------|
-| 2.1 | delno-web: login, dashboard, inbox (read) |
-| 2.2 | KB UI: upload, FAQ edit, publish public/private |
-| 2.3 | Auto-ingest tenant settings → brain (`office-assistant`) |
-| 2.4 | Operator LLM loop (OpenAI) + tools: get_knowledge, update_settings, create_lead |
-| 2.5 | Critical writes → confirm card |
-
-**Exit:** клиент логинится, настраивает KB с уровнями, Operator знает настройки кабинета.
-
----
-
-### PHASE 3 — Messengers (per tenant)
-
-| # | Задача |
-|---|--------|
-| 3.1 | Telegram connect wizard + webhook |
-| 3.2 | MAX connect wizard + webhook |
-| 3.3 | Router: token → tenant; guest vs owner principals |
-| 3.4 | Inbound → conversation + KB reply |
-
-**Exit:** клиент подключает **свой** Telegram bot.
-
----
-
-### PHASE 4 — Telephony + Voice (critical path)
-
-| # | Задача |
-|---|--------|
-| 4.1 | phone_numbers provisioning (Mango/SIP) |
-| 4.2 | delno-voice worker: Realtime per call |
-| 4.3 | Internal API: session config (tenant, voice, principal) |
-| 4.4 | Post-call → transcript in inbox |
-| 4.5 | Voice preset / clone UI |
-
-**Exit:** свой номер → свой голос → public FAQ наружу, office-assistant внутри.
-
----
-
-### PHASE 5 — Website widget
-
-| # | Задача |
-|---|--------|
-| 5.1 | Embeddable JS `data-tenant-key` |
-| 5.2 | Chat + optional voice (STT/TTS → Realtime) |
-| 5.3 | Principal: widget-guest |
-
----
-
-### PHASE 6 — Billing + hardening
-
-Plans, usage meters, payments, rate limits, RLS optional, penetration tests on ACL.
-
----
-
-### PHASE 7 — Scale
-
-Dedicated server, horizontal voice workers, Redis queues, retire AVA coupling.
-
----
-
-## 11. Sprint 1 — конкретные задачи (начинаем сейчас)
-
-Первый спринт = **Phase 0.1–0.7**:
+### 9.2. Tool Registry
 
 ```
-Неделя A (backend):
-  1. scp/rsync brain_platform → delno-knowledge/ + Dockerfile + compose
-  2. delno-api: JWT auth, User.roles, login/register
-  3. Alembic: channel_accounts, phone_numbers, tenant_voice_profiles
-  4. KnowledgeAdapter: /api/brain/search + X-Principal-Id mapping helper
-  5. POST /v1/admin/tenants, GET /v1/admin/tenants
-
-Неделя B (integration):
-  6. Deploy knowledge container to /opt/delno on prod
-  7. Seed tenant "demo" + vault sample + ACL test script
-  8. Wire operator get_knowledge tool → brain with principal
-  9. Document principals in delno-api/AGENTS.md
- 10. CI: pytest delno-api + delno-knowledge security tests
+Agent → Tool Registry → Authorized Tool → Domain Service
 ```
 
-**Не делаем в Sprint 1:** telephony, voice clone, billing, delno-web/admin UI (это Phase 1–2).
+У каждого tool:
+
+| Поле | Назначение |
+|------|------------|
+| `name` | идентификатор |
+| `scope` | tenant / platform |
+| `required_permissions` | RBAC |
+| `confirmation_class` | READ / SAFE_WRITE / HIGH_IMPACT |
+| `tenant_context` | injected backend-side |
+| `audit_policy` | always / on_write |
+| `rate_limit` | per tenant |
+
+### 9.3. Confirmation policy
+
+| Класс | Поведение | Примеры |
+|-------|-----------|---------|
+| **READ** | автоматически | get_knowledge, list_conversations |
+| **SAFE_WRITE** | implicit/explicit confirm по context | update_hours, create_lead |
+| **HIGH_IMPACT** | только explicit confirm | mass campaign, delete KB, payment, disconnect integration, bulk call, change pricing, remove users |
 
 ---
 
-## 12. Критерии «коммерческий продукт работает»
+## 10. Model Provider Abstraction
 
-- [ ] Self-service регистрация tenant
-- [ ] **Свой** номер → звонки с **своим** голосом и KB (public наружу)
-- [ ] **Свой** Telegram / widget
-- [ ] Inbox unified
-- [ ] Operator (текст + голос) знает настройки кабинета, гости — нет
-- [ ] Admin редактирует marketing site без git deploy
-- [ ] Tenant A не видит данные tenant B (automated tests)
-- [ ] Quantum Office prod не сломан
+DELNO **не привязан** к одной LLM/voice platform.
+
+Все model calls → **provider abstraction**:
+
+- OpenAI, Anthropic, Gemini;
+- российские providers;
+- local/self-hosted;
+- отдельные voice/STT/TTS providers.
+
+Бизнес-логика, tenant context и tools **не зависят** от конкретного provider. Смена модели = config change, не rewrite продукта.
 
 ---
 
-## 13. Tech stack
+## 11. Event Model + Supervisor foundation
+
+### 11.1. Типы событий
+
+| Тип | Примеры |
+|-----|---------|
+| **Domain** | `message.received`, `lead.created`, `call.completed`, `booking.created` |
+| **Operational** | `integration.status_changed`, `webhook.failed`, `channel.disconnected`, `agent.error`, `voice.error`, `payment.failed` |
+| **Automation** | `usage.limit_reached`, `workflow.triggered` |
+
+Фундамент для: automation engine, supervisor, billing, analytics.
+
+### 11.2. Supervisor
+
+**Even before Supervisor Agent UI exists, platform services must emit structured operational events.**
+
+Supervisor позже станет потребителем этих events — закладываем с E0/E1.
+
+---
+
+## 12. CRM boundary
+
+DELNO может содержать **CRM-like primitives**: Contact, Lead, Conversation, Task, basic pipeline state.
+
+**Это не означает** full CRM в текущем scope.
+
+| | |
+|---|---|
+| **Сейчас** | primitives + integrations (Bitrix24, amoCRM, …) |
+| **CRM Lite / Full** | только при triggers |
+
+**Triggers для собственной CRM:**
+- ~300+ active tenants;
+- 30% tenants используют CRM-like data;
+- внешние CRM — UX/support bottleneck;
+- доказанная готовность платить.
+
+---
+
+## 13. Core services (с раннего этапа)
+
+### 13.1. Usage Metering — core, не «потом»
+
+Считать с E0/E1:
+
+- LLM tokens;
+- voice seconds/minutes;
+- messages;
+- calls;
+- channel events;
+- tool executions.
+
+Без этого невозможны unit economics и billing.
+
+### 13.2. Feature Flags (per tenant)
+
+`web_voice`, `telegram`, `max`, `phone`, `outbound_calls`, `experimental_operator`, `crm_lite`
+
+→ pilot, gradual rollout, без fork кода.
+
+### 13.3. Security baseline
+
+- encrypted secrets + rotation readiness;
+- signed webhooks;
+- RBAC + audit;
+- tenant scoping;
+- rate limits;
+- API keys + session security;
+- PII minimization;
+- deletion/export path.
+
+### 13.4. Staged monetization
+
+| Этап | Модель |
+|------|--------|
+| Сейчас | subscription + usage |
+| Потом | add-ons |
+| Далее | partner marketplace |
+| Ещё позже | bank / reseller / embedded |
+
+Billing architecture не предполагает один фиксированный тариф.
+
+---
+
+## 14. Product / Operations KPIs
+
+Минимально отслеживать:
+
+- visitor → demo conversion;
+- demo → lead → paid → activated;
+- **time to first value** (target: **< 15 min** simple onboarding);
+- active tenants;
+- conversations per tenant;
+- voice minutes;
+- autonomous resolution rate;
+- **human minutes per active tenant per month** ← **top-level KPI**;
+- churn, ARPU;
+- AI cost per tenant;
+- telephony cost per tenant;
+- gross margin.
+
+---
+
+## 15. Engineering Roadmap (exit-criteria based)
+
+Каждая фаза = задачи **+ exit criteria** (tests, latency, metrics, feature flags).
+
+### E0 — Foundation ⬅️ engineering start
+
+| Задачи | Exit criteria |
+|--------|---------------|
+| Repo boundaries, package structure | delno-* изолированы от outreach/mailer/text-bot imports |
+| Auth JWT + roles | login/register works; RBAC middleware |
+| Migrations: channel_accounts, phone_numbers, tenant_voice_profiles | alembic up/down clean |
+| Event emitter skeleton | operational events logged |
+| Usage meter stub | counters increment on API calls |
+| Feature flags table | per-tenant toggle works |
+
+### E1 — Knowledge / Second Brain v1
+
+| Задачи | Exit criteria |
+|--------|---------------|
+| Extract brain_platform → `delno-knowledge/` | tests pass locally + CI |
+| Docker in `/opt/delno` stack | health OK on prod |
+| KnowledgeAdapter → `/api/brain/search` + principal | ACL smoke: guest ≠ owner |
+| Knowledge provenance in responses | document_id/chunk_id present |
+| Tenant vault isolation test | cross-tenant search returns empty |
+
+### E2 — Communication Core
+
+| Задачи | Exit criteria |
+|--------|---------------|
+| Channel adapters (Telegram Instant + Branded skeleton) | connect/disconnect/healthcheck |
+| MAX onboarding flow (client-owned bot) | token validation + webhook |
+| Email adapter stub | receive_event interface |
+| Router: token → tenant → principal | integration test |
+| Webhook signing + retry | security test |
+
+### E3 — Web Widget + Voice Widget MVP + Operator
+
+| Задачи | Exit criteria |
+|--------|---------------|
+| Embeddable widget (text + voice WebRTC) | demo on staging tenant |
+| KB + lead capture + basic handoff | lead in delno-api PG |
+| Operator LLM + tool registry + confirmation classes | HIGH_IMPACT blocked without confirm |
+| Fallback: voice→text | manual test passes |
+| Mobile web voice UX | works on phone browser |
+| **No PSTN required** | widget works without phone_numbers |
+
+### E4 — Telephony multi-tenant
+
+| Задачи | Exit criteria |
+|--------|---------------|
+| phone_numbers provisioning (Mango/SIP) | pending → active flow |
+| delno-voice worker per call | Realtime + tenant config |
+| Post-call transcript → inbox | call.completed event |
+| Billing per minute | usage_records populated |
+
+### E5 — Self-service + billing
+
+Registration → tenant → KB → channel → test → pay. Time to First Value < 15 min.
+
+### E6 — Supervisor + self-healing
+
+Supervisor UI consumes operational events from E0.
+
+### E7–E10
+
+Partner/referral → CRM Lite (triggers only) → marketplace → Business OS.
+
+---
+
+## 16. Product Phase 1 — Selling Website (текущий product milestone)
+
+**Параллельно с E0/E1**, но **не отменяет** clarity test.
+
+| Задача | Done when |
+|--------|-----------|
+| Hero: «ИИ-сотрудник» за 5 сек | clarity test passed |
+| Каналы: телефон, сайт, мессенджеры | visible on page |
+| Demo CTA: попробовать голос/чат | works (even static → brain later) |
+| Leads → delno-api | not local site API |
+| Mobile-friendly | lighthouse OK |
+
+**Exit:** 5–10 sec clarity test; lead capture works; demo path exists.
+
+---
+
+## 17. Sprint 1 (engineering, параллельно Product P1)
+
+```
+E0 + E1 start:
+  1. brain_platform → delno-knowledge/ + Dockerfile
+  2. delno-api: JWT auth, channel_accounts migration
+  3. KnowledgeAdapter → /api/brain/search + principals
+  4. Event emitter stub + usage meter stub
+  5. Feature flags table
+  6. Admin: create/list tenants
+  7. ACL smoke tests
+
+Product P1 (site):
+  8. Clarity-test copy on delno-site
+  9. Lead form → delno-api
+```
+
+**Не в Sprint 1:** telephony, full billing, CRM, delno-web/admin UI, marketplace.
+
+---
+
+## 18. Commercial MVP exit criteria
+
+DELNO готов к первому коммерческому масштабированию, если:
+
+- [ ] self-service регистрация + создание tenant;
+- [ ] загрузка/импорт знаний;
+- [ ] подключён минимум один канал;
+- [ ] проведён тест → первый рабочий ответ;
+- [ ] типовая проблема решается через AI Operator;
+- [ ] usage считается;
+- [ ] billing работает;
+- [ ] tenant isolation (automated tests);
+- [ ] basic monitoring;
+- [ ] lead с сайта → backend;
+- [ ] mobile web/voice UX;
+- [ ] **Time to First Value < 15 min**;
+- [ ] human support time измеряется;
+- [ ] Quantum Office prod не сломан.
+
+---
+
+## 19. Карта переноса (A → B → C)
+
+| Источник | Цель | Eng Phase |
+|----------|------|-----------|
+| `brain_platform/` | `delno-knowledge/` | E1 |
+| `delno-api` scaffold | auth, events, usage | E0 |
+| `DELNO-site-v23` | clarity + CMS | P1 / E1 |
+| ava-text-bot loop | delno-api operator | E3 |
+| AVA Realtime | voice widget + delno-voice | E3 / E4 |
+| ava-text-bot webhooks | delno-api webhooks | E2 |
+
+---
+
+## 20. Tech stack
 
 | Layer | Choice |
 |-------|--------|
 | API | FastAPI, SQLAlchemy 2, Alembic, PostgreSQL 16 |
-| Knowledge | brain_platform (SQLite v1 → pgvector v2) |
+| Knowledge | brain_platform fork (SQLite v1 → pgvector v2) |
+| Models | Provider abstraction (OpenAI first, swappable) |
 | Auth | JWT + refresh, bcrypt |
-| Client/Admin UI | Next.js, Tailwind, shadcn |
-| Voice | OpenAI Realtime (delno-voice worker) |
-| Deploy | Docker compose в `/opt/delno`, systemd `delno-stack` |
+| UI | Next.js, Tailwind, shadcn |
+| Voice widget | WebRTC + Realtime (browser) |
+| Telephony | Mango/SIP worker (E4) |
+| Deploy | Docker `/opt/delno`, systemd `delno-stack` |
 
 ---
 
-## 14. Риски (осознанные)
+## 21. Риски
 
 | Риск | Митигация |
 |------|-----------|
-| brain_platform не в git | Phase 0.1 — extract первым делом |
-| ACL regression при multi-tenant | Port security tests, deny_by_default |
-| Mango multi-tenant сложность | Phase 4; MVP = клиент приносит свой Mango |
-| Scope creep (CMS, billing) | Strict phase gates, Sprint 1 = foundation only |
+| Product P1 blocked by engineering | Parallel tracks; P1 = site clarity first |
+| brain_platform не в git | E1.1 extract первым |
+| Scope creep (CRM, marketplace) | Guardrails + anti-scope-creep rule |
+| Single LLM vendor lock-in | Provider abstraction E0 |
+| Widget delayed by telephony | E3 before E4 explicitly |
 
 ---
 
-## 15. Связанные документы
+## 22. Связанные документы
 
 | Документ | Назначение |
 |----------|------------|
 | `docs/DELNO_MASTER_PLAN.md` | **этот файл — canonical** |
-| `delno-api/docs/DEPLOY_ISOLATION.md` | prod deploy `/opt/delno` |
+| `delno-api/docs/DEPLOY_ISOLATION.md` | prod deploy |
 | `DELNO-site-v23/docs/00_MASTER_SPEC.md` | product vision |
-| `delno-api/AGENTS.md` | onboarding для API |
-| `/opt/ava-knowledge/brain_platform/README.md` | brain runtime (prod) |
+| `delno-api/AGENTS.md` | API onboarding |
 
 ---
 
-## 16. Резюме для команды
+## 23. Anti-scope-creep rule
 
-1. **Second Brain — наш фундамент KB**, не пишем с нуля.
-2. **Уровни доступа уже есть** — principals + visibility + `office-assistant` channel.
-3. **DELNO stack изолирован** — `/opt/delno`, не shared `.env` с AVA.
-4. **Начинаем с Phase 0:** brain в git → knowledge container → auth → adapter → ACL tests.
-5. **Три UI + один API** — admin (CMS), web (cabinet), site (marketing).
+**If a requested implementation belongs to a future roadmap phase, Cursor must not silently include it in the current milestone.**
 
-**Следующий commit:** `delno-knowledge/` extract + Phase 0 scaffold.
+It must document the dependency and defer implementation unless explicitly approved.
+
+---
+
+## 24. Резюме
+
+1. **North Star:** ИИ-сотрудник сегодня → AI Operating Layer for SMB долгосрочно.
+2. **Два roadmap:** Product P1 (Selling Website) **параллельно** Engineering E0–E1.
+3. **Second Brain — фундамент KB**, не пишем с нуля; v1 = isolation + retrieval, не memory overkill.
+4. **Voice Widget (E3) раньше Telephony (E4)** — sales differentiator без PSTN.
+5. **Monorepo временно**, split по triggers, не по календарю.
+6. **Usage metering + events + feature flags** — с раннего этапа.
+7. **CRM/marketplace/banking** — guardrails, PARTNER → LEARN → BUILD.
+
+**Следующий шаг:** Sprint 1 (E0 + E1 start + Product P1 site clarity).
