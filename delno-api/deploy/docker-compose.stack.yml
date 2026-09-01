@@ -1,0 +1,69 @@
+# DELNO isolated stack — copy to /opt/delno/docker-compose.yml on prod
+
+name: delno
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: delno-postgres
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    environment:
+      POSTGRES_USER: ${DELNO_PG_USER:-delno}
+      POSTGRES_PASSWORD: ${DELNO_PG_PASSWORD:?set DELNO_PG_PASSWORD in .env}
+      POSTGRES_DB: ${DELNO_PG_DB:-delno}
+    volumes:
+      - delno-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DELNO_PG_USER:-delno}"]
+      interval: 5s
+      timeout: 5s
+      retries: 8
+    # no host ports — DB only inside delno-internal
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    image: delno-api:latest
+    container_name: delno-api
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${DELNO_PG_USER:-delno}:${DELNO_PG_PASSWORD}@postgres:5432/${DELNO_PG_DB:-delno}
+    ports:
+      - "127.0.0.1:18020:8020"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  site:
+    build:
+      context: ./site
+      dockerfile: Dockerfile
+    image: delno-site:latest
+    container_name: delno-site
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    env_file:
+      - .env
+    environment:
+      DELNO_API_URL: ${DELNO_API_URL:-http://delno-api:8020}
+    ports:
+      - "127.0.0.1:18019:3000"
+    depends_on:
+      - api
+
+networks:
+  delno-internal:
+    name: delno-internal
+    driver: bridge
+
+volumes:
+  delno-pg-data:
+    name: delno-pg-data

@@ -1,14 +1,15 @@
 services:
   postgres:
     image: postgres:16-alpine
+    container_name: delno-postgres-dev
+    networks:
+      - delno-internal
     environment:
       POSTGRES_USER: delno
       POSTGRES_PASSWORD: delno
       POSTGRES_DB: delno
-    ports:
-      - "5433:5432"
     volumes:
-      - delno_pg:/var/lib/postgresql/data
+      - delno-pg-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U delno"]
       interval: 5s
@@ -17,15 +18,25 @@ services:
 
   api:
     build: .
-    ports:
-      - "8020:8020"
+    image: delno-api:latest
+    container_name: delno-api-dev
+    networks:
+      - delno-internal
     env_file:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://delno:delno@postgres:5432/delno
+    ports:
+      - "127.0.0.1:18020:8020"
     depends_on:
       postgres:
         condition: service_healthy
 
+networks:
+  delno-internal:
+    name: delno-internal-dev
+    driver: bridge
+
 volumes:
-  delno_pg:
+  delno-pg-data:
+    name: delno-pg-data-dev
