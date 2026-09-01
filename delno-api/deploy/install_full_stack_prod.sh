@@ -29,6 +29,9 @@ docker compose ps
 
 echo "==> health"
 curl -sf "http://127.0.0.1:18020/v1/health" && echo
-curl -sf "http://127.0.0.1:18021/api/brain/health" && echo || echo "WARN: knowledge health pending init-db"
+curl -sf "http://127.0.0.1:18021/api/brain/health" && echo || echo "WARN: knowledge health pending"
+
+echo "==> brain demo seed verify (optional)"
+docker compose exec -T knowledge python -m brain_platform seed-demo --verify 2>/dev/null || true
 
 echo "==> done. Site deploy separately: install_dlno_ru.sh / staging rebuild"

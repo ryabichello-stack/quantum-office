@@ -11,6 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main_delno.py ./main.py
 COPY brain_platform ./brain_platform
+COPY vault ./vault
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
 
 ENV PYTHONPATH=/app
 ENV BRAIN_ENABLED=true
@@ -19,9 +21,10 @@ ENV BRAIN_DB_PATH=/data/brain.db
 ENV BRAIN_ALLOW_LOCAL_INGEST=true
 ENV BRAIN_STORE=sqlite
 ENV BRAIN_VECTOR_BACKEND=sqlite_json
+ENV BRAIN_DEMO_TENANT=delno-demo
 
-RUN mkdir -p /data /app/vault
+RUN mkdir -p /data && chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 8021
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8021"]
+CMD ["/app/docker-entrypoint.sh"]

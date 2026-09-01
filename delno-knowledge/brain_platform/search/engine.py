@@ -207,6 +207,12 @@ class BrainSearch:
                     "graph_boost": bool(h.get("graph_boost")),
                     "snippet": body[:1200],
                     "citation": format_citation(h),
+                    "provenance": {
+                        "tenant_id": h.get("tenant_id"),
+                        "source": h.get("source"),
+                        "document_id": h["document_id"],
+                        "chunk_id": h["chunk_id"],
+                    },
                 }
             )
 

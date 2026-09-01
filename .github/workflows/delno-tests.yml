@@ -44,4 +44,5 @@ jobs:
           PYTHONPATH=. pytest brain_platform/tests/test_security_contracts.py \
             brain_platform/tests/test_tenant_isolation_and_acl.py \
             brain_platform/tests/test_api_acl_smoke.py \
+            brain_platform/tests/test_demo_seed.py \
             brain_platform/tests/test_brain_integration.py -q

@@ -29,6 +29,12 @@ def main(argv: list[str] | None = None) -> int:
     p_init = sub.add_parser("init-db", help="Create/migrate brain SQLite schema")
     p_init.add_argument("--db", default=None)
 
+    p_seed = sub.add_parser("seed-demo", help="Seed delno-demo KB vault (idempotent)")
+    p_seed.add_argument("--tenant", default=os.getenv("BRAIN_DEMO_TENANT", "delno-demo"))
+    p_seed.add_argument("--force", action="store_true")
+    p_seed.add_argument("--no-vault-files", action="store_true")
+    p_seed.add_argument("--verify", action="store_true", help="Run ACL smoke after seed")
+
     p_init_pg = sub.add_parser("init-pg", help="Apply Postgres+pgvector schema")
     p_migrate = sub.add_parser("sync-pg", help="Copy SQLite corpus → Postgres (full refresh)")
     p_migrate.add_argument("--sqlite", default=None)
@@ -123,6 +129,20 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "init-db":
         print(json.dumps({"ok": True, "stats": BrainRepository(init_db()).stats(os.getenv("BRAIN_TENANT_ID", "quantum-labs"))}))
         return 0
+
+    if args.cmd == "seed-demo":
+        from brain_platform.seed.demo import seed_demo_vault, verify_demo_search
+
+        out = seed_demo_vault(
+            repo,
+            tenant_id=args.tenant,
+            force=args.force,
+            ingest_vault_files=not args.no_vault_files,
+        )
+        if args.verify:
+            out["verify"] = verify_demo_search(repo, tenant_id=args.tenant)
+        print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
+        return 0 if out.get("ok") else 1
 
     if args.cmd == "init-pg":
         from brain_platform.db.pg import init_postgres
