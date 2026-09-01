@@ -65,7 +65,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 2. ~~E0.14 formal exit~~ ✅  
 3. ~~E1.11 end-to-end~~ ✅  
 4. P1.5 mobile pass 🔄 (`mobile.css`, viewport — manual verify)
-5. P1.8 privacy/terms для dlno.ru  
+5. P1.8 privacy/terms 🔄 (dlno.ru + office@dlno.ru; реквизиты TBD)
 6. P1.9 clarity test — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
 
 **Hero P1.1–P1.3:** визуально на staging ✅, но **не считать успешным до P1.9**.

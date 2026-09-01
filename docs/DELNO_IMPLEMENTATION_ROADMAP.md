@@ -38,7 +38,7 @@
 | P1.5 | Mobile UX / lighthouse pass | 🔄 mobile.css + viewport; manual verify |
 | P1.6 | `dlno.ru` DNS **reg.ru** → `5.35.86.62` | ⏸ **S3 P0 #5** deferred |
 | P1.7 | SSL на origin (certbot / reg.ru) | ⏸ **S3 P0 #5** deferred |
-| P1.8 | Privacy/terms актуальны для dlno.ru | ⬜ |
+| P1.8 | Privacy/terms актуальны для dlno.ru | 🔄 office@dlno.ru, dlno.ru; реквизиты TBD |
 | P1.9 | Exit: clarity-test пройден 3+ людьми | ⏸ **deferred** — вернёмся позже |
 
 ### P2 — First Value

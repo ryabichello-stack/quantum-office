@@ -653,7 +653,8 @@ P1 — product (partial):
 P2 — operator foundation (partial):
   ✅ E3.2 basic Operator LLM — read-only KB
   ✅ E0.15 operational events (lead.created, auth.failed, operator.error, knowledge.search_failed)
-  ⬜ E0.14 / E1.11 formal exit (admin → tenant/CMS → site)
+  ✅ E0.14 formal exit (tenant + flags + events)
+  ✅ E1.11 CMS admin → publish → public
   🔄 docs sync REV-3.2
 ```
 
