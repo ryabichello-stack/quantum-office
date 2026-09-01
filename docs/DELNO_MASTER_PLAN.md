@@ -6,9 +6,10 @@
 **Статус:** canonical — по этому документу начинаем реализацию  
 **Prod staging:** https://a.47z.ru/delno/ · https://a.47z.ru/delno-api/  
 **Production domain (купленный):** **https://dlno.ru** — см. [`docs/DLNO_DOMAINS.md`](DLNO_DOMAINS.md)  
-**Entry point для ChatGPT:** [`docs/DELNO_FOR_CHATGPT.md`](DELNO_FOR_CHATGPT.md)
+**Entry point для ChatGPT (отправляй только его, не этот файл):** [`docs/DELNO_FOR_CHATGPT.md`](DELNO_FOR_CHATGPT.md)
 
-> **Если вы ChatGPT / ревьюер:** это **НЕ rev.1**. Проверка: в документе есть секции  
+> **Если вы ChatGPT / ревьюер:** начни с `DELNO_FOR_CHATGPT.md`, затем открой связанные raw URL из «Карта документов».  
+> Это **НЕ rev.1**. Проверка: в документе есть секции  
 > `Product North Star`, `Product Roadmap vs Engineering Roadmap`,  
 > `Temporary repository strategy`, `Voice Widget vs Telephony`, `Anti-scope-creep rule`.  
 > Rev.1 начинался с «## 1. Что мы строим» без North Star.
