@@ -2,9 +2,26 @@
 
 **Canonical strategy:** [`DELNO_MASTER_PLAN.md`](DELNO_MASTER_PLAN.md)  
 **Домены:** [`DLNO_DOMAINS.md`](DLNO_DOMAINS.md)  
-**Обновлено:** 2026-09-01
+**Обновлено:** 2026-09-01 · **Revision REV-3**
 
 Легенда: ✅ done · 🔄 in progress · ⬜ todo
+
+---
+
+## Текущий статус (кратко для ревью)
+
+| Компонент | URL / путь | Статус |
+|-----------|------------|--------|
+| Marketing staging | https://a.47z.ru/delno/ | ✅ |
+| Marketing prod | https://dlno.ru (DNS pending) | 🔄 nginx ready |
+| API staging | https://a.47z.ru/delno-api/ | ✅ |
+| API prod | https://api.dlno.ru (DNS pending) | 🔄 |
+| delno-api | `/opt/delno/api` :18020 | ✅ |
+| delno-knowledge | `/opt/delno/knowledge` :18021 | ✅ |
+| delno-site (staging) | :18019, basePath `/delno` | ✅ |
+| delno-site-root (prod) | :18022, root | ✅ |
+| delno-admin scaffold | local :3010 | ✅ code |
+| delno-web scaffold | local :3020 | ✅ code |
 
 ---
 
@@ -17,7 +34,7 @@
 | P1.1 | Hero: «ИИ-сотрудник» — clarity за 5–10 сек | ⬜ |
 | P1.2 | Блок каналов: телефон, сайт, Telegram, MAX, email | ⬜ |
 | P1.3 | CTA «Попробовать» → voice demo + lead form | ⬜ |
-| P1.4 | Leads с сайта → **delno-api** (не local-only) | 🔄 |
+| P1.4 | Leads с сайта → **delno-api** (код готов, prod rebuild site) | 🔄 |
 | P1.5 | Mobile UX / lighthouse pass | ⬜ |
 | P1.6 | `dlno.ru` DNS Cloudflare → `5.35.86.62` | ⬜ |
 | P1.7 | SSL на origin (Cloudflare Full / certbot) | ⬜ |
@@ -44,15 +61,15 @@
 | E0.3 | Models: channels, phones, voice, flags, usage, events | ✅ |
 | E0.4 | Admin tenants CRUD | ✅ |
 | E0.5 | KnowledgeAdapter → `/api/brain/search` + principals | ✅ |
-| E0.6 | Alembic migrations (replace create_all) | 🔄 |
-| E0.7 | Channel router skeleton | 🔄 |
-| E0.8 | `/v1/public/*` namespace | 🔄 |
-| E0.9 | Feature flags read/write API | 🔄 |
-| E0.10 | Model provider abstraction stub | 🔄 |
-| E0.11 | Deploy full stack prod: api + knowledge + postgres | ⬜ |
-| E0.12 | CI: pytest delno-api + brain security tests | ⬜ |
+| E0.6 | Alembic migrations | ✅ scaffold |
+| E0.7 | Channel router skeleton | ✅ |
+| E0.8 | `/v1/public/*` namespace | ✅ |
+| E0.9 | Feature flags read/write API | ✅ |
+| E0.10 | Model provider abstraction stub | ✅ |
+| E0.11 | Deploy full stack prod: api + knowledge + postgres | ✅ |
+| E0.12 | CI: pytest delno-api + brain security tests | 🔄 11 tests local |
 | E0.13 | Cross-tenant isolation integration test | ⬜ |
-| E0.14 | **Exit E0:** admin creates tenant; events emit; flags work | ⬜ |
+| E0.14 | **Exit E0:** admin creates tenant; events emit; flags work | 🔄 |
 
 ---
 
@@ -60,16 +77,16 @@
 
 | # | Задача | Статус |
 |---|--------|--------|
-| E1.1 | delno-knowledge container prod `:18021` | ⬜ |
+| E1.1 | delno-knowledge container prod `:18021` | ✅ |
 | E1.2 | Init brain DB + seed demo vault | ⬜ |
 | E1.3 | ACL smoke: guest ≠ owner (automated) | ⬜ |
 | E1.4 | Knowledge provenance in API responses | ⬜ |
-| E1.5 | CMS models: pages, revisions | 🔄 |
-| E1.6 | Admin CMS CRUD draft/publish | 🔄 |
+| E1.5 | CMS models: pages, revisions | ✅ |
+| E1.6 | Admin CMS CRUD draft/publish | ✅ |
 | E1.7 | Site fetch published CMS (FAQ block pilot) | ⬜ |
 | E1.8 | Auto-ingest tenant settings → brain | ⬜ |
 | E1.9 | Per-tenant vault path isolation | ⬜ |
-| E1.10 | **delno-admin** scaffold: login + tenants + CMS | 🔄 |
+| E1.10 | **delno-admin** scaffold: login + tenants + CMS | ✅ |
 | E1.11 | **Exit E1:** KB search works; CMS FAQ from admin | ⬜ |
 
 ---
@@ -93,7 +110,7 @@
 
 | # | Задача | Статус |
 |---|--------|--------|
-| E3.1 | **delno-web** scaffold: login + dashboard shell | 🔄 |
+| E3.1 | **delno-web** scaffold: login + dashboard shell | ✅ |
 | E3.2 | Operator LLM loop (OpenAI) | ⬜ |
 | E3.3 | Tool registry + confirmation classes | ⬜ |
 | E3.4 | Embeddable web widget JS | ⬜ |
@@ -137,29 +154,40 @@
 | H2 | Prod site root: `dlno.ru` nginx + container | ✅ |
 | H3 | Cloudflare DNS → server | ⬜ |
 | H4 | `api.dlno.ru` live | ⬜ |
-| H5 | Unified deploy script `/opt/delno` full stack | 🔄 |
-| H6 | `app.dlno.ru`, `admin.dlno.ru` nginx (later) | ⬜ |
+| H5 | Unified deploy `/opt/delno` full stack | ✅ |
+| H6 | `app.dlno.ru`, `admin.dlno.ru` nginx | ⬜ |
 
 ---
 
-## Текущий спринт (крупный блок — делаем сейчас)
+## API endpoints (реализовано)
 
-1. 🔄 Alembic + initial migration  
-2. 🔄 CMS models + admin CMS API  
-3. 🔄 Channel router + public leads API  
-4. 🔄 Site `/api/leads` → delno-api proxy  
-5. 🔄 Feature flags tenant API  
-6. 🔄 Model provider stub  
-7. 🔄 delno-admin scaffold (login, tenants list)  
-8. 🔄 delno-web scaffold (login, dashboard shell)  
-9. ⬜ Prod deploy: api upgrade + knowledge container  
-10. ⬜ Tests batch (+integration)
+| Method | Path | Назначение |
+|--------|------|------------|
+| GET | `/v1/health` | health |
+| POST | `/v1/auth/login` | JWT login |
+| GET | `/v1/auth/me` | current user |
+| GET/POST | `/v1/admin/tenants` | platform admin |
+| GET/POST/PATCH | `/v1/admin/cms/pages` | CMS CRUD |
+| POST | `/v1/admin/cms/pages/{id}/publish` | publish |
+| POST | `/v1/public/leads` | anon leads (X-Tenant-Slug) |
+| GET | `/v1/public/cms/pages/{slug}` | published CMS |
+| GET/PATCH | `/v1/tenant/feature-flags` | tenant flags |
+| GET | `/v1/tenant/me` | tenant context |
+| POST | `/v1/leads` | tenant-scoped leads |
+| POST | `/v1/operator/chat` | operator MVP |
 
-**Следующий спринт после этого:** E1 prod knowledge + ACL tests + CMS-driven FAQ on site + Operator LLM.
+---
+
+## Sprint 3 (следующий)
+
+1. Cloudflare DNS dlno.ru → 5.35.86.62  
+2. Rebuild staging site with `DELNO_API_URL` → leads in PG  
+3. CMS FAQ block on site from API  
+4. Brain `init-db` + ACL automated tests  
+5. Operator LLM via model provider  
 
 ---
 
 ## Анти-scope (не делаем сейчас)
 
-- Full CRM, marketplace, billing payments, PSTN telephony, bank layer  
-- См. Product Guardrails в master plan
+Full CRM, marketplace, billing payments, PSTN telephony, bank layer — см. Product Guardrails в master plan.
