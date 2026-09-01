@@ -645,7 +645,7 @@ P0 — done (backend):
   ⏸ P1.6/P1.7 dlno.ru + api.dlno.ru + SSL (DNS reg.ru deferred)
 
 P1 — product (partial):
-  🔄 P1.1–P1.3 hero v4 / channels / CTA on staging — визуально готов, не валидирован (P1.9)
+  ✅ **v2 landing** on `/` (v4 → `/v4` only; owner rejected v4 default 2026-09-01)
   ⬜ P1.5 mobile · ✅ P1.8 privacy/terms · ⬜ P1.9 clarity test (3+ людей)
   ✅ E1.7 FAQ from CMS
   ⬜ E1.4 unified provenance in delno-api responses

@@ -1,6 +1,20 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-3.4 · 2026-09-01 (dlno.ru DNS + nginx ingress all subdomains)
+**Revision:** REV-3.5 · 2026-09-01 (site landing reverted to v2 — owner decision)
+
+---
+
+## ⚠️ Marketing site — canonical version
+
+**Default landing `/` = v2 only.** Owner **rejected v4 hero** as default (2026-09-01).
+
+| | |
+|---|---|
+| **Canonical** | v2 — «Клиенты пишут и звонят. DELNO отвечает.» |
+| **Not default** | v4 — only at `/v4`, do not switch `/` without owner approval |
+| **Doc** | [`P1.1_SITE_LANDING.md`](P1.1_SITE_LANDING.md) |
+
+**Agents: do not redeploy v4 to `/`.**
 
 ---
 
@@ -20,12 +34,12 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DEL
 ## Промпт (скопируй целиком)
 
 ```
-Прочитай entry point и все связанные документы по raw URL из него (REV-3.3):
+Прочитай entry point и все связанные документы по raw URL из него (REV-3.5):
 
 https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DELNO_FOR_CHATGPT.md
 
 Открой каждый raw URL из секции «Карта документов».
-Подтверди revision REV-3.3.
+Подтверди revision REV-3.5.
 
 Твоя задача — аудит Sprint 3. Ответь структурированно:
 
@@ -33,7 +47,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 2. **Что забыли / пропустили / не закрыли** — exit criteria E0/E1, дыры в безопасности, незадеплоенное, docs drift.
 3. **Что делать дальше** — строго по приоритету Sprint 3; что блокирует exit; что можно параллельно.
 4. **Комментарии** — риски, scope creep, качество hero/P1, готовность к clarity test (P1.9).
-5. **Не предлагать** — CRM, marketplace, telephony, billing, repo migration (см. DO NOT START).
+5. **Не предлагать** — CRM, marketplace, telephony, billing, repo migration, **v4 hero as default landing** (см. P1.1_SITE_LANDING.md).
 
 Формат: таблицы + короткие bullet lists. Без воды.
 ```
@@ -50,7 +64,8 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | 4 | **Domains** | dlno.ru, DNS reg.ru, nginx | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DLNO_DOMAINS.md |
 | 5 | **Clarity test** | P1.9 протокол (⏸ deferred) | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/P1.9_CLARITY_TEST.md |
 | 6 | **Mobile pass** | P1.5 checklist 375/390px | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/P1.5_MOBILE_PASS.md |
-| 7 | **DaData party enrichment** | E1.12–E1.15 spec (adapter, leads, site, tenant) | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/E1.12_DADATA_PARTY_ENRICHMENT.md |
+| 7 | **DaData party enrichment** | E1.12–E1.15 spec | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/E1.12_DADATA_PARTY_ENRICHMENT.md |
+| 8 | **Site landing (v2 canonical)** | v4 rejected as `/` default | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/P1.1_SITE_LANDING.md |
 
 **Проверка версии master plan:** строка `DELNO-MASTER-PLAN-REV-3.3` + секция `Rev.3 — Implementation Status`.
 
@@ -68,9 +83,9 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 4. P1.5 mobile pass 🔄 (`mobile.css`, viewport — manual verify)
 5. P1.8 privacy/terms ✅ (ИП Рябов Д.В., ИНН/OGRNIP из DaData, office@dlno.ru)
 6. P1.9 clarity test — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
-7. **E1.12–E1.15 DaData party enrichment** ⬜ — [`E1.12_DADATA_PARTY_ENRICHMENT.md`](E1.12_DADATA_PARTY_ENRICHMENT.md) (parallel post-S3, не блокирует exit)
+7. ~~**E1.12 DaData adapter**~~ ✅ · E1.13–E1.15 ⬜
 
-**Hero P1.1–P1.3:** визуально на staging ✅, но **не считать успешным до P1.9**.
+**Hero P1.1–P1.3:** **v2 landing** на `/` (owner-approved). v4 **не default** — см. [`P1.1_SITE_LANDING.md`](P1.1_SITE_LANDING.md). Clarity test (P1.9) — ⏸ deferred.
 
 **PR #20:** draft, возможен merge conflict с `main` — resolve перед merge.
 
@@ -125,7 +140,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 
 | # | Задача | Статус | Примечание |
 |---|--------|--------|------------|
-| 6 | Selling website exit | 🔄 | P1.1–P1.3 на staging ✅; **не валидирован до P1.9**; P1.8 legal ✅; mobile pending |
+| 6 | Selling website exit | 🔄 | **v2** landing on `/`; v4 rejected; P1.5 mobile; P1.8 legal ✅ |
 | 7 | Clarity test (P1.9) | ⏸ | **deferred** — вернёмся позже; протокол готов |
 | 8 | FAQ from CMS | ✅ | `FaqSection` + `/api/cms/faq`, fallback static |
 | 9 | Provenance in API responses (E1.4) | ⬜ | есть в brain search matches; не везде в delno-api |

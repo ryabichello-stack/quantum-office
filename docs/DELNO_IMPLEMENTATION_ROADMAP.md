@@ -31,9 +31,9 @@
 
 | # | Задача | Статус |
 |---|--------|--------|
-| P1.1 | Hero: «ИИ-сотрудник» — clarity за 5–10 сек | ✅ v4 hero на `/` (staging) |
-| P1.2 | Блок каналов: телефон, сайт, Telegram, MAX, email | ✅ v4 product stage |
-| P1.3 | CTA «Попробовать» → voice demo + lead form | ✅ lead form + «Спросить вслух» |
+| P1.1 | Hero landing | ✅ **v2 canonical** on `/` — v4 rejected 2026-09-01 ([`P1.1_SITE_LANDING.md`](P1.1_SITE_LANDING.md)) |
+| P1.2 | Блок каналов + product visual | ✅ v2 inbox console on `/` |
+| P1.3 | CTA «Попробовать голосом» + lead form | ✅ v2 CTAs |
 | P1.4 | Leads с сайта → **delno-api** | ✅ route + form + deploy scripts |
 | P1.5 | Mobile UX / lighthouse pass | 🔄 mobile.css + viewport; manual verify |
 | P1.6 | `dlno.ru` DNS **reg.ru** → `5.35.86.62` | 🔄 A + CNAME настроены; проверить propagation |
