@@ -64,6 +64,7 @@ def create_tenant(
         tenant_id=tenant.id,
         event_type="tenant.created",
         category="domain",
+        source="admin.tenants",
         payload={"slug": body.slug, "created_by": str(admin.id)},
     )
 

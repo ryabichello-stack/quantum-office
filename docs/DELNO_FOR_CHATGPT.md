@@ -169,8 +169,8 @@ ChatGPT, проверь эти пункты особенно:
 
 | Область | Gap | Критичность |
 |---------|-----|-------------|
-| **E0.14 exit** | Admin creates tenant + events emit + flags — не формально закрыт | **P0** |
-| **E1.11 exit** | Admin CMS → publish → site end-to-end не доказан | **P0** |
+| **E0.14 exit** | ~~Foundation formal exit~~ | ✅ |
+| **E1.11 exit** | ~~Admin CMS → site~~ | ✅ |
 | **E1.4 provenance** | Unified source contract в delno-api — не везде | P1 |
 | **E1.8–E1.9** | Auto-ingest settings → brain; per-tenant vault isolation | low (post-S3) |
 | **P1.5 mobile** | Lighthouse / responsive pass не делали | **P0 Product** |
@@ -187,11 +187,10 @@ ChatGPT, проверь эти пункты особенно:
 
 **Без DNS (можно сейчас):**
 
-1. **E0.14 / E1.11 formal exit** — admin → tenant/CMS publish → site
-2. **P1.5 Mobile UX** — lighthouse, 375px, no overflow
-3. **P1.8 Privacy/terms** — dlno.ru / office@dlno.ru
-4. **P1.9 Clarity test** — ⏸ **deferred** (протокол [`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
-5. **E1.4 Provenance** — unified API contract
+1. **P1.5 Mobile UX** — lighthouse, 375px, no overflow
+2. **P1.8 Privacy/terms** — dlno.ru / office@dlno.ru
+3. **E1.4 Provenance** — unified API contract
+4. **P1.9 Clarity test** — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
 
 **После DNS (reg.ru):**
 
@@ -213,6 +212,9 @@ CRM, marketplace, bank integrations, PSTN/SIP telephony, phone provisioning, Man
 ## Smoke-команды (staging)
 
 ```bash
+# E0.14 / E1.11 formal exit
+DELNO_API_URL=https://a.47z.ru/delno-api bash delno-api/deploy/smoke_formal_exit.sh
+
 curl -sf https://a.47z.ru/delno-api/v1/health
 curl -sf https://a.47z.ru/delno/ | head -c 200
 curl -sf https://a.47z.ru/delno/api/cms/faq

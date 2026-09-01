@@ -7,6 +7,7 @@ from app.core.auth import get_tenant_context_auth
 from app.core.db import get_db
 from app.core.tenant import TenantContext
 from app.models.feature_flag import FeatureFlag
+from app.services.events import emit_event
 
 router = APIRouter(prefix="/tenant", tags=["tenant"])
 
@@ -46,6 +47,14 @@ def update_feature_flag(
     if not flag:
         raise HTTPException(status_code=404, detail="Feature flag not found")
     flag.enabled = body.enabled
+    emit_event(
+        db,
+        tenant_id=ctx.tenant_id,
+        event_type="feature.flag.updated",
+        category="operational",
+        source="tenant.feature_flags",
+        payload={"flag_key": flag_key, "enabled": body.enabled},
+    )
     db.commit()
     return FeatureFlagResponse(flag_key=flag.flag_key, enabled=flag.enabled)
 

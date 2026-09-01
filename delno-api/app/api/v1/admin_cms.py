@@ -85,7 +85,13 @@ def create_cms_page(
     db.add(page)
     db.flush()
     db.add(CmsRevision(page_id=page.id, blocks=body.blocks, note="create", created_by=admin.id))
-    emit_event(db, event_type="cms.page.created", category="domain", payload={"slug": page.slug})
+    emit_event(
+        db,
+        event_type="cms.page.created",
+        category="domain",
+        source="admin.cms",
+        payload={"slug": page.slug},
+    )
     db.commit()
     db.refresh(page)
     return CmsPageResponse.from_page(page)
@@ -122,7 +128,13 @@ def publish_cms_page(
         raise HTTPException(status_code=404, detail="Page not found")
     page.status = "published"
     page.published_at = datetime.now(timezone.utc)
-    emit_event(db, event_type="cms.page.published", category="domain", payload={"slug": page.slug})
+    emit_event(
+        db,
+        event_type="cms.page.published",
+        category="domain",
+        source="admin.cms",
+        payload={"slug": page.slug},
+    )
     db.commit()
     db.refresh(page)
     return CmsPageResponse.from_page(page)

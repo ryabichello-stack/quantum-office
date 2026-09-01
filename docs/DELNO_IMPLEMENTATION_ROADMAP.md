@@ -69,7 +69,7 @@
 | E0.11 | Deploy full stack prod: api + knowledge + postgres | ✅ |
 | E0.12 | CI: pytest delno-api + brain security tests | ✅ `.github/workflows/delno-tests.yml` |
 | E0.13 | Cross-tenant isolation integration test | ✅ |
-| E0.14 | **Exit E0:** admin creates tenant; events emit; flags work | ⬜ **S3 P0** |
+| E0.14 | **Exit E0:** admin creates tenant; events emit; flags work | ✅ formal exit tests + smoke script |
 | E0.15 | Minimal operational events (lead.created, auth.failed, …) | ✅ **S3 P2 #11** |
 
 ---
@@ -88,7 +88,7 @@
 | E1.8 | Auto-ingest tenant settings → brain | ⬜ |
 | E1.9 | Per-tenant vault path isolation | ⬜ |
 | E1.10 | **delno-admin** scaffold: login + tenants + CMS | ✅ |
-| E1.11 | **Exit E1:** KB search works; CMS FAQ from admin end-to-end | ⬜ |
+| E1.11 | **Exit E1:** KB search works; CMS FAQ from admin end-to-end | ✅ CMS chain tests + smoke |
 
 ---
 
