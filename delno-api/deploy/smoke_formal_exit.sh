@@ -11,6 +11,12 @@ OWNER_PASSWORD="${DELNO_OWNER_PASSWORD:-demo123456}"
 
 echo "==> E0.14/E1.11 formal exit smoke → ${API}"
 
+for i in 1 2 3 4 5; do
+  curl -sf "${API}/v1/health" >/dev/null && break
+  sleep 2
+done
+curl -sf "${API}/v1/health" >/dev/null || { echo "ERROR: API not ready"; exit 1; }
+
 login() {
   local email="$1" pass="$2"
   curl -sf -X POST "${API}/v1/auth/login" \

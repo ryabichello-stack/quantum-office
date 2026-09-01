@@ -61,11 +61,11 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 **Критический путь до закрытия Sprint 3:**
 
 1. ~~E0.15 operational events~~ ✅  
-2. E0.14 formal exit (tenant + flags + events)  
-3. E1.11 end-to-end (admin CMS → publish → public API → site)  
+2. ~~E0.14 formal exit~~ ✅  
+3. ~~E1.11 end-to-end~~ ✅  
 4. P1.5 mobile pass  
 5. P1.8 privacy/terms для dlno.ru  
-6. **P1.9 clarity test** — ⏸ после mobile pass; протокол `P1.9_CLARITY_TEST.md`
+6. P1.9 clarity test — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
 
 **Hero P1.1–P1.3:** визуально на staging ✅, но **не считать успешным до P1.9**.
 
