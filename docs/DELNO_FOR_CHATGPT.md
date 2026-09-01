@@ -65,7 +65,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 3. E1.11 end-to-end (admin CMS → publish → public API → site)  
 4. P1.5 mobile pass  
 5. P1.8 privacy/terms для dlno.ru  
-6. **P1.9 clarity test** — после mobile pass; протокол `P1.9_CLARITY_TEST.md`
+6. **P1.9 clarity test** — ⏸ после mobile pass; протокол `P1.9_CLARITY_TEST.md`
 
 **Hero P1.1–P1.3:** визуально на staging ✅, но **не считать успешным до P1.9**.
 
@@ -123,7 +123,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | # | Задача | Статус | Примечание |
 |---|--------|--------|------------|
 | 6 | Selling website exit | 🔄 | P1.1–P1.3 на staging ✅; **не валидирован до P1.9**; mobile + legal pending |
-| 7 | Clarity test (P1.9) | ⬜ | 3+ человека, 5–10 сек — **ручной шаг владельца** |
+| 7 | Clarity test (P1.9) | ⏸ | **deferred** — вернёмся позже; протокол готов |
 | 8 | FAQ from CMS | ✅ | `FaqSection` + `/api/cms/faq`, fallback static |
 | 9 | Provenance in API responses (E1.4) | ⬜ | есть в brain search matches; не везде в delno-api |
 
@@ -190,7 +190,7 @@ ChatGPT, проверь эти пункты особенно:
 1. **E0.14 / E1.11 formal exit** — admin → tenant/CMS publish → site
 2. **P1.5 Mobile UX** — lighthouse, 375px, no overflow
 3. **P1.8 Privacy/terms** — dlno.ru / office@dlno.ru
-4. **P1.9 Clarity test** — после mobile; протокол [`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md)
+4. **P1.9 Clarity test** — ⏸ **deferred** (протокол [`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
 5. **E1.4 Provenance** — unified API contract
 
 **После DNS (reg.ru):**

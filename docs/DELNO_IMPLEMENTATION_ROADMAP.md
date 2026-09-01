@@ -39,7 +39,7 @@
 | P1.6 | `dlno.ru` DNS **reg.ru** → `5.35.86.62` | ⏸ **S3 P0 #5** deferred |
 | P1.7 | SSL на origin (certbot / reg.ru) | ⏸ **S3 P0 #5** deferred |
 | P1.8 | Privacy/terms актуальны для dlno.ru | ⬜ |
-| P1.9 | Exit: clarity-test пройден 3+ людьми | ⬜ |
+| P1.9 | Exit: clarity-test пройден 3+ людьми | ⏸ **deferred** — вернёмся позже |
 
 ### P2 — First Value
 
@@ -201,7 +201,7 @@
 | # | Шаг | Задачи | Критерий готовности |
 |---|-----|--------|---------------------|
 | 6 | **Selling Website exit** | P1.1–P1.3 ✅ staging; P1.5 mobile; P1.8 legal; P1.9 clarity | 🔄 визуально готов → **не валидирован** (P1.9 blocker) |
-| 7 | **Clarity test** | P1.9: 3+ незнакомых с DELNO | Минимум 3 человека понимают продукт; если 2+ говорят «AI-платформа» / «чат-бот» — hero переделывать |
+| 7 | **Clarity test** | P1.9: 3+ незнакомых с DELNO | ⏸ deferred (2026-09-01) — протокол готов в `P1.9_CLARITY_TEST.md` |
 | 8 | **FAQ from CMS** | E1.7: draft/publish, site = published only, fallback + cache | ✅ site fetch + fallback |
 | 9 | **Provenance** | E1.4: source metadata в knowledge responses | API возвращает tenant-safe provenance |
 
