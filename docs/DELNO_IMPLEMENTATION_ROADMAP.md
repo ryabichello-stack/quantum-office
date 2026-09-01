@@ -21,7 +21,7 @@
 | delno-site (staging) | :18019, basePath `/delno` | ✅ |
 | delno-site-root (prod) | :18022, root | ✅ |
 | delno-admin scaffold | local :3010 | ✅ code |
-| delno-web scaffold | local :3020 | ✅ code |
+| delno-web scaffold | local :3020 / staging `/delno-app/` | ✅ MVP |
 
 ---
 
@@ -116,7 +116,7 @@
 
 | # | Задача | Статус |
 |---|--------|--------|
-| E3.1 | **delno-web** scaffold: login + dashboard shell | ✅ |
+| E3.1 | **delno-web** cabinet MVP: login, leads, inbox, operator, settings | ✅ |
 | E3.2 | Operator LLM loop — **basic read-only only** | ✅ KB search + model provider |
 | E3.3 | Tool registry + confirmation classes | ⬜ |
 | E3.4 | Embeddable web widget JS | ⬜ |

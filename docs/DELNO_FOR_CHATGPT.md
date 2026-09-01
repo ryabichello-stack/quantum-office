@@ -1,6 +1,6 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-3.9 · 2026-09-01 (P1.5 mobile verified + E1.4 provenance)
+**Revision:** REV-4.0 · 2026-09-01 (E3.1 tenant cabinet MVP)
 
 ---
 
@@ -106,6 +106,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | Что | URL |
 |-----|-----|
 | Marketing site | https://a.47z.ru/delno/ |
+| **Tenant cabinet** | https://a.47z.ru/delno-app/ |
 | API | https://a.47z.ru/delno-api/v1/health |
 | Leads (site proxy) | `POST https://a.47z.ru/delno/api/leads` |
 | FAQ CMS proxy | `GET https://a.47z.ru/delno/api/cms/faq` |
@@ -156,6 +157,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | 14 | Party enrichment E1.13 | ✅ | `inn`/`party_json` on leads; operator `lookup_company_by_inn` |
 | 15 | Party enrichment E1.14 | ✅ | site suggest proxy + lead form autocomplete |
 | 16 | Party enrichment E1.15 | ✅ | `settings.legal` from INN; tenant + admin APIs |
+| 17 | **E3.1 Tenant cabinet** | ✅ | `delno-web`: login, leads, inbox, operator, settings INN |
 
 ### Sprint 3 exit criteria (чеклист)
 
@@ -214,7 +216,8 @@ ChatGPT, проверь эти пункты особенно:
 
 1. ~~**P1.5 Mobile UX**~~ ✅ — verified 390/375px ([`P1.5_MOBILE_PASS.md`](P1.5_MOBILE_PASS.md))
 2. ~~**E1.4 Provenance**~~ ✅ — `sources[]` in knowledge adapter + operator chat
-3. **P1.9 Clarity test** — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
+3. ~~**E3.1 Tenant cabinet**~~ ✅ — `delno-web` MVP at `/delno-app/` staging
+4. **P1.9 Clarity test** — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
 
 **После DNS (reg.ru):**
 
@@ -267,6 +270,7 @@ curl -sf http://127.0.0.1:18021/api/brain/health
 | Путь | Назначение |
 |------|------------|
 | `delno-api/` | FastAPI, auth, CMS, leads, operator |
+| `delno-web/` | Tenant cabinet (login, leads, inbox, operator) |
 | `delno-knowledge/` | brain_platform, vault, search |
 | `DELNO-site-v23/` | Next.js marketing site |
 | `delno-api/deploy/` | docker-compose, install scripts |

@@ -1,4 +1,86 @@
-const API_URL = process.env.NEXT_PUBLIC_DELNO_API_URL || "http://127.0.0.1:18020";
+export const API_URL = process.env.NEXT_PUBLIC_DELNO_API_URL || "http://127.0.0.1:18020";
+
+export type TenantMe = {
+  tenant_id: string;
+  tenant_slug: string;
+  user_id: string | null;
+  role: string | null;
+};
+
+export type LeadItem = {
+  id: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  company: string | null;
+  website: string | null;
+  inn: string | null;
+  source: string;
+  status: string;
+  party_enriched: boolean;
+  created_at: string | null;
+};
+
+export type ConversationItem = {
+  id: string;
+  channel: string;
+  status: string;
+  created_at: string | null;
+};
+
+export type MessageItem = {
+  id: string;
+  role: string;
+  body: string;
+  meta: Record<string, unknown> | null;
+  created_at: string | null;
+};
+
+export type KnowledgeSource = {
+  document_id?: string;
+  chunk_id?: string;
+  title?: string;
+  citation?: string;
+  snippet_preview?: string;
+};
+
+export type FeatureFlag = {
+  flag_key: string;
+  enabled: boolean;
+};
+
+export type PartySuggestion = {
+  value?: string | null;
+  inn?: string | null;
+  company_name?: string | null;
+  address?: string | null;
+};
+
+export type LegalProfile = {
+  inn?: string;
+  company_name?: string;
+  address?: string;
+  okved?: string;
+  ogrn?: string;
+  ogrnip?: string;
+  enriched_at?: string;
+};
+
+async function apiFetch<T>(path: string, token: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init,
+    headers: {
+      ...(init?.headers || {}),
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    },
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(detail || `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
 
 export async function apiLogin(email: string, password: string) {
   const res = await fetch(`${API_URL}/v1/auth/login`, {
@@ -10,12 +92,66 @@ export async function apiLogin(email: string, password: string) {
   return res.json() as Promise<{ access_token: string }>;
 }
 
-export async function apiTenantMe(token: string) {
-  const res = await fetch(`${API_URL}/v1/tenant/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error("Failed");
-  return res.json();
+export function apiTenantMe(token: string) {
+  return apiFetch<TenantMe>("/v1/tenant/me", token);
 }
 
-export { API_URL };
+export function apiLeadsList(token: string, limit = 50) {
+  return apiFetch<{ items: LeadItem[] }>(`/v1/leads?limit=${limit}`, token);
+}
+
+export function apiConversations(token: string, limit = 50) {
+  return apiFetch<{ items: ConversationItem[] }>(`/v1/operator/conversations?limit=${limit}`, token);
+}
+
+export function apiConversationMessages(token: string, conversationId: string) {
+  return apiFetch<{ items: MessageItem[] }>(`/v1/operator/conversations/${conversationId}/messages`, token);
+}
+
+export function apiOperatorChat(token: string, message: string, conversationId?: string) {
+  return apiFetch<{
+    conversation_id: string;
+    reply: string;
+    sources: KnowledgeSource[];
+    tool_calls: unknown[];
+  }>("/v1/operator/chat", token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message,
+      channel: "cabinet",
+      conversation_id: conversationId || null,
+    }),
+  });
+}
+
+export function apiTenantLegalGet(token: string) {
+  return apiFetch<{ ok: boolean; legal: LegalProfile | null }>("/v1/tenant/legal", token);
+}
+
+export function apiTenantLegalPut(token: string, inn: string) {
+  return apiFetch<{ ok: boolean; legal: LegalProfile; party_enriched: boolean }>("/v1/tenant/legal", token, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ inn }),
+  });
+}
+
+export function apiPartySuggest(token: string, q: string, count = 6) {
+  return apiFetch<{ ok: boolean; suggestions: PartySuggestion[] }>(
+    `/v1/tenant/party/suggest?q=${encodeURIComponent(q)}&count=${count}`,
+    token,
+  );
+}
+
+export function apiFeatureFlags(token: string) {
+  return apiFetch<FeatureFlag[]>("/v1/tenant/feature-flags", token);
+}
+
+export function apiPatchFeatureFlag(token: string, flagKey: string, enabled: boolean) {
+  return apiFetch<FeatureFlag>(`/v1/tenant/feature-flags/${flagKey}`, token, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}

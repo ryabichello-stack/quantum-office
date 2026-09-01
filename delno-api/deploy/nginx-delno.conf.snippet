@@ -19,6 +19,23 @@
     return 308 /delno/;
   }
 
+  # DELNO tenant cabinet at /delno-app/
+  location /delno-app/ {
+    rewrite ^/delno-app(/.*)$ $1 break;
+    proxy_pass http://127.0.0.1:18023;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Prefix /delno-app;
+    proxy_redirect ~^/(.*)$ /delno-app/$1;
+    proxy_read_timeout 120s;
+  }
+  location = /delno-app {
+    return 308 /delno-app/;
+  }
+
   # DELNO API at /delno-api/
   location /delno-api/ {
     rewrite ^/delno-api(/.*)$ $1 break;

@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.tenant import TenantContext, get_tenant_context
+from app.core.auth import get_tenant_context_auth
+from app.core.tenant import TenantContext
 from app.models.conversation import Conversation, Message
 from app.operator.agent import execute_confirmed_tool, run_operator_turn
 
@@ -29,7 +30,7 @@ class OperatorConfirmRequest(BaseModel):
 def operator_chat(
     body: OperatorChatRequest,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(get_tenant_context),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
 ) -> dict:
     modality = body.modality if body.modality in ("text", "voice") else "text"
     return run_operator_turn(
@@ -58,7 +59,7 @@ def operator_voice_stub() -> dict:
 def operator_confirm(
     body: OperatorConfirmRequest,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(get_tenant_context),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
 ) -> dict:
     result = execute_confirmed_tool(db, ctx, tool_name=body.tool_name, params=body.params)
     return {"ok": getattr(result, "ok", False), "message": getattr(result, "message", ""), "data": getattr(result, "data", {})}
@@ -67,7 +68,7 @@ def operator_confirm(
 @router.get("/conversations")
 def list_conversations(
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(get_tenant_context),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
     limit: int = 50,
 ) -> dict:
     rows = (
@@ -94,7 +95,7 @@ def list_conversations(
 def list_messages(
     conversation_id: UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(get_tenant_context),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
 ) -> dict:
     rows = (
         db.query(Message)

@@ -39,7 +39,7 @@
 | **https://dlno.ru** | Marketing site DELNO | `delno-site-root` → `127.0.0.1:18022` | 🔄 deploy |
 | **https://www.dlno.ru** | 301 → `https://dlno.ru` | nginx redirect | 🔄 |
 | **https://api.dlno.ru** | Production API | `delno-api` → `127.0.0.1:18020` | ✅ |
-| **https://app.dlno.ru** | Кабинет клиента | `delno-web` → `127.0.0.1:18023` | 🔄 scaffold |
+| **https://app.dlno.ru** | Кабинет клиента | `delno-web` → `127.0.0.1:18023` | ✅ MVP (staging: `/delno-app/`) |
 | **https://admin.dlno.ru** | Admin / CMS | `delno-admin` → `127.0.0.1:18024` | 🔄 scaffold |
 | **https://wiki.dlno.ru** | Wiki / docs для клиентов | placeholder **503** | ⬜ не продукт |
 | **https://cdn.dlno.ru** | Статика, widget.js | `/opt/delno/cdn` (nginx static) | ⬜ не продукт |

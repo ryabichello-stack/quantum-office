@@ -23,11 +23,23 @@ export default function LoginPage() {
 
   return (
     <main style={{ maxWidth: 420, margin: "80px auto", padding: 24 }}>
-      <h1>DELNO</h1>
-      <p>Личный кабинет</p>
+      <h1 style={{ margin: 0, fontSize: 32, letterSpacing: "-0.03em" }}>DELNO</h1>
+      <p style={{ color: "#64748b" }}>Личный кабинет — заявки, диалоги, Operator</p>
       <form onSubmit={onSubmit} style={{ display: "grid", gap: 12, marginTop: 24 }}>
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required style={inputStyle} />
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required style={inputStyle} />
+        <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+          Email
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required style={inputStyle} />
+        </label>
+        <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+          Пароль
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            style={inputStyle}
+          />
+        </label>
         {error && <p style={{ color: "#dc2626" }}>{error}</p>}
         <button type="submit" style={buttonStyle}>Войти</button>
       </form>
