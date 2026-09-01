@@ -1,7 +1,10 @@
 import Link from "next/link";
+import { LegalOperatorBlock } from "@/components/LegalOperatorBlock";
+import { LEGAL_OPERATOR } from "@/lib/legal-requisites";
 import "../legal.css";
 
 export default function TermsPage() {
+  const o = LEGAL_OPERATOR;
   return (
     <main className="legal-page">
       <header className="legal-head">
@@ -13,14 +16,15 @@ export default function TermsPage() {
         </Link>
       </header>
       <article className="legal-content">
-        <small>Редакция от 1 сентября 2026 года</small>
+        <small>Редакция от {o.revision}</small>
         <h1>Пользовательское соглашение</h1>
         <p className="legal-note">
-          Соглашение регулирует использование сайта <strong>https://dlno.ru</strong> (и
-          staging-версии на <strong>a.47z.ru/delno</strong>). Это базовая редакция для знакомства с
-          продуктом и демонстрации. Она не заменяет договор на подключение сервиса DELNO; реквизиты
-          правообладателя будут опубликованы до коммерческого запуска.
+          Соглашение регулирует использование сайта <strong>{o.site}</strong> (и staging-версии на{" "}
+          <strong>a.47z.ru/delno</strong>). Правообладатель сервиса DELNO — {o.shortName}. Это
+          базовая редакция для знакомства с продуктом и демонстрации; она не заменяет договор на
+          подключение сервиса DELNO.
         </p>
+        <LegalOperatorBlock />
         <h2>1. Назначение сайта</h2>
         <p>
           Сайт знакомит посетителей с возможностями DELNO — ИИ-сотрудника для работы с клиентами —
@@ -53,8 +57,8 @@ export default function TermsPage() {
         <h2>6. Обращения</h2>
         <p>
           Вопросы по сайту и условиям использования можно направить на{" "}
-          <a href="mailto:office@dlno.ru">office@dlno.ru</a> или по телефону{" "}
-          <a href="tel:+78005550000">8 800 555-00-00</a>.
+          <a href={`mailto:${o.email}`}>{o.email}</a> или по телефону{" "}
+          <a href={`tel:${o.phoneTel}`}>{o.phone}</a>.
         </p>
         <footer>
           <Link href="/privacy">Политика конфиденциальности</Link>

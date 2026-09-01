@@ -65,7 +65,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 2. ~~E0.14 formal exit~~ ✅  
 3. ~~E1.11 end-to-end~~ ✅  
 4. P1.5 mobile pass 🔄 (`mobile.css`, viewport — manual verify)
-5. P1.8 privacy/terms 🔄 (dlno.ru + office@dlno.ru; реквизиты TBD)
+5. P1.8 privacy/terms ✅ (ИП Рябов Д.В., ИНН/OGRNIP из DaData, office@dlno.ru)
 6. P1.9 clarity test — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
 
 **Hero P1.1–P1.3:** визуально на staging ✅, но **не считать успешным до P1.9**.
@@ -123,7 +123,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 
 | # | Задача | Статус | Примечание |
 |---|--------|--------|------------|
-| 6 | Selling website exit | 🔄 | P1.1–P1.3 на staging ✅; **не валидирован до P1.9**; mobile + legal pending |
+| 6 | Selling website exit | 🔄 | P1.1–P1.3 на staging ✅; **не валидирован до P1.9**; P1.8 legal ✅; mobile pending |
 | 7 | Clarity test (P1.9) | ⏸ | **deferred** — вернёмся позже; протокол готов |
 | 8 | FAQ from CMS | ✅ | `FaqSection` + `/api/cms/faq`, fallback static |
 | 9 | Provenance in API responses (E1.4) | ⬜ | есть в brain search matches; не везде в delno-api |
@@ -175,7 +175,7 @@ ChatGPT, проверь эти пункты особенно:
 | **E1.4 provenance** | Unified source contract в delno-api — не везде | P1 |
 | **E1.8–E1.9** | Auto-ingest settings → brain; per-tenant vault isolation | low (post-S3) |
 | **P1.5 mobile** | Lighthouse / responsive pass не делали | **P0 Product** |
-| **P1.8 legal** | Privacy/terms для dlno.ru | **P0 перед prod** |
+| **P1.8 legal** | Privacy/terms для dlno.ru | ✅ ИП Рябов Д.В. (DaData) |
 | **P1.9 clarity** | Нет результатов теста 3+ людей | **blocker P1 exit** |
 | **E0.15 events** | ~~Operational event bus~~ | ✅ done |
 | **Site repo completeness** | Большая часть `DELNO-site-v23/` не в git | P1 |
@@ -189,7 +189,7 @@ ChatGPT, проверь эти пункты особенно:
 **Без DNS (можно сейчас):**
 
 1. **P1.5 Mobile UX** — 🔄 code done; manual verify 375/390px ([`P1.5_MOBILE_PASS.md`](P1.5_MOBILE_PASS.md))
-2. **P1.8 Privacy/terms** — dlno.ru / office@dlno.ru
+2. ~~**P1.8 Privacy/terms**~~ ✅ — ИП Рябов Д.В., реквизиты из DaData
 3. **E1.4 Provenance** — unified API contract
 4. **P1.9 Clarity test** — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
 

@@ -64,7 +64,7 @@
 | S0 | ✅ | brain extract, auth, admin tenants, KnowledgeAdapter, tests |
 | S1 | ✅ | prod stack staging на `a.47z.ru/delno` |
 | S2 | ✅ | CMS, public API, channel router, admin/web scaffolds |
-| S3 | 🔄 mid-flight | ✅ isolation, ACL, brain, leads, FAQ, Operator, events, E0/E1 formal exit · ⬜ mobile, legal · ⏸ clarity · DNS deferred |
+| S3 | 🔄 mid-flight | ✅ isolation, ACL, brain, leads, FAQ, Operator, events, E0/E1 formal exit, legal · ⬜ mobile · ⏸ clarity · DNS deferred |
 
 **Dev credentials (seeded):** `admin@delno.one` / `admin123456`, `owner@delno.one` / `demo123456`
 
@@ -646,7 +646,7 @@ P0 — done (backend):
 
 P1 — product (partial):
   🔄 P1.1–P1.3 hero v4 / channels / CTA on staging — визуально готов, не валидирован (P1.9)
-  ⬜ P1.5 mobile · ⬜ P1.8 privacy/terms · ⬜ P1.9 clarity test (3+ людей)
+  ⬜ P1.5 mobile · ✅ P1.8 privacy/terms · ⬜ P1.9 clarity test (3+ людей)
   ✅ E1.7 FAQ from CMS
   ⬜ E1.4 unified provenance in delno-api responses
 
@@ -758,4 +758,4 @@ It must document the dependency and defer implementation unless explicitly appro
 6. **Usage metering + events + feature flags** — с раннего этапа.
 7. **CRM/marketplace/banking** — guardrails, PARTNER → LEARN → BUILD.
 
-**Следующий шаг:** P1.5 mobile pass → P1.8 legal → (P1.9 clarity когда вернётесь).
+**Следующий шаг:** P1.5 mobile pass → (P1.9 clarity когда вернётесь).

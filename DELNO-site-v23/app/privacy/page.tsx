@@ -1,7 +1,10 @@
 import Link from "next/link";
+import { LegalOperatorBlock } from "@/components/LegalOperatorBlock";
+import { LEGAL_OPERATOR } from "@/lib/legal-requisites";
 import "../legal.css";
 
 export default function PrivacyPage() {
+  const o = LEGAL_OPERATOR;
   return (
     <main className="legal-page">
       <header className="legal-head">
@@ -13,14 +16,13 @@ export default function PrivacyPage() {
         </Link>
       </header>
       <article className="legal-content">
-        <small>Редакция от 1 сентября 2026 года</small>
+        <small>Редакция от {o.revision}</small>
         <h1>Политика конфиденциальности</h1>
         <p className="legal-note">
-          Документ действует для сайта <strong>https://dlno.ru</strong> (и staging-версии на{" "}
-          <strong>a.47z.ru/delno</strong>). Оператор персональных данных — правообладатель сервиса
-          DELNO. Полные реквизиты юридического лица будут опубликованы до коммерческого запуска на
-          домене dlno.ru.
+          Документ действует для сайта <strong>{o.site}</strong> (и staging-версии на{" "}
+          <strong>a.47z.ru/delno</strong>). Оператор персональных данных — {o.shortName}.
         </p>
+        <LegalOperatorBlock />
         <h2>1. Какие данные мы получаем</h2>
         <p>
           Если вы заполняете форму или связываетесь с нами, мы можем получить имя, номер телефона,
@@ -48,7 +50,7 @@ export default function PrivacyPage() {
         <p>
           Вы можете запросить сведения об обработке, уточнение или удаление данных, а также отозвать
           согласие, написав на{" "}
-          <a href="mailto:office@dlno.ru">office@dlno.ru</a>.
+          <a href={`mailto:${o.email}`}>{o.email}</a>.
         </p>
         <h2>6. Голосовое демо</h2>
         <p>
@@ -63,8 +65,8 @@ export default function PrivacyPage() {
           отдельного уведомления и, когда это требуется, согласия посетителя.
         </p>
         <footer>
-          Контакты: <a href="tel:+78005550000">8 800 555-00-00</a> ·{" "}
-          <a href="mailto:office@dlno.ru">office@dlno.ru</a>
+          Контакты: <a href={`tel:${o.phoneTel}`}>{o.phone}</a> ·{" "}
+          <a href={`mailto:${o.email}`}>{o.email}</a>
         </footer>
       </article>
     </main>
