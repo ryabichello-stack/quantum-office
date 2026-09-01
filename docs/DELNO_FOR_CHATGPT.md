@@ -1,6 +1,6 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-3.8 · 2026-09-01 (E1.15 tenant legal profile)
+**Revision:** REV-3.9 · 2026-09-01 (P1.5 mobile verified + E1.4 provenance)
 
 ---
 
@@ -80,7 +80,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 1. ~~E0.15 operational events~~ ✅  
 2. ~~E0.14 formal exit~~ ✅  
 3. ~~E1.11 end-to-end~~ ✅  
-4. P1.5 mobile pass 🔄 (`mobile.css`, viewport — manual verify)
+4. ~~P1.5 mobile pass~~ ✅ ([`P1.5_MOBILE_PASS.md`](P1.5_MOBILE_PASS.md) verified 390/375px)
 5. P1.8 privacy/terms ✅ (ИП Рябов Д.В., ИНН/OGRNIP из DaData, office@dlno.ru)
 6. P1.9 clarity test — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
 7. ~~**E1.12–E1.14 DaData**~~ ✅ · ~~**E1.15 Tenant legal**~~ ✅ · E1.16 ⬜ (post-triggers)
@@ -140,10 +140,10 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 
 | # | Задача | Статус | Примечание |
 |---|--------|--------|------------|
-| 6 | Selling website exit | 🔄 | **v2** landing on `/`; v4 rejected; P1.5 mobile; P1.8 legal ✅ |
+| 6 | Selling website exit | ✅ | v2 landing; P1.5 mobile verified; P1.8 legal ✅ |
 | 7 | Clarity test (P1.9) | ⏸ | **deferred** — вернёмся позже; протокол готов |
 | 8 | FAQ from CMS | ✅ | `FaqSection` + `/api/cms/faq`, fallback static |
-| 9 | Provenance in API responses (E1.4) | ⬜ | есть в brain search matches; не везде в delno-api |
+| 9 | Provenance in API responses (E1.4) | ✅ | `sources[]` in knowledge adapter + operator `/chat` |
 
 ### P2 — Operator + observability
 
@@ -193,9 +193,9 @@ ChatGPT, проверь эти пункты особенно:
 |---------|-----|-------------|
 | **E0.14 exit** | ~~Foundation formal exit~~ | ✅ |
 | **E1.11 exit** | ~~Admin CMS → site~~ | ✅ |
-| **E1.4 provenance** | Unified source contract в delno-api — не везде | P1 |
+| **E1.4 provenance** | ~~Unified `sources` in knowledge/operator~~ | ✅ |
 | **E1.8–E1.9** | Auto-ingest settings → brain; per-tenant vault isolation | low (post-S3) |
-| **P1.5 mobile** | Lighthouse / responsive pass не делали | **P0 Product** |
+| **P1.5 mobile** | ~~Responsive pass 390/375px~~ | ✅ |
 | **P1.8 legal** | Privacy/terms для dlno.ru | ✅ ИП Рябов Д.В. (DaData) |
 | **P1.9 clarity** | Нет результатов теста 3+ людей | **blocker P1 exit** |
 | **E0.15 events** | ~~Operational event bus~~ | ✅ done |
@@ -212,12 +212,16 @@ ChatGPT, проверь эти пункты особенно:
 
 **Без DNS (можно сейчас):**
 
-1. **P1.5 Mobile UX** — 🔄 code done; manual verify 375/390px ([`P1.5_MOBILE_PASS.md`](P1.5_MOBILE_PASS.md))
-2. ~~**P1.8 Privacy/terms**~~ ✅ — ИП Рябов Д.В., реквизиты из DaData
-3. **E1.4 Provenance** — unified API contract
-4. **P1.9 Clarity test** — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
-5. **P1.9 Clarity test** — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
-6. **DNS + SSL** — reg.ru A records → `5.35.86.62`, certbot
+1. ~~**P1.5 Mobile UX**~~ ✅ — verified 390/375px ([`P1.5_MOBILE_PASS.md`](P1.5_MOBILE_PASS.md))
+2. ~~**E1.4 Provenance**~~ ✅ — `sources[]` in knowledge adapter + operator chat
+3. **P1.9 Clarity test** — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
+
+**После DNS (reg.ru):**
+
+4. A-записи `@`, `www`, `api` → `5.35.86.62`
+5. SSL (certbot или reg.ru)
+6. Smoke: `https://dlno.ru`, `https://api.dlno.ru/v1/health`, lead → prod DB
+7. CORS / env для prod origins
 
 **Не начинать до закрытия Sprint 3 exit:** E2 channels, E3 widget embed, E4 telephony, CRM, billing, repo migration.
 

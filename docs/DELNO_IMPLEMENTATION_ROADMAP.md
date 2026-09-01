@@ -35,7 +35,7 @@
 | P1.2 | Блок каналов + product visual | ✅ v2 inbox console on `/` |
 | P1.3 | CTA «Попробовать голосом» + lead form | ✅ v2 CTAs |
 | P1.4 | Leads с сайта → **delno-api** | ✅ route + form + deploy scripts |
-| P1.5 | Mobile UX / lighthouse pass | 🔄 mobile.css + viewport; manual verify |
+| P1.5 | Mobile UX / lighthouse pass | ✅ verified 390/375px on staging |
 | P1.6 | `dlno.ru` DNS **reg.ru** → `5.35.86.62` | 🔄 A + CNAME настроены; проверить propagation |
 | P1.7 | SSL на origin (certbot / reg.ru) | 🔄 nginx vhosts готовы; cert после DNS на сервер |
 | P1.8 | Privacy/terms актуальны для dlno.ru | ✅ ИП Рябов Д.В., ИНН 471405233378, ОГРНИП 319784700141500 |
@@ -81,7 +81,7 @@
 | E1.1 | delno-knowledge container prod `:18021` | ✅ |
 | E1.2 | Init brain DB + seed demo vault | ✅ `seed-demo` CLI + docker entrypoint |
 | E1.3 | ACL smoke: guest ≠ owner (automated) | ✅ |
-| E1.4 | Knowledge provenance in API responses | ⬜ **S3 P1 #9** |
+| E1.4 | Knowledge provenance in API responses | ✅ `sources[]` in adapter + operator chat |
 | E1.5 | CMS models: pages, revisions | ✅ |
 | E1.6 | Admin CMS CRUD draft/publish | ✅ |
 | E1.7 | Site fetch published CMS (FAQ block pilot) | ✅ FaqSection + /api/cms/faq |

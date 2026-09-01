@@ -13,6 +13,7 @@ from app.operator.tools.registry import PendingConfirmation, ToolResult, registr
 from app.services.audit import write_audit
 from app.services.events import emit_event
 from app.services.model_provider import get_model_provider
+from app.services.provenance import extract_sources_from_knowledge
 
 
 def run_operator_turn(
@@ -41,7 +42,7 @@ def run_operator_turn(
         )
         db.flush()
 
-        reply, tool_calls = _generate_reply(db, ctx, message)
+        reply, tool_calls, sources = _generate_reply(db, ctx, message)
 
         db.add(
             Message(
@@ -49,7 +50,7 @@ def run_operator_turn(
                 conversation_id=conversation.id,
                 role="assistant",
                 body=reply,
-                meta={"tool_calls": tool_calls},
+                meta={"tool_calls": tool_calls, "sources": sources},
             )
         )
         write_audit(
@@ -65,6 +66,7 @@ def run_operator_turn(
             "conversation_id": str(conversation.id),
             "reply": reply,
             "tool_calls": tool_calls,
+            "sources": sources,
             "modality": input_modality,
         }
     except Exception as exc:
@@ -142,16 +144,20 @@ def _fallback_reply(kb_context: str) -> str:
     )
 
 
-def _generate_reply(db: Session, ctx: TenantContext, message: str) -> tuple[str, list[dict[str, Any]]]:
+def _generate_reply(
+    db: Session, ctx: TenantContext, message: str
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
     """Read-only: always search KB; optional LLM synthesis; no auto write-tools."""
     tool_calls: list[dict[str, Any]] = []
     kb_context = ""
+    sources: list[dict[str, Any]] = []
 
     knowledge = registry.run(db, ctx, "get_knowledge", query=message)
     if isinstance(knowledge, ToolResult):
         tool_calls.append({"tool": "get_knowledge", "ok": knowledge.ok})
         if knowledge.ok:
             kb_context = _kb_context_from_result(knowledge)
+            sources = extract_sources_from_knowledge(knowledge.data)
 
     provider = get_model_provider()
     completion = provider.chat_completion(
@@ -166,7 +172,7 @@ def _generate_reply(db: Session, ctx: TenantContext, message: str) -> tuple[str,
             reply = str(completion["data"]["choices"][0]["message"]["content"]).strip()
             if reply:
                 tool_calls.append({"tool": "llm", "ok": True, "provider": completion.get("provider")})
-                return reply, tool_calls
+                return reply, tool_calls, sources
         except (KeyError, IndexError, TypeError):
             tool_calls.append({"tool": "llm", "ok": False, "error": "invalid_completion_shape"})
 
@@ -175,9 +181,10 @@ def _generate_reply(db: Session, ctx: TenantContext, message: str) -> tuple[str,
             "Могу подсказать по услугам из базы знаний. Чтобы оформить заявку — используйте форму на сайте "
             "или напишите имя и телефон, и менеджер свяжется с вами.",
             tool_calls,
+            sources,
         )
 
-    return _fallback_reply(kb_context), tool_calls
+    return _fallback_reply(kb_context), tool_calls, sources
 
 
 def execute_confirmed_tool(

@@ -2,6 +2,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.core.principals import brain_principal_id
+from app.services.provenance import attach_sources_to_knowledge_response
 
 
 class KnowledgeAdapter:
@@ -47,7 +48,7 @@ class KnowledgeAdapter:
                     data.setdefault("source", "delno-knowledge")
                     data["principal_id"] = principal_id
                     data["brain_principal_id"] = brain_pid
-                    return data
+                    return attach_sources_to_knowledge_response(data)
                 return {
                     "ok": False,
                     "query": query,

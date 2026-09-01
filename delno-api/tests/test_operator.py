@@ -24,10 +24,11 @@ def test_generate_reply_uses_kb_text_and_stub_llm():
                 "provider": "stub",
                 "data": {"choices": [{"message": {"content": "Тариф Диалоги — 2 990 ₽/мес."}}]},
             }
-            reply, tool_calls = _generate_reply(db, ctx, "Сколько стоит DELNO?")
+            reply, tool_calls, sources = _generate_reply(db, ctx, "Сколько стоит DELNO?")
 
     assert "2 990" in reply or "2990" in reply
     assert any(t.get("tool") == "get_knowledge" for t in tool_calls)
+    assert isinstance(sources, list)
     mock_registry.run.assert_called_once_with(db, ctx, "get_knowledge", query="Сколько стоит DELNO?")
 
 
@@ -42,10 +43,11 @@ def test_generate_reply_fallback_without_llm():
         )
         with patch("app.operator.agent.get_model_provider") as mock_provider:
             mock_provider.return_value.chat_completion.return_value = {"ok": False, "error": "no_key"}
-            reply, tool_calls = _generate_reply(db, ctx, "комиссия")
+            reply, tool_calls, sources = _generate_reply(db, ctx, "комиссия")
 
     assert "1%" in reply
     assert tool_calls[0]["tool"] == "get_knowledge"
+    assert sources == []
 
 
 def test_run_operator_turn_commits_messages():
@@ -58,7 +60,7 @@ def test_run_operator_turn_commits_messages():
     db.commit = MagicMock()
 
     with patch("app.operator.agent._get_or_create_conversation", return_value=conversation):
-        with patch("app.operator.agent._generate_reply", return_value=("Ответ", [{"tool": "get_knowledge", "ok": True}])):
+        with patch("app.operator.agent._generate_reply", return_value=("Ответ", [{"tool": "get_knowledge", "ok": True}], [])):
             with patch("app.operator.agent.write_audit"):
                 result = run_operator_turn(db, ctx, message="Привет")
 
