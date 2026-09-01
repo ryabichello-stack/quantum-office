@@ -31,9 +31,9 @@
 
 | # | Задача | Статус |
 |---|--------|--------|
-| P1.1 | Hero: «ИИ-сотрудник» — clarity за 5–10 сек | ⬜ |
-| P1.2 | Блок каналов: телефон, сайт, Telegram, MAX, email | ⬜ |
-| P1.3 | CTA «Попробовать» → voice demo + lead form | ⬜ |
+| P1.1 | Hero: «ИИ-сотрудник» — clarity за 5–10 сек | ✅ v4 hero на `/` (staging) |
+| P1.2 | Блок каналов: телефон, сайт, Telegram, MAX, email | ✅ v4 product stage |
+| P1.3 | CTA «Попробовать» → voice demo + lead form | ✅ lead form + «Спросить вслух» |
 | P1.4 | Leads с сайта → **delno-api** | ✅ route + form + deploy scripts |
 | P1.5 | Mobile UX / lighthouse pass | ⬜ |
 | P1.6 | `dlno.ru` DNS Cloudflare → `5.35.86.62` | ⬜ **S3 P0 #5** |
@@ -192,7 +192,7 @@
 | 2 | *(внутри #1)* | ACL automated smoke | ✅ |
 | 3 | **Init production brain** | E1.2: init-db, demo vault, demo tenant, tenant-scoped search, provenance | ✅ |
 | 4 | **Site → real leads API** | P1.4: `DELNO_API_URL`, rebuild staging, leads → PG | ✅ code + deploy |
-| 5 | **DNS + production ingress** | P1.6/P1.7, H3/H4: Cloudflare → `5.35.86.62`, `dlno.ru`, `api.dlno.ru`, SSL, health, CORS, prod env | `https://dlno.ru` + `https://api.dlno.ru/v1/health`; lead с prod → prod DB |
+| 5 | **DNS + production ingress** | P1.6/P1.7, H3/H4: reg.ru DNS → `5.35.86.62`, `dlno.ru`, `api.dlno.ru`, SSL, health, CORS, prod env | ⬜ deferred; staging OK |
 
 **Не делать до шага 1:** Operator с write-tools по tenant data.
 
@@ -200,16 +200,16 @@
 
 | # | Шаг | Задачи | Критерий готовности |
 |---|-----|--------|---------------------|
-| 6 | **Selling Website exit** | P1.1 hero, P1.2 каналы, P1.3 CTA, P1.5 mobile, P1.8 privacy/terms | Первый экран = «ИИ-сотрудник» за 5–10 сек; каналы видны; mobile OK |
+| 6 | **Selling Website exit** | P1.1 hero, P1.2 каналы, P1.3 CTA, P1.5 mobile, P1.8 privacy/terms | 🔄 hero/CTA на staging; mobile + clarity test pending |
 | 7 | **Clarity test** | P1.9: 3+ незнакомых с DELNO | Минимум 3 человека понимают продукт; если 2+ говорят «AI-платформа» / «чат-бот» — hero переделывать |
-| 8 | **FAQ from CMS** | E1.7: draft/publish, site = published only, fallback + cache | Изменили FAQ в admin → publish → сайт без code deploy |
+| 8 | **FAQ from CMS** | E1.7: draft/publish, site = published only, fallback + cache | ✅ site fetch + fallback |
 | 9 | **Provenance** | E1.4: source metadata в knowledge responses | API возвращает tenant-safe provenance |
 
 ### P2 — Operator + observability foundation
 
 | # | Шаг | Задачи | Критерий готовности |
 |---|-----|--------|---------------------|
-| 10 | **Basic Operator LLM** | E3.2: `/v1/operator/chat`, model provider, system prompt, tenant context, **read-only KB search**, history, errors | Отвечает только из tenant context; без CRM/telephony/payments/mass actions |
+| 10 | **Basic Operator LLM** | E3.2: `/v1/operator/chat`, model provider, system prompt, tenant context, **read-only KB search**, history, errors | ✅ read-only KB loop |
 | 11 | **Operational events** | E0.15: `lead.created`, `knowledge.search_failed`, `operator.error`, `integration.error`, `auth.failed`, `tenant.isolation_violation` | Events пишутся; фундамент для E6 Supervisor |
 | 12 | **Docs/status** | Обновить roadmap + master plan | REV актуален |
 
@@ -218,11 +218,11 @@
 - [x] Tenant isolation тестируется автоматически (CI)
 - [x] ACL работает (guest ≠ owner)
 - [x] Brain инициализирован (demo vault + tenant search)
-- [ ] `dlno.ru` + `api.dlno.ru` production работают
-- [x] Форма сайта пишет лид в PG (после rebuild staging/prod)
+- [ ] `dlno.ru` + `api.dlno.ru` production работают (DNS deferred)
+- [x] Форма сайта пишет лид в PG (staging verified 2026-09-01)
 - [ ] Сайт понятен 3+ людям за 5–10 сек (P1.9)
-- [ ] FAQ из CMS без code deploy
-- [ ] Operator безопасно отвечает по tenant KB (read-only)
+- [x] FAQ из CMS без code deploy (fallback + `/api/cms/faq`)
+- [x] Operator безопасно отвечает по tenant KB (read-only)
 - [ ] Ни одной задачи E4+ / future product modules не начато
 
 ### DO NOT START в Sprint 3
