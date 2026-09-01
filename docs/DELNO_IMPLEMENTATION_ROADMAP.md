@@ -1,0 +1,193 @@
+# DELNO — план реализации (детальный checklist)
+
+**Canonical strategy:** [`DELNO_MASTER_PLAN.md`](DELNO_MASTER_PLAN.md)  
+**Домены:** [`DLNO_DOMAINS.md`](DLNO_DOMAINS.md)  
+**Обновлено:** 2026-09-01 · **Revision REV-3**
+
+Легенда: ✅ done · 🔄 in progress · ⬜ todo
+
+---
+
+## Текущий статус (кратко для ревью)
+
+| Компонент | URL / путь | Статус |
+|-----------|------------|--------|
+| Marketing staging | https://a.47z.ru/delno/ | ✅ |
+| Marketing prod | https://dlno.ru (DNS pending) | 🔄 nginx ready |
+| API staging | https://a.47z.ru/delno-api/ | ✅ |
+| API prod | https://api.dlno.ru (DNS pending) | 🔄 |
+| delno-api | `/opt/delno/api` :18020 | ✅ |
+| delno-knowledge | `/opt/delno/knowledge` :18021 | ✅ |
+| delno-site (staging) | :18019, basePath `/delno` | ✅ |
+| delno-site-root (prod) | :18022, root | ✅ |
+| delno-admin scaffold | local :3010 | ✅ code |
+| delno-web scaffold | local :3020 | ✅ code |
+
+---
+
+## Трек A — Product (параллельно с engineering)
+
+### P1 — Selling Website (`dlno.ru` + staging)
+
+| # | Задача | Статус |
+|---|--------|--------|
+| P1.1 | Hero: «ИИ-сотрудник» — clarity за 5–10 сек | ⬜ |
+| P1.2 | Блок каналов: телефон, сайт, Telegram, MAX, email | ⬜ |
+| P1.3 | CTA «Попробовать» → voice demo + lead form | ⬜ |
+| P1.4 | Leads с сайта → **delno-api** (код готов, prod rebuild site) | 🔄 |
+| P1.5 | Mobile UX / lighthouse pass | ⬜ |
+| P1.6 | `dlno.ru` DNS Cloudflare → `5.35.86.62` | ⬜ |
+| P1.7 | SSL на origin (Cloudflare Full / certbot) | ⬜ |
+| P1.8 | Privacy/terms актуальны для dlno.ru | ⬜ |
+| P1.9 | Exit: clarity-test пройден 3+ людьми | ⬜ |
+
+### P2 — First Value
+
+| # | Задача | Статус |
+|---|--------|--------|
+| P2.1 | Self-service register → tenant | ⬜ |
+| P2.2 | Upload KB → first search | ⬜ |
+| P2.3 | Widget embed → first message | ⬜ |
+| P2.4 | Time to First Value < 15 min | ⬜ |
+
+---
+
+## Трек B — Engineering E0 Foundation
+
+| # | Задача | Статус |
+|---|--------|--------|
+| E0.1 | `delno-knowledge/` brain_platform в git | ✅ |
+| E0.2 | JWT auth + roles | ✅ |
+| E0.3 | Models: channels, phones, voice, flags, usage, events | ✅ |
+| E0.4 | Admin tenants CRUD | ✅ |
+| E0.5 | KnowledgeAdapter → `/api/brain/search` + principals | ✅ |
+| E0.6 | Alembic migrations | ✅ scaffold |
+| E0.7 | Channel router skeleton | ✅ |
+| E0.8 | `/v1/public/*` namespace | ✅ |
+| E0.9 | Feature flags read/write API | ✅ |
+| E0.10 | Model provider abstraction stub | ✅ |
+| E0.11 | Deploy full stack prod: api + knowledge + postgres | ✅ |
+| E0.12 | CI: pytest delno-api + brain security tests | 🔄 11 tests local |
+| E0.13 | Cross-tenant isolation integration test | ⬜ |
+| E0.14 | **Exit E0:** admin creates tenant; events emit; flags work | 🔄 |
+
+---
+
+## Трек C — Engineering E1 Knowledge + CMS
+
+| # | Задача | Статус |
+|---|--------|--------|
+| E1.1 | delno-knowledge container prod `:18021` | ✅ |
+| E1.2 | Init brain DB + seed demo vault | ⬜ |
+| E1.3 | ACL smoke: guest ≠ owner (automated) | ⬜ |
+| E1.4 | Knowledge provenance in API responses | ⬜ |
+| E1.5 | CMS models: pages, revisions | ✅ |
+| E1.6 | Admin CMS CRUD draft/publish | ✅ |
+| E1.7 | Site fetch published CMS (FAQ block pilot) | ⬜ |
+| E1.8 | Auto-ingest tenant settings → brain | ⬜ |
+| E1.9 | Per-tenant vault path isolation | ⬜ |
+| E1.10 | **delno-admin** scaffold: login + tenants + CMS | ✅ |
+| E1.11 | **Exit E1:** KB search works; CMS FAQ from admin | ⬜ |
+
+---
+
+## Трек D — Engineering E2 Communication
+
+| # | Задача | Статус |
+|---|--------|--------|
+| E2.1 | ChannelAdapter interface + registry | ⬜ |
+| E2.2 | Telegram Instant bot (DELNO shared) | ⬜ |
+| E2.3 | Telegram Branded connect wizard | ⬜ |
+| E2.4 | MAX onboarding (client-owned bot) | ⬜ |
+| E2.5 | Webhook signing + retry + events | ⬜ |
+| E2.6 | Router: token → tenant → principal | ⬜ |
+| E2.7 | Inbound message → conversation record | ⬜ |
+| E2.8 | Email adapter stub | ⬜ |
+
+---
+
+## Трек E — Engineering E3 Widget + Operator
+
+| # | Задача | Статус |
+|---|--------|--------|
+| E3.1 | **delno-web** scaffold: login + dashboard shell | ✅ |
+| E3.2 | Operator LLM loop (OpenAI) | ⬜ |
+| E3.3 | Tool registry + confirmation classes | ⬜ |
+| E3.4 | Embeddable web widget JS | ⬜ |
+| E3.5 | Voice widget WebRTC MVP | ⬜ |
+| E3.6 | Fallback voice→text | ⬜ |
+| E3.7 | KB UI upload/publish | ⬜ |
+| E3.8 | Lead capture from widget → inbox | ⬜ |
+
+---
+
+## Трек F — Engineering E4 Telephony
+
+| # | Задача | Статус |
+|---|--------|--------|
+| E4.1 | phone_numbers provisioning workflow | ⬜ |
+| E4.2 | Mango/SIP credential storage | ⬜ |
+| E4.3 | delno-voice worker Realtime | ⬜ |
+| E4.4 | Internal call session API | ⬜ |
+| E4.5 | Post-call transcript → inbox | ⬜ |
+| E4.6 | Voice preset/clone UI | ⬜ |
+
+---
+
+## Трек G — Engineering E5 Commercial
+
+| # | Задача | Статус |
+|---|--------|--------|
+| E5.1 | Self-service onboarding flow | ⬜ |
+| E5.2 | Billing stubs + plans table | ⬜ |
+| E5.3 | Usage aggregation per tenant | ⬜ |
+| E5.4 | Rate limits per tenant | ⬜ |
+| E5.5 | Monitoring + health dashboard | ⬜ |
+
+---
+
+## Трек H — Domains & Deploy
+
+| # | Задача | Статус |
+|---|--------|--------|
+| H1 | Staging: `a.47z.ru/delno` + `/delno-api` | ✅ |
+| H2 | Prod site root: `dlno.ru` nginx + container | ✅ |
+| H3 | Cloudflare DNS → server | ⬜ |
+| H4 | `api.dlno.ru` live | ⬜ |
+| H5 | Unified deploy `/opt/delno` full stack | ✅ |
+| H6 | `app.dlno.ru`, `admin.dlno.ru` nginx | ⬜ |
+
+---
+
+## API endpoints (реализовано)
+
+| Method | Path | Назначение |
+|--------|------|------------|
+| GET | `/v1/health` | health |
+| POST | `/v1/auth/login` | JWT login |
+| GET | `/v1/auth/me` | current user |
+| GET/POST | `/v1/admin/tenants` | platform admin |
+| GET/POST/PATCH | `/v1/admin/cms/pages` | CMS CRUD |
+| POST | `/v1/admin/cms/pages/{id}/publish` | publish |
+| POST | `/v1/public/leads` | anon leads (X-Tenant-Slug) |
+| GET | `/v1/public/cms/pages/{slug}` | published CMS |
+| GET/PATCH | `/v1/tenant/feature-flags` | tenant flags |
+| GET | `/v1/tenant/me` | tenant context |
+| POST | `/v1/leads` | tenant-scoped leads |
+| POST | `/v1/operator/chat` | operator MVP |
+
+---
+
+## Sprint 3 (следующий)
+
+1. Cloudflare DNS dlno.ru → 5.35.86.62  
+2. Rebuild staging site with `DELNO_API_URL` → leads in PG  
+3. CMS FAQ block on site from API  
+4. Brain `init-db` + ACL automated tests  
+5. Operator LLM via model provider  
+
+---
+
+## Анти-scope (не делаем сейчас)
+
+Full CRM, marketplace, billing payments, PSTN telephony, bank layer — см. Product Guardrails в master plan.

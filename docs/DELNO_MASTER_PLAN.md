@@ -1,10 +1,12 @@
 # DELNO — единый мастер-план
 
 **Версия:** 2026-09-01  
-**Revision:** `DELNO-MASTER-PLAN-REV-2`  
-**Commit:** `103b015` (см. также актуальный tip ветки)  
+**Revision:** `DELNO-MASTER-PLAN-REV-3`  
+**Commit:** см. tip `main` (ветка `cursor/delno-api-scaffold-14e9`, PR #20)  
 **Статус:** canonical — по этому документу начинаем реализацию  
-**Prod staging:** https://a.47z.ru/delno/ · https://a.47z.ru/delno-api/
+**Prod staging:** https://a.47z.ru/delno/ · https://a.47z.ru/delno-api/  
+**Production domain (купленный):** **https://dlno.ru** — см. [`docs/DLNO_DOMAINS.md`](DLNO_DOMAINS.md)  
+**Entry point для ChatGPT:** [`docs/DELNO_FOR_CHATGPT.md`](DELNO_FOR_CHATGPT.md)
 
 > **Если вы ChatGPT / ревьюер:** это **НЕ rev.1**. Проверка: в документе есть секции  
 > `Product North Star`, `Product Roadmap vs Engineering Roadmap`,  
@@ -41,6 +43,29 @@
 26. ✅ Security baseline  
 27. ✅ Exit-criteria based engineering phases  
 28. ✅ Anti-scope-creep rule  
+
+### Rev.3 changelog (implementation status — Sprint 0–2 ✅)
+
+1. ✅ `delno-api` scaffold: JWT auth, admin tenants, CMS, public leads, feature flags, operator stub  
+2. ✅ `delno-knowledge`: brain-only `main_delno.py`, prod `:18021`  
+3. ✅ Prod stack `/opt/delno`: postgres + api `:18020` + knowledge + site staging `:18019` + site root `:18022`  
+4. ✅ `delno-admin` + `delno-web` Next.js scaffolds  
+5. ✅ Site leads proxy → delno-api (код; prod rebuild pending)  
+6. ✅ Nginx ready for `dlno.ru` (Cloudflare DNS pending)  
+7. 🔄 Sprint 3: FAQ from CMS, brain init-db + ACL tests, Operator LLM  
+
+**Детальный checklist:** [`DELNO_IMPLEMENTATION_ROADMAP.md`](DELNO_IMPLEMENTATION_ROADMAP.md)
+
+### Rev.3 — Implementation Status
+
+| Sprint | Статус | Ключевое |
+|--------|--------|----------|
+| S0 | ✅ | brain extract, auth, admin tenants, KnowledgeAdapter, tests |
+| S1 | ✅ | prod stack staging на `a.47z.ru/delno` |
+| S2 | ✅ | CMS, public API, channel router, admin/web scaffolds |
+| S3 | ⬜ next | DNS dlno.ru, site→api leads, FAQ CMS, brain ACL, Operator LLM |
+
+**Dev credentials (seeded):** `admin@delno.one` / `admin123456`, `owner@delno.one` / `demo123456`
 
 ---
 
@@ -582,7 +607,9 @@ Partner/referral → CRM Lite (triggers only) → marketplace → Business OS.
 
 ---
 
-## 17. Sprint 1 (engineering, параллельно Product P1)
+## 17. Sprints (engineering + Product P1)
+
+### Sprint 0–1 ✅ (done)
 
 ```
 E0 + E1 start:
@@ -592,14 +619,34 @@ E0 + E1 start:
   4. Event emitter stub + usage meter stub
   5. Feature flags table
   6. Admin: create/list tenants
-  7. ACL smoke tests
-
-Product P1 (site):
-  8. Clarity-test copy on delno-site
-  9. Lead form → delno-api
+  7. Prod stack staging (api + knowledge + postgres + site)
 ```
 
-**Не в Sprint 1:** telephony, full billing, CRM, delno-web/admin UI, marketplace.
+### Sprint 2 ✅ (done)
+
+```
+  8. CMS models + admin CRUD draft/publish
+  9. Public API: leads, published CMS pages
+ 10. Channel router skeleton + model provider stub
+ 11. delno-admin + delno-web scaffolds
+ 12. Site leads proxy → delno-api (code ready)
+```
+
+### Sprint 3 ⬜ (next)
+
+```
+Product P1:
+  1. Cloudflare DNS dlno.ru → 5.35.86.62
+  2. Rebuild site with DELNO_API_URL → leads in PG
+  3. CMS FAQ block on marketing site
+
+Engineering:
+  4. Brain init-db + ACL automated tests
+  5. Operator LLM via model provider
+  6. Cross-tenant isolation integration test
+```
+
+**Не в Sprint 3:** telephony, full billing, CRM, marketplace.
 
 ---
 
@@ -669,6 +716,9 @@ DELNO готов к первому коммерческому масштабир
 | Документ | Назначение |
 |----------|------------|
 | `docs/DELNO_MASTER_PLAN.md` | **этот файл — canonical** |
+| `docs/DELNO_FOR_CHATGPT.md` | entry point + raw URLs для ревью |
+| `docs/DELNO_IMPLEMENTATION_ROADMAP.md` | checklist + статус Sprint 0–3 |
+| `docs/DLNO_DOMAINS.md` | dlno.ru DNS и nginx |
 | `delno-api/docs/DEPLOY_ISOLATION.md` | prod deploy |
 | `DELNO-site-v23/docs/00_MASTER_SPEC.md` | product vision |
 | `delno-api/AGENTS.md` | API onboarding |
@@ -693,4 +743,4 @@ It must document the dependency and defer implementation unless explicitly appro
 6. **Usage metering + events + feature flags** — с раннего этапа.
 7. **CRM/marketplace/banking** — guardrails, PARTNER → LEARN → BUILD.
 
-**Следующий шаг:** Sprint 1 (E0 + E1 start + Product P1 site clarity).
+**Следующий шаг:** Sprint 3 — DNS dlno.ru, site→api leads on prod, CMS FAQ, brain ACL tests, Operator LLM.
