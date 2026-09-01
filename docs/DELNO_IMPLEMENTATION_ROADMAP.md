@@ -67,8 +67,8 @@
 | E0.9 | Feature flags read/write API | ✅ |
 | E0.10 | Model provider abstraction stub | ✅ |
 | E0.11 | Deploy full stack prod: api + knowledge + postgres | ✅ |
-| E0.12 | CI: pytest delno-api + brain security tests | 🔄 11 tests local |
-| E0.13 | Cross-tenant isolation integration test | ⬜ **S3 P0 #1** |
+| E0.12 | CI: pytest delno-api + brain security tests | ✅ `.github/workflows/delno-tests.yml` |
+| E0.13 | Cross-tenant isolation integration test | ✅ |
 | E0.14 | **Exit E0:** admin creates tenant; events emit; flags work | 🔄 |
 | E0.15 | Minimal operational events (lead.created, auth.failed, …) | ⬜ **S3 P2 #11** |
 

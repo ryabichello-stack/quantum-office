@@ -1,3 +1,4 @@
 # Dev dependencies for knowledge/platform Phase 0 tests
 pytest>=8.0
 pydantic>=2.0
+httpx>=0.28

@@ -31,7 +31,9 @@ class GetKnowledgeTool:
         query = str(params.get("query") or "").strip()
         if not query:
             return ToolResult(ok=False, message="query is required")
-        pid = principal_for_operator(role=ctx.role or "tenant_owner")
+        role = ctx.role or "tenant_owner"
+        owner_roles = {"platform_admin", "tenant_owner", "tenant_admin"}
+        pid = principal_for_operator(role=role, is_owner_context=role in owner_roles)
         data = self._adapter.search(
             query,
             tenant_slug=ctx.tenant_slug,

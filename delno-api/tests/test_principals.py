@@ -24,4 +24,7 @@ def test_principal_for_public_channel():
 def test_brain_legacy_alias():
     assert brain_principal_id(PRINCIPAL_VOICE_PUBLIC, use_legacy=True) == "service:voice-public"
     assert brain_principal_id(PRINCIPAL_TEXT_OWNER, use_legacy=True) == "service:text-owner"
+    from app.core.principals import PRINCIPAL_WIDGET_GUEST
+
+    assert brain_principal_id(PRINCIPAL_WIDGET_GUEST, use_legacy=True) == "service:text-guest"
     assert brain_principal_id("service:custom", use_legacy=True) == "service:custom"

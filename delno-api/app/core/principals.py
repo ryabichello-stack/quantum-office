@@ -13,6 +13,7 @@ PRINCIPAL_ADMIN = "service:delno-admin"
 LEGACY_ALIASES: dict[str, str] = {
     PRINCIPAL_VOICE_PUBLIC: "service:voice-public",
     PRINCIPAL_VOICE_OFFICE: "service:voice-office",
+    PRINCIPAL_WIDGET_GUEST: "service:text-guest",
     PRINCIPAL_TEXT_GUEST: "service:text-guest",
     PRINCIPAL_TEXT_OWNER: "service:text-owner",
 }

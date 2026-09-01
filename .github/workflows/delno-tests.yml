@@ -1,0 +1,47 @@
+name: delno-tests
+
+on:
+  push:
+    paths:
+      - "delno-api/**"
+      - "delno-knowledge/**"
+      - "docs/DELNO*.md"
+      - ".github/workflows/delno-tests.yml"
+  pull_request:
+    paths:
+      - "delno-api/**"
+      - "delno-knowledge/**"
+      - "docs/DELNO*.md"
+      - ".github/workflows/delno-tests.yml"
+
+jobs:
+  delno-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install delno-api deps
+        run: pip install -r delno-api/requirements.txt
+      - name: pytest delno-api
+        run: pytest delno-api/tests -q
+
+  delno-knowledge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install delno-knowledge deps
+        run: |
+          pip install -r delno-knowledge/requirements.txt
+          pip install -r delno-knowledge/brain_platform/requirements-dev.txt httpx
+      - name: pytest brain security + isolation
+        working-directory: delno-knowledge
+        run: |
+          PYTHONPATH=. pytest brain_platform/tests/test_security_contracts.py \
+            brain_platform/tests/test_tenant_isolation_and_acl.py \
+            brain_platform/tests/test_api_acl_smoke.py \
+            brain_platform/tests/test_brain_integration.py -q
