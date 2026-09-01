@@ -6,8 +6,8 @@ from app.operator.tools.builtin import GetKnowledgeTool
 
 
 class _FakeAdapter:
-    def search(self, query: str, limit: int = 5) -> dict:
-        return {"results": [{"text": f"Answer for {query}"}]}
+    def search(self, query: str, *, tenant_slug: str, principal_id: str, limit: int = 5, mode: str = "hybrid") -> dict:
+        return {"results": [{"text": f"Answer for {query}", "principal": principal_id}]}
 
 
 def test_tool_registry_register_and_list():

@@ -4,6 +4,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.adapters.knowledge import KnowledgeAdapter
+from app.core.principals import principal_for_operator
 from app.core.tenant import TenantContext
 from app.models.lead import Lead
 from app.operator.tools.registry import ToolResult
@@ -30,13 +31,19 @@ class GetKnowledgeTool:
         query = str(params.get("query") or "").strip()
         if not query:
             return ToolResult(ok=False, message="query is required")
-        data = self._adapter.search(query)
+        pid = principal_for_operator(role=ctx.role or "tenant_owner")
+        data = self._adapter.search(
+            query,
+            tenant_slug=ctx.tenant_slug,
+            principal_id=pid,
+        )
+        hits = data.get("matches") or data.get("results") or []
         write_audit(
             db,
             ctx,
             action="tool.get_knowledge",
             resource="knowledge",
-            new_value={"query": query, "hits": len(data.get("results", []))},
+            new_value={"query": query, "hits": len(hits), "principal": pid},
         )
         return ToolResult(ok=True, data=data, message="Knowledge search completed")
 

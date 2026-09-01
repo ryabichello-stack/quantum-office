@@ -10,8 +10,12 @@ class Settings(BaseSettings):
     default_tenant_slug: str = "delno-demo"
     api_key: str | None = None
 
-    knowledge_base_url: str = "http://127.0.0.1:8017"
-    messenger_base_url: str = "http://127.0.0.1:8011"
+    jwt_secret: str = "change-me-in-production"
+    jwt_expire_minutes: int = 60 * 24 * 7
+
+    knowledge_base_url: str = "http://127.0.0.1:8021"
+    knowledge_use_legacy_principals: bool = True
+    messenger_base_url: str = ""
 
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None

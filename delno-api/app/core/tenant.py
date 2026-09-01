@@ -16,6 +16,7 @@ class TenantContext:
     tenant_id: UUID
     tenant_slug: str
     user_id: UUID | None = None
+    role: str | None = None
 
 
 def resolve_tenant(

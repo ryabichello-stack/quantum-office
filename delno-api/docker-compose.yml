@@ -26,11 +26,32 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://delno:delno@postgres:5432/delno
+      KNOWLEDGE_BASE_URL: http://knowledge:8021
     ports:
       - "127.0.0.1:18020:8020"
     depends_on:
       postgres:
         condition: service_healthy
+      knowledge:
+        condition: service_started
+
+  knowledge:
+    build:
+      context: ../delno-knowledge
+      dockerfile: Dockerfile
+    image: delno-knowledge:latest
+    container_name: delno-knowledge-dev
+    networks:
+      - delno-internal
+    environment:
+      BRAIN_ENABLED: "true"
+      BRAIN_DATA_DIR: /data
+      BRAIN_DB_PATH: /data/brain.db
+      BRAIN_TENANT_ID: delno-demo
+    volumes:
+      - delno-brain-data:/data
+    ports:
+      - "127.0.0.1:18021:8021"
 
 networks:
   delno-internal:
@@ -40,3 +61,5 @@ networks:
 volumes:
   delno-pg-data:
     name: delno-pg-data-dev
+  delno-brain-data:
+    name: delno-brain-data-dev
