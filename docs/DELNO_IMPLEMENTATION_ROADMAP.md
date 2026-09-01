@@ -119,7 +119,7 @@
 | E3.1 | **delno-web** cabinet MVP: login, leads, inbox, operator, settings | ✅ |
 | E3.2 | Operator LLM loop — **basic read-only only** | ✅ KB search + model provider |
 | E3.3 | Tool registry + confirmation classes | ⬜ |
-| E3.4 | Embeddable web widget JS | ⬜ |
+| E3.4 | Embeddable web widget JS | 🔄 v28 prototype in `delno-widget/` · [`HANDOFF.md`](../HANDOFF.md) |
 | E3.5 | Voice widget WebRTC MVP | ⬜ |
 | E3.6 | Fallback voice→text | ⬜ |
 | E3.7 | KB UI upload/publish | ⬜ |

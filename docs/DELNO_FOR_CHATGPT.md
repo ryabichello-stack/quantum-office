@@ -271,6 +271,7 @@ curl -sf http://127.0.0.1:18021/api/brain/health
 |------|------------|
 | `delno-api/` | FastAPI, auth, CMS, leads, operator |
 | `delno-web/` | Tenant cabinet (login, leads, inbox, operator) |
+| `delno-widget/` | Crystal Widget v28 (HTML prototype) · [`HANDOFF.md`](../HANDOFF.md) |
 | `delno-knowledge/` | brain_platform, vault, search |
 | `DELNO-site-v23/` | Next.js marketing site |
 | `delno-api/deploy/` | docker-compose, install scripts |
