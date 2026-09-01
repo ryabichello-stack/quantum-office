@@ -1,6 +1,6 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-3 · 2026-09-01
+**Revision:** REV-3.1 · 2026-09-01
 
 ---
 
@@ -49,6 +49,6 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DEL
 - **Prod:** `/opt/delno` на 5.35.86.62; staging https://a.47z.ru/delno/; prod https://dlno.ru (DNS pending)
 - **Repo:** quantum-office monorepo (временно) → потом delno-platform · PR [#20](https://github.com/ryabichello-stack/quantum-office/pull/20)
 - **Done (S0–S2):** delno-api, delno-knowledge, auth, CMS, public leads, channel router, admin/web scaffolds, prod stack
-- **Next (S3):** Cloudflare DNS, site→api leads, FAQ from CMS, brain ACL tests, Operator LLM
+- **Next (S3):** P0 isolation+ACL → brain init → leads→PG → DNS → P1 website exit → FAQ CMS → basic Operator (read-only)
 
 **Dev credentials (seeded):** `admin@delno.one` / `admin123456`, `owner@delno.one` / `demo123456`
