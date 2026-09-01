@@ -1,6 +1,6 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-3.7 · 2026-09-01 (E1.14 site party suggest proxy)
+**Revision:** REV-3.8 · 2026-09-01 (E1.15 tenant legal profile)
 
 ---
 
@@ -83,7 +83,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 4. P1.5 mobile pass 🔄 (`mobile.css`, viewport — manual verify)
 5. P1.8 privacy/terms ✅ (ИП Рябов Д.В., ИНН/OGRNIP из DaData, office@dlno.ru)
 6. P1.9 clarity test — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
-7. ~~**E1.12 DaData adapter**~~ ✅ · ~~**E1.13 Lead enrichment**~~ ✅ · ~~**E1.14 Site suggest**~~ ✅ · E1.15 ⬜
+7. ~~**E1.12–E1.14 DaData**~~ ✅ · ~~**E1.15 Tenant legal**~~ ✅ · E1.16 ⬜ (post-triggers)
 
 **Hero P1.1–P1.3:** **v2 landing** на `/` (owner-approved). v4 **не default** — см. [`P1.1_SITE_LANDING.md`](P1.1_SITE_LANDING.md). Clarity test (P1.9) — ⏸ deferred.
 
@@ -155,7 +155,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | 13 | Party enrichment E1.12 | ✅ | adapter + `GET /v1/tenant/party/lookup` |
 | 14 | Party enrichment E1.13 | ✅ | `inn`/`party_json` on leads; operator `lookup_company_by_inn` |
 | 15 | Party enrichment E1.14 | ✅ | site suggest proxy + lead form autocomplete |
-| 16 | Party enrichment E1.15 | ⬜ | tenant legal profile in settings |
+| 16 | Party enrichment E1.15 | ✅ | `settings.legal` from INN; tenant + admin APIs |
 
 ### Sprint 3 exit criteria (чеклист)
 
@@ -202,7 +202,7 @@ ChatGPT, проверь эти пункты особенно:
 | **E1.12 DaData** | Party lookup adapter + endpoint | ✅ |
 | **E1.13 Lead enrich** | `inn`/`party_json` on create; operator lookup tool | ✅ |
 | **E1.14 Site suggest** | `POST /delno/api/party/suggest` + lead autocomplete | ✅ |
-| **E1.15** | Tenant legal profile in settings | ⬜ |
+| **E1.15 Tenant legal** | `settings.legal` from INN; PUT/GET `/v1/tenant/legal` | ✅ |
 | **delno-site-root** | Prod root `:18022` не пересобран последним deploy | P1 |
 | **PR #20 merge** | draft + merge conflict с main | P1 |
 
@@ -216,14 +216,8 @@ ChatGPT, проверь эти пункты особенно:
 2. ~~**P1.8 Privacy/terms**~~ ✅ — ИП Рябов Д.В., реквизиты из DaData
 3. **E1.4 Provenance** — unified API contract
 4. **P1.9 Clarity test** — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
-5. **E1.15 Tenant legal profile** — `settings.legal` from INN on onboarding ([`E1.12_DADATA_PARTY_ENRICHMENT.md`](E1.12_DADATA_PARTY_ENRICHMENT.md))
-
-**После DNS (reg.ru):**
-
-7. A-записи `@`, `www`, `api` → `5.35.86.62`
-8. SSL (certbot или reg.ru)
-9. Smoke: `https://dlno.ru`, `https://api.dlno.ru/v1/health`, lead → prod DB
-10. CORS / env для prod origins
+5. **P1.9 Clarity test** — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
+6. **DNS + SSL** — reg.ru A records → `5.35.86.62`, certbot
 
 **Не начинать до закрытия Sprint 3 exit:** E2 channels, E3 widget embed, E4 telephony, CRM, billing, repo migration.
 

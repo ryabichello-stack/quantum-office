@@ -301,3 +301,67 @@ def suggest_parties_by_query(
         )
 
     return {"ok": True, "query": q, "suggestions": suggestions}
+
+
+def build_tenant_legal_profile(flat: dict[str, Any]) -> dict[str, Any]:
+    """Normalize DaData flat fields into tenants.settings.legal (E1.15)."""
+    ogrn = flat.get("ogrn")
+    profile: dict[str, Any] = {
+        "inn": flat.get("inn"),
+        "company_name": flat.get("company_name"),
+        "address": flat.get("address"),
+        "okved": flat.get("okved"),
+        "enriched_at": _utc_now().isoformat(),
+    }
+    if ogrn:
+        profile["ogrn"] = ogrn
+        if flat.get("party_type") == "INDIVIDUAL":
+            profile["ogrnip"] = ogrn
+    return {key: value for key, value in profile.items() if value}
+
+
+def enrich_tenant_legal_from_inn(
+    db: Session,
+    tenant: Any,
+    inn: str,
+    *,
+    tenant_id: UUID,
+    source: str = "tenant.legal.enrich",
+    adapter: PartyLookupAdapter | None = None,
+) -> dict[str, Any]:
+    """Persist DaData party snapshot to tenant.settings.legal."""
+    from app.models.tenant import Tenant
+    from sqlalchemy.orm.attributes import flag_modified
+
+    if not isinstance(tenant, Tenant):
+        return {"enriched": False, "reason": "invalid_tenant"}
+
+    inn_n = normalize_inn(inn)
+    if not inn_n:
+        return {"enriched": False, "reason": "invalid_inn"}
+
+    lookup = lookup_party_by_inn(db, inn_n, tenant_id=tenant_id, adapter=adapter)
+    if not lookup.get("ok"):
+        return {"enriched": False, "reason": lookup.get("error"), "lookup": lookup}
+
+    flat = lookup.get("flat") or {}
+    legal = build_tenant_legal_profile(flat)
+    settings = dict(tenant.settings or {})
+    settings["legal"] = legal
+    tenant.settings = settings
+    flag_modified(tenant, "settings")
+
+    emit_event(
+        db,
+        tenant_id=tenant_id,
+        event_type="party.enriched",
+        source=source,
+        payload={
+            "target": "tenant",
+            "inn": inn_n,
+            "company_name": legal.get("company_name"),
+            "cached": lookup.get("cached"),
+        },
+    )
+    db.flush()
+    return {"enriched": True, "legal": legal, "lookup": lookup}

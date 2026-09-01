@@ -6,6 +6,7 @@ class TenantCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     owner_email: str | None = None
     owner_password: str | None = Field(default=None, min_length=6, max_length=128)
+    legal_inn: str | None = Field(default=None, max_length=14)
 
 
 class TenantResponse(BaseModel):

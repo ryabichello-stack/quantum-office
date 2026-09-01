@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -7,8 +7,10 @@ from app.core.auth import get_tenant_context_auth
 from app.core.db import get_db
 from app.core.tenant import TenantContext
 from app.models.feature_flag import FeatureFlag
+from app.models.tenant import Tenant
+from app.services.audit import write_audit
 from app.services.events import emit_event
-from app.services.party_enrichment import lookup_party_by_inn, suggest_parties_by_query
+from app.services.party_enrichment import enrich_tenant_legal_from_inn, lookup_party_by_inn, suggest_parties_by_query
 
 router = APIRouter(prefix="/tenant", tags=["tenant"])
 
@@ -20,6 +22,15 @@ class FeatureFlagResponse(BaseModel):
 
 class FeatureFlagUpdate(BaseModel):
     enabled: bool
+
+
+class TenantLegalUpdate(BaseModel):
+    inn: str = Field(min_length=10, max_length=14)
+
+
+def _require_tenant_admin(ctx: TenantContext) -> None:
+    if ctx.role not in ("tenant_owner", "tenant_admin", "platform_admin"):
+        raise HTTPException(status_code=403, detail="Insufficient role")
 
 
 @router.get("/feature-flags", response_model=list[FeatureFlagResponse])
@@ -109,3 +120,50 @@ def tenant_party_suggest(
         raise HTTPException(status_code=400, detail="Query must be at least 2 characters")
     db.commit()
     return result
+
+
+@router.get("/legal")
+def get_tenant_legal(
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """E1.15 — read tenant legal profile from settings.legal."""
+    tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
+    legal = (tenant.settings or {}).get("legal")
+    return {"ok": True, "legal": legal}
+
+
+@router.put("/legal")
+def update_tenant_legal(
+    body: TenantLegalUpdate,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """E1.15 — enrich and store tenant.settings.legal from INN (onboarding / cabinet)."""
+    _require_tenant_admin(ctx)
+    tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
+    old_legal = (tenant.settings or {}).get("legal")
+
+    result = enrich_tenant_legal_from_inn(
+        db,
+        tenant,
+        body.inn,
+        tenant_id=ctx.tenant_id,
+        source="tenant.legal.update",
+    )
+    if not result.get("enriched"):
+        reason = result.get("reason")
+        if reason == "invalid_inn":
+            raise HTTPException(status_code=400, detail="INN must be 10 or 12 digits")
+        raise HTTPException(status_code=422, detail=str(reason or "enrichment_failed"))
+
+    write_audit(
+        db,
+        ctx,
+        action="tenant.legal.update",
+        resource=f"tenant:{tenant.id}",
+        old_value={"legal": old_legal},
+        new_value={"legal": result["legal"]},
+    )
+    db.commit()
+    return {"ok": True, "legal": result["legal"], "party_enriched": True}

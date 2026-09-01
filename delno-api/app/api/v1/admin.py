@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_platform_admin
@@ -10,6 +10,7 @@ from app.models.user import User
 from app.schemas.admin import TenantCreateRequest, TenantResponse
 from app.services.audit import write_audit
 from app.services.events import emit_event
+from app.services.party_enrichment import enrich_tenant_legal_from_inn, lookup_party_by_inn
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -59,13 +60,24 @@ def create_tenant(
             )
         )
 
+    legal_enriched = False
+    if body.legal_inn:
+        enrich_result = enrich_tenant_legal_from_inn(
+            db,
+            tenant,
+            body.legal_inn,
+            tenant_id=tenant.id,
+            source="admin.tenant.create",
+        )
+        legal_enriched = enrich_result.get("enriched") is True
+
     emit_event(
         db,
         tenant_id=tenant.id,
         event_type="tenant.created",
         category="domain",
         source="admin.tenants",
-        payload={"slug": body.slug, "created_by": str(admin.id)},
+        payload={"slug": body.slug, "created_by": str(admin.id), "legal_enriched": legal_enriched},
     )
 
     from app.core.tenant import TenantContext
@@ -80,3 +92,18 @@ def create_tenant(
     db.commit()
     db.refresh(tenant)
     return TenantResponse.from_orm_tenant(tenant)
+
+
+@router.get("/party/lookup")
+def admin_party_lookup(
+    inn: str = Query(..., min_length=10, max_length=14),
+    force: bool = False,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_platform_admin),
+) -> dict:
+    """E1.12/E1.15 — platform admin party lookup (support UI)."""
+    result = lookup_party_by_inn(db, inn, tenant_id=None, force=force)
+    if not result.get("ok") and result.get("error") == "invalid_inn":
+        raise HTTPException(status_code=400, detail="INN must be 10 or 12 digits")
+    db.commit()
+    return result
