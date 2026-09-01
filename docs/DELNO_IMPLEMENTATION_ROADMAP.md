@@ -2,7 +2,7 @@
 
 **Canonical strategy:** [`DELNO_MASTER_PLAN.md`](DELNO_MASTER_PLAN.md)  
 **Домены:** [`DLNO_DOMAINS.md`](DLNO_DOMAINS.md)  
-**Обновлено:** 2026-09-01 · **Revision REV-3.1** (Sprint 3 executable plan)
+**Обновлено:** 2026-09-01 · **Revision REV-3.2** (Sprint 3 mid-flight, synced with ChatGPT audit)
 
 Легенда: ✅ done · 🔄 in progress · ⬜ todo
 
@@ -36,8 +36,8 @@
 | P1.3 | CTA «Попробовать» → voice demo + lead form | ✅ lead form + «Спросить вслух» |
 | P1.4 | Leads с сайта → **delno-api** | ✅ route + form + deploy scripts |
 | P1.5 | Mobile UX / lighthouse pass | ⬜ |
-| P1.6 | `dlno.ru` DNS Cloudflare → `5.35.86.62` | ⬜ **S3 P0 #5** |
-| P1.7 | SSL на origin (Cloudflare Full / certbot) | ⬜ **S3 P0 #5** |
+| P1.6 | `dlno.ru` DNS **reg.ru** → `5.35.86.62` | ⏸ **S3 P0 #5** deferred |
+| P1.7 | SSL на origin (certbot / reg.ru) | ⏸ **S3 P0 #5** deferred |
 | P1.8 | Privacy/terms актуальны для dlno.ru | ⬜ |
 | P1.9 | Exit: clarity-test пройден 3+ людьми | ⬜ |
 
@@ -69,7 +69,7 @@
 | E0.11 | Deploy full stack prod: api + knowledge + postgres | ✅ |
 | E0.12 | CI: pytest delno-api + brain security tests | ✅ `.github/workflows/delno-tests.yml` |
 | E0.13 | Cross-tenant isolation integration test | ✅ |
-| E0.14 | **Exit E0:** admin creates tenant; events emit; flags work | 🔄 |
+| E0.14 | **Exit E0:** admin creates tenant; events emit; flags work | ⬜ **S3 P0** |
 | E0.15 | Minimal operational events (lead.created, auth.failed, …) | ⬜ **S3 P2 #11** |
 
 ---
@@ -88,7 +88,7 @@
 | E1.8 | Auto-ingest tenant settings → brain | ⬜ |
 | E1.9 | Per-tenant vault path isolation | ⬜ |
 | E1.10 | **delno-admin** scaffold: login + tenants + CMS | ✅ |
-| E1.11 | **Exit E1:** KB search works; CMS FAQ from admin | ⬜ |
+| E1.11 | **Exit E1:** KB search works; CMS FAQ from admin end-to-end | ⬜ |
 
 ---
 
@@ -153,7 +153,7 @@
 |---|--------|--------|
 | H1 | Staging: `a.47z.ru/delno` + `/delno-api` | ✅ |
 | H2 | Prod site root: `dlno.ru` nginx + container | ✅ |
-| H3 | Cloudflare DNS → server | ⬜ |
+| H3 | reg.ru DNS → server | ⏸ deferred |
 | H4 | `api.dlno.ru` live | ⬜ |
 | H5 | Unified deploy `/opt/delno` full stack | ✅ |
 | H6 | `app.dlno.ru`, `admin.dlno.ru` nginx | ⬜ |
@@ -181,8 +181,8 @@
 
 ## Sprint 3 — исполнимый план (строго по порядку)
 
-**Принцип:** сначала безопасность (E0/E1 exit), потом production connectivity, потом selling website, потом FAQ/CMS, Operator — только basic read-only loop в конце.  
-**E0/E1 ещё не закрыты** — cross-tenant isolation, ACL smoke, brain init-db, provenance, FAQ from API остаются todo.
+**Принцип:** P0 backend core в основном закрыт; остаются formal E0/E1 exit, events, Product P1 exit, DNS (deferred).  
+**E0/E1 formal exit** — E0.14, E1.11, E1.4 provenance — ещё не закрыты.
 
 ### P0 — блокеры (делать первым)
 
@@ -200,7 +200,7 @@
 
 | # | Шаг | Задачи | Критерий готовности |
 |---|-----|--------|---------------------|
-| 6 | **Selling Website exit** | P1.1 hero, P1.2 каналы, P1.3 CTA, P1.5 mobile, P1.8 privacy/terms | 🔄 hero/CTA на staging; mobile + clarity test pending |
+| 6 | **Selling Website exit** | P1.1–P1.3 ✅ staging; P1.5 mobile; P1.8 legal; P1.9 clarity | 🔄 визуально готов → **не валидирован** (P1.9 blocker) |
 | 7 | **Clarity test** | P1.9: 3+ незнакомых с DELNO | Минимум 3 человека понимают продукт; если 2+ говорят «AI-платформа» / «чат-бот» — hero переделывать |
 | 8 | **FAQ from CMS** | E1.7: draft/publish, site = published only, fallback + cache | ✅ site fetch + fallback |
 | 9 | **Provenance** | E1.4: source metadata в knowledge responses | API возвращает tenant-safe provenance |
@@ -211,7 +211,7 @@
 |---|-----|--------|---------------------|
 | 10 | **Basic Operator LLM** | E3.2: `/v1/operator/chat`, model provider, system prompt, tenant context, **read-only KB search**, history, errors | ✅ read-only KB loop |
 | 11 | **Operational events** | E0.15: `lead.created`, `knowledge.search_failed`, `operator.error`, `integration.error`, `auth.failed`, `tenant.isolation_violation` | Events пишутся; фундамент для E6 Supervisor |
-| 12 | **Docs/status** | Обновить roadmap + master plan | REV актуален |
+| 12 | **Docs/status** | REV-3.2 sync entry + roadmap + master + domains | 🔄 |
 
 ### Sprint 3 — exit criteria (все одновременно)
 

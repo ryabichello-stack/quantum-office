@@ -1,6 +1,6 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-3.2 · 2026-09-01 (Sprint 3 mid-flight)
+**Revision:** REV-3.2 · 2026-09-01 (Sprint 3 mid-flight · docs synced post ChatGPT audit)
 
 ---
 
@@ -45,11 +45,34 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | # | Документ | Зачем | Raw URL |
 |---|----------|-------|---------|
 | 1 | **Этот файл** | Точка входа, промпт, актуальный статус | см. ссылку выше |
-| 2 | **Master plan** | Стратегия, архитектура, guardrails, E0–E10 | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DELNO_MASTER_PLAN.md |
-| 3 | **Roadmap** | Checklist, Sprint 3, API endpoints | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DELNO_IMPLEMENTATION_ROADMAP.md |
-| 4 | **Domains** | dlno.ru, DNS, nginx (справочно) | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DLNO_DOMAINS.md |
+| 2 | **Master plan** | Стратегия, архитектура, guardrails, E0–E10 | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DELNO_MASTER_PLAN.md |
+| 3 | **Roadmap** | Checklist, что ✅ сделано, Sprint 3, API endpoints | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DELNO_IMPLEMENTATION_ROADMAP.md |
+| 4 | **Domains** | dlno.ru, DNS reg.ru, nginx | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DLNO_DOMAINS.md |
+| 5 | **Clarity test** | P1.9 протокол и таблица результатов | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/P1.9_CLARITY_TEST.md |
 
-**Проверка версии master plan:** строка `DELNO-MASTER-PLAN-REV-3` + секция `Rev.3 — Implementation Status`.
+**Проверка версии master plan:** строка `DELNO-MASTER-PLAN-REV-3.2` + секция `Rev.3 — Implementation Status`.
+
+---
+
+## Внешний аудит ChatGPT (2026-09-01) — принят
+
+**Вердикт:** Sprint 3 ≈ *backend core mostly done, product exit not done*.
+
+**Критический путь до закрытия Sprint 3:**
+
+1. E0.15 operational events  
+2. E0.14 formal exit (tenant + flags + events)  
+3. E1.11 end-to-end (admin CMS → publish → public API → site)  
+4. P1.5 mobile pass  
+5. P1.8 privacy/terms для dlno.ru  
+6. **P1.9 clarity test** — 3+ человека, протокол в `P1.9_CLARITY_TEST.md`  
+7. Docs sync REV-3.2 (этот commit)
+
+**Hero P1.1–P1.3:** визуально на staging ✅, но **не считать успешным до P1.9**.
+
+**PR #20:** draft, возможен merge conflict с `main` — resolve перед merge.
+
+**Не начинать:** CRM, marketplace, telephony, billing, repo migration.
 
 ---
 
@@ -100,7 +123,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 
 | # | Задача | Статус | Примечание |
 |---|--------|--------|------------|
-| 6 | Selling website exit | 🔄 | hero v4 на `/`, каналы, CTA — OK; mobile + terms pending |
+| 6 | Selling website exit | 🔄 | P1.1–P1.3 на staging ✅; **не валидирован до P1.9**; mobile + legal pending |
 | 7 | Clarity test (P1.9) | ⬜ | 3+ человека, 5–10 сек — **ручной шаг владельца** |
 | 8 | FAQ from CMS | ✅ | `FaqSection` + `/api/cms/faq`, fallback static |
 | 9 | Provenance in API responses (E1.4) | ⬜ | есть в brain search matches; не везде в delno-api |
@@ -111,7 +134,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 |---|--------|--------|------------|
 | 10 | Basic Operator LLM (read-only KB) | ✅ | `/v1/operator/chat`, 22 pytest pass |
 | 11 | Operational events (E0.15) | ⬜ | `lead.created`, `auth.failed`, … — не начато |
-| 12 | Docs/status sync | 🔄 | roadmap обновлён; master plan частично отстаёт |
+| 12 | Docs/status sync | ✅ | REV-3.2: entry + roadmap + master + domains |
 
 ### Sprint 3 exit criteria (чеклист)
 
@@ -147,18 +170,17 @@ ChatGPT, проверь эти пункты особенно:
 
 | Область | Gap | Критичность |
 |---------|-----|-------------|
-| **E0.14 exit** | Admin creates tenant + events emit + flags — не формально закрыт | medium |
-| **E1.11 exit** | KB search + CMS FAQ end-to-end через admin UI — частично (API есть, admin flow?) | medium |
-| **E1.4 provenance** | Metadata в delno-api responses для tenant UI — не везде | medium |
-| **E1.8–E1.9** | Auto-ingest settings → brain; per-tenant vault isolation | low (S3+) |
-| **P1.5 mobile** | Lighthouse / responsive pass не делали | high для P1 exit |
-| **P1.8 legal** | Privacy/terms для dlno.ru — не обновляли под prod domain | high перед prod DNS |
-| **P1.9 clarity** | Нет результатов теста 3+ людей | **блокер P1 exit** |
-| **E0.15 events** | Operational event bus не реализован | high для observability |
-| **DNS docs drift** | `DLNO_DOMAINS.md` / roadmap ещё упоминают Cloudflare | low (docs) |
-| **Site repo completeness** | Большая часть `DELNO-site-v23/` не в git (только ключевые файлы) | medium (CI/build risk) |
-| **delno-site-root** | Prod root site `:18022` — не пересобирали в последнем deploy | low |
-| **Master plan sync** | `DELNO_MASTER_PLAN.md` может отставать от roadmap REV-3.1 | low |
+| **E0.14 exit** | Admin creates tenant + events emit + flags — не формально закрыт | **P0** |
+| **E1.11 exit** | Admin CMS → publish → site end-to-end не доказан | **P0** |
+| **E1.4 provenance** | Unified source contract в delno-api — не везде | P1 |
+| **E1.8–E1.9** | Auto-ingest settings → brain; per-tenant vault isolation | low (post-S3) |
+| **P1.5 mobile** | Lighthouse / responsive pass не делали | **P0 Product** |
+| **P1.8 legal** | Privacy/terms для dlno.ru | **P0 перед prod** |
+| **P1.9 clarity** | Нет результатов теста 3+ людей | **blocker P1 exit** |
+| **E0.15 events** | Operational event bus не реализован | **P0** |
+| **Site repo completeness** | Большая часть `DELNO-site-v23/` не в git | P1 |
+| **delno-site-root** | Prod root `:18022` не пересобран последним deploy | P1 |
+| **PR #20 merge** | draft + merge conflict с main | P1 |
 
 ---
 
@@ -166,12 +188,12 @@ ChatGPT, проверь эти пункты особенно:
 
 **Без DNS (можно сейчас):**
 
-1. **P1.9 Clarity test** — 3+ человека открывают https://a.47z.ru/delno/, фиксируют первое впечатление за 5–10 сек
-2. **P1.5 Mobile UX** — lighthouse, hero/CTA/forms на 375px
-3. **E0.15 Operational events** — минимальный event log для leads, auth, operator errors
-4. **E1.4 Provenance** — единый формат source metadata в API responses
-5. **P1.8 Privacy/terms** — актуализировать под dlno.ru / office@dlno.ru
-6. **E0.14 / E1.11 formal exit** — smoke через admin: tenant → CMS publish → site
+1. **E0.15 Operational events** — `lead.created`, `auth.failed`, `operator.error`
+2. **E0.14 / E1.11 formal exit** — admin → tenant/CMS publish → site
+3. **P1.5 Mobile UX** — lighthouse, 375px, no overflow
+4. **P1.8 Privacy/terms** — dlno.ru / office@dlno.ru
+5. **P1.9 Clarity test** — протокол: [`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md)
+6. **E1.4 Provenance** — unified API contract
 
 **После DNS (reg.ru):**
 

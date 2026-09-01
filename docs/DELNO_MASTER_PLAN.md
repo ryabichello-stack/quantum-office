@@ -1,7 +1,7 @@
 # DELNO — единый мастер-план
 
 **Версия:** 2026-09-01  
-**Revision:** `DELNO-MASTER-PLAN-REV-3`  
+**Revision:** `DELNO-MASTER-PLAN-REV-3.2`  
 **Commit:** см. tip `main` (ветка `cursor/delno-api-scaffold-14e9`, PR #20)  
 **Статус:** canonical — по этому документу начинаем реализацию  
 **Prod staging:** https://a.47z.ru/delno/ · https://a.47z.ru/delno-api/  
@@ -51,9 +51,9 @@
 2. ✅ `delno-knowledge`: brain-only `main_delno.py`, prod `:18021`  
 3. ✅ Prod stack `/opt/delno`: postgres + api `:18020` + knowledge + site staging `:18019` + site root `:18022`  
 4. ✅ `delno-admin` + `delno-web` Next.js scaffolds  
-5. ✅ Site leads proxy → delno-api (код; prod rebuild pending)  
-6. ✅ Nginx ready for `dlno.ru` (Cloudflare DNS pending)  
-7. 🔄 Sprint 3: security first → brain init → leads → DNS → P1 exit → FAQ → basic Operator (см. roadmap REV-3.1)  
+5. ✅ Site leads proxy → delno-api PostgreSQL (staging verified 2026-09-01)  
+6. ✅ Nginx ready for `dlno.ru` (DNS **reg.ru** pending — deferred)  
+7. 🔄 Sprint 3 mid-flight: P0 backend mostly done → **Product P1 exit + E0/E1 formal exit + events** pending (см. roadmap REV-3.2)  
 
 **Детальный checklist:** [`DELNO_IMPLEMENTATION_ROADMAP.md`](DELNO_IMPLEMENTATION_ROADMAP.md)
 
@@ -64,7 +64,7 @@
 | S0 | ✅ | brain extract, auth, admin tenants, KnowledgeAdapter, tests |
 | S1 | ✅ | prod stack staging на `a.47z.ru/delno` |
 | S2 | ✅ | CMS, public API, channel router, admin/web scaffolds |
-| S3 | ⬜ in progress | P0: isolation + ACL + brain + leads + DNS → P1: website exit + FAQ → P2: basic Operator + events |
+| S3 | 🔄 mid-flight | ✅ isolation, ACL, brain seed, leads, FAQ CMS, Operator read-only · ⬜ E0/E1 formal exit, events, mobile, legal, clarity test, DNS |
 
 **Dev credentials (seeded):** `admin@delno.one` / `admin123456`, `owner@delno.one` / `demo123456`
 
@@ -633,27 +633,28 @@ E0 + E1 start:
  12. Site leads proxy → delno-api (code ready)
 ```
 
-### Sprint 3 ⬜ (in progress — см. [`DELNO_IMPLEMENTATION_ROADMAP.md`](DELNO_IMPLEMENTATION_ROADMAP.md) REV-3.1)
+### Sprint 3 🔄 (mid-flight — см. [`DELNO_IMPLEMENTATION_ROADMAP.md`](DELNO_IMPLEMENTATION_ROADMAP.md) REV-3.2)
 
-**Порядок строго фиксирован. Не переставлять.**
+**Backend core mostly done; Product P1 exit not done.**
 
 ```
-P0 — блокеры:
-  1. E0.13 cross-tenant isolation + E1.3 ACL smoke (CI) — ДО Operator write-tools
-  2. E1.2 brain init-db + demo vault + tenant-scoped search
-  3. P1.4 site → POST /v1/public/leads → PostgreSQL
-  4. P1.6/P1.7 dlno.ru + api.dlno.ru + SSL + CORS
+P0 — done (backend):
+  ✅ E0.13 cross-tenant isolation + E1.3 ACL smoke (CI)
+  ✅ E1.2 brain init-db + demo vault + tenant-scoped search
+  ✅ P1.4 site → POST /v1/public/leads → PostgreSQL (staging)
+  ⏸ P1.6/P1.7 dlno.ru + api.dlno.ru + SSL (DNS reg.ru deferred)
 
-P1 — product:
-  5. P1.1/P1.2/P1.3/P1.5/P1.8 selling website exit criteria
-  6. P1.9 clarity test (3+ людей)
-  7. E1.7 FAQ from CMS (published only, cache + fallback)
-  8. E1.4 knowledge provenance in API responses
+P1 — product (partial):
+  🔄 P1.1–P1.3 hero v4 / channels / CTA on staging — визуально готов, не валидирован (P1.9)
+  ⬜ P1.5 mobile · ⬜ P1.8 privacy/terms · ⬜ P1.9 clarity test (3+ людей)
+  ✅ E1.7 FAQ from CMS
+  ⬜ E1.4 unified provenance in delno-api responses
 
-P2 — operator foundation:
-  9. E3.2 basic Operator LLM — read-only KB, tenant context, no mass actions
- 10. E0.15 minimal operational events (lead.created, auth.failed, …)
- 11. Update docs/status
+P2 — operator foundation (partial):
+  ✅ E3.2 basic Operator LLM — read-only KB
+  ⬜ E0.15 operational events
+  ⬜ E0.14 / E1.11 formal exit (admin → tenant/CMS → site)
+  🔄 docs sync REV-3.2
 ```
 
 **Exit Sprint 3:** все пункты exit criteria в roadmap одновременно выполнены.
@@ -730,7 +731,8 @@ DELNO готов к первому коммерческому масштабир
 | `docs/DELNO_MASTER_PLAN.md` | **этот файл — canonical** |
 | `docs/DELNO_FOR_CHATGPT.md` | entry point + raw URLs для ревью |
 | `docs/DELNO_IMPLEMENTATION_ROADMAP.md` | checklist + статус Sprint 0–3 |
-| `docs/DLNO_DOMAINS.md` | dlno.ru DNS и nginx |
+| `docs/DLNO_DOMAINS.md` | dlno.ru DNS (reg.ru) и nginx |
+| `docs/P1.9_CLARITY_TEST.md` | clarity test protocol |
 | `delno-api/docs/DEPLOY_ISOLATION.md` | prod deploy |
 | `DELNO-site-v23/docs/00_MASTER_SPEC.md` | product vision |
 | `delno-api/AGENTS.md` | API onboarding |
@@ -755,4 +757,4 @@ It must document the dependency and defer implementation unless explicitly appro
 6. **Usage metering + events + feature flags** — с раннего этапа.
 7. **CRM/marketplace/banking** — guardrails, PARTNER → LEARN → BUILD.
 
-**Следующий шаг:** Sprint 3 P0 #1 — cross-tenant isolation test + ACL smoke (см. roadmap REV-3.1).
+**Следующий шаг:** E0.15 events → E0.14/E1.11 formal exit → P1.5 mobile → P1.8 legal → **P1.9 clarity test** (см. roadmap REV-3.2).
