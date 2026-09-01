@@ -30,6 +30,8 @@ docker build \
   -t delno-site-root:latest \
   "${SITE_SRC}"
 
+docker network create delno-internal 2>/dev/null || true
+
 docker rm -f delno-site-root 2>/dev/null || true
 ENV_FILE_ARG=()
 if [ -f "${STACK_DIR}/.env" ]; then
@@ -37,6 +39,9 @@ if [ -f "${STACK_DIR}/.env" ]; then
 fi
 docker run -d --name delno-site-root --restart unless-stopped \
   "${ENV_FILE_ARG[@]}" \
+  --network delno-internal \
+  -e DELNO_API_URL="${DELNO_API_URL:-http://api:8020}" \
+  -e DELNO_TENANT_SLUG="${DELNO_TENANT_SLUG:-delno-demo}" \
   -p "127.0.0.1:${ROOT_PORT}:3000" \
   delno-site-root:latest
 

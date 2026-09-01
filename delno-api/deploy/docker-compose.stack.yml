@@ -66,6 +66,8 @@ services:
     build:
       context: ./site
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-/delno}
     image: delno-site:latest
     container_name: delno-site
     restart: unless-stopped
@@ -74,7 +76,8 @@ services:
     env_file:
       - .env
     environment:
-      DELNO_API_URL: ${DELNO_API_URL:-http://delno-api:8020}
+      DELNO_API_URL: http://api:8020
+      DELNO_TENANT_SLUG: ${DEFAULT_TENANT_SLUG:-delno-demo}
     ports:
       - "127.0.0.1:18019:3000"
     depends_on:

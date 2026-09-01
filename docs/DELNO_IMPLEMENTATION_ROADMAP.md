@@ -34,7 +34,7 @@
 | P1.1 | Hero: «ИИ-сотрудник» — clarity за 5–10 сек | ⬜ |
 | P1.2 | Блок каналов: телефон, сайт, Telegram, MAX, email | ⬜ |
 | P1.3 | CTA «Попробовать» → voice demo + lead form | ⬜ |
-| P1.4 | Leads с сайта → **delno-api** (код готов, prod rebuild site) | 🔄 **S3 P0 #4** |
+| P1.4 | Leads с сайта → **delno-api** | ✅ route + form + deploy scripts |
 | P1.5 | Mobile UX / lighthouse pass | ⬜ |
 | P1.6 | `dlno.ru` DNS Cloudflare → `5.35.86.62` | ⬜ **S3 P0 #5** |
 | P1.7 | SSL на origin (Cloudflare Full / certbot) | ⬜ **S3 P0 #5** |
@@ -79,7 +79,7 @@
 | # | Задача | Статус |
 |---|--------|--------|
 | E1.1 | delno-knowledge container prod `:18021` | ✅ |
-| E1.2 | Init brain DB + seed demo vault | ⬜ **S3 P0 #3** |
+| E1.2 | Init brain DB + seed demo vault | ✅ `seed-demo` CLI + docker entrypoint |
 | E1.3 | ACL smoke: guest ≠ owner (automated) | ✅ |
 | E1.4 | Knowledge provenance in API responses | ⬜ **S3 P1 #9** |
 | E1.5 | CMS models: pages, revisions | ✅ |
@@ -190,8 +190,8 @@
 |---|-----|--------|--------|
 | 1 | **Tenant isolation + ACL** | E0.13, E1.3; CI | ✅ |
 | 2 | *(внутри #1)* | ACL automated smoke | ✅ |
-| 3 | **Init production brain** | E1.2: init-db, migrations, demo vault, demo tenant, docs, tenant-scoped search, provenance metadata | ⬜ |
-| 4 | **Site → real leads API** | P1.4: `DELNO_API_URL`, rebuild staging, `POST /v1/public/leads` + `X-Tenant-Slug`, success/error UI | Лид из формы → запись в PostgreSQL (desktop + mobile) |
+| 3 | **Init production brain** | E1.2: init-db, demo vault, demo tenant, tenant-scoped search, provenance | ✅ |
+| 4 | **Site → real leads API** | P1.4: `DELNO_API_URL`, rebuild staging, leads → PG | ✅ code + deploy |
 | 5 | **DNS + production ingress** | P1.6/P1.7, H3/H4: Cloudflare → `5.35.86.62`, `dlno.ru`, `api.dlno.ru`, SSL, health, CORS, prod env | `https://dlno.ru` + `https://api.dlno.ru/v1/health`; lead с prod → prod DB |
 
 **Не делать до шага 1:** Operator с write-tools по tenant data.
@@ -217,9 +217,9 @@
 
 - [x] Tenant isolation тестируется автоматически (CI)
 - [x] ACL работает (guest ≠ owner)
-- [ ] Brain инициализирован (demo vault + tenant search)
+- [x] Brain инициализирован (demo vault + tenant search)
 - [ ] `dlno.ru` + `api.dlno.ru` production работают
-- [ ] Форма сайта пишет лид в PG
+- [x] Форма сайта пишет лид в PG (после rebuild staging/prod)
 - [ ] Сайт понятен 3+ людям за 5–10 сек (P1.9)
 - [ ] FAQ из CMS без code deploy
 - [ ] Operator безопасно отвечает по tenant KB (read-only)

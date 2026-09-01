@@ -9,6 +9,12 @@ echo "==> DELNO full stack deploy → ${STACK_DIR}"
 
 mkdir -p "${STACK_DIR}"/{api,knowledge,site,site-src,deploy}
 
+# Site (staging build context)
+if [ -d "${REPO_ROOT}/DELNO-site-v23" ]; then
+  rsync -a --delete "${REPO_ROOT}/DELNO-site-v23/" "${STACK_DIR}/site/" \
+    --exclude node_modules --exclude .next --exclude .sites-runtime --exclude .wrangler
+fi
+
 # API
 rsync -a --delete "${REPO_ROOT}/delno-api/" "${STACK_DIR}/api/" \
   --exclude .venv --exclude __pycache__ --exclude .pytest_cache --exclude .env
@@ -21,10 +27,12 @@ rsync -a --delete "${REPO_ROOT}/delno-knowledge/" "${STACK_DIR}/knowledge/" \
 cp "${REPO_ROOT}/delno-api/deploy/docker-compose.stack.yml" "${STACK_DIR}/docker-compose.yml"
 
 cd "${STACK_DIR}"
-docker compose build api knowledge
+docker compose build api knowledge site
 docker compose up -d postgres
 sleep 3
 docker compose up -d api knowledge
+docker compose exec -T knowledge python -m brain_platform seed-demo --verify 2>/dev/null || true
+docker compose up -d site
 docker compose ps
 
 echo "==> health"

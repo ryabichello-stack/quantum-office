@@ -37,8 +37,9 @@ DELNO_PG_DB=delno
 
 DEFAULT_TENANT_SLUG=delno-demo
 
-# Public API URL for site (internal docker DNS)
-DELNO_API_URL=http://delno-api:8020
+# Public API URL for site (internal docker DNS — service name `api`)
+DELNO_API_URL=http://api:8020
+DELNO_TENANT_SLUG=delno-demo
 
 # Optional adapters to Quantum Office (leave empty for full isolation)
 KNOWLEDGE_BASE_URL=
