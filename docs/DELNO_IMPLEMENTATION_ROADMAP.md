@@ -90,7 +90,7 @@
 | E1.10 | **delno-admin** scaffold: login + tenants + CMS | ✅ |
 | E1.11 | **Exit E1:** KB search works; CMS FAQ from admin end-to-end | ✅ CMS chain tests + smoke |
 | E1.12 | **PartyLookupAdapter** (DaData) + PG cache + lookup API | ✅ `GET /v1/tenant/party/lookup` |
-| E1.13 | Lead enrichment: `inn`, `party_json`, operator `lookup_company_by_inn` | ⬜ depends E1.12 |
+| E1.13 | Lead enrichment: `inn`, `party_json`, operator `lookup_company_by_inn` | ✅ alembic `003_leads_party`, `create_lead_record`, events |
 | E1.14 | Site party suggest proxy + optional INN in lead form | ⬜ depends E1.13 |
 | E1.15 | Tenant legal profile in `settings` (onboarding E5.1) | ⬜ depends E1.12 |
 | E1.16 | CRM push enriched fields → Bitrix (post-triggers) | ⬜ **DO NOT START** до CRM triggers |
@@ -175,15 +175,15 @@
 | GET/POST | `/v1/admin/tenants` | platform admin |
 | GET/POST/PATCH | `/v1/admin/cms/pages` | CMS CRUD |
 | POST | `/v1/admin/cms/pages/{id}/publish` | publish |
-| POST | `/v1/public/leads` | anon leads (X-Tenant-Slug) |
+| POST | `/v1/public/leads` | anon leads (X-Tenant-Slug); optional `inn` → DaData enrich (E1.13) |
 | GET | `/v1/public/cms/pages/{slug}` | published CMS |
 | GET/PATCH | `/v1/tenant/feature-flags` | tenant flags |
 | GET | `/v1/tenant/me` | tenant context |
 | GET | `/v1/tenant/party/lookup?inn=` | DaData findById + PG cache (E1.12) |
-| POST | `/v1/leads` | tenant-scoped leads |
+| POST | `/v1/leads` | tenant-scoped leads; optional `inn` (E1.13) |
 | POST | `/v1/operator/chat` | operator MVP |
 
-### API endpoints (planned — DaData E1.13+)
+### API endpoints (planned — DaData E1.14+)
 
 | Method | Path | Назначение |
 |--------|------|------------|

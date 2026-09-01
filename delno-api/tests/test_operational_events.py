@@ -10,6 +10,7 @@ from fastapi import HTTPException
 
 from app.api.v1.auth import login
 from app.core.tenant import TenantContext
+from app.models.lead import Lead
 from app.models.platform_event import PlatformEvent
 from app.operator.agent import run_operator_turn
 from app.operator.tools.builtin import GetKnowledgeTool
@@ -126,18 +127,18 @@ def test_create_lead_tool_emits_lead_created():
     tenant_id = uuid.uuid4()
     ctx = TenantContext(tenant_id=tenant_id, tenant_slug="delno-demo", role="tenant_owner")
     db = MagicMock()
+    fake_lead = Lead(tenant_id=tenant_id, name="Anna", phone="+79990001122", source="operator")
+    fake_lead.id = uuid.uuid4()
 
     from app.operator.tools.builtin import CreateLeadTool
 
     tool = CreateLeadTool()
-    with patch("app.operator.tools.builtin.notify_lead_telegram", return_value=False):
-        with patch("app.operator.tools.builtin.write_audit"):
-            with patch("app.operator.tools.builtin.emit_event") as mock_emit:
-                result = tool.run(db, ctx, name="Anna", phone="+79990001122")
+    with patch(
+        "app.operator.tools.builtin.create_lead_record",
+        return_value=(fake_lead, {"telegram_notified": False, "enrichment": {"enriched": False}}),
+    ) as mock_create:
+        result = tool.run(db, ctx, name="Anna", phone="+79990001122")
 
     assert result.ok is True
-    mock_emit.assert_called_once()
-    kwargs = mock_emit.call_args.kwargs
-    assert kwargs["tenant_id"] == tenant_id
-    assert kwargs["event_type"] == "lead.created"
-    assert kwargs["source"] == "operator.create_lead"
+    mock_create.assert_called_once()
+    assert mock_create.call_args.kwargs["event_source"] == "operator.create_lead"

@@ -173,3 +173,49 @@ def lookup_party_by_inn(
         "flat": flat,
         "suggestions_count": len(suggestions),
     }
+
+
+def enrich_lead_from_inn(
+    db: Session,
+    lead: Any,
+    inn: str | None,
+    *,
+    tenant_id: UUID,
+    source: str = "leads.enrich",
+    adapter: PartyLookupAdapter | None = None,
+) -> dict[str, Any]:
+    """Attach DaData party snapshot to a lead when INN is provided."""
+    from app.models.lead import Lead
+
+    if not isinstance(lead, Lead):
+        return {"enriched": False, "reason": "invalid_lead"}
+
+    inn_n = normalize_inn(inn)
+    if not inn_n:
+        return {"enriched": False, "reason": "invalid_inn"}
+
+    lead.inn = inn_n
+    lookup = lookup_party_by_inn(db, inn_n, tenant_id=tenant_id, adapter=adapter)
+    if not lookup.get("ok"):
+        return {"enriched": False, "reason": lookup.get("error"), "lookup": lookup}
+
+    flat = lookup.get("flat") or {}
+    lead.party_json = {"flat": flat, "party": lookup.get("party")}
+    lead.party_enriched_at = _utc_now()
+    if not lead.company and flat.get("company_name"):
+        lead.company = str(flat["company_name"])[:160]
+
+    emit_event(
+        db,
+        tenant_id=tenant_id,
+        event_type="party.enriched",
+        source=source,
+        payload={
+            "lead_id": str(lead.id),
+            "inn": inn_n,
+            "company_name": flat.get("company_name"),
+            "cached": lookup.get("cached"),
+        },
+    )
+    db.flush()
+    return {"enriched": True, "lookup": lookup}

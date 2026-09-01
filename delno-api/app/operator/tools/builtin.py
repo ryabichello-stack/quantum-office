@@ -6,11 +6,11 @@ from sqlalchemy.orm import Session
 from app.adapters.knowledge import KnowledgeAdapter
 from app.core.principals import principal_for_operator
 from app.core.tenant import TenantContext
-from app.models.lead import Lead
 from app.operator.tools.registry import ToolResult
 from app.services.audit import write_audit
 from app.services.events import emit_event
-from app.services.leads import notify_lead_telegram
+from app.services.leads import create_lead_record
+from app.services.party_enrichment import lookup_party_by_inn
 
 
 class GetKnowledgeTool:
@@ -76,9 +76,46 @@ class GetKnowledgeTool:
         return ToolResult(ok=True, data=data, message="Knowledge search completed")
 
 
+class LookupCompanyByInnTool:
+    name = "lookup_company_by_inn"
+    description = "Look up legal entity by INN (read-only). Returns company name, address, OKVED."
+    critical_write = False
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "inn": {"type": "string", "description": "10 or 12 digit INN"},
+        },
+        "required": ["inn"],
+    }
+
+    def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult:
+        inn = str(params.get("inn") or "").strip()
+        if not inn:
+            return ToolResult(ok=False, message="inn is required")
+        result = lookup_party_by_inn(db, inn, tenant_id=ctx.tenant_id)
+        if not result.get("ok"):
+            write_audit(
+                db,
+                ctx,
+                action="tool.lookup_company_by_inn",
+                resource="party",
+                new_value={"inn": inn, "ok": False, "error": result.get("error")},
+                result="error",
+            )
+            return ToolResult(ok=False, data=result, message=str(result.get("error") or "lookup failed"))
+        write_audit(
+            db,
+            ctx,
+            action="tool.lookup_company_by_inn",
+            resource="party",
+            new_value={"inn": result.get("inn"), "company_name": (result.get("flat") or {}).get("company_name")},
+        )
+        return ToolResult(ok=True, data=result, message="Party lookup completed")
+
+
 class CreateLeadTool:
     name = "create_lead"
-    description = "Create a sales lead with name and phone. Optional email, company, website, source."
+    description = "Create a sales lead with name and phone. Optional email, company, website, inn, source."
     critical_write = True
     parameters_schema = {
         "type": "object",
@@ -88,6 +125,7 @@ class CreateLeadTool:
             "email": {"type": "string"},
             "company": {"type": "string"},
             "website": {"type": "string"},
+            "inn": {"type": "string"},
             "source": {"type": "string"},
         },
         "required": ["name", "phone"],
@@ -99,35 +137,26 @@ class CreateLeadTool:
         if not name or not phone:
             return ToolResult(ok=False, message="name and phone are required")
 
-        lead = Lead(
-            tenant_id=ctx.tenant_id,
-            source=str(params.get("source") or "operator").strip()[:120],
+        lead, meta = create_lead_record(
+            db,
+            ctx,
             name=name[:120],
             phone=phone[:60],
             email=(str(params.get("email")).strip()[:160] if params.get("email") else None),
             company=(str(params.get("company")).strip()[:160] if params.get("company") else None),
             website=(str(params.get("website")).strip()[:255] if params.get("website") else None),
+            inn=(str(params.get("inn")).strip() if params.get("inn") else None),
+            source=str(params.get("source") or "operator").strip()[:120],
+            audit_action="tool.create_lead",
+            event_source="operator.create_lead",
+            channel="operator",
         )
-        db.add(lead)
-        db.flush()
-        notify_lead_telegram(lead)
-        write_audit(
-            db,
-            ctx,
-            action="tool.create_lead",
-            resource=f"lead:{lead.id}",
-            new_value={"name": lead.name, "phone": lead.phone, "source": lead.source},
-        )
-        emit_event(
-            db,
-            tenant_id=ctx.tenant_id,
-            event_type="lead.created",
-            category="operational",
-            source="operator.create_lead",
-            payload={
+        return ToolResult(
+            ok=True,
+            data={
                 "lead_id": str(lead.id),
-                "source": lead.source,
-                "channel": "operator",
+                "party_enriched": meta["enrichment"].get("enriched"),
+                "inn": lead.inn,
             },
+            message="Lead created",
         )
-        return ToolResult(ok=True, data={"lead_id": str(lead.id)}, message="Lead created")

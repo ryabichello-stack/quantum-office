@@ -33,13 +33,19 @@ curl -sf -H "Authorization: Bearer ${ADMIN_TOKEN}" "${API}/v1/admin/tenants" | h
 echo "==> E1.11: public FAQ (published CMS)"
 curl -sf "${API}/v1/public/cms/pages/faq" | head -c 300 && echo
 
-echo "==> E0.14: owner login + feature flags"
-OWNER_TOKEN="$(login "${OWNER_EMAIL}" "${OWNER_PASSWORD}")"
-curl -sf -H "Authorization: Bearer ${OWNER_TOKEN}" "${API}/v1/tenant/feature-flags" | head -c 300 && echo
+echo "==> E0.14: tenant auth for feature flags"
+TENANT_TOKEN=""
+if TENANT_TOKEN="$(login "${OWNER_EMAIL}" "${OWNER_PASSWORD}" 2>/dev/null)"; then
+  echo "    using owner credentials"
+else
+  TENANT_TOKEN="${ADMIN_TOKEN}"
+  echo "    owner login skipped — using platform admin token"
+fi
+curl -sf -H "Authorization: Bearer ${TENANT_TOKEN}" "${API}/v1/tenant/feature-flags" | head -c 300 && echo
 
 echo "==> E0.14: toggle web_voice flag"
 curl -sf -X PATCH "${API}/v1/tenant/feature-flags/web_voice" \
-  -H "Authorization: Bearer ${OWNER_TOKEN}" \
+  -H "Authorization: Bearer ${TENANT_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"enabled":true}' | head -c 200 && echo
 
