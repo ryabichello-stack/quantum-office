@@ -7,7 +7,16 @@
 - `outreach/` — Bitrix outreach (FastAPI, `:8012`)
 - `mailer/` — post-call письма, календарь, Телемост (`:8000`)
 - `text-bot/` — Telegram-бот (`:8011`)
+- `delno-api/` — DELNO platform API (multi-tenant SaaS)
 - `docs/` — карта прода и состояние
+
+## DELNO (commercial SaaS)
+
+**Мастер-план (canonical):** [`docs/DELNO_MASTER_PLAN.md`](docs/DELNO_MASTER_PLAN.md)
+
+Staging: https://a.47z.ru/delno/ · https://a.47z.ru/delno-api/ · prod path `/opt/delno/`
+
+Second Brain (KB foundation): `/opt/ava-knowledge/brain_platform/` → port as `delno-knowledge`
 
 ## Прод (справочно)
 
