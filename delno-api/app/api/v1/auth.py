@@ -18,6 +18,18 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 def login(body: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
     user = db.query(User).filter(User.email == body.email.lower()).one_or_none()
     if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
+        emit_event(
+            db,
+            tenant_id=user.tenant_id if user else None,
+            event_type="auth.failed",
+            category="operational",
+            source="auth.login",
+            payload={
+                "email": body.email.lower(),
+                "reason": "invalid_credentials",
+            },
+        )
+        db.commit()
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).one()
@@ -27,6 +39,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
         tenant_id=tenant.id,
         event_type="auth.login",
         category="operational",
+        source="auth.login",
         payload={"user_id": str(user.id), "role": user.role},
     )
     record_usage(db, tenant_id=tenant.id, metric="auth.login", quantity=1)

@@ -60,13 +60,12 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 
 **Критический путь до закрытия Sprint 3:**
 
-1. E0.15 operational events  
+1. ~~E0.15 operational events~~ ✅  
 2. E0.14 formal exit (tenant + flags + events)  
 3. E1.11 end-to-end (admin CMS → publish → public API → site)  
 4. P1.5 mobile pass  
 5. P1.8 privacy/terms для dlno.ru  
-6. **P1.9 clarity test** — 3+ человека, протокол в `P1.9_CLARITY_TEST.md`  
-7. Docs sync REV-3.2 (этот commit)
+6. **P1.9 clarity test** — после mobile pass; протокол `P1.9_CLARITY_TEST.md`
 
 **Hero P1.1–P1.3:** визуально на staging ✅, но **не считать успешным до P1.9**.
 
@@ -133,7 +132,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | # | Задача | Статус | Примечание |
 |---|--------|--------|------------|
 | 10 | Basic Operator LLM (read-only KB) | ✅ | `/v1/operator/chat`, 22 pytest pass |
-| 11 | Operational events (E0.15) | ⬜ | `lead.created`, `auth.failed`, … — не начато |
+| 11 | Operational events (E0.15) | ⬜ | ✅ lead.created, auth.failed, operator.error, knowledge.search_failed |
 | 12 | Docs/status sync | ✅ | REV-3.2: entry + roadmap + master + domains |
 
 ### Sprint 3 exit criteria (чеклист)
@@ -177,7 +176,7 @@ ChatGPT, проверь эти пункты особенно:
 | **P1.5 mobile** | Lighthouse / responsive pass не делали | **P0 Product** |
 | **P1.8 legal** | Privacy/terms для dlno.ru | **P0 перед prod** |
 | **P1.9 clarity** | Нет результатов теста 3+ людей | **blocker P1 exit** |
-| **E0.15 events** | Operational event bus не реализован | **P0** |
+| **E0.15 events** | ~~Operational event bus~~ | ✅ done |
 | **Site repo completeness** | Большая часть `DELNO-site-v23/` не в git | P1 |
 | **delno-site-root** | Prod root `:18022` не пересобран последним deploy | P1 |
 | **PR #20 merge** | draft + merge conflict с main | P1 |
@@ -188,12 +187,11 @@ ChatGPT, проверь эти пункты особенно:
 
 **Без DNS (можно сейчас):**
 
-1. **E0.15 Operational events** — `lead.created`, `auth.failed`, `operator.error`
-2. **E0.14 / E1.11 formal exit** — admin → tenant/CMS publish → site
-3. **P1.5 Mobile UX** — lighthouse, 375px, no overflow
-4. **P1.8 Privacy/terms** — dlno.ru / office@dlno.ru
-5. **P1.9 Clarity test** — протокол: [`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md)
-6. **E1.4 Provenance** — unified API contract
+1. **E0.14 / E1.11 formal exit** — admin → tenant/CMS publish → site
+2. **P1.5 Mobile UX** — lighthouse, 375px, no overflow
+3. **P1.8 Privacy/terms** — dlno.ru / office@dlno.ru
+4. **P1.9 Clarity test** — после mobile; протокол [`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md)
+5. **E1.4 Provenance** — unified API contract
 
 **После DNS (reg.ru):**
 

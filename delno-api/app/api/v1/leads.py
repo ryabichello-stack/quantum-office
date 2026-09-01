@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.tenant import TenantContext, get_tenant_context
 from app.models.lead import Lead
-from app.operator.agent import run_operator_turn
 from app.services.audit import write_audit
+from app.services.events import emit_event
 from app.services.leads import notify_lead_telegram
 
 router = APIRouter(prefix="/leads", tags=["leads"])
@@ -46,6 +46,18 @@ def create_lead(
         action="lead.create",
         resource=f"lead:{lead.id}",
         new_value={"name": lead.name, "phone": lead.phone, "source": lead.source},
+    )
+    emit_event(
+        db,
+        tenant_id=ctx.tenant_id,
+        event_type="lead.created",
+        category="operational",
+        source="api.leads",
+        payload={
+            "lead_id": str(lead.id),
+            "source": lead.source,
+            "channel": body.source,
+        },
     )
     db.commit()
     return {"ok": True, "lead_id": str(lead.id), "telegram_notified": notified}

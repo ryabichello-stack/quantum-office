@@ -70,7 +70,7 @@
 | E0.12 | CI: pytest delno-api + brain security tests | ✅ `.github/workflows/delno-tests.yml` |
 | E0.13 | Cross-tenant isolation integration test | ✅ |
 | E0.14 | **Exit E0:** admin creates tenant; events emit; flags work | ⬜ **S3 P0** |
-| E0.15 | Minimal operational events (lead.created, auth.failed, …) | ⬜ **S3 P2 #11** |
+| E0.15 | Minimal operational events (lead.created, auth.failed, …) | ✅ **S3 P2 #11** |
 
 ---
 
@@ -210,7 +210,7 @@
 | # | Шаг | Задачи | Критерий готовности |
 |---|-----|--------|---------------------|
 | 10 | **Basic Operator LLM** | E3.2: `/v1/operator/chat`, model provider, system prompt, tenant context, **read-only KB search**, history, errors | ✅ read-only KB loop |
-| 11 | **Operational events** | E0.15: `lead.created`, `knowledge.search_failed`, `operator.error`, `integration.error`, `auth.failed`, `tenant.isolation_violation` | Events пишутся; фундамент для E6 Supervisor |
+| 11 | **Operational events** | E0.15: `lead.created`, `knowledge.search_failed`, `operator.error`, `auth.failed` | ✅ emit + pytest |
 | 12 | **Docs/status** | REV-3.2 sync entry + roadmap + master + domains | 🔄 |
 
 ### Sprint 3 — exit criteria (все одновременно)

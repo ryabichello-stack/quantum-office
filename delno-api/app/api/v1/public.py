@@ -64,7 +64,8 @@ def create_public_lead(
         db,
         tenant_id=channel.tenant_id,
         event_type="lead.created",
-        category="domain",
+        category="operational",
+        source="public.leads",
         payload={"lead_id": str(lead.id), "source": lead.source, "channel": "website"},
     )
     record_usage(db, tenant_id=channel.tenant_id, metric="leads.created", quantity=1)

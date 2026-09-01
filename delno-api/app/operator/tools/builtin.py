@@ -9,6 +9,7 @@ from app.core.tenant import TenantContext
 from app.models.lead import Lead
 from app.operator.tools.registry import ToolResult
 from app.services.audit import write_audit
+from app.services.events import emit_event
 from app.services.leads import notify_lead_telegram
 
 
@@ -39,6 +40,31 @@ class GetKnowledgeTool:
             tenant_slug=ctx.tenant_slug,
             principal_id=pid,
         )
+        if not data.get("ok", True):
+            message = str(data.get("message") or "Knowledge search failed")
+            emit_event(
+                db,
+                tenant_id=ctx.tenant_id,
+                event_type="knowledge.search_failed",
+                category="operational",
+                source="operator.get_knowledge",
+                payload={
+                    "query": query,
+                    "message": message,
+                    "principal": pid,
+                    "tenant_slug": ctx.tenant_slug,
+                },
+            )
+            write_audit(
+                db,
+                ctx,
+                action="tool.get_knowledge",
+                resource="knowledge",
+                new_value={"query": query, "ok": False, "message": message, "principal": pid},
+                result="error",
+            )
+            return ToolResult(ok=False, data=data, message=message)
+
         hits = data.get("matches") or data.get("results") or []
         write_audit(
             db,
@@ -91,5 +117,17 @@ class CreateLeadTool:
             action="tool.create_lead",
             resource=f"lead:{lead.id}",
             new_value={"name": lead.name, "phone": lead.phone, "source": lead.source},
+        )
+        emit_event(
+            db,
+            tenant_id=ctx.tenant_id,
+            event_type="lead.created",
+            category="operational",
+            source="operator.create_lead",
+            payload={
+                "lead_id": str(lead.id),
+                "source": lead.source,
+                "channel": "operator",
+            },
         )
         return ToolResult(ok=True, data={"lead_id": str(lead.id)}, message="Lead created")

@@ -11,6 +11,7 @@ from app.core.tenant import TenantContext
 from app.models.conversation import Conversation, Message
 from app.operator.tools.registry import PendingConfirmation, ToolResult, registry
 from app.services.audit import write_audit
+from app.services.events import emit_event
 from app.services.model_provider import get_model_provider
 
 
@@ -27,44 +28,62 @@ def run_operator_turn(
     Single operator turn. Text and voice (post-STT) use the same path.
     Voice output (TTS) is handled by the client or a future /operator/voice route.
     """
-    conversation = _get_or_create_conversation(db, ctx, channel, conversation_id)
-    db.add(
-        Message(
-            tenant_id=ctx.tenant_id,
-            conversation_id=conversation.id,
-            role="user",
-            body=message,
-            meta={"modality": input_modality},
+    try:
+        conversation = _get_or_create_conversation(db, ctx, channel, conversation_id)
+        db.add(
+            Message(
+                tenant_id=ctx.tenant_id,
+                conversation_id=conversation.id,
+                role="user",
+                body=message,
+                meta={"modality": input_modality},
+            )
         )
-    )
-    db.flush()
+        db.flush()
 
-    reply, tool_calls = _generate_reply(db, ctx, message)
+        reply, tool_calls = _generate_reply(db, ctx, message)
 
-    db.add(
-        Message(
-            tenant_id=ctx.tenant_id,
-            conversation_id=conversation.id,
-            role="assistant",
-            body=reply,
-            meta={"tool_calls": tool_calls},
+        db.add(
+            Message(
+                tenant_id=ctx.tenant_id,
+                conversation_id=conversation.id,
+                role="assistant",
+                body=reply,
+                meta={"tool_calls": tool_calls},
+            )
         )
-    )
-    write_audit(
-        db,
-        ctx,
-        action="operator.chat",
-        resource=f"conversation:{conversation.id}",
-        new_value={"channel": channel, "modality": input_modality},
-    )
-    db.commit()
+        write_audit(
+            db,
+            ctx,
+            action="operator.chat",
+            resource=f"conversation:{conversation.id}",
+            new_value={"channel": channel, "modality": input_modality},
+        )
+        db.commit()
 
-    return {
-        "conversation_id": str(conversation.id),
-        "reply": reply,
-        "tool_calls": tool_calls,
-        "modality": input_modality,
-    }
+        return {
+            "conversation_id": str(conversation.id),
+            "reply": reply,
+            "tool_calls": tool_calls,
+            "modality": input_modality,
+        }
+    except Exception as exc:
+        emit_event(
+            db,
+            tenant_id=ctx.tenant_id,
+            event_type="operator.error",
+            category="operational",
+            source="operator.chat",
+            payload={
+                "conversation_id": str(conversation_id) if conversation_id else None,
+                "channel": channel,
+                "modality": input_modality,
+                "error": str(exc)[:500],
+                "stage": "run_operator_turn",
+            },
+        )
+        db.commit()
+        raise
 
 
 def _get_or_create_conversation(
