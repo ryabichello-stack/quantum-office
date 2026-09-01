@@ -84,7 +84,7 @@
 | E1.4 | Knowledge provenance in API responses | ⬜ **S3 P1 #9** |
 | E1.5 | CMS models: pages, revisions | ✅ |
 | E1.6 | Admin CMS CRUD draft/publish | ✅ |
-| E1.7 | Site fetch published CMS (FAQ block pilot) | ⬜ **S3 P1 #8** |
+| E1.7 | Site fetch published CMS (FAQ block pilot) | ✅ FaqSection + /api/cms/faq |
 | E1.8 | Auto-ingest tenant settings → brain | ⬜ |
 | E1.9 | Per-tenant vault path isolation | ⬜ |
 | E1.10 | **delno-admin** scaffold: login + tenants + CMS | ✅ |
@@ -112,7 +112,7 @@
 | # | Задача | Статус |
 |---|--------|--------|
 | E3.1 | **delno-web** scaffold: login + dashboard shell | ✅ |
-| E3.2 | Operator LLM loop — **basic read-only only** | ⬜ **S3 P2 #10** |
+| E3.2 | Operator LLM loop — **basic read-only only** | ✅ KB search + model provider |
 | E3.3 | Tool registry + confirmation classes | ⬜ |
 | E3.4 | Embeddable web widget JS | ⬜ |
 | E3.5 | Voice widget WebRTC MVP | ⬜ |

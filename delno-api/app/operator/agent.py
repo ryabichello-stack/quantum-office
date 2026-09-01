@@ -1,3 +1,7 @@
+"""Operator LLM loop — read-only KB, tenant-scoped."""
+
+from __future__ import annotations
+
 import uuid
 from typing import Any
 
@@ -7,6 +11,7 @@ from app.core.tenant import TenantContext
 from app.models.conversation import Conversation, Message
 from app.operator.tools.registry import PendingConfirmation, ToolResult, registry
 from app.services.audit import write_audit
+from app.services.model_provider import get_model_provider
 
 
 def run_operator_turn(
@@ -82,44 +87,78 @@ def _get_or_create_conversation(
     return row
 
 
+def _kb_context_from_result(result: ToolResult) -> str:
+    data = result.data or {}
+    text = str(data.get("text") or "").strip()
+    if text:
+        return text[:4000]
+    matches = data.get("matches") or data.get("results") or []
+    snippets: list[str] = []
+    for item in matches[:5]:
+        if isinstance(item, dict):
+            snippet = str(item.get("snippet") or item.get("text") or "").strip()
+            if snippet:
+                snippets.append(snippet)
+    return "\n\n".join(snippets)[:4000]
+
+
+def _system_prompt(ctx: TenantContext, kb_context: str) -> str:
+    base = (
+        f"Ты DELNO — ИИ-сотрудник компании (tenant: {ctx.tenant_slug}). "
+        "Отвечай кратко по-русски. Используй только факты из базы знаний ниже. "
+        "Если данных недостаточно — честно скажи об этом и предложи оставить заявку на сайте. "
+        "Не выдумывай цены, условия и действия. Не запрашивай tenant_id и не выполняй массовые операции."
+    )
+    if kb_context:
+        return f"{base}\n\n--- База знаний ---\n{kb_context}"
+    return base
+
+
+def _fallback_reply(kb_context: str) -> str:
+    if kb_context:
+        return kb_context[:2000]
+    return (
+        "Я DELNO — ИИ-сотрудник. Могу ответить по услугам и тарифам из базы знаний "
+        "или подсказать, как оставить заявку на сайте."
+    )
+
+
 def _generate_reply(db: Session, ctx: TenantContext, message: str) -> tuple[str, list[dict[str, Any]]]:
-    """
-    MVP: keyword routing to tools. Replaced by LLM + tool loop without API changes.
-    """
-    lowered = message.lower()
+    """Read-only: always search KB; optional LLM synthesis; no auto write-tools."""
     tool_calls: list[dict[str, Any]] = []
+    kb_context = ""
 
-    if any(word in lowered for word in ("тариф", "цена", "стоим", "услуг", "что такое delno", "кто вы")):
-        result = registry.run(db, ctx, "get_knowledge", query=message)
-        tool_calls.append({"tool": "get_knowledge", "ok": isinstance(result, ToolResult) and result.ok})
-        if isinstance(result, ToolResult) and result.ok:
-            snippets = result.data.get("results") or result.data.get("snippets") or []
-            if snippets:
-                first = snippets[0]
-                text = first.get("text") or first.get("content") or str(first)
-                return text[:2000], tool_calls
-            return "По базе знаний пока нет точного ответа — передам вопрос менеджеру.", tool_calls
-        return "Не удалось получить ответ из базы знаний.", tool_calls
+    knowledge = registry.run(db, ctx, "get_knowledge", query=message)
+    if isinstance(knowledge, ToolResult):
+        tool_calls.append({"tool": "get_knowledge", "ok": knowledge.ok})
+        if knowledge.ok:
+            kb_context = _kb_context_from_result(knowledge)
 
-    if any(word in lowered for word in ("заявк", "оставить", "позвон", "связ")):
+    provider = get_model_provider()
+    completion = provider.chat_completion(
+        messages=[
+            {"role": "system", "content": _system_prompt(ctx, kb_context)},
+            {"role": "user", "content": message},
+        ]
+    )
+
+    if completion.get("ok"):
+        try:
+            reply = str(completion["data"]["choices"][0]["message"]["content"]).strip()
+            if reply:
+                tool_calls.append({"tool": "llm", "ok": True, "provider": completion.get("provider")})
+                return reply, tool_calls
+        except (KeyError, IndexError, TypeError):
+            tool_calls.append({"tool": "llm", "ok": False, "error": "invalid_completion_shape"})
+
+    if any(word in message.lower() for word in ("заявк", "оставить", "позвон", "связ")):
         return (
-            "Могу оформить заявку. Напишите имя и телефон, или используйте форму на сайте.",
+            "Могу подсказать по услугам из базы знаний. Чтобы оформить заявку — используйте форму на сайте "
+            "или напишите имя и телефон, и менеджер свяжется с вами.",
             tool_calls,
         )
 
-    if isinstance(result := registry.run(db, ctx, "get_knowledge", query=message), ToolResult) and result.ok:
-        tool_calls.append({"tool": "get_knowledge", "ok": True})
-        snippets = result.data.get("results") or result.data.get("snippets") or []
-        if snippets:
-            first = snippets[0]
-            text = first.get("text") or first.get("content") or str(first)
-            return text[:2000], tool_calls
-
-    return (
-        "Я DELNO — ИИ-сотрудник. Могу ответить по услугам и тарифам или помочь оставить заявку. "
-        "Спросите текстом или голосом.",
-        tool_calls,
-    )
+    return _fallback_reply(kb_context), tool_calls
 
 
 def execute_confirmed_tool(
