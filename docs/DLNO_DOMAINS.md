@@ -1,99 +1,123 @@
 # DELNO — домены (production)
 
-**Revision:** REV-3.2 · 2026-09-01  
-**Купленный домен бренда:** **dlno.ru** — публичный marketing site DELNO.
+**Revision:** REV-3.4 · 2026-09-01  
+**Купленный домен бренда:** **dlno.ru**
 
 ---
 
-## Регистратор и DNS
+## Регистратор и DNS (reg.ru)
 
 | Параметр | Значение |
 |----------|----------|
 | Регистратор | **reg.ru** |
 | NS | `ns1.reg.ru`, `ns2.reg.ru` |
-| Prod server IP | `5.35.86.62` |
-| Статус DNS | ⏸ **отложено** — dev на staging; A-записи настроит владелец позже |
+| Prod server IP | **`5.35.86.62`** |
+| Удалить | `doc.dlno.ru` — не нужен (отдельный docs.dlno.ru не планируется) |
 
-> **Не Cloudflare.** Старые версии этого файла описывали Cloudflare — это устарело.
+### Записи DNS (целевая схема)
 
----
+| Type | Name | Value | Примечание |
+|------|------|-------|------------|
+| **A** | `@` | `5.35.86.62` | apex |
+| **CNAME** | `www` | `dlno.ru` | → 301 на apex (nginx) |
+| **CNAME** | `api` | `dlno.ru` | delno-api |
+| **CNAME** | `app` | `dlno.ru` | delno-web |
+| **CNAME** | `admin` | `dlno.ru` | delno-admin |
+| **CNAME** | `wiki` | `dlno.ru` | placeholder → будущий Wiki |
+| **CNAME** | `cdn` | `dlno.ru` | static / widget.js |
+| **CNAME** | `status` | `dlno.ru` | placeholder → status page |
 
-## Целевая схема
-
-| Домен | Назначение | Backend (prod server) |
-|-------|------------|------------------------|
-| **https://dlno.ru** | Marketing site (Product P1) | `delno-site-root` → `127.0.0.1:18022` |
-| **https://www.dlno.ru** | → redirect / same as dlno.ru | nginx |
-| **https://api.dlno.ru** | DELNO Platform API | `delno-api` → `127.0.0.1:18020` |
-| https://app.dlno.ru | Личный кабинет (delno-web) | позже |
-| https://admin.dlno.ru | Admin + CMS (delno-admin) | позже |
-
-**Staging (сейчас):** https://a.47z.ru/delno/ · https://a.47z.ru/delno-api/
-
----
-
-## Статус на сервере `5.35.86.62`
-
-| Компонент | Статус |
-|-----------|--------|
-| nginx vhost `dlno.ru` | ✅ `/etc/nginx/sites-enabled/dlno.ru.conf` |
-| Site staging (basePath `/delno`) | ✅ Docker `delno-site` :18019 |
-| Site root (без `/delno`) | ✅ Docker `delno-site-root` :18022 — **пересборка отстаёт от staging** |
-| API | ✅ `delno-api` :18020 |
-| Knowledge | ✅ `delno-knowledge` :18021 |
-| Postgres | ✅ `delno-postgres` (internal only) |
-
-Deploy scripts: `delno-api/deploy/install_dlno_ru.sh`, `install_site_staging.sh`, `install_full_stack_prod.sh`
+> **Важно:** A-запись `@` должна указывать на **`5.35.86.62`**, не на Cloudflare proxy.  
+> Если `dig dlno.ru` возвращает `162.159.*` / `172.66.*` — DNS ещё не переключён или включён прокси CF.
 
 ---
 
-## DNS — когда будете включать (reg.ru)
+## Маршрутизация (nginx → backend)
 
-1. [reg.ru](https://www.reg.ru) → домен **dlno.ru** → DNS / зона
-2. Записи:
+| Hostname | Назначение | Backend | Статус |
+|----------|------------|---------|--------|
+| **https://dlno.ru** | Marketing site DELNO | `delno-site-root` → `127.0.0.1:18022` | 🔄 deploy |
+| **https://www.dlno.ru** | 301 → `https://dlno.ru` | nginx redirect | 🔄 |
+| **https://api.dlno.ru** | Production API | `delno-api` → `127.0.0.1:18020` | ✅ |
+| **https://app.dlno.ru** | Кабинет клиента | `delno-web` → `127.0.0.1:18023` | 🔄 scaffold |
+| **https://admin.dlno.ru** | Admin / CMS | `delno-admin` → `127.0.0.1:18024` | 🔄 scaffold |
+| **https://wiki.dlno.ru** | Wiki / docs для клиентов | placeholder **503** | ⬜ не продукт |
+| **https://cdn.dlno.ru** | Статика, widget.js | `/opt/delno/cdn` (nginx static) | ⬜ не продукт |
+| **https://status.dlno.ru** | Status page | placeholder **503** | ⬜ не продукт |
 
-| Type | Name | Content | TTL |
-|------|------|---------|-----|
-| A | `@` | `5.35.86.62` | 300–3600 |
-| A | `www` | `5.35.86.62` | 300–3600 |
-| A | `api` | `5.35.86.62` | 300–3600 |
+**Staging (без изменений):** https://a.47z.ru/delno/ · https://a.47z.ru/delno-api/
 
-3. Дождаться propagation (обычно до нескольких часов)
-4. SSL на origin (см. ниже)
-5. Smoke:
+Поддомены **не** сливаются в один маркeting site — у каждого свой `server_name` в nginx.
+
+---
+
+## Файлы на сервере
+
+| Путь | Назначение |
+|------|------------|
+| `/etc/nginx/sites-available/dlno.ru.conf` | vhosts всех hostnames |
+| `/opt/delno/ingress/wiki/` | placeholder HTML (503) |
+| `/opt/delno/ingress/status/` | placeholder HTML (503) |
+| `/opt/delno/cdn/` | static root для cdn.dlno.ru |
+| `/opt/delno/site/` | исходники marketing (Docker build) |
+
+**Deploy:** `delno-api/deploy/install_dlno_ingress.sh`  
+**Smoke:** `delno-api/deploy/smoke_dlno_ingress.sh`  
+**Nginx template:** `delno-api/deploy/nginx-dlno.ru.conf`
+
+---
+
+## SSL (Let's Encrypt)
+
+После того как DNS `@` и CNAME смотрят на `5.35.86.62`:
+
+```bash
+apt install -y certbot python3-certbot-nginx   # если ещё нет
+bash /opt/delno/deploy/install_dlno_ingress.sh
+```
+
+Certbot запрашивает сертификат для:
+
+`dlno.ru`, `www.dlno.ru`, `api.dlno.ru`, `app.dlno.ru`, `admin.dlno.ru`, `wiki.dlno.ru`, `cdn.dlno.ru`, `status.dlno.ru`
+
+Проверка:
+
+```bash
+curl -sfI https://dlno.ru/ | head -5
+curl -sf https://api.dlno.ru/v1/health
+curl -sfI https://www.dlno.ru/ | grep -i location   # → https://dlno.ru/
+USE_HOST=1 bash /opt/delno/deploy/smoke_dlno_ingress.sh
+```
+
+---
+
+## Smoke checklist (после DNS + SSL)
 
 ```bash
 curl -sf https://dlno.ru/ | head -c 200
 curl -sf https://api.dlno.ru/v1/health
-curl -sf -X POST https://dlno.ru/api/leads \
-  -H 'Content-Type: application/json' \
-  -d '{"source":"dns-smoke","name":"Test","phone":"+79990001122"}'
+curl -sfI https://www.dlno.ru/ | grep -i location
+curl -sf -o /dev/null -w '%{http_code}\n' https://wiki.dlno.ru/    # 503
+curl -sf -o /dev/null -w '%{http_code}\n' https://status.dlno.ru/  # 503
+curl -sf https://app.dlno.ru/ | head -c 100
+curl -sf -o /dev/null -w '%{http_code}\n' -H "Host: admin.dlno.ru" http://127.0.0.1/   # 307 → /login
 ```
 
-В исходном коде страницы должны быть пути `/_next/static/...`, не legacy `/assets/index-...`.
-
 ---
 
-## SSL на origin
+## CORS / env
 
-На сервере certbot пока не установлен. Варианты без Cloudflare:
+UI containers:
 
-- **A.** `certbot --nginx -d dlno.ru -d www.dlno.ru -d api.dlno.ru` после того как A-записи смотрят на сервер
-- **B.** Let's Encrypt через reg.ru (если доступен в панели)
-- **C.** Временно HTTP-only на origin + redirect (не для prod marketing)
+- `NEXT_PUBLIC_DELNO_API_URL=https://api.dlno.ru` (app, admin)
 
----
+Site root:
 
-## CORS / env после DNS
-
-В `/opt/delno/.env` и nginx проверить:
-
-- `CORS_ORIGINS` включает `https://dlno.ru`, `https://www.dlno.ru`
-- Site container: `DELNO_API_URL=http://api:8020` (internal)
-- Prod site root rebuild с `NEXT_PUBLIC_BASE_PATH=""` или `/`
+- `DELNO_API_URL=http://api:8020` (internal docker network)
+- `NEXT_PUBLIC_BASE_PATH=` (empty — root, не `/delno`)
 
 ---
 
 ## Email бренда
 
-На сайте v4: `office@dlno.ru` — MX/почту настроить отдельно (не блокирует запуск сайта).
+`office@dlno.ru` — MX настроить отдельно в reg.ru (не блокирует сайт/API).

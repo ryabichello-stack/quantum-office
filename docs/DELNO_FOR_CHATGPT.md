@@ -99,9 +99,9 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 
 | Что | URL / статус |
 |-----|--------------|
-| Site root container | `:18022`, nginx для `dlno.ru` готов |
-| API prod ingress | `api.dlno.ru` — nginx готов, DNS pending |
-| Целевые A-записи | `@`, `www`, `api` → `5.35.86.62` |
+| Site root + ingress | `:18022` site, `:18023` web, `:18024` admin, nginx all vhosts | 🔄 |
+| API prod ingress | `api.dlno.ru` — nginx → :18020 | 🔄 |
+| Целевые DNS | A `@` + CNAME subdomains → `5.35.86.62` (reg.ru) | 🔄 см. [`DLNO_DOMAINS.md`](DLNO_DOMAINS.md) |
 
 **Dev credentials (seeded):** `admin@delno.one` / `admin123456`, `owner@delno.one` / `demo123456`
 
@@ -119,7 +119,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | 2 | ACL smoke (guest ≠ owner) | ✅ | principals fix `text-guest`, operator tool ACL |
 | 3 | Brain init-db + demo vault | ✅ | `seed-demo`, docker entrypoint, provenance in search |
 | 4 | Site → leads → PostgreSQL | ✅ | staging smoke 2026-09-01 |
-| 5 | DNS + prod ingress (`dlno.ru`, `api.dlno.ru`) | ⏸ | reg.ru, пользователь настроит позже |
+| 5 | DNS + prod ingress (`dlno.ru`, subdomains) | 🔄 | reg.ru A/CNAME → 5.35.86.62; nginx vhosts deployed |
 
 ### P1 — product + CMS
 

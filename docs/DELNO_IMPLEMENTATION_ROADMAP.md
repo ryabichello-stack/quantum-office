@@ -13,9 +13,9 @@
 | Компонент | URL / путь | Статус |
 |-----------|------------|--------|
 | Marketing staging | https://a.47z.ru/delno/ | ✅ |
-| Marketing prod | https://dlno.ru (DNS pending) | 🔄 nginx ready |
+| Marketing prod | https://dlno.ru | 🔄 nginx + DNS |
 | API staging | https://a.47z.ru/delno-api/ | ✅ |
-| API prod | https://api.dlno.ru (DNS pending) | 🔄 |
+| API prod | https://api.dlno.ru | 🔄 |
 | delno-api | `/opt/delno/api` :18020 | ✅ |
 | delno-knowledge | `/opt/delno/knowledge` :18021 | ✅ |
 | delno-site (staging) | :18019, basePath `/delno` | ✅ |
@@ -36,8 +36,8 @@
 | P1.3 | CTA «Попробовать» → voice demo + lead form | ✅ lead form + «Спросить вслух» |
 | P1.4 | Leads с сайта → **delno-api** | ✅ route + form + deploy scripts |
 | P1.5 | Mobile UX / lighthouse pass | 🔄 mobile.css + viewport; manual verify |
-| P1.6 | `dlno.ru` DNS **reg.ru** → `5.35.86.62` | ⏸ **S3 P0 #5** deferred |
-| P1.7 | SSL на origin (certbot / reg.ru) | ⏸ **S3 P0 #5** deferred |
+| P1.6 | `dlno.ru` DNS **reg.ru** → `5.35.86.62` | 🔄 A + CNAME настроены; проверить propagation |
+| P1.7 | SSL на origin (certbot / reg.ru) | 🔄 nginx vhosts готовы; cert после DNS на сервер |
 | P1.8 | Privacy/terms актуальны для dlno.ru | ✅ ИП Рябов Д.В., ИНН 471405233378, ОГРНИП 319784700141500 |
 | P1.9 | Exit: clarity-test пройден 3+ людьми | ⏸ **deferred** — вернёмся позже |
 
@@ -158,10 +158,10 @@
 |---|--------|--------|
 | H1 | Staging: `a.47z.ru/delno` + `/delno-api` | ✅ |
 | H2 | Prod site root: `dlno.ru` nginx + container | ✅ |
-| H3 | reg.ru DNS → server | ⏸ deferred |
-| H4 | `api.dlno.ru` live | ⬜ |
+| H3 | reg.ru DNS → server | 🔄 A @ + CNAME subdomains |
+| H4 | `api.dlno.ru` live | 🔄 |
 | H5 | Unified deploy `/opt/delno` full stack | ✅ |
-| H6 | `app.dlno.ru`, `admin.dlno.ru` nginx | ⬜ |
+| H6 | `app`, `admin`, `wiki`, `cdn`, `status` nginx vhosts | 🔄 placeholders wiki/status; app/admin docker |
 
 ---
 
@@ -205,7 +205,7 @@
 | 2 | *(внутри #1)* | ACL automated smoke | ✅ |
 | 3 | **Init production brain** | E1.2: init-db, demo vault, demo tenant, tenant-scoped search, provenance | ✅ |
 | 4 | **Site → real leads API** | P1.4: `DELNO_API_URL`, rebuild staging, leads → PG | ✅ code + deploy |
-| 5 | **DNS + production ingress** | P1.6/P1.7, H3/H4: reg.ru DNS → `5.35.86.62`, `dlno.ru`, `api.dlno.ru`, SSL, health, CORS, prod env | ⬜ deferred; staging OK |
+| 5 | **DNS + production ingress** | P1.6/P1.7, H3–H6: reg.ru A/CNAME, all nginx vhosts, SSL | 🔄 nginx ready; DNS must → 5.35.86.62 |
 
 **Не делать до шага 1:** Operator с write-tools по tenant data.
 
@@ -232,7 +232,7 @@
 - [x] Tenant isolation тестируется автоматически (CI)
 - [x] ACL работает (guest ≠ owner)
 - [x] Brain инициализирован (demo vault + tenant search)
-- [ ] `dlno.ru` + `api.dlno.ru` production работают (DNS deferred)
+- [ ] `dlno.ru` + subdomains production (DNS → 5.35.86.62, SSL)
 - [x] Форма сайта пишет лид в PG (staging verified 2026-09-01)
 - [ ] Сайт понятен 3+ людям за 5–10 сек (P1.9)
 - [x] FAQ из CMS без code deploy (fallback + `/api/cms/faq`)
