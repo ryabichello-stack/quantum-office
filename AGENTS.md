@@ -9,6 +9,7 @@
 - `text-bot/` — Telegram-бот (`:8011`)
 - `delno-api/` — DELNO platform API (multi-tenant SaaS)
 - `docs/` — карта прода и состояние
+- `docs/architecture/` — **AI Revenue OS Этап 0** (AS_IS / TARGET / GAP / MIGRATION)
 
 ## DELNO (commercial SaaS)
 
