@@ -1,8 +1,46 @@
 # DELNO — единый мастер-план
 
-**Версия:** 2026-09-01 (rev. 2 — product + engineering)  
+**Версия:** 2026-09-01  
+**Revision:** `DELNO-MASTER-PLAN-REV-2`  
+**Commit:** `103b015` (см. также актуальный tip ветки)  
 **Статус:** canonical — по этому документу начинаем реализацию  
 **Prod staging:** https://a.47z.ru/delno/ · https://a.47z.ru/delno-api/
+
+> **Если вы ChatGPT / ревьюер:** это **НЕ rev.1**. Проверка: в документе есть секции  
+> `Product North Star`, `Product Roadmap vs Engineering Roadmap`,  
+> `Temporary repository strategy`, `Voice Widget vs Telephony`, `Anti-scope-creep rule`.  
+> Rev.1 начинался с «## 1. Что мы строим» без North Star.
+
+### Rev.2 changelog (28 пунктов ревью — все ✅)
+
+1. ✅ Product North Star  
+2. ✅ Product vs Engineering Roadmap (P1 + E0–E10)  
+3. ✅ Temporary monorepo strategy (`quantum-office` → `delno-platform`)  
+4. ✅ Repository split triggers  
+5. ✅ Product Guardrails (PARTNER → LEARN → BUILD)  
+6. ✅ CRM boundary (integrations now, build later)  
+7. ✅ Web Voice Widget раньше telephony  
+8. ✅ Voice Widget vs PSTN/SIP разделены  
+9. ✅ Model Provider Abstraction  
+10. ✅ Commercial MVP exit criteria  
+11. ✅ Product / Operations KPIs  
+12. ✅ Supervisor — events с раннего этапа  
+13. ✅ Explicit Event Model (domain / operational / automation)  
+14. ✅ AI Operator long-term control plane  
+15. ✅ Tool Registry abstraction  
+16. ✅ Confirmation policy (READ / SAFE_WRITE / HIGH_IMPACT)  
+17. ✅ Knowledge Provenance  
+18. ✅ Second Brain v1 guardrail (не переусложнять)  
+19. ✅ Channel Adapter contract  
+20. ✅ MAX onboarding (bot belongs to customer)  
+21. ✅ Telegram Instant + Branded  
+22. ✅ Fallback architecture (voice → text → retry)  
+23. ✅ Feature Flags per tenant  
+24. ✅ Usage Metering as core service (early)  
+25. ✅ Staged monetization  
+26. ✅ Security baseline  
+27. ✅ Exit-criteria based engineering phases  
+28. ✅ Anti-scope-creep rule  
 
 ---
 
