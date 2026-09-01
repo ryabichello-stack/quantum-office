@@ -6,7 +6,7 @@ Product vision: `DELNO-site-v23/docs/00_MASTER_SPEC.md`
 
 ## Rules
 1. All tables include `tenant_id`. LLM tools never accept arbitrary tenant_id.
-2. Channel/knowledge/voice access only via `app/adapters/` (HTTP, env URLs).
+2. Channel/knowledge/voice/party-lookup access only via `app/adapters/` (HTTP, env URLs).
 3. Knowledge search uses **delno-knowledge** `/api/brain/search` with `X-Principal-Id` (see master plan §5.4).
 4. Text and voice operator share `POST /v1/operator/chat` (voice = STT before, TTS after).
 5. Critical writes use `critical_write` flag + `/v1/operator/confirm` + audit_logs.

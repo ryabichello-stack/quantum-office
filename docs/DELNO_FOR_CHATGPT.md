@@ -1,6 +1,6 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-3.2 · 2026-09-01 (Sprint 3 mid-flight · docs synced post ChatGPT audit)
+**Revision:** REV-3.3 · 2026-09-01 (Sprint 3 mid-flight · DaData party enrichment in plan)
 
 ---
 
@@ -20,12 +20,12 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DEL
 ## Промпт (скопируй целиком)
 
 ```
-Прочитай entry point и все связанные документы по raw URL из него (REV-3.2):
+Прочитай entry point и все связанные документы по raw URL из него (REV-3.3):
 
 https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DELNO_FOR_CHATGPT.md
 
 Открой каждый raw URL из секции «Карта документов».
-Подтверди revision REV-3.2.
+Подтверди revision REV-3.3.
 
 Твоя задача — аудит Sprint 3. Ответь структурированно:
 
@@ -50,8 +50,9 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | 4 | **Domains** | dlno.ru, DNS reg.ru, nginx | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DLNO_DOMAINS.md |
 | 5 | **Clarity test** | P1.9 протокол (⏸ deferred) | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/P1.9_CLARITY_TEST.md |
 | 6 | **Mobile pass** | P1.5 checklist 375/390px | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/P1.5_MOBILE_PASS.md |
+| 7 | **DaData party enrichment** | E1.12–E1.15 spec (adapter, leads, site, tenant) | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/E1.12_DADATA_PARTY_ENRICHMENT.md |
 
-**Проверка версии master plan:** строка `DELNO-MASTER-PLAN-REV-3.2` + секция `Rev.3 — Implementation Status`.
+**Проверка версии master plan:** строка `DELNO-MASTER-PLAN-REV-3.3` + секция `Rev.3 — Implementation Status`.
 
 ---
 
@@ -67,6 +68,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 4. P1.5 mobile pass 🔄 (`mobile.css`, viewport — manual verify)
 5. P1.8 privacy/terms ✅ (ИП Рябов Д.В., ИНН/OGRNIP из DaData, office@dlno.ru)
 6. P1.9 clarity test — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
+7. **E1.12–E1.15 DaData party enrichment** ⬜ — [`E1.12_DADATA_PARTY_ENRICHMENT.md`](E1.12_DADATA_PARTY_ENRICHMENT.md) (parallel post-S3, не блокирует exit)
 
 **Hero P1.1–P1.3:** визуально на staging ✅, но **не считать успешным до P1.9**.
 
@@ -133,8 +135,9 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | # | Задача | Статус | Примечание |
 |---|--------|--------|------------|
 | 10 | Basic Operator LLM (read-only KB) | ✅ | `/v1/operator/chat`, 22 pytest pass |
-| 11 | Operational events (E0.15) | ⬜ | ✅ lead.created, auth.failed, operator.error, knowledge.search_failed |
-| 12 | Docs/status sync | ✅ | REV-3.2: entry + roadmap + master + domains |
+| 11 | Operational events (E0.15) | ✅ | lead.created, auth.failed, operator.error, knowledge.search_failed |
+| 12 | Docs/status sync | ✅ | REV-3.3: entry + roadmap + master + DaData spec |
+| 13 | Party enrichment (DaData) E1.12–E1.15 | ⬜ | adapter → leads → site suggest → tenant legal — [`E1.12_DADATA_PARTY_ENRICHMENT.md`](E1.12_DADATA_PARTY_ENRICHMENT.md) |
 
 ### Sprint 3 exit criteria (чеклист)
 
@@ -178,7 +181,7 @@ ChatGPT, проверь эти пункты особенно:
 | **P1.8 legal** | Privacy/terms для dlno.ru | ✅ ИП Рябов Д.В. (DaData) |
 | **P1.9 clarity** | Нет результатов теста 3+ людей | **blocker P1 exit** |
 | **E0.15 events** | ~~Operational event bus~~ | ✅ done |
-| **Site repo completeness** | Большая часть `DELNO-site-v23/` не в git | P1 |
+| **E1.12–E1.15 DaData** | Party enrichment — spec ✅, код ⬜ | P2 parallel |
 | **delno-site-root** | Prod root `:18022` не пересобран последним deploy | P1 |
 | **PR #20 merge** | draft + merge conflict с main | P1 |
 
@@ -192,6 +195,7 @@ ChatGPT, проверь эти пункты особенно:
 2. ~~**P1.8 Privacy/terms**~~ ✅ — ИП Рябов Д.В., реквизиты из DaData
 3. **E1.4 Provenance** — unified API contract
 4. **P1.9 Clarity test** — ⏸ deferred ([`P1.9_CLARITY_TEST.md`](P1.9_CLARITY_TEST.md))
+5. **E1.12 DaData party enrichment** — adapter + lead enrich ([`E1.12_DADATA_PARTY_ENRICHMENT.md`](E1.12_DADATA_PARTY_ENRICHMENT.md))
 
 **После DNS (reg.ru):**
 

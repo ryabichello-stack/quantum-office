@@ -1,7 +1,7 @@
 # DELNO — единый мастер-план
 
 **Версия:** 2026-09-01  
-**Revision:** `DELNO-MASTER-PLAN-REV-3.2`  
+**Revision:** `DELNO-MASTER-PLAN-REV-3.3`  
 **Commit:** см. tip `main` (ветка `cursor/delno-api-scaffold-14e9`, PR #20)  
 **Статус:** canonical — по этому документу начинаем реализацию  
 **Prod staging:** https://a.47z.ru/delno/ · https://a.47z.ru/delno-api/  
@@ -53,7 +53,7 @@
 4. ✅ `delno-admin` + `delno-web` Next.js scaffolds  
 5. ✅ Site leads proxy → delno-api PostgreSQL (staging verified 2026-09-01)  
 6. ✅ Nginx ready for `dlno.ru` (DNS **reg.ru** pending — deferred)  
-7. 🔄 Sprint 3 mid-flight: P0 backend mostly done → **Product P1 exit + E0/E1 formal exit + events** pending (см. roadmap REV-3.2)  
+7. 🔄 Sprint 3 mid-flight: P0 backend mostly done → **Product P1 exit + E0/E1 formal exit + events** pending (см. roadmap REV-3.3)  
 
 **Детальный checklist:** [`DELNO_IMPLEMENTATION_ROADMAP.md`](DELNO_IMPLEMENTATION_ROADMAP.md)
 
@@ -448,7 +448,7 @@ DELNO может содержать **CRM-like primitives**: Contact, Lead, Conv
 
 | | |
 |---|---|
-| **Сейчас** | primitives + integrations (Bitrix24, amoCRM, …) |
+| **Сейчас** | primitives + integrations (Bitrix24, amoCRM, …) + **party enrichment (DaData E1.12–E1.15)** |
 | **CRM Lite / Full** | только при triggers |
 
 **Triggers для собственной CRM:**
@@ -633,7 +633,7 @@ E0 + E1 start:
  12. Site leads proxy → delno-api (code ready)
 ```
 
-### Sprint 3 🔄 (mid-flight — см. [`DELNO_IMPLEMENTATION_ROADMAP.md`](DELNO_IMPLEMENTATION_ROADMAP.md) REV-3.2)
+### Sprint 3 🔄 (mid-flight — см. [`DELNO_IMPLEMENTATION_ROADMAP.md`](DELNO_IMPLEMENTATION_ROADMAP.md) REV-3.3)
 
 **Backend core mostly done; Product P1 exit not done.**
 
@@ -655,6 +655,7 @@ P2 — operator foundation (partial):
   ✅ E0.15 operational events (lead.created, auth.failed, operator.error, knowledge.search_failed)
   ✅ E0.14 formal exit (tenant + flags + events)
   ✅ E1.11 CMS admin → publish → public
+  ⬜ E1.12–E1.15 DaData party enrichment (spec: [`E1.12_DADATA_PARTY_ENRICHMENT.md`](E1.12_DADATA_PARTY_ENRICHMENT.md))
   🔄 docs sync REV-3.2
 ```
 
@@ -733,6 +734,7 @@ DELNO готов к первому коммерческому масштабир
 | `docs/DELNO_FOR_CHATGPT.md` | entry point + raw URLs для ревью |
 | `docs/DELNO_IMPLEMENTATION_ROADMAP.md` | checklist + статус Sprint 0–3 |
 | `docs/DLNO_DOMAINS.md` | dlno.ru DNS (reg.ru) и nginx |
+| `docs/E1.12_DADATA_PARTY_ENRICHMENT.md` | DaData adapter, leads, site suggest, tenant legal |
 | `docs/P1.9_CLARITY_TEST.md` | clarity test protocol |
 | `delno-api/docs/DEPLOY_ISOLATION.md` | prod deploy |
 | `DELNO-site-v23/docs/00_MASTER_SPEC.md` | product vision |
@@ -758,4 +760,4 @@ It must document the dependency and defer implementation unless explicitly appro
 6. **Usage metering + events + feature flags** — с раннего этапа.
 7. **CRM/marketplace/banking** — guardrails, PARTNER → LEARN → BUILD.
 
-**Следующий шаг:** P1.5 mobile pass → (P1.9 clarity когда вернётесь).
+**Следующий шаг:** P1.5 mobile pass → E1.12 DaData (A+B) → (P1.9 clarity когда вернётесь).

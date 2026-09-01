@@ -2,7 +2,7 @@
 
 **Canonical strategy:** [`DELNO_MASTER_PLAN.md`](DELNO_MASTER_PLAN.md)  
 **Домены:** [`DLNO_DOMAINS.md`](DLNO_DOMAINS.md)  
-**Обновлено:** 2026-09-01 · **Revision REV-3.2** (Sprint 3 mid-flight, synced with ChatGPT audit)
+**Обновлено:** 2026-09-01 · **Revision REV-3.3** (Sprint 3 mid-flight + DaData party enrichment plan)
 
 Легенда: ✅ done · 🔄 in progress · ⬜ todo
 
@@ -89,6 +89,11 @@
 | E1.9 | Per-tenant vault path isolation | ⬜ |
 | E1.10 | **delno-admin** scaffold: login + tenants + CMS | ✅ |
 | E1.11 | **Exit E1:** KB search works; CMS FAQ from admin end-to-end | ✅ CMS chain tests + smoke |
+| E1.12 | **PartyLookupAdapter** (DaData) + PG cache + lookup API | ⬜ [`E1.12_DADATA_PARTY_ENRICHMENT.md`](E1.12_DADATA_PARTY_ENRICHMENT.md) |
+| E1.13 | Lead enrichment: `inn`, `party_json`, operator `lookup_company_by_inn` | ⬜ depends E1.12 |
+| E1.14 | Site party suggest proxy + optional INN in lead form | ⬜ depends E1.13 |
+| E1.15 | Tenant legal profile in `settings` (onboarding E5.1) | ⬜ depends E1.12 |
+| E1.16 | CRM push enriched fields → Bitrix (post-triggers) | ⬜ **DO NOT START** до CRM triggers |
 
 ---
 
@@ -139,7 +144,7 @@
 
 | # | Задача | Статус |
 |---|--------|--------|
-| E5.1 | Self-service onboarding flow | ⬜ |
+| E5.1 | Self-service onboarding flow (+ tenant INN → DaData, E1.15) | ⬜ |
 | E5.2 | Billing stubs + plans table | ⬜ |
 | E5.3 | Usage aggregation per tenant | ⬜ |
 | E5.4 | Rate limits per tenant | ⬜ |
@@ -177,6 +182,14 @@
 | POST | `/v1/leads` | tenant-scoped leads |
 | POST | `/v1/operator/chat` | operator MVP |
 
+### API endpoints (planned — E1.12 DaData)
+
+| Method | Path | Назначение |
+|--------|------|------------|
+| GET | `/v1/tenant/party/lookup?inn=` | DaData findById + PG cache |
+| GET | `/v1/tenant/party/suggest?q=` | DaData suggest (cabinet) |
+| POST | `/delno/api/party/suggest` | site proxy (ключ server-side) |
+
 ---
 
 ## Sprint 3 — исполнимый план (строго по порядку)
@@ -211,7 +224,8 @@
 |---|-----|--------|---------------------|
 | 10 | **Basic Operator LLM** | E3.2: `/v1/operator/chat`, model provider, system prompt, tenant context, **read-only KB search**, history, errors | ✅ read-only KB loop |
 | 11 | **Operational events** | E0.15: `lead.created`, `knowledge.search_failed`, `operator.error`, `auth.failed` | ✅ emit + pytest |
-| 12 | **Docs/status** | REV-3.2 sync entry + roadmap + master + domains | 🔄 |
+| 12 | **Docs/status** | REV-3.3 sync entry + roadmap + master + domains | 🔄 |
+| 13 | **Party enrichment (DaData)** | E1.12–E1.15: adapter, leads, site suggest, tenant legal | ⬜ **parallel post-S3** — см. [`E1.12_DADATA_PARTY_ENRICHMENT.md`](E1.12_DADATA_PARTY_ENRICHMENT.md) |
 
 ### Sprint 3 — exit criteria (все одновременно)
 
