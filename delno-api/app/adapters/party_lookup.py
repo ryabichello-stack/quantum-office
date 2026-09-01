@@ -11,6 +11,7 @@ from app.core.config import get_settings
 
 _INN_RE = re.compile(r"^\d{10}(\d{2})?$")
 PARTY_FIND_URL = "https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/party"
+PARTY_SUGGEST_URL = "https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/party"
 
 
 def normalize_inn(value: str | None) -> str | None:
@@ -99,6 +100,23 @@ class PartyLookupAdapter:
                 PARTY_FIND_URL,
                 headers=self._headers(),
                 json={"query": inn_n},
+            )
+            response.raise_for_status()
+            data = response.json()
+        suggestions = data.get("suggestions") if isinstance(data, dict) else None
+        if not isinstance(suggestions, list):
+            return []
+        return [s for s in suggestions if isinstance(s, dict)]
+
+    def suggest_parties(self, query: str, *, count: int = 5) -> list[dict[str, Any]]:
+        q = (query or "").strip()
+        if not q:
+            return []
+        with httpx.Client(timeout=self.timeout) as client:
+            response = client.post(
+                PARTY_SUGGEST_URL,
+                headers=self._headers(),
+                json={"query": q, "count": max(1, min(20, count))},
             )
             response.raise_for_status()
             data = response.json()

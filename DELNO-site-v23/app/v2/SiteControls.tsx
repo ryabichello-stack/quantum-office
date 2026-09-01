@@ -81,6 +81,13 @@ type LeadErrorCode =
   | "DELNO_API_LEAD_FAILED"
   | "LEAD_SUBMIT_FAILED";
 
+type PartySuggestion = {
+  value?: string | null;
+  inn?: string | null;
+  company_name?: string | null;
+  address?: string | null;
+};
+
 function leadErrorMessage(code: LeadErrorCode | string): string {
   switch (code) {
     case "NAME_AND_PHONE_REQUIRED":
@@ -104,7 +111,22 @@ export function LeadFormTrigger({
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<"idle" | "sending" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  const [company, setCompany] = useState("");
+  const [inn, setInn] = useState("");
+  const [suggestions, setSuggestions] = useState<PartySuggestion[]>([]);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggestLoading, setSuggestLoading] = useState(false);
   const dialogRef = useRef<HTMLDialogElement | null>(null);
+  const suggestTimerRef = useRef<number | null>(null);
+  const companyWrapRef = useRef<HTMLLabelElement | null>(null);
+
+  const resetFormState = () => {
+    setCompany("");
+    setInn("");
+    setSuggestions([]);
+    setSuggestOpen(false);
+    setSuggestLoading(false);
+  };
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -113,10 +135,72 @@ export function LeadFormTrigger({
     if (!open && dialog.open) dialog.close();
   }, [open]);
 
+  useEffect(() => {
+    const onDocClick = (event: MouseEvent) => {
+      if (!companyWrapRef.current?.contains(event.target as Node)) {
+        setSuggestOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (suggestTimerRef.current) window.clearTimeout(suggestTimerRef.current);
+    };
+  }, []);
+
+  const fetchSuggestions = (query: string) => {
+    if (suggestTimerRef.current) window.clearTimeout(suggestTimerRef.current);
+    const q = query.trim();
+    if (q.length < 2) {
+      setSuggestions([]);
+      setSuggestOpen(false);
+      setSuggestLoading(false);
+      return;
+    }
+
+    setSuggestLoading(true);
+    suggestTimerRef.current = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/party/suggest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ q, count: 6 }),
+        });
+        const payload = (await response.json().catch(() => ({}))) as {
+          suggestions?: PartySuggestion[];
+        };
+        if (response.ok && Array.isArray(payload.suggestions)) {
+          setSuggestions(payload.suggestions);
+          setSuggestOpen(payload.suggestions.length > 0);
+        } else {
+          setSuggestions([]);
+          setSuggestOpen(false);
+        }
+      } catch {
+        setSuggestions([]);
+        setSuggestOpen(false);
+      } finally {
+        setSuggestLoading(false);
+      }
+    }, 280);
+  };
+
+  const selectSuggestion = (item: PartySuggestion) => {
+    const name = item.company_name || item.value || "";
+    setCompany(name);
+    setInn(item.inn || "");
+    setSuggestions([]);
+    setSuggestOpen(false);
+  };
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setStatus("sending");
     setErrorMessage("");
+    setSuggestOpen(false);
     const data = new FormData(event.currentTarget);
     try {
       const response = await fetch("/api/leads", {
@@ -127,7 +211,8 @@ export function LeadFormTrigger({
           name: String(data.get("name") || ""),
           phone: String(data.get("phone") || ""),
           email: String(data.get("email") || ""),
-          company: String(data.get("company") || ""),
+          company: company || String(data.get("company") || ""),
+          inn: inn || undefined,
         }),
       });
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
@@ -137,6 +222,7 @@ export function LeadFormTrigger({
       }
       setStatus("success");
       event.currentTarget.reset();
+      resetFormState();
     } catch {
       if (!errorMessage) setErrorMessage(leadErrorMessage("LEAD_SUBMIT_FAILED"));
       setStatus("error");
@@ -156,6 +242,7 @@ export function LeadFormTrigger({
           setOpen(false);
           setStatus("idle");
           setErrorMessage("");
+          resetFormState();
         }}
         onClick={(event) => {
           if (event.target === dialogRef.current) setOpen(false);
@@ -205,9 +292,52 @@ export function LeadFormTrigger({
                 Телефон
                 <input name="phone" type="tel" autoComplete="tel" placeholder="+7 999 000-00-00" required />
               </label>
-              <label>
-                Компания
-                <input name="company" autoComplete="organization" placeholder="Название или сфера бизнеса" />
+              <label className="lead-company-wrap" ref={companyWrapRef}>
+                Компания или ИНН
+                <input
+                  name="company"
+                  autoComplete="organization"
+                  placeholder="Название, ИНН или сфера бизнеса"
+                  value={company}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setCompany(value);
+                    if (inn) setInn("");
+                    fetchSuggestions(value);
+                  }}
+                  onFocus={() => {
+                    if (suggestions.length) setSuggestOpen(true);
+                  }}
+                  aria-autocomplete="list"
+                  aria-expanded={suggestOpen}
+                  aria-controls="lead-party-suggest"
+                />
+                {inn && <small className="lead-inn-hint">ИНН {inn}</small>}
+                {suggestOpen && suggestions.length > 0 && (
+                  <ul className="lead-party-suggest" id="lead-party-suggest" role="listbox">
+                    {suggestions.map((item) => {
+                      const key = `${item.inn || ""}-${item.value || item.company_name || ""}`;
+                      const title = item.company_name || item.value || "";
+                      return (
+                        <li key={key}>
+                          <button
+                            type="button"
+                            role="option"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => selectSuggestion(item)}
+                          >
+                            <span>{title}</span>
+                            {item.inn && <small>ИНН {item.inn}</small>}
+                            {item.address && <small>{item.address}</small>}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                {suggestLoading && company.trim().length >= 2 && (
+                  <small className="lead-suggest-loading">Ищем организацию…</small>
+                )}
               </label>
               <label>
                 Почта

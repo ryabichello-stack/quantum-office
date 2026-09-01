@@ -7,6 +7,7 @@ type LeadPayload = {
   email?: unknown;
   company?: unknown;
   website?: unknown;
+  inn?: unknown;
 };
 
 const clean = (value: unknown, max = 200) =>
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
     email: clean(input.email, 160),
     company: clean(input.company, 160),
     website: clean(input.website, 255),
+    inn: clean(input.inn, 14).replace(/\D/g, "").slice(0, 12) || undefined,
   };
 
   if (!lead.name || !lead.phone) {

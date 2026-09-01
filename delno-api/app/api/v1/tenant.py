@@ -8,7 +8,7 @@ from app.core.db import get_db
 from app.core.tenant import TenantContext
 from app.models.feature_flag import FeatureFlag
 from app.services.events import emit_event
-from app.services.party_enrichment import lookup_party_by_inn
+from app.services.party_enrichment import lookup_party_by_inn, suggest_parties_by_query
 
 router = APIRouter(prefix="/tenant", tags=["tenant"])
 
@@ -86,5 +86,26 @@ def tenant_party_lookup(
     )
     if not result.get("ok") and result.get("error") == "invalid_inn":
         raise HTTPException(status_code=400, detail="INN must be 10 or 12 digits")
+    db.commit()
+    return result
+
+
+@router.get("/party/suggest")
+def tenant_party_suggest(
+    q: str = Query(..., min_length=2, max_length=120),
+    count: int = Query(default=5, ge=1, le=20),
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """E1.14 — autocomplete legal entities by name or INN (DaData suggest)."""
+    result = suggest_parties_by_query(
+        db,
+        q,
+        tenant_id=ctx.tenant_id,
+        count=count,
+        source="tenant.party.suggest",
+    )
+    if not result.get("ok") and result.get("error") == "query_too_short":
+        raise HTTPException(status_code=400, detail="Query must be at least 2 characters")
     db.commit()
     return result

@@ -19,6 +19,8 @@ OPERATIONAL_EVENT_TYPES = frozenset(
         "party.lookup",
         "party.lookup_failed",
         "party.enriched",
+        "party.suggest",
+        "party.suggest_failed",
     }
 )
 

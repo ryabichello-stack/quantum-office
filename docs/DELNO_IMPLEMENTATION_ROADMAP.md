@@ -91,7 +91,7 @@
 | E1.11 | **Exit E1:** KB search works; CMS FAQ from admin end-to-end | ✅ CMS chain tests + smoke |
 | E1.12 | **PartyLookupAdapter** (DaData) + PG cache + lookup API | ✅ `GET /v1/tenant/party/lookup` |
 | E1.13 | Lead enrichment: `inn`, `party_json`, operator `lookup_company_by_inn` | ✅ alembic `003_leads_party`, `create_lead_record`, events |
-| E1.14 | Site party suggest proxy + optional INN in lead form | ⬜ depends E1.13 |
+| E1.14 | Site party suggest proxy + optional INN in lead form | ✅ `POST /v1/public/party/suggest`, site `/api/party/suggest` |
 | E1.15 | Tenant legal profile in `settings` (onboarding E5.1) | ⬜ depends E1.12 |
 | E1.16 | CRM push enriched fields → Bitrix (post-triggers) | ⬜ **DO NOT START** до CRM triggers |
 
@@ -180,15 +180,16 @@
 | GET/PATCH | `/v1/tenant/feature-flags` | tenant flags |
 | GET | `/v1/tenant/me` | tenant context |
 | GET | `/v1/tenant/party/lookup?inn=` | DaData findById + PG cache (E1.12) |
+| GET | `/v1/tenant/party/suggest?q=` | DaData suggest autocomplete (E1.14) |
+| POST | `/v1/public/party/suggest` | site proxy target — party autocomplete (E1.14) |
 | POST | `/v1/leads` | tenant-scoped leads; optional `inn` (E1.13) |
 | POST | `/v1/operator/chat` | operator MVP |
 
-### API endpoints (planned — DaData E1.14+)
+### API endpoints (planned — DaData E1.15+)
 
 | Method | Path | Назначение |
 |--------|------|------------|
-| GET | `/v1/tenant/party/suggest?q=` | DaData suggest (cabinet) |
-| POST | `/delno/api/party/suggest` | site proxy (ключ server-side) |
+| — | *(site)* `POST /delno/api/party/suggest` | ✅ Next.js proxy → `POST /v1/public/party/suggest` |
 
 ---
 

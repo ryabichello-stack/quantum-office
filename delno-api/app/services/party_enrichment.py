@@ -219,3 +219,85 @@ def enrich_lead_from_inn(
     )
     db.flush()
     return {"enriched": True, "lookup": lookup}
+
+
+def _flatten_suggestion_for_client(suggestion: dict[str, Any]) -> dict[str, Any]:
+    flat = extract_party_fields(suggestion)
+    return {
+        "value": flat.get("value") or flat.get("company_name"),
+        "inn": flat.get("inn"),
+        "company_name": flat.get("company_name"),
+        "address": flat.get("address"),
+        "status": flat.get("status"),
+        "party_type": flat.get("party_type"),
+    }
+
+
+def suggest_parties_by_query(
+    db: Session,
+    query: str,
+    *,
+    tenant_id: UUID | None = None,
+    count: int = 5,
+    source: str = "public.party.suggest",
+    adapter: PartyLookupAdapter | None = None,
+) -> dict[str, Any]:
+    """Autocomplete legal entities by name or INN prefix (DaData suggest)."""
+    q = (query or "").strip()
+    if len(q) < 2:
+        result = {"ok": False, "error": "query_too_short", "query": q}
+        if tenant_id:
+            emit_event(
+                db,
+                tenant_id=tenant_id,
+                event_type="party.suggest_failed",
+                source=source,
+                payload={"query": q, "reason": "query_too_short"},
+            )
+        return result
+
+    api = adapter or PartyLookupAdapter()
+    if not api.configured():
+        result = {
+            "ok": False,
+            "error": "dadata_not_configured",
+            "query": q,
+            "hint": "Set DADATA_API_KEY in environment",
+        }
+        if tenant_id:
+            emit_event(
+                db,
+                tenant_id=tenant_id,
+                event_type="party.suggest_failed",
+                source=source,
+                payload={"query": q, "reason": "dadata_not_configured"},
+            )
+        return result
+
+    try:
+        raw = api.suggest_parties(q, count=count)
+    except Exception as exc:  # noqa: BLE001
+        result = {"ok": False, "error": "upstream_error", "query": q, "detail": str(exc)[:400]}
+        if tenant_id:
+            emit_event(
+                db,
+                tenant_id=tenant_id,
+                event_type="party.suggest_failed",
+                source=source,
+                payload={"query": q, "reason": "upstream_error"},
+            )
+        return result
+
+    suggestions = [_flatten_suggestion_for_client(s) for s in raw if isinstance(s, dict)]
+    suggestions = [s for s in suggestions if s.get("inn") or s.get("company_name")]
+
+    if tenant_id:
+        emit_event(
+            db,
+            tenant_id=tenant_id,
+            event_type="party.suggest",
+            source=source,
+            payload={"query": q, "count": len(suggestions)},
+        )
+
+    return {"ok": True, "query": q, "suggestions": suggestions}

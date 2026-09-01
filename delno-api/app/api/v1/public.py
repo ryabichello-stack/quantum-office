@@ -9,6 +9,7 @@ from app.core.db import get_db
 from app.core.tenant import TenantContext
 from app.services.channel_router import resolve_public_lead
 from app.services.leads import create_lead_record
+from app.services.party_enrichment import suggest_parties_by_query
 from app.services.usage import record_usage
 
 router = APIRouter(prefix="/public", tags=["public"])
@@ -22,6 +23,38 @@ class PublicLeadCreate(BaseModel):
     website: str | None = Field(default=None, max_length=255)
     inn: str | None = Field(default=None, max_length=14)
     source: str = Field(default="website", max_length=120)
+
+
+class PublicPartySuggest(BaseModel):
+    q: str = Field(min_length=2, max_length=120)
+    count: int = Field(default=5, ge=1, le=10)
+
+
+@router.post("/party/suggest")
+def public_party_suggest(
+    body: PublicPartySuggest,
+    db: Session = Depends(get_db),
+    x_tenant_slug: str | None = Header(default=None, alias="X-Tenant-Slug"),
+) -> dict:
+    """E1.14 — server-side DaData party suggest for marketing site (no API key in browser)."""
+    from app.core.config import get_settings
+
+    slug = x_tenant_slug or get_settings().default_tenant_slug
+    channel = resolve_public_lead(db, slug)
+    if not channel:
+        raise HTTPException(status_code=404, detail=f"Tenant not found: {slug}")
+
+    result = suggest_parties_by_query(
+        db,
+        body.q,
+        tenant_id=channel.tenant_id,
+        count=body.count,
+        source="public.party.suggest",
+    )
+    if not result.get("ok") and result.get("error") == "query_too_short":
+        raise HTTPException(status_code=400, detail="Query must be at least 2 characters")
+    db.commit()
+    return result
 
 
 @router.post("/leads")
