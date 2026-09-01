@@ -12,7 +12,7 @@ import {
   type LegalProfile,
   type PartySuggestion,
 } from "@/lib/api";
-import { buttonPrimary, buttonGhost, card, colors, input } from "@/lib/ui";
+import { DashboardFrame } from "@/components/DashboardFrame";
 
 export default function SettingsPage() {
   const { token } = useRequireAuth();
@@ -82,87 +82,65 @@ export default function SettingsPage() {
   }
 
   return (
-    <>
-      <h1 style={{ margin: "0 0 8px", fontSize: 28 }}>Настройки</h1>
-      <p style={{ margin: "0 0 24px", color: colors.muted }}>Юридический профиль и feature flags tenant</p>
+    <DashboardFrame>
+      <div className="page-head">
+        <small>Настройки tenant</small>
+        <h1>Настройки</h1>
+        <p>Юридический профиль и feature flags</p>
+      </div>
 
-      <section style={{ ...card, marginBottom: 20 }}>
-        <h2 style={{ marginTop: 0, fontSize: 18 }}>Юридический профиль (ИНН)</h2>
+      <section className="settings-section panel-card">
+        <h2>Юридический профиль (ИНН)</h2>
         {legal?.company_name && (
-          <div style={{ marginBottom: 16, padding: 12, background: "#f8fafc", borderRadius: 8 }}>
+          <div className="legal-box">
             <div style={{ fontWeight: 700 }}>{legal.company_name}</div>
-            {legal.inn && <div style={{ fontSize: 13, color: colors.muted }}>ИНН {legal.inn}</div>}
-            {legal.address && <div style={{ fontSize: 13, marginTop: 4 }}>{legal.address}</div>}
-            {legal.okved && <div style={{ fontSize: 13, color: colors.muted }}>ОКВЭД {legal.okved}</div>}
+            {legal.inn && <div style={{ fontSize: 12, color: "#888" }}>ИНН {legal.inn}</div>}
+            {legal.address && <div style={{ fontSize: 13, marginTop: 6 }}>{legal.address}</div>}
+            {legal.okved && <div style={{ fontSize: 12, color: "#888" }}>ОКВЭД {legal.okved}</div>}
           </div>
         )}
-        <form onSubmit={onSubmit} style={{ display: "grid", gap: 10, maxWidth: 480 }}>
-          <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+        <form onSubmit={onSubmit} style={{ display: "grid", gap: 12, maxWidth: 480 }}>
+          <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 700 }}>
             Компания или ИНН
             <input
-              style={input}
               value={innQuery}
               onChange={(e) => setInnQuery(e.target.value)}
               placeholder="Название или ИНН"
+              style={{ padding: "11px 13px", borderRadius: 10, border: "1px solid var(--line)" }}
             />
           </label>
           {suggestions.length > 0 && (
-            <ul style={{ listStyle: "none", margin: 0, padding: 0, border: `1px solid ${colors.border}`, borderRadius: 8 }}>
+            <ul className="suggest-list">
               {suggestions.map((s) => (
                 <li key={`${s.inn}-${s.company_name}`}>
-                  <button
-                    type="button"
-                    onClick={() => s.inn && saveInn(s.inn)}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: 10,
-                      border: "none",
-                      background: "#fff",
-                      cursor: "pointer",
-                      borderBottom: `1px solid ${colors.border}`,
-                    }}
-                  >
+                  <button type="button" onClick={() => s.inn && saveInn(s.inn)}>
                     <div style={{ fontWeight: 600 }}>{s.company_name || s.value}</div>
-                    {s.inn && <div style={{ fontSize: 12, color: colors.muted }}>ИНН {s.inn}</div>}
+                    {s.inn && <div style={{ fontSize: 11, color: "#888" }}>ИНН {s.inn}</div>}
                   </button>
                 </li>
               ))}
             </ul>
           )}
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="submit" style={buttonPrimary}>
-              Сохранить по ИНН
-            </button>
-          </div>
+          <button type="submit" className="btn-primary" style={{ width: "fit-content" }}>
+            Сохранить по ИНН
+          </button>
         </form>
-        {status && <p style={{ color: colors.success }}>{status}</p>}
-        {error && <p style={{ color: colors.danger }}>{error}</p>}
+        {status && <p className="status-ok">{status}</p>}
+        {error && <p className="status-error">{error}</p>}
       </section>
 
-      <section style={card}>
-        <h2 style={{ marginTop: 0, fontSize: 18 }}>Feature flags</h2>
-        {flags.length === 0 && <p style={{ color: colors.muted }}>Нет флагов или нет доступа</p>}
-        <div style={{ display: "grid", gap: 8 }}>
-          {flags.map((flag) => (
-            <label
-              key={flag.flag_key}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "10px 0",
-                borderBottom: `1px solid ${colors.border}`,
-              }}
-            >
-              <span>{flag.flag_key}</span>
-              <button type="button" style={buttonGhost} onClick={() => toggleFlag(flag)}>
-                {flag.enabled ? "Вкл" : "Выкл"}
-              </button>
-            </label>
-          ))}
-        </div>
+      <section className="settings-section panel-card">
+        <h2>Feature flags</h2>
+        {flags.length === 0 && <p className="inbox-empty">Нет флагов или нет доступа</p>}
+        {flags.map((flag) => (
+          <div key={flag.flag_key} className="flag-row">
+            <span>{flag.flag_key}</span>
+            <button type="button" className="btn-ghost" onClick={() => toggleFlag(flag)}>
+              {flag.enabled ? "Вкл" : "Выкл"}
+            </button>
+          </div>
+        ))}
       </section>
-    </>
+    </DashboardFrame>
   );
 }

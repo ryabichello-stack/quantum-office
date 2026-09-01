@@ -1,11 +1,10 @@
 "use client";
 
-import Link from "next/link";
+import { Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useRequireAuth } from "@/lib/auth";
 import { apiConversationMessages, type MessageItem } from "@/lib/api";
-import { card, colors } from "@/lib/ui";
 
 export default function InboxThreadPage() {
   const params = useParams();
@@ -21,47 +20,77 @@ export default function InboxThreadPage() {
       .catch(() => setError("Не удалось загрузить сообщения"));
   }, [token, conversationId]);
 
+  const firstUser = items.find((m) => m.role === "user");
+
   return (
     <>
-      <Link href="/dashboard/inbox" style={{ color: colors.muted, textDecoration: "none" }}>
-        ← К списку диалогов
-      </Link>
-      <h1 style={{ margin: "12px 0 24px", fontSize: 24 }}>Диалог</h1>
-      <div style={{ ...card, display: "grid", gap: 12 }}>
-        {error && <p style={{ color: colors.danger }}>{error}</p>}
-        {items.map((msg) => (
-          <div
-            key={msg.id}
-            style={{
-              padding: 12,
-              borderRadius: 10,
-              background: msg.role === "user" ? "#f1f5f9" : "#ecfdf5",
-              border: `1px solid ${colors.border}`,
-            }}
-          >
-            <div style={{ fontSize: 11, color: colors.muted, marginBottom: 6 }}>
-              {msg.role} · {formatDate(msg.created_at)}
-            </div>
-            <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{msg.body}</div>
-            {Array.isArray((msg.meta as { sources?: unknown[] } | null)?.sources) &&
-              (msg.meta as { sources: { title?: string; citation?: string }[] }).sources.length > 0 && (
-                <ul style={{ margin: "10px 0 0", paddingLeft: 18, fontSize: 12, color: colors.muted }}>
-                  {(msg.meta as { sources: { title?: string; citation?: string }[] }).sources.map((s, i) => (
-                    <li key={i}>{s.title || s.citation || "Источник KB"}</li>
-                  ))}
-                </ul>
-              )}
-          </div>
-        ))}
+      <div className="person">
+        <div>
+          <b>Диалог · {conversationId.slice(0, 8)}</b>
+          <span>{firstUser?.body.slice(0, 60) || "Сообщения"}</span>
+        </div>
+        <div className="live-call">
+          <i /> {items.length} сообщений
+        </div>
       </div>
+
+      {error && <p className="status-error">{error}</p>}
+
+      {items.length > 0 && (
+        <div className="timeline-label">
+          {formatDate(items[0]?.created_at)}
+        </div>
+      )}
+
+      {items.map((msg) => (
+        <div key={msg.id}>
+          {msg.role === "assistant" ? (
+            <div className="delno-result">
+              <div className="result-head">
+                <span>
+                  <Sparkles /> DELNO
+                </span>
+                <small>{msg.role}</small>
+              </div>
+              <p style={{ margin: 0 }}>{msg.body}</p>
+              {Array.isArray((msg.meta as { sources?: { title?: string; citation?: string }[] } | null)?.sources) &&
+                (msg.meta as { sources: { title?: string; citation?: string }[] }).sources.length > 0 && (
+                  <ul className="msg-sources">
+                    {(msg.meta as { sources: { title?: string; citation?: string }[] }).sources.map((s, i) => (
+                      <li key={i}>{s.title || s.citation || "Источник KB"}</li>
+                    ))}
+                  </ul>
+                )}
+            </div>
+          ) : (
+            <div className="msg-bubble user">
+              <div className="msg-meta">{msg.role} · {formatTime(msg.created_at)}</div>
+              <div className="msg-body">{msg.body}</div>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {!error && items.length === 0 && (
+        <p className="inbox-empty">Сообщений пока нет</p>
+      )}
     </>
   );
 }
 
-function formatDate(iso: string | null) {
+function formatDate(iso: string | null | undefined) {
   if (!iso) return "";
   try {
-    return new Date(iso).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" });
+    return new Date(iso).toLocaleString("ru-RU", { dateStyle: "long", timeStyle: "short" });
+  } catch {
+    return iso;
+  }
+}
+
+function formatTime(iso: string | null) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleString("ru-RU", { timeStyle: "short" });
   } catch {
     return iso;
   }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRequireAuth } from "@/lib/auth";
 import { apiLeadsList, type LeadItem } from "@/lib/api";
-import { card, colors, table, td, th } from "@/lib/ui";
+import { DashboardFrame } from "@/components/DashboardFrame";
 
 export default function LeadsPage() {
   const { token } = useRequireAuth();
@@ -18,46 +18,56 @@ export default function LeadsPage() {
   }, [token]);
 
   return (
-    <>
-      <h1 style={{ margin: "0 0 8px", fontSize: 28 }}>Заявки</h1>
-      <p style={{ margin: "0 0 24px", color: colors.muted }}>Leads из сайта, виджета и других каналов</p>
-      <div style={card}>
-        {error && <p style={{ color: colors.danger }}>{error}</p>}
-        {!error && items.length === 0 && <p style={{ color: colors.muted }}>Пока нет заявок</p>}
+    <DashboardFrame>
+      <div className="page-head">
+        <small>Рабочее пространство</small>
+        <h1>Заявки</h1>
+        <p>Leads из сайта, виджета и других каналов</p>
+      </div>
+      <div className="panel-card">
+        {error && <p className="status-error">{error}</p>}
+        {!error && items.length === 0 && <p className="inbox-empty">Пока нет заявок</p>}
         {items.length > 0 && (
-          <table style={table}>
+          <table className="leads-table">
             <thead>
               <tr>
-                <th style={th}>Дата</th>
-                <th style={th}>Имя</th>
-                <th style={th}>Телефон</th>
-                <th style={th}>Компания</th>
-                <th style={th}>ИНН</th>
-                <th style={th}>Источник</th>
+                <th>Дата</th>
+                <th>Имя</th>
+                <th>Телефон</th>
+                <th>Компания</th>
+                <th>ИНН</th>
+                <th>Источник</th>
               </tr>
             </thead>
             <tbody>
               {items.map((lead) => (
                 <tr key={lead.id}>
-                  <td style={td}>{formatDate(lead.created_at)}</td>
-                  <td style={td}>{lead.name}</td>
-                  <td style={td}>{lead.phone}</td>
-                  <td style={td}>{lead.company || "—"}</td>
-                  <td style={td}>
+                  <td>{formatDate(lead.created_at)}</td>
+                  <td>
+                    <b>{lead.name}</b>
+                  </td>
+                  <td>{lead.phone}</td>
+                  <td>{lead.company || "—"}</td>
+                  <td>
                     {lead.inn ? (
                       <span title={lead.party_enriched ? "Обогащено DaData" : undefined}>{lead.inn}</span>
                     ) : (
                       "—"
                     )}
                   </td>
-                  <td style={td}>{lead.source}</td>
+                  <td>
+                    <span className="result-tags">
+                      <span>{lead.source}</span>
+                      {lead.party_enriched && <span>DaData</span>}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
-    </>
+    </DashboardFrame>
   );
 }
 

@@ -1,9 +1,10 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { Sparkles } from "lucide-react";
 import { useRequireAuth } from "@/lib/auth";
 import { apiOperatorChat, type KnowledgeSource } from "@/lib/api";
-import { buttonPrimary, card, colors, input } from "@/lib/ui";
+import { DashboardFrame } from "@/components/DashboardFrame";
 
 type ChatLine = {
   role: "user" | "assistant";
@@ -30,10 +31,7 @@ export default function OperatorPage() {
     try {
       const result = await apiOperatorChat(token, question, conversationId || undefined);
       setConversationId(result.conversation_id);
-      setLines((prev) => [
-        ...prev,
-        { role: "assistant", text: result.reply, sources: result.sources || [] },
-      ]);
+      setLines((prev) => [...prev, { role: "assistant", text: result.reply, sources: result.sources || [] }]);
     } catch {
       setError("Operator недоступен. Проверьте API и базу знаний.");
     } finally {
@@ -42,53 +40,61 @@ export default function OperatorPage() {
   }
 
   return (
-    <>
-      <h1 style={{ margin: "0 0 8px", fontSize: 28 }}>Operator</h1>
-      <p style={{ margin: "0 0 24px", color: colors.muted }}>
-        Read-only KB: ответы с указанием источников (`sources`)
-      </p>
-      <div style={{ ...card, minHeight: 420, display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ flex: 1, display: "grid", gap: 10, maxHeight: 480, overflow: "auto" }}>
-          {lines.length === 0 && (
-            <p style={{ color: colors.muted }}>Спросите про услуги, тарифы или правила из базы знаний</p>
-          )}
-          {lines.map((line, idx) => (
-            <div
-              key={idx}
-              style={{
-                alignSelf: line.role === "user" ? "flex-end" : "flex-start",
-                maxWidth: "85%",
-                padding: 12,
-                borderRadius: 12,
-                background: line.role === "user" ? colors.accent : "#f8fafc",
-                color: line.role === "user" ? "#fff" : colors.text,
-              }}
-            >
-              <div style={{ whiteSpace: "pre-wrap" }}>{line.text}</div>
-              {line.sources && line.sources.length > 0 && (
-                <ul style={{ margin: "8px 0 0", paddingLeft: 16, fontSize: 11, opacity: 0.85 }}>
-                  {line.sources.map((s, i) => (
-                    <li key={i}>{s.title || s.citation || s.document_id}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ))}
-        </div>
-        {error && <p style={{ color: colors.danger, margin: 0 }}>{error}</p>}
-        <form onSubmit={onSubmit} style={{ display: "flex", gap: 8 }}>
-          <input
-            style={input}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Ваш вопрос…"
-            disabled={sending}
-          />
-          <button type="submit" style={buttonPrimary} disabled={sending}>
-            {sending ? "…" : "Отправить"}
-          </button>
-        </form>
+    <DashboardFrame>
+      <div className="page-head">
+        <small>Operator · read-only KB</small>
+        <h1>Operator</h1>
+        <p>Ответы по базе знаний с указанием источников</p>
       </div>
-    </>
+
+      {lines.length === 0 && (
+        <div className="delno-result">
+          <div className="result-head">
+            <span>
+              <Sparkles /> DELNO
+            </span>
+          </div>
+          <p style={{ margin: 0 }}>Спросите про услуги, тарифы или правила из базы знаний</p>
+        </div>
+      )}
+
+      {lines.map((line, idx) =>
+        line.role === "user" ? (
+          <div key={idx} className="msg-bubble user">
+            <div className="msg-body">{line.text}</div>
+          </div>
+        ) : (
+          <div key={idx} className="delno-result">
+            <div className="result-head">
+              <span>
+                <Sparkles /> DELNO
+              </span>
+            </div>
+            <p style={{ margin: 0 }}>{line.text}</p>
+            {line.sources && line.sources.length > 0 && (
+              <ul className="msg-sources">
+                {line.sources.map((s, i) => (
+                  <li key={i}>{s.title || s.citation || s.document_id}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ),
+      )}
+
+      {error && <p className="status-error">{error}</p>}
+
+      <form className="chat-form" onSubmit={onSubmit}>
+        <input
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          placeholder="Ваш вопрос…"
+          disabled={sending}
+        />
+        <button type="submit" className="btn-primary" disabled={sending}>
+          {sending ? "…" : "Отправить"}
+        </button>
+      </form>
+    </DashboardFrame>
   );
 }
