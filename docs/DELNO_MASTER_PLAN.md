@@ -53,7 +53,7 @@
 4. ✅ `delno-admin` + `delno-web` Next.js scaffolds  
 5. ✅ Site leads proxy → delno-api (код; prod rebuild pending)  
 6. ✅ Nginx ready for `dlno.ru` (Cloudflare DNS pending)  
-7. 🔄 Sprint 3: FAQ from CMS, brain init-db + ACL tests, Operator LLM  
+7. 🔄 Sprint 3: security first → brain init → leads → DNS → P1 exit → FAQ → basic Operator (см. roadmap REV-3.1)  
 
 **Детальный checklist:** [`DELNO_IMPLEMENTATION_ROADMAP.md`](DELNO_IMPLEMENTATION_ROADMAP.md)
 
@@ -64,7 +64,7 @@
 | S0 | ✅ | brain extract, auth, admin tenants, KnowledgeAdapter, tests |
 | S1 | ✅ | prod stack staging на `a.47z.ru/delno` |
 | S2 | ✅ | CMS, public API, channel router, admin/web scaffolds |
-| S3 | ⬜ next | DNS dlno.ru, site→api leads, FAQ CMS, brain ACL, Operator LLM |
+| S3 | ⬜ in progress | P0: isolation + ACL + brain + leads + DNS → P1: website exit + FAQ → P2: basic Operator + events |
 
 **Dev credentials (seeded):** `admin@delno.one` / `admin123456`, `owner@delno.one` / `demo123456`
 
@@ -633,21 +633,32 @@ E0 + E1 start:
  12. Site leads proxy → delno-api (code ready)
 ```
 
-### Sprint 3 ⬜ (next)
+### Sprint 3 ⬜ (in progress — см. [`DELNO_IMPLEMENTATION_ROADMAP.md`](DELNO_IMPLEMENTATION_ROADMAP.md) REV-3.1)
+
+**Порядок строго фиксирован. Не переставлять.**
 
 ```
-Product P1:
-  1. Cloudflare DNS dlno.ru → 5.35.86.62
-  2. Rebuild site with DELNO_API_URL → leads in PG
-  3. CMS FAQ block on marketing site
+P0 — блокеры:
+  1. E0.13 cross-tenant isolation + E1.3 ACL smoke (CI) — ДО Operator write-tools
+  2. E1.2 brain init-db + demo vault + tenant-scoped search
+  3. P1.4 site → POST /v1/public/leads → PostgreSQL
+  4. P1.6/P1.7 dlno.ru + api.dlno.ru + SSL + CORS
 
-Engineering:
-  4. Brain init-db + ACL automated tests
-  5. Operator LLM via model provider
-  6. Cross-tenant isolation integration test
+P1 — product:
+  5. P1.1/P1.2/P1.3/P1.5/P1.8 selling website exit criteria
+  6. P1.9 clarity test (3+ людей)
+  7. E1.7 FAQ from CMS (published only, cache + fallback)
+  8. E1.4 knowledge provenance in API responses
+
+P2 — operator foundation:
+  9. E3.2 basic Operator LLM — read-only KB, tenant context, no mass actions
+ 10. E0.15 minimal operational events (lead.created, auth.failed, …)
+ 11. Update docs/status
 ```
 
-**Не в Sprint 3:** telephony, full billing, CRM, marketplace.
+**Exit Sprint 3:** все пункты exit criteria в roadmap одновременно выполнены.
+
+**DO NOT START:** CRM, marketplace, telephony E4, billing payments, repo migration, advanced Tool Registry, mass actions.
 
 ---
 
@@ -744,4 +755,4 @@ It must document the dependency and defer implementation unless explicitly appro
 6. **Usage metering + events + feature flags** — с раннего этапа.
 7. **CRM/marketplace/banking** — guardrails, PARTNER → LEARN → BUILD.
 
-**Следующий шаг:** Sprint 3 — DNS dlno.ru, site→api leads on prod, CMS FAQ, brain ACL tests, Operator LLM.
+**Следующий шаг:** Sprint 3 P0 #1 — cross-tenant isolation test + ACL smoke (см. roadmap REV-3.1).

@@ -2,7 +2,7 @@
 
 **Canonical strategy:** [`DELNO_MASTER_PLAN.md`](DELNO_MASTER_PLAN.md)  
 **Домены:** [`DLNO_DOMAINS.md`](DLNO_DOMAINS.md)  
-**Обновлено:** 2026-09-01 · **Revision REV-3**
+**Обновлено:** 2026-09-01 · **Revision REV-3.1** (Sprint 3 executable plan)
 
 Легенда: ✅ done · 🔄 in progress · ⬜ todo
 
@@ -34,10 +34,10 @@
 | P1.1 | Hero: «ИИ-сотрудник» — clarity за 5–10 сек | ⬜ |
 | P1.2 | Блок каналов: телефон, сайт, Telegram, MAX, email | ⬜ |
 | P1.3 | CTA «Попробовать» → voice demo + lead form | ⬜ |
-| P1.4 | Leads с сайта → **delno-api** (код готов, prod rebuild site) | 🔄 |
+| P1.4 | Leads с сайта → **delno-api** (код готов, prod rebuild site) | 🔄 **S3 P0 #4** |
 | P1.5 | Mobile UX / lighthouse pass | ⬜ |
-| P1.6 | `dlno.ru` DNS Cloudflare → `5.35.86.62` | ⬜ |
-| P1.7 | SSL на origin (Cloudflare Full / certbot) | ⬜ |
+| P1.6 | `dlno.ru` DNS Cloudflare → `5.35.86.62` | ⬜ **S3 P0 #5** |
+| P1.7 | SSL на origin (Cloudflare Full / certbot) | ⬜ **S3 P0 #5** |
 | P1.8 | Privacy/terms актуальны для dlno.ru | ⬜ |
 | P1.9 | Exit: clarity-test пройден 3+ людьми | ⬜ |
 
@@ -68,8 +68,9 @@
 | E0.10 | Model provider abstraction stub | ✅ |
 | E0.11 | Deploy full stack prod: api + knowledge + postgres | ✅ |
 | E0.12 | CI: pytest delno-api + brain security tests | 🔄 11 tests local |
-| E0.13 | Cross-tenant isolation integration test | ⬜ |
+| E0.13 | Cross-tenant isolation integration test | ⬜ **S3 P0 #1** |
 | E0.14 | **Exit E0:** admin creates tenant; events emit; flags work | 🔄 |
+| E0.15 | Minimal operational events (lead.created, auth.failed, …) | ⬜ **S3 P2 #11** |
 
 ---
 
@@ -78,12 +79,12 @@
 | # | Задача | Статус |
 |---|--------|--------|
 | E1.1 | delno-knowledge container prod `:18021` | ✅ |
-| E1.2 | Init brain DB + seed demo vault | ⬜ |
-| E1.3 | ACL smoke: guest ≠ owner (automated) | ⬜ |
-| E1.4 | Knowledge provenance in API responses | ⬜ |
+| E1.2 | Init brain DB + seed demo vault | ⬜ **S3 P0 #3** |
+| E1.3 | ACL smoke: guest ≠ owner (automated) | ⬜ **S3 P0 #2** |
+| E1.4 | Knowledge provenance in API responses | ⬜ **S3 P1 #9** |
 | E1.5 | CMS models: pages, revisions | ✅ |
 | E1.6 | Admin CMS CRUD draft/publish | ✅ |
-| E1.7 | Site fetch published CMS (FAQ block pilot) | ⬜ |
+| E1.7 | Site fetch published CMS (FAQ block pilot) | ⬜ **S3 P1 #8** |
 | E1.8 | Auto-ingest tenant settings → brain | ⬜ |
 | E1.9 | Per-tenant vault path isolation | ⬜ |
 | E1.10 | **delno-admin** scaffold: login + tenants + CMS | ✅ |
@@ -111,7 +112,7 @@
 | # | Задача | Статус |
 |---|--------|--------|
 | E3.1 | **delno-web** scaffold: login + dashboard shell | ✅ |
-| E3.2 | Operator LLM loop (OpenAI) | ⬜ |
+| E3.2 | Operator LLM loop — **basic read-only only** | ⬜ **S3 P2 #10** |
 | E3.3 | Tool registry + confirmation classes | ⬜ |
 | E3.4 | Embeddable web widget JS | ⬜ |
 | E3.5 | Voice widget WebRTC MVP | ⬜ |
@@ -178,13 +179,59 @@
 
 ---
 
-## Sprint 3 (следующий)
+## Sprint 3 — исполнимый план (строго по порядку)
 
-1. Cloudflare DNS dlno.ru → 5.35.86.62  
-2. Rebuild staging site with `DELNO_API_URL` → leads in PG  
-3. CMS FAQ block on site from API  
-4. Brain `init-db` + ACL automated tests  
-5. Operator LLM via model provider  
+**Принцип:** сначала безопасность (E0/E1 exit), потом production connectivity, потом selling website, потом FAQ/CMS, Operator — только basic read-only loop в конце.  
+**E0/E1 ещё не закрыты** — cross-tenant isolation, ACL smoke, brain init-db, provenance, FAQ from API остаются todo.
+
+### P0 — блокеры (делать первым)
+
+| # | Шаг | Задачи | Критерий готовности |
+|---|-----|--------|---------------------|
+| 1 | **Tenant isolation + ACL** | E0.13, E1.3; 2 test tenants, своя KB каждому; guest ≠ owner; principals public/owner; CI | Тесты стабильны; tenant context только из auth; нельзя передать произвольный tenant_id |
+| 2 | *(внутри #1)* | ACL automated smoke | guest ≠ owner; public/owner principals проверены |
+| 3 | **Init production brain** | E1.2: init-db, migrations, demo vault, demo tenant, docs, tenant-scoped search, provenance metadata | KB отвечает; source/provenance tenant-safe; restart не ломает состояние |
+| 4 | **Site → real leads API** | P1.4: `DELNO_API_URL`, rebuild staging, `POST /v1/public/leads` + `X-Tenant-Slug`, success/error UI | Лид из формы → запись в PostgreSQL (desktop + mobile) |
+| 5 | **DNS + production ingress** | P1.6/P1.7, H3/H4: Cloudflare → `5.35.86.62`, `dlno.ru`, `api.dlno.ru`, SSL, health, CORS, prod env | `https://dlno.ru` + `https://api.dlno.ru/v1/health`; lead с prod → prod DB |
+
+**Не делать до шага 1:** Operator с write-tools по tenant data.
+
+### P1 — product + CMS
+
+| # | Шаг | Задачи | Критерий готовности |
+|---|-----|--------|---------------------|
+| 6 | **Selling Website exit** | P1.1 hero, P1.2 каналы, P1.3 CTA, P1.5 mobile, P1.8 privacy/terms | Первый экран = «ИИ-сотрудник» за 5–10 сек; каналы видны; mobile OK |
+| 7 | **Clarity test** | P1.9: 3+ незнакомых с DELNO | Минимум 3 человека понимают продукт; если 2+ говорят «AI-платформа» / «чат-бот» — hero переделывать |
+| 8 | **FAQ from CMS** | E1.7: draft/publish, site = published only, fallback + cache | Изменили FAQ в admin → publish → сайт без code deploy |
+| 9 | **Provenance** | E1.4: source metadata в knowledge responses | API возвращает tenant-safe provenance |
+
+### P2 — Operator + observability foundation
+
+| # | Шаг | Задачи | Критерий готовности |
+|---|-----|--------|---------------------|
+| 10 | **Basic Operator LLM** | E3.2: `/v1/operator/chat`, model provider, system prompt, tenant context, **read-only KB search**, history, errors | Отвечает только из tenant context; без CRM/telephony/payments/mass actions |
+| 11 | **Operational events** | E0.15: `lead.created`, `knowledge.search_failed`, `operator.error`, `integration.error`, `auth.failed`, `tenant.isolation_violation` | Events пишутся; фундамент для E6 Supervisor |
+| 12 | **Docs/status** | Обновить roadmap + master plan | REV актуален |
+
+### Sprint 3 — exit criteria (все одновременно)
+
+- [ ] Tenant isolation тестируется автоматически (CI)
+- [ ] ACL работает (guest ≠ owner)
+- [ ] Brain инициализирован (demo vault + tenant search)
+- [ ] `dlno.ru` + `api.dlno.ru` production работают
+- [ ] Форма сайта пишет лид в PG
+- [ ] Сайт понятен 3+ людям за 5–10 сек (P1.9)
+- [ ] FAQ из CMS без code deploy
+- [ ] Operator безопасно отвечает по tenant KB (read-only)
+- [ ] Ни одной задачи E4+ / future product modules не начато
+
+### DO NOT START в Sprint 3
+
+CRM (в т.ч. CRM Lite), marketplace, bank integrations, PSTN/SIP telephony, phone provisioning, Mango multi-tenant, full Voice Worker, billing payments, reseller/white-label, full booking, marketing automation, advanced Tool Registry, mass actions, **repo migration** из quantum-office.
+
+### Разрешено: stub/interface без полной реализации
+
+ChannelAdapter, ModelProvider, ToolRegistry, event bus, feature flags, usage records — контракт да, большой subsystem нет.
 
 ---
 
