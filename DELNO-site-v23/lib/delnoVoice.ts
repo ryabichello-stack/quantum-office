@@ -132,6 +132,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
   let abortTts: AbortController | null = null;
   let errorTimer: number | null = null;
   let listenTimer: number | null = null;
+  let listenPoll: number | null = null;
   let listenDeadline = 0;
 
   function clearErrorTimer() {
@@ -146,6 +147,10 @@ export function createVoiceController(options: VoiceSessionOptions) {
       window.clearTimeout(listenTimer);
       listenTimer = null;
     }
+    if (listenPoll !== null) {
+      window.clearInterval(listenPoll);
+      listenPoll = null;
+    }
   }
 
   function clearListenWindow() {
@@ -159,6 +164,10 @@ export function createVoiceController(options: VoiceSessionOptions) {
     listenTimer = window.setTimeout(() => {
       if (sessionActive && !processing && !speaking) stop();
     }, listenSilenceMs);
+    listenPoll = window.setInterval(() => {
+      if (!sessionActive || processing || speaking) return;
+      if (listenDeadline && Date.now() >= listenDeadline) stop();
+    }, 400);
   }
 
   function stop() {
@@ -225,13 +234,16 @@ export function createVoiceController(options: VoiceSessionOptions) {
       if (sessionActive) setPhase("listen");
     };
     recognition.onresult = (event) => {
-      clearListenWindow();
       heard = true;
       const transcript = event.results[0][0].transcript.trim();
       recognition?.stop();
       recognition = null;
-      if (transcript) void answer(transcript);
-      else resumeListening();
+      if (transcript) {
+        clearListenWindow();
+        void answer(transcript);
+      } else {
+        resumeListening();
+      }
     };
     recognition.onerror = (event) => {
       recognition = null;
