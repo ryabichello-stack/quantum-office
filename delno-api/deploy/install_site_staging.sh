@@ -10,6 +10,10 @@ SITE_PORT="${SITE_PORT:-18019}"
 
 echo "==> DELNO site staging rebuild → ${STACK_DIR}/site"
 
+if [ -x "${REPO_ROOT}/delno-api/deploy/sync_quantum_office_env.sh" ] && [ -f "${STACK_DIR}/.env" ]; then
+  DELNO_ENV="${STACK_DIR}/.env" bash "${REPO_ROOT}/delno-api/deploy/sync_quantum_office_env.sh" || true
+fi
+
 if [ ! -f "${SITE_SRC}/Dockerfile" ]; then
   echo "ERROR: ${SITE_SRC}/Dockerfile not found"
   exit 1

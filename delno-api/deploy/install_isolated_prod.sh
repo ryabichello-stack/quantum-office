@@ -54,6 +54,10 @@ EOF
   echo "==> created ${DELNO_ROOT}/.env — fill TELEGRAM_* and OPENAI_*"
 fi
 
+if [[ -x "${API_SRC}/deploy/sync_quantum_office_env.sh" ]]; then
+  DELNO_ENV="${DELNO_ROOT}/.env" bash "${API_SRC}/deploy/sync_quantum_office_env.sh" || true
+fi
+
 # stop legacy standalone delno-site systemd (old /opt/delno-site layout)
 systemctl disable --now delno-site.service 2>/dev/null || true
 # Remove only the old non-compose container (project name delno uses compose labels)
