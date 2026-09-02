@@ -132,6 +132,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
   let abortTts: AbortController | null = null;
   let errorTimer: number | null = null;
   let listenTimer: number | null = null;
+  let listenDeadline = 0;
 
   function clearErrorTimer() {
     if (errorTimer !== null) {
@@ -147,11 +148,24 @@ export function createVoiceController(options: VoiceSessionOptions) {
     }
   }
 
+  function clearListenWindow() {
+    clearListenTimer();
+    listenDeadline = 0;
+  }
+
+  function beginListenWindow() {
+    clearListenTimer();
+    listenDeadline = Date.now() + listenSilenceMs;
+    listenTimer = window.setTimeout(() => {
+      if (sessionActive && !processing && !speaking) stop();
+    }, listenSilenceMs);
+  }
+
   function stop() {
     turnId += 1;
     sessionActive = false;
     clearErrorTimer();
-    clearListenTimer();
+    clearListenWindow();
     recognition?.stop();
     recognition = null;
     abortTts?.abort();
@@ -179,14 +193,11 @@ export function createVoiceController(options: VoiceSessionOptions) {
 
   function resumeListening() {
     if (!sessionActive || processing || speaking) return;
+    if (listenDeadline && Date.now() >= listenDeadline) {
+      stop();
+      return;
+    }
     startListening();
-  }
-
-  function armListenSilenceTimer() {
-    clearListenTimer();
-    listenTimer = window.setTimeout(() => {
-      if (sessionActive && !processing && !speaking) stop();
-    }, listenSilenceMs);
   }
 
   function startListening() {
@@ -204,7 +215,6 @@ export function createVoiceController(options: VoiceSessionOptions) {
     clearErrorTimer();
     heard = false;
     setPhase("listen");
-    armListenSilenceTimer();
 
     recognition?.stop();
     recognition = new SpeechRecognition();
@@ -215,7 +225,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
       if (sessionActive) setPhase("listen");
     };
     recognition.onresult = (event) => {
-      clearListenTimer();
+      clearListenWindow();
       heard = true;
       const transcript = event.results[0][0].transcript.trim();
       recognition?.stop();
@@ -257,7 +267,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
   async function answer(text: string) {
     const id = ++turnId;
     processing = true;
-    clearListenTimer();
+    clearListenWindow();
     recognition?.stop();
     recognition = null;
     setPhase("think");
@@ -282,8 +292,10 @@ export function createVoiceController(options: VoiceSessionOptions) {
     const audio = audioRef.current;
     if (!audio) {
       speaking = false;
-      if (sessionActive) resumeListening();
-      else setPhase("idle");
+      if (sessionActive) {
+        beginListenWindow();
+        resumeListening();
+      } else setPhase("idle");
       return;
     }
 
@@ -294,14 +306,18 @@ export function createVoiceController(options: VoiceSessionOptions) {
       onEnd: () => {
         if (id !== turnId) return;
         speaking = false;
-        if (sessionActive) resumeListening();
-        else stop();
+        if (sessionActive) {
+          beginListenWindow();
+          resumeListening();
+        } else stop();
       },
       onError: () => {
         if (id !== turnId) return;
         speaking = false;
-        if (sessionActive) resumeListening();
-        else showError(text, reply);
+        if (sessionActive) {
+          beginListenWindow();
+          resumeListening();
+        } else showError(text, reply);
       },
       signal: abortTts.signal,
     });
@@ -310,8 +326,10 @@ export function createVoiceController(options: VoiceSessionOptions) {
 
     if (!ok && !abortTts.signal.aborted) {
       speaking = false;
-      if (sessionActive) resumeListening();
-      else showError(text, reply);
+      if (sessionActive) {
+        beginListenWindow();
+        resumeListening();
+      } else showError(text, reply);
     }
   }
 
@@ -324,13 +342,14 @@ export function createVoiceController(options: VoiceSessionOptions) {
     sessionActive = true;
     claimVoiceSession(stop);
     clearErrorTimer();
+    beginListenWindow();
     startListening();
   }
 
   async function askText(text: string) {
     if (sessionActive) {
       turnId += 1;
-      clearListenTimer();
+      clearListenWindow();
       recognition?.stop();
       recognition = null;
       abortTts?.abort();
