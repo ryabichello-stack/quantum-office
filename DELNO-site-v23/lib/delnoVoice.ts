@@ -204,13 +204,15 @@ export function createVoiceController(options: VoiceSessionOptions) {
   }
 
   function enterListenMode() {
-    if (!sessionActive || processing || speaking) return;
+    if (!sessionActive) return;
     setPhase("listen");
   }
 
   function afterAnswerListen() {
     if (!sessionActive) return;
     awaitingFollowUp = true;
+    speaking = false;
+    processing = false;
     beginListenWindow();
     enterListenMode();
     startListening();
@@ -323,29 +325,32 @@ export function createVoiceController(options: VoiceSessionOptions) {
     speaking = true;
     abortTts = new AbortController();
 
-    const audio = audioRef.current;
-    if (!audio) {
+    const finishSpeak = () => {
+      if (id !== turnId) return;
       speaking = false;
       if (sessionActive) afterAnswerListen();
-      else setPhase("idle");
+      else stop();
+    };
+
+    const audio = audioRef.current;
+    if (!audio) {
+      finishSpeak();
       return;
     }
+
+    const speakCap = window.setTimeout(finishSpeak, 15000);
 
     const ok = await playDelnoTts(reply, audio, {
       onStart: () => {
         if (id === turnId) setPhase("speak");
       },
       onEnd: () => {
-        if (id !== turnId) return;
-        speaking = false;
-        if (sessionActive) afterAnswerListen();
-        else stop();
+        window.clearTimeout(speakCap);
+        finishSpeak();
       },
       onError: () => {
-        if (id !== turnId) return;
-        speaking = false;
-        if (sessionActive) afterAnswerListen();
-        else showError(text, reply);
+        window.clearTimeout(speakCap);
+        finishSpeak();
       },
       signal: abortTts.signal,
     });
@@ -353,9 +358,8 @@ export function createVoiceController(options: VoiceSessionOptions) {
     if (id !== turnId) return;
 
     if (!ok && !abortTts.signal.aborted) {
-      speaking = false;
-      if (sessionActive) afterAnswerListen();
-      else showError(text, reply);
+      window.clearTimeout(speakCap);
+      finishSpeak();
     }
   }
 
