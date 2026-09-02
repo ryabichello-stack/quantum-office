@@ -388,23 +388,10 @@ export function createVoiceController(options: VoiceSessionOptions) {
   }
 
   async function askText(text: string) {
+    stop();
+    engaged = true;
     promptMode = true;
-    if (engaged) {
-      turnId += 1;
-      clearListenTimer();
-      clearMicRetryTimer();
-      recognition?.stop();
-      recognition = null;
-      abortTts?.abort();
-      abortTts = null;
-      processing = false;
-      speaking = false;
-      heard = false;
-    } else {
-      engaged = true;
-      claimVoiceSession(stop);
-    }
-    awaitingFollowUp = false;
+    claimVoiceSession(stop);
 
     const sessionDone = new Promise<void>((resolve) => {
       sessionResolve = resolve;
