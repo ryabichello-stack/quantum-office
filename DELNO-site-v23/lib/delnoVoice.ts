@@ -74,7 +74,6 @@ export async function unlockAudioElement(audio: HTMLAudioElement) {
   }
 
   try {
-    const prevSrc = audio.src;
     audio.muted = true;
     audio.src =
       "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQAAAAA=";
@@ -84,8 +83,8 @@ export async function unlockAudioElement(audio: HTMLAudioElement) {
     ]);
     audio.pause();
     audio.removeAttribute("src");
+    audio.load();
     audio.muted = false;
-    if (prevSrc) audio.src = prevSrc;
   } catch {
     audio.muted = false;
   }
@@ -484,9 +483,6 @@ export function createVoiceController(options: VoiceSessionOptions) {
     claimVoiceSession(stop);
     clearErrorTimer();
     setPhase("think");
-
-    const audio = audioRef.current;
-    if (audio) void unlockAudioElement(audio);
 
     await answer(trimmed);
   }
