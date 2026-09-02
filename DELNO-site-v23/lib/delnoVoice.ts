@@ -128,6 +128,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
   let speaking = false;
   let processing = false;
   let sessionActive = false;
+  let awaitingFollowUp = false;
   let turnId = 0;
   let abortTts: AbortController | null = null;
   let errorTimer: number | null = null;
@@ -173,6 +174,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
   function stop() {
     turnId += 1;
     sessionActive = false;
+    awaitingFollowUp = false;
     clearErrorTimer();
     clearListenWindow();
     recognition?.stop();
@@ -195,9 +197,23 @@ export function createVoiceController(options: VoiceSessionOptions) {
   function showError(userText: string, assistantText: string) {
     clearErrorTimer();
     sessionActive = false;
+    awaitingFollowUp = false;
     setPhase("error");
     onExchange?.(userText, assistantText);
     errorTimer = window.setTimeout(() => stop(), 2600);
+  }
+
+  function enterListenMode() {
+    if (!sessionActive || processing || speaking) return;
+    setPhase("listen");
+  }
+
+  function afterAnswerListen() {
+    if (!sessionActive) return;
+    awaitingFollowUp = true;
+    beginListenWindow();
+    enterListenMode();
+    startListening();
   }
 
   function resumeListening() {
@@ -250,13 +266,16 @@ export function createVoiceController(options: VoiceSessionOptions) {
       if (!sessionActive || processing || speaking) return;
       const code = event?.error || "";
       if (code === "not-allowed" || code === "service-not-allowed" || code === "audio-capture") {
+        if (awaitingFollowUp && listenDeadline && Date.now() < listenDeadline) {
+          enterListenMode();
+          return;
+        }
         showError(
           "Голосовой режим",
           "Не удалось получить доступ к микрофону. Разрешите микрофон в браузере и нажмите на шар ещё раз.",
         );
         return;
       }
-      // no-speech / aborted — keep waiting until silence timer fires
       resumeListening();
     };
     recognition.onend = () => {
@@ -267,12 +286,15 @@ export function createVoiceController(options: VoiceSessionOptions) {
     try {
       recognition.start();
     } catch {
-      if (sessionActive) {
-        showError(
-          "Голосовой режим",
-          "Не удалось запустить микрофон. Попробуйте ещё раз через секунду.",
-        );
+      if (!sessionActive) return;
+      if (awaitingFollowUp && listenDeadline && Date.now() < listenDeadline) {
+        enterListenMode();
+        return;
       }
+      showError(
+        "Голосовой режим",
+        "Не удалось запустить микрофон. Попробуйте ещё раз через секунду.",
+      );
     }
   }
 
@@ -304,10 +326,8 @@ export function createVoiceController(options: VoiceSessionOptions) {
     const audio = audioRef.current;
     if (!audio) {
       speaking = false;
-      if (sessionActive) {
-        beginListenWindow();
-        resumeListening();
-      } else setPhase("idle");
+      if (sessionActive) afterAnswerListen();
+      else setPhase("idle");
       return;
     }
 
@@ -318,18 +338,14 @@ export function createVoiceController(options: VoiceSessionOptions) {
       onEnd: () => {
         if (id !== turnId) return;
         speaking = false;
-        if (sessionActive) {
-          beginListenWindow();
-          resumeListening();
-        } else stop();
+        if (sessionActive) afterAnswerListen();
+        else stop();
       },
       onError: () => {
         if (id !== turnId) return;
         speaking = false;
-        if (sessionActive) {
-          beginListenWindow();
-          resumeListening();
-        } else showError(text, reply);
+        if (sessionActive) afterAnswerListen();
+        else showError(text, reply);
       },
       signal: abortTts.signal,
     });
@@ -338,10 +354,8 @@ export function createVoiceController(options: VoiceSessionOptions) {
 
     if (!ok && !abortTts.signal.aborted) {
       speaking = false;
-      if (sessionActive) {
-        beginListenWindow();
-        resumeListening();
-      } else showError(text, reply);
+      if (sessionActive) afterAnswerListen();
+      else showError(text, reply);
     }
   }
 
@@ -352,6 +366,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
     }
 
     sessionActive = true;
+    awaitingFollowUp = false;
     claimVoiceSession(stop);
     clearErrorTimer();
     beginListenWindow();
