@@ -27,6 +27,16 @@ type SpeechWindow = Window & {
 };
 
 let activeAudio: HTMLAudioElement | null = null;
+let activeVoiceStop: (() => void) | null = null;
+
+function claimVoiceSession(stop: () => void) {
+  if (activeVoiceStop && activeVoiceStop !== stop) activeVoiceStop();
+  activeVoiceStop = stop;
+}
+
+function releaseVoiceSession(stop: () => void) {
+  if (activeVoiceStop === stop) activeVoiceStop = null;
+}
 
 export function orbAssetPath() {
   return `${getBasePath()}/widget/assets/crystal-orb-static.webp`;
@@ -139,6 +149,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
       if (activeAudio === audioRef.current) activeAudio = null;
     }
     window.speechSynthesis?.cancel();
+    releaseVoiceSession(stop);
     setPhase("idle");
   }
 
@@ -209,6 +220,8 @@ export function createVoiceController(options: VoiceSessionOptions) {
       return;
     }
 
+    claimVoiceSession(stop);
+
     const SpeechRecognition = getSpeechRecognition();
     if (!SpeechRecognition) {
       showError(
@@ -257,6 +270,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
 
   async function askText(text: string) {
     if (recognition || speaking || processing) stop();
+    claimVoiceSession(stop);
     await answer(text);
   }
 

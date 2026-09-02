@@ -42,14 +42,20 @@ function persistSession(id: string) {
   localStorage.setItem("delno_widget_session", id);
 }
 
+const WIDGET_FETCH_MS = 25000;
+
 export async function askDelnoWidget(message: string): Promise<{ answer: string; error?: string }> {
   const value = message.trim();
   if (!value) return { answer: "", error: "empty" };
+
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), WIDGET_FETCH_MS);
 
   try {
     const res = await fetch(widgetMessagePath(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
       body: JSON.stringify({
         site_key: SITE_KEY,
         session_id: getSessionId(),
@@ -80,7 +86,14 @@ export async function askDelnoWidget(message: string): Promise<{ answer: string;
     if (payload.conversation_id) persistSession(payload.conversation_id);
     return { answer: payload.message || "" };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "fetch failed";
+    const msg =
+      err instanceof Error && err.name === "AbortError"
+        ? "Превышено время ожидания ответа"
+        : err instanceof Error
+          ? err.message
+          : "fetch failed";
     return { answer: "", error: msg };
+  } finally {
+    window.clearTimeout(timer);
   }
 }

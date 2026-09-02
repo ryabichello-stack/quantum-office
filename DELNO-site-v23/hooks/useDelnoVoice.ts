@@ -57,8 +57,8 @@ export function useDelnoVoice(options: {
     controllerRef.current?.stop();
   }, []);
 
-  const askText = useCallback((text: string) => {
-    void controllerRef.current?.askText(text);
+  const askText = useCallback(async (text: string) => {
+    await controllerRef.current?.askText(text);
   }, []);
 
   return { voicePhase, voiceActive, toggleVoice, stopVoice, askText, audioRef };

@@ -5,7 +5,7 @@ import "@/components/widget/crystal-widget.css";
 import { useDelnoVoice } from "@/hooks/useDelnoVoice";
 import { askDelnoWidget } from "@/lib/widgetApi";
 import { Sparkles, Volume2 } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const prompts = ["Сколько стоит?", "Как подключить номер?", "Что умеет DELNO?"];
 
@@ -35,12 +35,23 @@ export default function VoiceDemo() {
     onExchange: handleExchange,
   });
 
-  function handlePrompt(text: string) {
+  useEffect(() => {
+    if (voicePhase === "idle" || voicePhase === "error") {
+      setPromptBusy(false);
+    }
+  }, [voicePhase]);
+
+  async function handlePrompt(text: string) {
     if (promptBusy || voiceActive) return;
     setPromptBusy(true);
     setQuestion(text);
     setAnswer("Думаю…");
-    askText(text);
+    try {
+      await askText(text);
+    } catch {
+      setPromptBusy(false);
+      setAnswer("Сейчас не удалось получить ответ. Попробуйте ещё раз.");
+    }
   }
 
   const label = promptBusy
