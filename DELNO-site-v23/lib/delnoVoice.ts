@@ -432,7 +432,9 @@ export function createVoiceController(options: VoiceSessionOptions) {
       },
       onError: () => {
         window.clearTimeout(speakCap);
-        finishSpeak();
+        if (id !== turnId || speakDone) return;
+        speakDone = true;
+        showError(text, "Не удалось воспроизвести ответ. Проверьте звук в браузере и нажмите на шар ещё раз.");
       },
       signal: abortTts.signal,
     });

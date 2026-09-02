@@ -647,12 +647,12 @@
   width: 66px;
 }
 
-.delno-crystal-mount[data-voice-phase="error"][data-voice-active="true"] .widget .dots,
-.delno-crystal-mount[data-voice-phase="error"][data-voice-active="true"] .widget .state .think {
+.delno-crystal-mount[data-voice-phase="error"][data-voice-active="true"] .widget .mic,
+.delno-crystal-mount[data-voice-phase="error"][data-voice-active="true"] .widget .state .listen {
   opacity: 1;
 }
 .delno-crystal-mount[data-voice-phase="error"][data-voice-active="true"] .widget .state {
-  width: 54px;
+  width: 58px;
 }
 
 /* Live session — continuous visuals while voice is active */
