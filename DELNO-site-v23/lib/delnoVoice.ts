@@ -4,7 +4,11 @@ import { getBasePath, widgetTtsPath } from "./widgetApi";
 export type VoicePhase = "idle" | "listen" | "think" | "speak" | "error";
 
 type SpeechRecognitionResultEvent = {
-  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+  results: {
+    length: number;
+    [index: number]: { isFinal: boolean; 0: { transcript: string }; length: number };
+  };
+  resultIndex: number;
 };
 
 type SpeechRecognitionInstance = {
@@ -17,6 +21,7 @@ type SpeechRecognitionInstance = {
   onend: (() => void) | null;
   start: () => void;
   stop: () => void;
+  abort: () => void;
 };
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
@@ -50,6 +55,21 @@ function pauseOtherAudio(except?: HTMLAudioElement) {
   window.speechSynthesis?.cancel();
 }
 
+/** Unlock audio playback while we still have a user-gesture (orb click). */
+export async function unlockAudioElement(audio: HTMLAudioElement) {
+  try {
+    audio.muted = true;
+    audio.src =
+      "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQAAAAA=";
+    await audio.play();
+    audio.pause();
+    audio.removeAttribute("src");
+    audio.muted = false;
+  } catch {
+    audio.muted = false;
+  }
+}
+
 export async function playDelnoTts(
   text: string,
   audio: HTMLAudioElement,
@@ -78,20 +98,25 @@ export async function playDelnoTts(
     audio.src = url;
 
     await new Promise<void>((resolve, reject) => {
-      audio.onplaying = () => callbacks.onStart?.();
-      audio.onended = () => {
+      const cleanup = () => {
         URL.revokeObjectURL(url);
         if (activeAudio === audio) activeAudio = null;
+      };
+      audio.onplaying = () => callbacks.onStart?.();
+      audio.onended = () => {
+        cleanup();
         callbacks.onEnd?.();
         resolve();
       };
       audio.onerror = () => {
-        URL.revokeObjectURL(url);
-        if (activeAudio === audio) activeAudio = null;
+        cleanup();
         callbacks.onError?.();
         reject(new Error("audio playback failed"));
       };
-      void audio.play().catch(reject);
+      void audio.play().catch((err) => {
+        cleanup();
+        reject(err);
+      });
     });
     return true;
   } catch {
@@ -117,14 +142,13 @@ export type VoiceSessionOptions = {
   listenSilenceMs?: number;
 };
 
-const DEFAULT_LISTEN_SILENCE_MS = 6500;
+const DEFAULT_LISTEN_SILENCE_MS = 8000;
 
 export function createVoiceController(options: VoiceSessionOptions) {
   const { onTranscript, onExchange, setPhase, audioRef } = options;
   const listenSilenceMs = options.listenSilenceMs ?? DEFAULT_LISTEN_SILENCE_MS;
 
   let engaged = false;
-  let awaitingFollowUp = false;
   let recognition: SpeechRecognitionInstance | null = null;
   let heard = false;
   let speaking = false;
@@ -135,7 +159,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
   let listenTimer: number | null = null;
   let micRetryTimer: number | null = null;
   let sessionResolve: (() => void) | null = null;
-  let promptMode = false;
+  let pendingTranscript = "";
 
   function clearErrorTimer() {
     if (errorTimer !== null) {
@@ -158,20 +182,31 @@ export function createVoiceController(options: VoiceSessionOptions) {
     }
   }
 
-  function stop() {
-    turnId += 1;
-    engaged = false;
-    awaitingFollowUp = false;
-    clearErrorTimer();
-    clearMicRetryTimer();
+  function resetListenTimer() {
     clearListenTimer();
-    recognition?.stop();
+    listenTimer = window.setTimeout(() => {
+      if (engaged && !processing && !speaking) stop();
+    }, listenSilenceMs);
+  }
+
+  function interruptTurn() {
+    turnId += 1;
+    pendingTranscript = "";
+    clearListenTimer();
+    clearMicRetryTimer();
+    recognition?.abort();
     recognition = null;
     abortTts?.abort();
     abortTts = null;
     processing = false;
     speaking = false;
     heard = false;
+  }
+
+  function stop() {
+    interruptTurn();
+    engaged = false;
+    clearErrorTimer();
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.removeAttribute("src");
@@ -188,14 +223,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
     clearErrorTimer();
     setPhase("error");
     onExchange?.(userText, assistantText);
-    errorTimer = window.setTimeout(() => stop(), 2600);
-  }
-
-  function armSilenceTimeout() {
-    clearListenTimer();
-    listenTimer = window.setTimeout(() => {
-      if (engaged && !processing && !speaking) stop();
-    }, listenSilenceMs);
+    errorTimer = window.setTimeout(() => stop(), 3000);
   }
 
   function enterListenVisual() {
@@ -208,102 +236,108 @@ export function createVoiceController(options: VoiceSessionOptions) {
     clearMicRetryTimer();
     micRetryTimer = window.setTimeout(() => {
       micRetryTimer = null;
-      if (engaged && !processing && !speaking) startMic(false);
-    }, 180);
+      if (engaged && !processing && !speaking) startMic();
+    }, 250);
   }
 
-  function startMic(userInitiated: boolean) {
+  function finalizeTranscript(raw: string) {
+    const text = raw.trim();
+    if (!text || !engaged || processing || speaking) return;
+    pendingTranscript = "";
+    heard = true;
+    clearListenTimer();
+    clearMicRetryTimer();
+    recognition?.stop();
+    recognition = null;
+    void answer(text);
+  }
+
+  function startMic() {
     if (!engaged || processing || speaking) return;
 
     const SpeechRecognition = getSpeechRecognition();
     if (!SpeechRecognition) {
-      if (userInitiated || !awaitingFollowUp) {
-        showError(
-          "Голосовой режим",
-          "Браузер не поддерживает распознавание речи. Используйте Chrome, Edge или Safari.",
-        );
-        return;
-      }
-      enterListenVisual();
+      showError(
+        "Голосовой режим",
+        "Браузер не поддерживает распознавание речи. Используйте Chrome, Edge или Safari.",
+      );
       return;
     }
 
     clearErrorTimer();
     clearMicRetryTimer();
     heard = false;
+    pendingTranscript = "";
     enterListenVisual();
+    resetListenTimer();
 
-    recognition?.stop();
+    recognition?.abort();
     recognition = new SpeechRecognition();
     recognition.lang = "ru-RU";
-    recognition.interimResults = false;
-    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.continuous = true;
 
     recognition.onstart = () => {
       if (engaged) enterListenVisual();
     };
 
     recognition.onresult = (event) => {
+      if (!engaged || processing || speaking) return;
       heard = true;
-      clearListenTimer();
-      clearMicRetryTimer();
-      const transcript = event.results[0][0].transcript.trim();
-      recognition?.stop();
-      recognition = null;
-      if (transcript) void answer(transcript);
-      else scheduleMicRetry();
+      resetListenTimer();
+
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          pendingTranscript = `${pendingTranscript} ${result[0].transcript}`.trim();
+        }
+      }
     };
 
     recognition.onerror = (event) => {
       recognition = null;
       if (!engaged || processing || speaking) return;
       const code = event?.error || "";
-      const micBlocked =
-        code === "not-allowed" || code === "service-not-allowed" || code === "audio-capture";
 
-      if (micBlocked) {
-        if (userInitiated || !awaitingFollowUp) {
-          showError(
-            "Голосовой режим",
-            "Не удалось получить доступ к микрофону. Разрешите микрофон в браузере и нажмите на шар ещё раз.",
-          );
-          return;
-        }
-        enterListenVisual();
+      if (code === "not-allowed" || code === "service-not-allowed" || code === "audio-capture") {
+        showError(
+          "Голосовой режим",
+          "Не удалось получить доступ к микрофону. Разрешите микрофон в браузере и нажмите на шар ещё раз.",
+        );
         return;
       }
 
-      scheduleMicRetry();
+      if (code === "no-speech" && pendingTranscript.trim()) {
+        finalizeTranscript(pendingTranscript);
+        return;
+      }
+
+      if (code !== "aborted") scheduleMicRetry();
     };
 
     recognition.onend = () => {
       recognition = null;
-      if (!heard && !speaking && !processing && engaged) scheduleMicRetry();
+      if (pendingTranscript.trim() && engaged && !processing && !speaking) {
+        finalizeTranscript(pendingTranscript);
+        return;
+      }
+      if (!heard && engaged && !processing && !speaking) scheduleMicRetry();
     };
 
     try {
       recognition.start();
     } catch {
-      if (!engaged) return;
-      if (userInitiated || !awaitingFollowUp) {
-        showError(
-          "Голосовой режим",
-          "Не удалось запустить микрофон. Попробуйте ещё раз через секунду.",
-        );
-        return;
-      }
-      enterListenVisual();
+      scheduleMicRetry();
     }
   }
 
-  function afterAnswerListen() {
+  function resumeListenAfterAnswer() {
     if (!engaged) return;
-    awaitingFollowUp = true;
     speaking = false;
     processing = false;
-    armSilenceTimeout();
     enterListenVisual();
-    startMic(false);
+    resetListenTimer();
+    startMic();
   }
 
   async function answer(text: string) {
@@ -311,8 +345,9 @@ export function createVoiceController(options: VoiceSessionOptions) {
     processing = true;
     clearListenTimer();
     clearMicRetryTimer();
-    recognition?.stop();
+    recognition?.abort();
     recognition = null;
+    pendingTranscript = "";
     setPhase("think");
 
     let reply = "";
@@ -326,6 +361,12 @@ export function createVoiceController(options: VoiceSessionOptions) {
     }
 
     if (id !== turnId) return;
+    if (!reply.trim()) {
+      processing = false;
+      showError(text, "Не удалось получить ответ. Попробуйте переформулировать вопрос.");
+      return;
+    }
+
     processing = false;
     onExchange?.(text, reply);
     setPhase("speak");
@@ -336,9 +377,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
     const finishSpeak = () => {
       if (id !== turnId || speakDone) return;
       speakDone = true;
-      speaking = false;
-      if (!engaged && promptMode) engaged = true;
-      if (engaged) afterAnswerListen();
+      if (engaged) resumeListenAfterAnswer();
       else stop();
     };
 
@@ -348,7 +387,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
       return;
     }
 
-    const speakCap = window.setTimeout(finishSpeak, 15000);
+    const speakCap = window.setTimeout(finishSpeak, 20000);
 
     await playDelnoTts(reply, audio, {
       onStart: () => {
@@ -372,7 +411,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
     }
   }
 
-  function toggle() {
+  async function beginSession() {
     if (engaged) {
       clearErrorTimer();
       stop();
@@ -380,27 +419,41 @@ export function createVoiceController(options: VoiceSessionOptions) {
     }
 
     engaged = true;
-    awaitingFollowUp = false;
     claimVoiceSession(stop);
     clearErrorTimer();
-    armSilenceTimeout();
-    startMic(true);
+
+    const audio = audioRef.current;
+    if (audio) await unlockAudioElement(audio);
+
+    resetListenTimer();
+    startMic();
+  }
+
+  function toggle() {
+    if (engaged) {
+      clearErrorTimer();
+      stop();
+      return;
+    }
+    void beginSession();
   }
 
   async function askText(text: string) {
-    stop();
+    interruptTurn();
     engaged = true;
-    promptMode = true;
     claimVoiceSession(stop);
+    clearErrorTimer();
+
+    const audio = audioRef.current;
+    if (audio) await unlockAudioElement(audio);
 
     const sessionDone = new Promise<void>((resolve) => {
       sessionResolve = resolve;
     });
 
-    await answer(text);
+    await answer(text.trim());
 
     if (engaged) await sessionDone;
-    promptMode = false;
   }
 
   return {

@@ -173,24 +173,15 @@ export function useCrystalWidgetChat(apiPath: string) {
       const value = raw.trim();
       if (!value) return "Не удалось распознать вопрос. Попробуйте ещё раз.";
 
-      if (awaitingNameRef.current && isLikelyName(value)) {
-        nameRef.current = value;
-        localStorage.setItem("delno_widget_name", value);
-        awaitingNameRef.current = false;
-        return personalizedGreeting(value);
-      }
-
-      const { answer, payload, error } = await requestAnswer(value);
-      const reply =
+      const { answer, error } = await requestAnswer(value);
+      return (
         answer ||
         (error
           ? "Сейчас не удалось получить ответ. Попробуйте ещё раз."
-          : "Понял ваш вопрос. Могу ответить по базе знаний компании или передать обращение сотруднику.");
-
-      void maybeAskName(payload, value.length);
-      return reply;
+          : "Понял ваш вопрос. Могу ответить по базе знаний компании или передать обращение сотруднику.")
+      );
     },
-    [maybeAskName, requestAnswer],
+    [requestAnswer],
   );
 
   const appendExchange = useCallback((userText: string, assistantText: string) => {

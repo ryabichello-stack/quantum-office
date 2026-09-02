@@ -2,6 +2,7 @@
 
 import { CrystalOrb } from "@/components/widget/CrystalOrb";
 import "@/components/widget/crystal-widget.css";
+import { useCrystalContrast } from "@/components/widget/useCrystalWidget";
 import { useDelnoVoice } from "@/hooks/useDelnoVoice";
 import { askDelnoWidget } from "@/lib/widgetApi";
 import { Sparkles, Volume2 } from "lucide-react";
@@ -34,6 +35,7 @@ export default function VoiceDemo() {
     onTranscript: handleTranscript,
     onExchange: handleExchange,
   });
+  useCrystalContrast(mountRef);
 
   async function handlePrompt(text: string) {
     if (promptBusy || voiceActive) return;
@@ -87,7 +89,7 @@ export default function VoiceDemo() {
       </div>
 
       <div className="voice-orb-stage">
-        <div className="delno-crystal-mount delno-crystal-demo" ref={mountRef} data-contrast="light">
+        <div className="delno-crystal-mount delno-crystal-demo" ref={mountRef} data-contrast="dark">
           <CrystalOrb
             variant="demo"
             voiceActive={voiceActive}

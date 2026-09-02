@@ -690,11 +690,17 @@
 
 /* Demo section — same crystal orb, larger scale on dark background */
 .delno-crystal-mount.delno-crystal-demo {
-  --orb-size: 92px;
+  --orb-size: 176px;
   position: relative;
   width: 280px;
   height: 280px;
   margin: 0 auto;
+}
+
+.delno-crystal-demo[data-contrast="dark"] {
+  --ring-sharp: rgba(255, 255, 255, 0.55);
+  --ring-soft: rgba(164, 225, 255, 0.35);
+  --ring-glow: rgba(135, 211, 255, 0.22);
 }
 
 .delno-crystal-demo .widget.widget-demo {
@@ -715,11 +721,16 @@
 .delno-crystal-demo .orb-hit {
   width: 176px;
   height: 176px;
+  pointer-events: auto;
 }
 
 .delno-crystal-demo .state {
   bottom: auto;
   top: 18px;
+  opacity: 1;
+  width: auto;
+  min-width: 58px;
+  padding: 0 8px;
 }
 
 .delno-crystal-demo .ground {
