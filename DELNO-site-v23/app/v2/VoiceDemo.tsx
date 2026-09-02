@@ -30,7 +30,7 @@ export default function VoiceDemo() {
     setPromptBusy(false);
   }, []);
 
-  const { voicePhase, voiceActive, toggleVoice, askText, audioRef } = useDelnoVoice({
+  const { voicePhase, voiceActive, toggleVoice, stopVoice, askText, audioRef } = useDelnoVoice({
     mountRef,
     onTranscript: handleTranscript,
     onExchange: handleExchange,
@@ -42,10 +42,12 @@ export default function VoiceDemo() {
     setPromptBusy(true);
     setQuestion(text);
     setAnswer("Думаю…");
+    stopVoice();
     try {
-      await askText(text);
+      await askText(text, { resumeListen: false });
     } catch {
       setAnswer("Сейчас не удалось получить ответ. Попробуйте ещё раз.");
+    } finally {
       setPromptBusy(false);
     }
   }

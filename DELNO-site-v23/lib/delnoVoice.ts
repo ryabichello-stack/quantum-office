@@ -370,7 +370,10 @@ export function createVoiceController(options: VoiceSessionOptions) {
     }, 200);
   }
 
-  async function answer(text: string, options?: { fromMic?: boolean }) {
+  async function answer(
+    text: string,
+    options?: { fromMic?: boolean; resumeListen?: boolean },
+  ) {
     const id = ++turnId;
     processing = true;
     clearListenTimer();
@@ -407,7 +410,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
     const finishSpeak = () => {
       if (id !== turnId || speakDone) return;
       speakDone = true;
-      if (engaged) resumeListenAfterAnswer();
+      if (engaged && options?.resumeListen !== false) resumeListenAfterAnswer();
       else stop();
     };
 
@@ -474,7 +477,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
     beginSession();
   }
 
-  async function askText(text: string) {
+  async function askText(text: string, options?: { resumeListen?: boolean }) {
     const trimmed = text.trim();
     if (!trimmed) return;
 
@@ -484,7 +487,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
     clearErrorTimer();
     setPhase("think");
 
-    await answer(trimmed);
+    await answer(trimmed, { fromMic: false, resumeListen: options?.resumeListen });
   }
 
   return {
