@@ -147,7 +147,7 @@ export function CrystalWidget() {
         </div>
       </div>
 
-      <section className="panel" id="chatPanel" aria-live="polite">
+      <section className={`panel${textOpen ? " is-open" : ""}`} id="chatPanel" aria-live="polite">
         <div className="head">
           <strong>DELNO</strong>
           <button type="button" className="close" aria-label="Закрыть чат" onClick={() => setTextOpen(false)}>

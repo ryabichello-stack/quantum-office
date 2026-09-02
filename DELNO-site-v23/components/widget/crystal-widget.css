@@ -49,7 +49,7 @@
   transform: translateX(-50%);
   width: 150px;
   height: 160px;
-  z-index: 100;
+  z-index: 10000;
   pointer-events: none;
 }
 
@@ -84,13 +84,14 @@
     opacity 0.2s ease,
     transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
     height 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
-  z-index: 90;
+  z-index: 9990;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-#delno-crystal-text:checked ~ .panel {
+#delno-crystal-text:checked ~ .panel,
+.delno-crystal-mount .panel.is-open {
   opacity: 1;
   pointer-events: auto;
   transform: translate3d(-50%, 0, 0) scale(1);
