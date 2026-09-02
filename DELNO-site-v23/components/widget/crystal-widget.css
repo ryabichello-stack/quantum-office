@@ -652,6 +652,42 @@
   width: 54px;
 }
 
+/* Live session — continuous visuals while voice is active */
+.delno-crystal-mount[data-voice-phase][data-voice-active="true"] .widget .motion {
+  animation: smoothJump 0.6s linear 1;
+}
+
+.delno-crystal-mount[data-voice-phase][data-voice-active="true"] .widget .breath {
+  animation: activeBreath 5.4s ease-in-out infinite;
+}
+
+.delno-crystal-mount[data-voice-phase="listen"][data-voice-active="true"] .widget .rings .r1 {
+  animation: ringSharp 2.05s ease-out 0.58s infinite;
+}
+.delno-crystal-mount[data-voice-phase="listen"][data-voice-active="true"] .widget .rings .r2 {
+  animation: ringSoft 2.15s ease-out 0.96s infinite;
+}
+.delno-crystal-mount[data-voice-phase="listen"][data-voice-active="true"] .widget .rings .r3 {
+  animation: ringSharp 2.08s ease-out 1.36s infinite;
+}
+
+.delno-crystal-mount[data-voice-phase="speak"][data-voice-active="true"] .widget .rings .r1 {
+  animation: speakSharp 2s ease-out 0.5s infinite;
+}
+.delno-crystal-mount[data-voice-phase="speak"][data-voice-active="true"] .widget .rings .r2 {
+  animation: speakSoft 2.1s ease-out 0.88s infinite;
+}
+.delno-crystal-mount[data-voice-phase="speak"][data-voice-active="true"] .widget .rings .r3 {
+  animation: speakSharp 2s ease-out 1.26s infinite;
+}
+
+.delno-crystal-mount[data-voice-phase="think"][data-voice-active="true"] .widget .rings .r1 {
+  animation: ringSoft 2.4s ease-out infinite;
+}
+.delno-crystal-mount[data-voice-phase="think"][data-voice-active="true"] .widget .rings .r2 {
+  animation: ringSharp 2.2s ease-out 0.7s infinite;
+}
+
 /* Demo section — same crystal orb, larger scale on dark background */
 .delno-crystal-mount.delno-crystal-demo {
   --orb-size: 92px;

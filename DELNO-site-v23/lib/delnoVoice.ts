@@ -13,7 +13,7 @@ type SpeechRecognitionInstance = {
   continuous: boolean;
   onstart: (() => void) | null;
   onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
   onend: (() => void) | null;
   start: () => void;
   stop: () => void;
@@ -114,17 +114,24 @@ export type VoiceSessionOptions = {
   onExchange?: (userText: string, assistantText: string) => void;
   setPhase: (phase: VoicePhase) => void;
   audioRef: RefObject<HTMLAudioElement | null>;
+  /** How long to wait in listen mode without speech before ending the session. */
+  listenSilenceMs?: number;
 };
+
+const DEFAULT_LISTEN_SILENCE_MS = 6500;
 
 export function createVoiceController(options: VoiceSessionOptions) {
   const { onTranscript, onExchange, setPhase, audioRef } = options;
+  const listenSilenceMs = options.listenSilenceMs ?? DEFAULT_LISTEN_SILENCE_MS;
   let recognition: SpeechRecognitionInstance | null = null;
   let heard = false;
   let speaking = false;
   let processing = false;
+  let sessionActive = false;
   let turnId = 0;
   let abortTts: AbortController | null = null;
   let errorTimer: number | null = null;
+  let listenTimer: number | null = null;
 
   function clearErrorTimer() {
     if (errorTimer !== null) {
@@ -133,9 +140,18 @@ export function createVoiceController(options: VoiceSessionOptions) {
     }
   }
 
+  function clearListenTimer() {
+    if (listenTimer !== null) {
+      window.clearTimeout(listenTimer);
+      listenTimer = null;
+    }
+  }
+
   function stop() {
     turnId += 1;
+    sessionActive = false;
     clearErrorTimer();
+    clearListenTimer();
     recognition?.stop();
     recognition = null;
     abortTts?.abort();
@@ -155,14 +171,95 @@ export function createVoiceController(options: VoiceSessionOptions) {
 
   function showError(userText: string, assistantText: string) {
     clearErrorTimer();
+    sessionActive = false;
     setPhase("error");
     onExchange?.(userText, assistantText);
     errorTimer = window.setTimeout(() => stop(), 2600);
   }
 
+  function resumeListening() {
+    if (!sessionActive || processing || speaking) return;
+    startListening();
+  }
+
+  function armListenSilenceTimer() {
+    clearListenTimer();
+    listenTimer = window.setTimeout(() => {
+      if (sessionActive && !processing && !speaking) stop();
+    }, listenSilenceMs);
+  }
+
+  function startListening() {
+    if (!sessionActive || processing || speaking) return;
+
+    const SpeechRecognition = getSpeechRecognition();
+    if (!SpeechRecognition) {
+      showError(
+        "Голосовой режим",
+        "Браузер не поддерживает распознавание речи. Используйте Chrome, Edge или Safari.",
+      );
+      return;
+    }
+
+    clearErrorTimer();
+    heard = false;
+    setPhase("listen");
+    armListenSilenceTimer();
+
+    recognition?.stop();
+    recognition = new SpeechRecognition();
+    recognition.lang = "ru-RU";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.onstart = () => {
+      if (sessionActive) setPhase("listen");
+    };
+    recognition.onresult = (event) => {
+      clearListenTimer();
+      heard = true;
+      const transcript = event.results[0][0].transcript.trim();
+      recognition?.stop();
+      recognition = null;
+      if (transcript) void answer(transcript);
+      else resumeListening();
+    };
+    recognition.onerror = (event) => {
+      recognition = null;
+      if (!sessionActive || processing || speaking) return;
+      const code = event?.error || "";
+      if (code === "not-allowed" || code === "service-not-allowed" || code === "audio-capture") {
+        showError(
+          "Голосовой режим",
+          "Не удалось получить доступ к микрофону. Разрешите микрофон в браузере и нажмите на шар ещё раз.",
+        );
+        return;
+      }
+      // no-speech / aborted — keep waiting until silence timer fires
+      resumeListening();
+    };
+    recognition.onend = () => {
+      recognition = null;
+      if (!heard && !speaking && !processing && sessionActive) resumeListening();
+    };
+
+    try {
+      recognition.start();
+    } catch {
+      if (sessionActive) {
+        showError(
+          "Голосовой режим",
+          "Не удалось запустить микрофон. Попробуйте ещё раз через секунду.",
+        );
+      }
+    }
+  }
+
   async function answer(text: string) {
     const id = ++turnId;
     processing = true;
+    clearListenTimer();
+    recognition?.stop();
+    recognition = null;
     setPhase("think");
 
     let reply = "";
@@ -185,7 +282,8 @@ export function createVoiceController(options: VoiceSessionOptions) {
     const audio = audioRef.current;
     if (!audio) {
       speaking = false;
-      setPhase("idle");
+      if (sessionActive) resumeListening();
+      else setPhase("idle");
       return;
     }
 
@@ -196,12 +294,14 @@ export function createVoiceController(options: VoiceSessionOptions) {
       onEnd: () => {
         if (id !== turnId) return;
         speaking = false;
-        stop();
+        if (sessionActive) resumeListening();
+        else stop();
       },
       onError: () => {
         if (id !== turnId) return;
         speaking = false;
-        showError(text, reply);
+        if (sessionActive) resumeListening();
+        else showError(text, reply);
       },
       signal: abortTts.signal,
     });
@@ -210,69 +310,45 @@ export function createVoiceController(options: VoiceSessionOptions) {
 
     if (!ok && !abortTts.signal.aborted) {
       speaking = false;
-      showError(text, reply);
+      if (sessionActive) resumeListening();
+      else showError(text, reply);
     }
   }
 
   function toggle() {
-    if (recognition || speaking || processing) {
+    if (sessionActive) {
       stop();
       return;
     }
 
+    sessionActive = true;
     claimVoiceSession(stop);
-
-    const SpeechRecognition = getSpeechRecognition();
-    if (!SpeechRecognition) {
-      showError(
-        "Голосовой режим",
-        "Браузер не поддерживает распознавание речи. Используйте Chrome, Edge или Safari.",
-      );
-      return;
-    }
-
     clearErrorTimer();
-    heard = false;
-    setPhase("listen");
-    recognition = new SpeechRecognition();
-    recognition.lang = "ru-RU";
-    recognition.interimResults = false;
-    recognition.continuous = false;
-    recognition.onstart = () => setPhase("listen");
-    recognition.onresult = (event) => {
-      heard = true;
-      const transcript = event.results[0][0].transcript.trim();
-      recognition = null;
-      void answer(transcript);
-    };
-    recognition.onerror = () => {
-      heard = true;
-      recognition = null;
-      showError(
-        "Голосовой режим",
-        "Не удалось получить доступ к микрофону. Разрешите микрофон в браузере и нажмите на шар ещё раз.",
-      );
-    };
-    recognition.onend = () => {
-      recognition = null;
-      if (!heard && !speaking && !processing) stop();
-    };
-
-    try {
-      recognition.start();
-    } catch {
-      showError(
-        "Голосовой режим",
-        "Не удалось запустить микрофон. Попробуйте ещё раз через секунду.",
-      );
-    }
+    startListening();
   }
 
   async function askText(text: string) {
-    if (recognition || speaking || processing) stop();
-    claimVoiceSession(stop);
+    if (sessionActive) {
+      turnId += 1;
+      clearListenTimer();
+      recognition?.stop();
+      recognition = null;
+      abortTts?.abort();
+      abortTts = null;
+      processing = false;
+      speaking = false;
+      heard = false;
+    } else {
+      sessionActive = true;
+      claimVoiceSession(stop);
+    }
     await answer(text);
   }
 
-  return { toggle, stop, askText, isActive: () => Boolean(recognition || speaking || processing) };
+  return {
+    toggle,
+    stop,
+    askText,
+    isActive: () => sessionActive || Boolean(recognition || speaking || processing),
+  };
 }

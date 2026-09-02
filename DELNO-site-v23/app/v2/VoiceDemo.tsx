@@ -99,7 +99,7 @@ export default function VoiceDemo() {
           />
         </div>
         <b>{label}</b>
-        <small>Нажмите на кристалл, чтобы говорить. Ещё раз — чтобы остановить.</small>
+        <small>Нажмите на кристалл, чтобы говорить. После ответа DELNO снова слушает. Ещё раз — чтобы остановить.</small>
       </div>
 
       <div className="voice-demo-dialog">
