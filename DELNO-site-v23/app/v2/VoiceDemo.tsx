@@ -5,7 +5,7 @@ import "@/components/widget/crystal-widget.css";
 import { useDelnoVoice } from "@/hooks/useDelnoVoice";
 import { askDelnoWidget } from "@/lib/widgetApi";
 import { Sparkles, Volume2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 const prompts = ["Сколько стоит?", "Как подключить номер?", "Что умеет DELNO?"];
 
@@ -13,34 +13,39 @@ export default function VoiceDemo() {
   const mountRef = useRef<HTMLDivElement>(null);
   const [question, setQuestion] = useState("Нажмите на кристалл и задайте вопрос");
   const [answer, setAnswer] = useState("Я отвечу по базе знаний DELNO — о тарифах, подключении и возможностях.");
+  const [promptBusy, setPromptBusy] = useState(false);
 
-  const { voiceActive, voicePhase, toggleVoice, audioRef } = useDelnoVoice({
-    mountRef,
-    onTranscript: async (text) => {
-      const { answer: reply, error } = await askDelnoWidget(text);
-      if (error || !reply) {
-        return "Сейчас не удалось получить ответ. Попробуйте ещё раз.";
-      }
-      return reply;
-    },
-    onExchange: (userText, assistantText) => {
-      setQuestion(userText);
-      setAnswer(assistantText);
-    },
-  });
-
-  async function answerPrompt(text: string) {
-    setQuestion(text);
+  const handleTranscript = useCallback(async (text: string) => {
     const { answer: reply, error } = await askDelnoWidget(text);
     if (error || !reply) {
-      setAnswer("Сейчас не удалось получить ответ. Попробуйте ещё раз.");
-      return;
+      throw new Error(error || "empty");
     }
-    setAnswer(reply);
+    return reply;
+  }, []);
+
+  const handleExchange = useCallback((userText: string, assistantText: string) => {
+    setQuestion(userText);
+    setAnswer(assistantText);
+    setPromptBusy(false);
+  }, []);
+
+  const { voicePhase, voiceActive, toggleVoice, askText, audioRef } = useDelnoVoice({
+    mountRef,
+    onTranscript: handleTranscript,
+    onExchange: handleExchange,
+  });
+
+  function handlePrompt(text: string) {
+    if (promptBusy || voiceActive) return;
+    setPromptBusy(true);
+    setQuestion(text);
+    setAnswer("Думаю…");
+    askText(text);
   }
 
-  const label =
-    voicePhase === "listen"
+  const label = promptBusy
+    ? "Думаю…"
+    : voicePhase === "listen"
       ? "Слушаю…"
       : voicePhase === "think"
         ? "Думаю…"
@@ -74,11 +79,7 @@ export default function VoiceDemo() {
       </div>
 
       <div className="voice-orb-stage">
-        <div
-          className="delno-crystal-mount delno-crystal-demo"
-          ref={mountRef}
-          data-contrast="light"
-        >
+        <div className="delno-crystal-mount delno-crystal-demo" ref={mountRef} data-contrast="light">
           <CrystalOrb
             variant="demo"
             voiceActive={voiceActive}
@@ -107,12 +108,17 @@ export default function VoiceDemo() {
         </div>
         <div className="demo-prompts">
           {prompts.map((prompt) => (
-            <button key={prompt} type="button" onClick={() => void answerPrompt(prompt)}>
+            <button
+              key={prompt}
+              type="button"
+              disabled={promptBusy || voiceActive}
+              onClick={() => handlePrompt(prompt)}
+            >
               {prompt}
             </button>
           ))}
         </div>
-        <p className="demo-disclaimer">Ответы из базы знаний DELNO. Голос — тот же, что в телефонии (OpenAI cedar).</p>
+        <p className="demo-disclaimer">Ответы из базы знаний DELNO. Голос — cedar, как в телефонии.</p>
       </div>
 
       <audio ref={audioRef} className="voice-audio" preload="none" playsInline />

@@ -26,8 +26,18 @@ type SpeechWindow = Window & {
   webkitSpeechRecognition?: SpeechRecognitionConstructor;
 };
 
+let activeAudio: HTMLAudioElement | null = null;
+
 export function orbAssetPath() {
   return `${getBasePath()}/widget/assets/crystal-orb-static.webp`;
+}
+
+function pauseOtherAudio(except?: HTMLAudioElement) {
+  if (activeAudio && activeAudio !== except) {
+    activeAudio.pause();
+    activeAudio.removeAttribute("src");
+  }
+  window.speechSynthesis?.cancel();
 }
 
 export async function playDelnoTts(
@@ -45,6 +55,9 @@ export async function playDelnoTts(
   callbacks.signal?.addEventListener("abort", onAbort);
 
   try {
+    pauseOtherAudio(audio);
+    activeAudio = audio;
+
     const response = await fetch(widgetTtsPath(text), { signal: controller.signal });
     if (!response.ok) throw new Error("tts failed");
     const blob = await response.blob();
@@ -58,11 +71,13 @@ export async function playDelnoTts(
       audio.onplaying = () => callbacks.onStart?.();
       audio.onended = () => {
         URL.revokeObjectURL(url);
+        if (activeAudio === audio) activeAudio = null;
         callbacks.onEnd?.();
         resolve();
       };
       audio.onerror = () => {
         URL.revokeObjectURL(url);
+        if (activeAudio === audio) activeAudio = null;
         callbacks.onError?.();
         reject(new Error("audio playback failed"));
       };
@@ -70,6 +85,7 @@ export async function playDelnoTts(
     });
     return true;
   } catch {
+    if (activeAudio === audio) activeAudio = null;
     callbacks.onError?.();
     return false;
   } finally {
@@ -95,72 +111,114 @@ export function createVoiceController(options: VoiceSessionOptions) {
   let recognition: SpeechRecognitionInstance | null = null;
   let heard = false;
   let speaking = false;
+  let processing = false;
+  let turnId = 0;
   let abortTts: AbortController | null = null;
+  let errorTimer: number | null = null;
+
+  function clearErrorTimer() {
+    if (errorTimer !== null) {
+      window.clearTimeout(errorTimer);
+      errorTimer = null;
+    }
+  }
 
   function stop() {
+    turnId += 1;
+    clearErrorTimer();
     recognition?.stop();
     recognition = null;
     abortTts?.abort();
     abortTts = null;
+    processing = false;
+    speaking = false;
+    heard = false;
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.removeAttribute("src");
+      if (activeAudio === audioRef.current) activeAudio = null;
     }
     window.speechSynthesis?.cancel();
-    speaking = false;
     setPhase("idle");
   }
 
+  function showError(userText: string, assistantText: string) {
+    clearErrorTimer();
+    setPhase("error");
+    onExchange?.(userText, assistantText);
+    errorTimer = window.setTimeout(() => stop(), 2600);
+  }
+
   async function answer(text: string) {
+    const id = ++turnId;
+    processing = true;
     setPhase("think");
-    const reply = await onTranscript(text);
+
+    let reply = "";
+    try {
+      reply = await onTranscript(text);
+    } catch {
+      processing = false;
+      if (id !== turnId) return;
+      showError(text, "Сейчас не удалось получить ответ. Попробуйте ещё раз.");
+      return;
+    }
+
+    if (id !== turnId) return;
+    processing = false;
     onExchange?.(text, reply);
     setPhase("speak");
     speaking = true;
     abortTts = new AbortController();
+
     const audio = audioRef.current;
     if (!audio) {
       speaking = false;
       setPhase("idle");
       return;
     }
+
     const ok = await playDelnoTts(reply, audio, {
-      onStart: () => setPhase("speak"),
+      onStart: () => {
+        if (id === turnId) setPhase("speak");
+      },
       onEnd: () => {
+        if (id !== turnId) return;
         speaking = false;
         stop();
       },
       onError: () => {
+        if (id !== turnId) return;
         speaking = false;
-        setPhase("error");
-        window.setTimeout(() => stop(), 1200);
+        showError(text, reply);
       },
       signal: abortTts.signal,
     });
+
+    if (id !== turnId) return;
+
     if (!ok && !abortTts.signal.aborted) {
       speaking = false;
-      setPhase("error");
-      window.setTimeout(() => stop(), 1200);
+      showError(text, reply);
     }
   }
 
   function toggle() {
-    if (recognition || speaking) {
+    if (recognition || speaking || processing) {
       stop();
       return;
     }
 
     const SpeechRecognition = getSpeechRecognition();
     if (!SpeechRecognition) {
-      setPhase("error");
-      onExchange?.(
+      showError(
         "Голосовой режим",
         "Браузер не поддерживает распознавание речи. Используйте Chrome, Edge или Safari.",
       );
-      window.setTimeout(() => stop(), 2400);
       return;
     }
 
+    clearErrorTimer();
     heard = false;
     setPhase("listen");
     recognition = new SpeechRecognition();
@@ -177,19 +235,30 @@ export function createVoiceController(options: VoiceSessionOptions) {
     recognition.onerror = () => {
       heard = true;
       recognition = null;
-      setPhase("error");
-      onExchange?.(
+      showError(
         "Голосовой режим",
         "Не удалось получить доступ к микрофону. Разрешите микрофон в браузере и нажмите на шар ещё раз.",
       );
-      window.setTimeout(() => stop(), 2600);
     };
     recognition.onend = () => {
       recognition = null;
-      if (!heard && !speaking) stop();
+      if (!heard && !speaking && !processing) stop();
     };
-    recognition.start();
+
+    try {
+      recognition.start();
+    } catch {
+      showError(
+        "Голосовой режим",
+        "Не удалось запустить микрофон. Попробуйте ещё раз через секунду.",
+      );
+    }
   }
 
-  return { toggle, stop, isActive: () => Boolean(recognition || speaking) };
+  async function askText(text: string) {
+    if (recognition || speaking || processing) stop();
+    await answer(text);
+  }
+
+  return { toggle, stop, askText, isActive: () => Boolean(recognition || speaking || processing) };
 }

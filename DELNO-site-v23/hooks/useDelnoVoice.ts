@@ -13,6 +13,16 @@ export function useDelnoVoice(options: {
   const [voiceActive, setVoiceActive] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const controllerRef = useRef<ReturnType<typeof createVoiceController> | null>(null);
+  const onTranscriptRef = useRef(onTranscript);
+  const onExchangeRef = useRef(onExchange);
+
+  useEffect(() => {
+    onTranscriptRef.current = onTranscript;
+  }, [onTranscript]);
+
+  useEffect(() => {
+    onExchangeRef.current = onExchange;
+  }, [onExchange]);
 
   const setPhase = useCallback(
     (phase: VoicePhase) => {
@@ -31,13 +41,13 @@ export function useDelnoVoice(options: {
 
   useEffect(() => {
     controllerRef.current = createVoiceController({
-      onTranscript,
-      onExchange,
+      onTranscript: (text) => onTranscriptRef.current(text),
+      onExchange: (user, assistant) => onExchangeRef.current?.(user, assistant),
       setPhase,
       audioRef,
     });
     return () => controllerRef.current?.stop();
-  }, [onExchange, onTranscript, setPhase]);
+  }, [setPhase]);
 
   const toggleVoice = useCallback(() => {
     controllerRef.current?.toggle();
@@ -47,7 +57,11 @@ export function useDelnoVoice(options: {
     controllerRef.current?.stop();
   }, []);
 
-  return { voicePhase, voiceActive, toggleVoice, stopVoice, audioRef };
+  const askText = useCallback((text: string) => {
+    void controllerRef.current?.askText(text);
+  }, []);
+
+  return { voicePhase, voiceActive, toggleVoice, stopVoice, askText, audioRef };
 }
 
 export type { VoicePhase };
