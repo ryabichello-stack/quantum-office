@@ -74,13 +74,18 @@ export async function unlockAudioElement(audio: HTMLAudioElement) {
   }
 
   try {
+    const prevSrc = audio.src;
     audio.muted = true;
     audio.src =
       "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQAAAAA=";
-    await audio.play();
+    await Promise.race([
+      audio.play(),
+      new Promise<void>((_, reject) => window.setTimeout(() => reject(new Error("unlock timeout")), 1500)),
+    ]);
     audio.pause();
     audio.removeAttribute("src");
     audio.muted = false;
+    if (prevSrc) audio.src = prevSrc;
   } catch {
     audio.muted = false;
   }
@@ -132,8 +137,8 @@ export async function playDelnoTts(
       const tryPlay = async () => {
         try {
           await audio.play();
-        } catch (firstErr) {
-          await unlockAudioElement(audio);
+        } catch {
+          audio.currentTime = 0;
           await audio.play();
         }
       };
@@ -273,7 +278,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
     clearMicRetryTimer();
     recognition?.stop();
     recognition = null;
-    void answer(text);
+    void answer(text, { fromMic: true });
   }
 
   function startMic() {
@@ -366,7 +371,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
     }, 200);
   }
 
-  async function answer(text: string) {
+  async function answer(text: string, options?: { fromMic?: boolean }) {
     const id = ++turnId;
     processing = true;
     clearListenTimer();
@@ -413,12 +418,11 @@ export function createVoiceController(options: VoiceSessionOptions) {
       return;
     }
 
-    // Let the mic fully release before TTS — avoids Chrome alternating silent turns.
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 120));
-    if (id !== turnId) return;
-
-    await unlockAudioElement(audio);
-    if (id !== turnId) return;
+    // Brief gap only after mic capture — not for text prompts (keeps user-gesture chain).
+    if (options?.fromMic) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 80));
+      if (id !== turnId) return;
+    }
 
     const speakCap = window.setTimeout(finishSpeak, 20000);
 
@@ -432,9 +436,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
       },
       onError: () => {
         window.clearTimeout(speakCap);
-        if (id !== turnId || speakDone) return;
-        speakDone = true;
-        showError(text, "Не удалось воспроизвести ответ. Проверьте звук в браузере и нажмите на шар ещё раз.");
+        finishSpeak();
       },
       signal: abortTts.signal,
     });
@@ -446,7 +448,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
     }
   }
 
-  async function beginSession() {
+  function beginSession() {
     if (engaged) {
       clearErrorTimer();
       stop();
@@ -458,7 +460,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
     clearErrorTimer();
 
     const audio = audioRef.current;
-    if (audio) await unlockAudioElement(audio);
+    if (audio) void unlockAudioElement(audio);
 
     resetListenTimer();
     startMic();
@@ -470,19 +472,23 @@ export function createVoiceController(options: VoiceSessionOptions) {
       stop();
       return;
     }
-    void beginSession();
+    beginSession();
   }
 
   async function askText(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
     interruptTurn();
     engaged = true;
     claimVoiceSession(stop);
     clearErrorTimer();
+    setPhase("think");
 
     const audio = audioRef.current;
-    if (audio) await unlockAudioElement(audio);
+    if (audio) void unlockAudioElement(audio);
 
-    await answer(text.trim());
+    await answer(trimmed);
   }
 
   return {
