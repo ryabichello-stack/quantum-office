@@ -135,6 +135,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
   let listenTimer: number | null = null;
   let micRetryTimer: number | null = null;
   let sessionResolve: (() => void) | null = null;
+  let promptMode = false;
 
   function clearErrorTimer() {
     if (errorTimer !== null) {
@@ -336,6 +337,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
       if (id !== turnId || speakDone) return;
       speakDone = true;
       speaking = false;
+      if (!engaged && promptMode) engaged = true;
       if (engaged) afterAnswerListen();
       else stop();
     };
@@ -386,6 +388,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
   }
 
   async function askText(text: string) {
+    promptMode = true;
     if (engaged) {
       turnId += 1;
       clearListenTimer();
@@ -410,6 +413,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
     await answer(text);
 
     if (engaged) await sessionDone;
+    promptMode = false;
   }
 
   return {

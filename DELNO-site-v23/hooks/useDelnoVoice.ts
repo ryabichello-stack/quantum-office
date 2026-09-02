@@ -2,6 +2,7 @@
 
 import { createVoiceController, type VoicePhase } from "@/lib/delnoVoice";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 
 export function useDelnoVoice(options: {
   mountRef: React.RefObject<HTMLElement | null>;
@@ -25,15 +26,22 @@ export function useDelnoVoice(options: {
   }, [onExchange]);
 
   const setPhase = useCallback((phase: VoicePhase) => {
-    setVoicePhase(phase);
-    const active = phase !== "idle";
-    setVoiceActive(active);
-    const root = mountRef.current;
-    if (!root) return;
-    if (active) root.setAttribute("data-voice-active", "true");
-    else root.removeAttribute("data-voice-active");
-    if (phase === "idle") root.removeAttribute("data-voice-phase");
-    else root.setAttribute("data-voice-phase", phase);
+    const apply = () => {
+      setVoicePhase(phase);
+      const active = phase !== "idle";
+      setVoiceActive(active);
+      const root = mountRef.current;
+      if (!root) return;
+      if (active) root.setAttribute("data-voice-active", "true");
+      else root.removeAttribute("data-voice-active");
+      if (phase === "idle") root.removeAttribute("data-voice-phase");
+      else root.setAttribute("data-voice-phase", phase);
+    };
+    if (phase === "listen" || phase === "speak" || phase === "think") {
+      flushSync(apply);
+    } else {
+      apply();
+    }
   }, [mountRef]);
 
   useEffect(() => {
