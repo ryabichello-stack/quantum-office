@@ -134,6 +134,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
   let errorTimer: number | null = null;
   let listenTimer: number | null = null;
   let micRetryTimer: number | null = null;
+  let sessionResolve: (() => void) | null = null;
 
   function clearErrorTimer() {
     if (errorTimer !== null) {
@@ -178,6 +179,8 @@ export function createVoiceController(options: VoiceSessionOptions) {
     window.speechSynthesis?.cancel();
     releaseVoiceSession(stop);
     setPhase("idle");
+    sessionResolve?.();
+    sessionResolve = null;
   }
 
   function showError(userText: string, assistantText: string) {
@@ -213,10 +216,14 @@ export function createVoiceController(options: VoiceSessionOptions) {
 
     const SpeechRecognition = getSpeechRecognition();
     if (!SpeechRecognition) {
-      showError(
-        "Голосовой режим",
-        "Браузер не поддерживает распознавание речи. Используйте Chrome, Edge или Safari.",
-      );
+      if (userInitiated || !awaitingFollowUp) {
+        showError(
+          "Голосовой режим",
+          "Браузер не поддерживает распознавание речи. Используйте Chrome, Edge или Safari.",
+        );
+        return;
+      }
+      enterListenVisual();
       return;
     }
 
@@ -395,7 +402,14 @@ export function createVoiceController(options: VoiceSessionOptions) {
       claimVoiceSession(stop);
     }
     awaitingFollowUp = false;
+
+    const sessionDone = new Promise<void>((resolve) => {
+      sessionResolve = resolve;
+    });
+
     await answer(text);
+
+    if (engaged) await sessionDone;
   }
 
   return {

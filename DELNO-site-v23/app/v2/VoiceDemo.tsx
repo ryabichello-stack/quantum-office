@@ -95,7 +95,9 @@ export default function VoiceDemo() {
             onOrbClick={toggleVoice}
           />
         </div>
-        <b>{label}</b>
+        <b className="voice-demo-status" aria-live="polite" data-phase={voicePhase}>
+          {label}
+        </b>
         <small>Нажмите на кристалл, чтобы говорить. После ответа DELNO снова слушает. Ещё раз — чтобы остановить.</small>
       </div>
 
