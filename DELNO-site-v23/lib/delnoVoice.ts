@@ -114,7 +114,6 @@ export type VoiceSessionOptions = {
   onExchange?: (userText: string, assistantText: string) => void;
   setPhase: (phase: VoicePhase) => void;
   audioRef: RefObject<HTMLAudioElement | null>;
-  /** How long to wait in listen mode without speech before ending the session. */
   listenSilenceMs?: number;
 };
 
@@ -123,18 +122,18 @@ const DEFAULT_LISTEN_SILENCE_MS = 6500;
 export function createVoiceController(options: VoiceSessionOptions) {
   const { onTranscript, onExchange, setPhase, audioRef } = options;
   const listenSilenceMs = options.listenSilenceMs ?? DEFAULT_LISTEN_SILENCE_MS;
+
+  let engaged = false;
+  let awaitingFollowUp = false;
   let recognition: SpeechRecognitionInstance | null = null;
   let heard = false;
   let speaking = false;
   let processing = false;
-  let sessionActive = false;
-  let awaitingFollowUp = false;
   let turnId = 0;
   let abortTts: AbortController | null = null;
   let errorTimer: number | null = null;
   let listenTimer: number | null = null;
-  let listenPoll: number | null = null;
-  let listenDeadline = 0;
+  let micRetryTimer: number | null = null;
 
   function clearErrorTimer() {
     if (errorTimer !== null) {
@@ -143,40 +142,27 @@ export function createVoiceController(options: VoiceSessionOptions) {
     }
   }
 
+  function clearMicRetryTimer() {
+    if (micRetryTimer !== null) {
+      window.clearTimeout(micRetryTimer);
+      micRetryTimer = null;
+    }
+  }
+
   function clearListenTimer() {
     if (listenTimer !== null) {
       window.clearTimeout(listenTimer);
       listenTimer = null;
     }
-    if (listenPoll !== null) {
-      window.clearInterval(listenPoll);
-      listenPoll = null;
-    }
-  }
-
-  function clearListenWindow() {
-    clearListenTimer();
-    listenDeadline = 0;
-  }
-
-  function beginListenWindow() {
-    clearListenTimer();
-    listenDeadline = Date.now() + listenSilenceMs;
-    listenTimer = window.setTimeout(() => {
-      if (sessionActive && !processing && !speaking) stop();
-    }, listenSilenceMs);
-    listenPoll = window.setInterval(() => {
-      if (!sessionActive || processing || speaking) return;
-      if (listenDeadline && Date.now() >= listenDeadline) stop();
-    }, 400);
   }
 
   function stop() {
     turnId += 1;
-    sessionActive = false;
+    engaged = false;
     awaitingFollowUp = false;
     clearErrorTimer();
-    clearListenWindow();
+    clearMicRetryTimer();
+    clearListenTimer();
     recognition?.stop();
     recognition = null;
     abortTts?.abort();
@@ -196,39 +182,34 @@ export function createVoiceController(options: VoiceSessionOptions) {
 
   function showError(userText: string, assistantText: string) {
     clearErrorTimer();
-    sessionActive = false;
-    awaitingFollowUp = false;
     setPhase("error");
     onExchange?.(userText, assistantText);
     errorTimer = window.setTimeout(() => stop(), 2600);
   }
 
-  function enterListenMode() {
-    if (!sessionActive) return;
+  function armSilenceTimeout() {
+    clearListenTimer();
+    listenTimer = window.setTimeout(() => {
+      if (engaged && !processing && !speaking) stop();
+    }, listenSilenceMs);
+  }
+
+  function enterListenVisual() {
+    if (!engaged) return;
     setPhase("listen");
   }
 
-  function afterAnswerListen() {
-    if (!sessionActive) return;
-    awaitingFollowUp = true;
-    speaking = false;
-    processing = false;
-    beginListenWindow();
-    enterListenMode();
-    startListening();
+  function scheduleMicRetry() {
+    if (!engaged || processing || speaking) return;
+    clearMicRetryTimer();
+    micRetryTimer = window.setTimeout(() => {
+      micRetryTimer = null;
+      if (engaged && !processing && !speaking) startMic(false);
+    }, 180);
   }
 
-  function resumeListening() {
-    if (!sessionActive || processing || speaking) return;
-    if (listenDeadline && Date.now() >= listenDeadline) {
-      stop();
-      return;
-    }
-    startListening();
-  }
-
-  function startListening() {
-    if (!sessionActive || processing || speaking) return;
+  function startMic(userInitiated: boolean) {
+    if (!engaged || processing || speaking) return;
 
     const SpeechRecognition = getSpeechRecognition();
     if (!SpeechRecognition) {
@@ -240,70 +221,88 @@ export function createVoiceController(options: VoiceSessionOptions) {
     }
 
     clearErrorTimer();
+    clearMicRetryTimer();
     heard = false;
-    setPhase("listen");
+    enterListenVisual();
 
     recognition?.stop();
     recognition = new SpeechRecognition();
     recognition.lang = "ru-RU";
     recognition.interimResults = false;
     recognition.continuous = false;
+
     recognition.onstart = () => {
-      if (sessionActive) setPhase("listen");
+      if (engaged) enterListenVisual();
     };
+
     recognition.onresult = (event) => {
       heard = true;
+      clearListenTimer();
+      clearMicRetryTimer();
       const transcript = event.results[0][0].transcript.trim();
       recognition?.stop();
       recognition = null;
-      if (transcript) {
-        clearListenWindow();
-        void answer(transcript);
-      } else {
-        resumeListening();
-      }
+      if (transcript) void answer(transcript);
+      else scheduleMicRetry();
     };
+
     recognition.onerror = (event) => {
       recognition = null;
-      if (!sessionActive || processing || speaking) return;
+      if (!engaged || processing || speaking) return;
       const code = event?.error || "";
-      if (code === "not-allowed" || code === "service-not-allowed" || code === "audio-capture") {
-        if (awaitingFollowUp && listenDeadline && Date.now() < listenDeadline) {
-          enterListenMode();
+      const micBlocked =
+        code === "not-allowed" || code === "service-not-allowed" || code === "audio-capture";
+
+      if (micBlocked) {
+        if (userInitiated || !awaitingFollowUp) {
+          showError(
+            "Голосовой режим",
+            "Не удалось получить доступ к микрофону. Разрешите микрофон в браузере и нажмите на шар ещё раз.",
+          );
           return;
         }
-        showError(
-          "Голосовой режим",
-          "Не удалось получить доступ к микрофону. Разрешите микрофон в браузере и нажмите на шар ещё раз.",
-        );
+        enterListenVisual();
         return;
       }
-      resumeListening();
+
+      scheduleMicRetry();
     };
+
     recognition.onend = () => {
       recognition = null;
-      if (!heard && !speaking && !processing && sessionActive) resumeListening();
+      if (!heard && !speaking && !processing && engaged) scheduleMicRetry();
     };
 
     try {
       recognition.start();
     } catch {
-      if (!sessionActive) return;
-      if (awaitingFollowUp && listenDeadline && Date.now() < listenDeadline) {
-        enterListenMode();
+      if (!engaged) return;
+      if (userInitiated || !awaitingFollowUp) {
+        showError(
+          "Голосовой режим",
+          "Не удалось запустить микрофон. Попробуйте ещё раз через секунду.",
+        );
         return;
       }
-      showError(
-        "Голосовой режим",
-        "Не удалось запустить микрофон. Попробуйте ещё раз через секунду.",
-      );
+      enterListenVisual();
     }
+  }
+
+  function afterAnswerListen() {
+    if (!engaged) return;
+    awaitingFollowUp = true;
+    speaking = false;
+    processing = false;
+    armSilenceTimeout();
+    enterListenVisual();
+    startMic(false);
   }
 
   async function answer(text: string) {
     const id = ++turnId;
     processing = true;
-    clearListenWindow();
+    clearListenTimer();
+    clearMicRetryTimer();
     recognition?.stop();
     recognition = null;
     setPhase("think");
@@ -325,10 +324,12 @@ export function createVoiceController(options: VoiceSessionOptions) {
     speaking = true;
     abortTts = new AbortController();
 
+    let speakDone = false;
     const finishSpeak = () => {
-      if (id !== turnId) return;
+      if (id !== turnId || speakDone) return;
+      speakDone = true;
       speaking = false;
-      if (sessionActive) afterAnswerListen();
+      if (engaged) afterAnswerListen();
       else stop();
     };
 
@@ -340,7 +341,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
 
     const speakCap = window.setTimeout(finishSpeak, 15000);
 
-    const ok = await playDelnoTts(reply, audio, {
+    await playDelnoTts(reply, audio, {
       onStart: () => {
         if (id === turnId) setPhase("speak");
       },
@@ -355,32 +356,33 @@ export function createVoiceController(options: VoiceSessionOptions) {
       signal: abortTts.signal,
     });
 
-    if (id !== turnId) return;
-
-    if (!ok && !abortTts.signal.aborted) {
+    if (id !== turnId || speakDone) return;
+    if (!abortTts.signal.aborted) {
       window.clearTimeout(speakCap);
       finishSpeak();
     }
   }
 
   function toggle() {
-    if (sessionActive) {
+    if (engaged) {
+      clearErrorTimer();
       stop();
       return;
     }
 
-    sessionActive = true;
+    engaged = true;
     awaitingFollowUp = false;
     claimVoiceSession(stop);
     clearErrorTimer();
-    beginListenWindow();
-    startListening();
+    armSilenceTimeout();
+    startMic(true);
   }
 
   async function askText(text: string) {
-    if (sessionActive) {
+    if (engaged) {
       turnId += 1;
-      clearListenWindow();
+      clearListenTimer();
+      clearMicRetryTimer();
       recognition?.stop();
       recognition = null;
       abortTts?.abort();
@@ -389,9 +391,10 @@ export function createVoiceController(options: VoiceSessionOptions) {
       speaking = false;
       heard = false;
     } else {
-      sessionActive = true;
+      engaged = true;
       claimVoiceSession(stop);
     }
+    awaitingFollowUp = false;
     await answer(text);
   }
 
@@ -399,6 +402,6 @@ export function createVoiceController(options: VoiceSessionOptions) {
     toggle,
     stop,
     askText,
-    isActive: () => sessionActive || Boolean(recognition || speaking || processing),
+    isActive: () => engaged,
   };
 }

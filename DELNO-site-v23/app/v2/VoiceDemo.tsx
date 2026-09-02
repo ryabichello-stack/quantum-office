@@ -43,8 +43,9 @@ export default function VoiceDemo() {
     try {
       await askText(text);
     } catch {
-      setPromptBusy(false);
       setAnswer("Сейчас не удалось получить ответ. Попробуйте ещё раз.");
+    } finally {
+      setPromptBusy(false);
     }
   }
 
