@@ -605,7 +605,10 @@
 .delno-crystal-mount[data-voice-phase][data-voice-active="true"] .widget .dots,
 .delno-crystal-mount[data-voice-phase][data-voice-active="true"] .widget .wave,
 .delno-crystal-mount[data-voice-phase][data-voice-active="true"] .widget .state,
-.delno-crystal-mount[data-voice-phase][data-voice-active="true"] .widget .state span {
+.delno-crystal-mount[data-voice-phase][data-voice-active="true"] .widget .state span,
+.delno-crystal-mount[data-voice-phase][data-voice-active="true"] .widget .rings .r1,
+.delno-crystal-mount[data-voice-phase][data-voice-active="true"] .widget .rings .r2,
+.delno-crystal-mount[data-voice-phase][data-voice-active="true"] .widget .rings .r3 {
   animation: none !important;
 }
 
@@ -736,6 +739,22 @@
 .delno-crystal-demo .ground {
   width: 140px;
   height: 40px;
+}
+
+.delno-crystal-demo[data-voice-active="true"] .widget .active-halo {
+  opacity: 0.88;
+}
+
+.delno-crystal-demo[data-voice-phase="listen"][data-voice-active="true"] .widget .mic {
+  opacity: 1;
+}
+
+.delno-crystal-demo[data-voice-phase="speak"][data-voice-active="true"] .widget .wave {
+  opacity: 1;
+}
+
+.delno-crystal-demo[data-voice-phase="think"][data-voice-active="true"] .widget .dots {
+  opacity: 1;
 }
 
 .voice-audio {

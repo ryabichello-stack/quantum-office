@@ -55,8 +55,24 @@ function pauseOtherAudio(except?: HTMLAudioElement) {
   window.speechSynthesis?.cancel();
 }
 
+let sharedAudioContext: AudioContext | null = null;
+
 /** Unlock audio playback while we still have a user-gesture (orb click). */
 export async function unlockAudioElement(audio: HTMLAudioElement) {
+  try {
+    const AudioCtx =
+      typeof window !== "undefined"
+        ? window.AudioContext ||
+          (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+        : null;
+    if (AudioCtx) {
+      if (!sharedAudioContext) sharedAudioContext = new AudioCtx();
+      if (sharedAudioContext.state === "suspended") await sharedAudioContext.resume();
+    }
+  } catch {
+    /* ignore */
+  }
+
   try {
     audio.muted = true;
     audio.src =
@@ -113,7 +129,15 @@ export async function playDelnoTts(
         callbacks.onError?.();
         reject(new Error("audio playback failed"));
       };
-      void audio.play().catch((err) => {
+      const tryPlay = async () => {
+        try {
+          await audio.play();
+        } catch (firstErr) {
+          await unlockAudioElement(audio);
+          await audio.play();
+        }
+      };
+      void tryPlay().catch((err) => {
         cleanup();
         reject(err);
       });
@@ -337,7 +361,9 @@ export function createVoiceController(options: VoiceSessionOptions) {
     processing = false;
     enterListenVisual();
     resetListenTimer();
-    startMic();
+    window.setTimeout(() => {
+      if (engaged && !processing && !speaking) startMic();
+    }, 200);
   }
 
   async function answer(text: string) {
@@ -386,6 +412,13 @@ export function createVoiceController(options: VoiceSessionOptions) {
       finishSpeak();
       return;
     }
+
+    // Let the mic fully release before TTS — avoids Chrome alternating silent turns.
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 120));
+    if (id !== turnId) return;
+
+    await unlockAudioElement(audio);
+    if (id !== turnId) return;
 
     const speakCap = window.setTimeout(finishSpeak, 20000);
 
@@ -447,13 +480,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
     const audio = audioRef.current;
     if (audio) await unlockAudioElement(audio);
 
-    const sessionDone = new Promise<void>((resolve) => {
-      sessionResolve = resolve;
-    });
-
     await answer(text.trim());
-
-    if (engaged) await sessionDone;
   }
 
   return {

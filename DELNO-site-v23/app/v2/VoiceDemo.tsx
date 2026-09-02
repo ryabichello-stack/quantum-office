@@ -35,10 +35,10 @@ export default function VoiceDemo() {
     onTranscript: handleTranscript,
     onExchange: handleExchange,
   });
-  useCrystalContrast(mountRef);
+  useCrystalContrast(mountRef, { fixed: "dark" });
 
   async function handlePrompt(text: string) {
-    if (promptBusy || voiceActive) return;
+    if (promptBusy) return;
     setPromptBusy(true);
     setQuestion(text);
     setAnswer("Думаю…");
@@ -123,7 +123,7 @@ export default function VoiceDemo() {
             <button
               key={prompt}
               type="button"
-              disabled={promptBusy || voiceActive}
+              disabled={promptBusy}
               onClick={() => handlePrompt(prompt)}
             >
               {prompt}

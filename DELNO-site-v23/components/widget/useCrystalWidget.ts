@@ -207,10 +207,18 @@ export function useCrystalWidgetVoice(options: {
   });
 }
 
-export function useCrystalContrast(mountRef: React.RefObject<HTMLElement | null>) {
+export function useCrystalContrast(
+  mountRef: React.RefObject<HTMLElement | null>,
+  options?: { fixed?: "light" | "dark" },
+) {
   useEffect(() => {
     const root = mountRef.current;
     if (!root) return;
+
+    if (options?.fixed) {
+      root.setAttribute("data-contrast", options.fixed);
+      return;
+    }
 
     function parseColor(str: string) {
       const m = String(str).match(/rgba?\(([^)]+)\)/i);
@@ -240,7 +248,8 @@ export function useCrystalContrast(mountRef: React.RefObject<HTMLElement | null>
         if (c) break;
       }
       if (!c) c = parseColor(getComputedStyle(document.body).backgroundColor) || { r: 255, g: 255, b: 255, a: 1 };
-      root.setAttribute("data-contrast", lum(c) < 145 ? "light" : "dark");
+      // "dark" = light UI on dark page background; "light" = dark UI on light page background
+      root.setAttribute("data-contrast", lum(c) < 145 ? "dark" : "light");
     }
 
     detect();
@@ -250,7 +259,7 @@ export function useCrystalContrast(mountRef: React.RefObject<HTMLElement | null>
       window.removeEventListener("resize", detect);
       window.removeEventListener("scroll", detect);
     };
-  }, [mountRef]);
+  }, [mountRef, options?.fixed]);
 }
 
 export function useAutoResizeTextarea(
