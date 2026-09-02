@@ -1,38 +1,16 @@
 "use client";
 
+import { useDelnoVoice, type VoicePhase } from "@/hooks/useDelnoVoice";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 type ChatMessage = { role: "user" | "assistant"; text: string; typing?: boolean };
 
-export type VoicePhase = "idle" | "listen" | "think" | "speak" | "error";
+export type { VoicePhase };
 
 type WidgetAnswer = {
   message?: string;
   conversation_id?: string;
   next_step?: string;
-};
-
-type SpeechRecognitionResultEvent = {
-  results: ArrayLike<ArrayLike<{ transcript: string }>>;
-};
-
-type SpeechRecognitionInstance = {
-  lang: string;
-  interimResults: boolean;
-  continuous: boolean;
-  onstart: (() => void) | null;
-  onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-};
-
-type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
-
-type SpeechWindow = Window & {
-  SpeechRecognition?: SpeechRecognitionConstructor;
-  webkitSpeechRecognition?: SpeechRecognitionConstructor;
 };
 
 const SITE_KEY = process.env.NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY || "demo_dlno";
@@ -58,25 +36,6 @@ function personalizedGreeting(name: string) {
   return first
     ? `Приятно познакомиться, ${first}. Что ещё хотите уточнить?`
     : "Приятно познакомиться. Что ещё хотите уточнить?";
-}
-
-function speakWithDeviceVoice(text: string, onStart: () => void, onEnd: () => void) {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) return false;
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = "ru-RU";
-  utterance.rate = 0.93;
-  utterance.pitch = 1;
-  const voices = window.speechSynthesis.getVoices();
-  utterance.voice =
-    voices.find((voice) => /ru-RU/i.test(voice.lang) && /natural|enhanced|milena|alena|svetlana|irina/i.test(voice.name)) ||
-    voices.find((voice) => /ru/i.test(voice.lang)) ||
-    null;
-  utterance.onstart = onStart;
-  utterance.onend = onEnd;
-  utterance.onerror = onEnd;
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(utterance);
-  return true;
 }
 
 export function useCrystalWidgetChat(apiPath: string) {
@@ -250,114 +209,11 @@ export function useCrystalWidgetVoice(options: {
   sendVoiceQuery: (text: string) => Promise<string>;
   appendExchange: (userText: string, assistantText: string) => void;
 }) {
-  const { mountRef, sendVoiceQuery, appendExchange } = options;
-  const [voiceActive, setVoiceActive] = useState(false);
-  const [voicePhase, setVoicePhase] = useState<VoicePhase>("idle");
-  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
-  const heardRef = useRef(false);
-  const speakingRef = useRef(false);
-
-  const setPhase = useCallback(
-    (phase: VoicePhase) => {
-      setVoicePhase(phase);
-      const root = mountRef.current;
-      if (!root) return;
-      if (phase === "idle" || phase === "error") {
-        root.removeAttribute("data-voice-phase");
-      } else {
-        root.setAttribute("data-voice-phase", phase);
-      }
-    },
-    [mountRef],
-  );
-
-  const stopVoice = useCallback(() => {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
-    if (typeof window !== "undefined") window.speechSynthesis?.cancel();
-    speakingRef.current = false;
-    setVoiceActive(false);
-    setPhase("idle");
-  }, [setPhase]);
-
-  useEffect(() => () => stopVoice(), [stopVoice]);
-
-  const answerVoiceQuestion = useCallback(
-    async (transcript: string) => {
-      setPhase("think");
-      const answer = await sendVoiceQuery(transcript);
-      appendExchange(transcript, answer);
-      setPhase("speak");
-      speakingRef.current = true;
-      const started = speakWithDeviceVoice(
-        answer,
-        () => setPhase("speak"),
-        () => {
-          speakingRef.current = false;
-          stopVoice();
-        },
-      );
-      if (!started) {
-        await new Promise((r) => setTimeout(r, Math.min(3200, 900 + answer.length * 28)));
-        stopVoice();
-      }
-    },
-    [appendExchange, sendVoiceQuery, setPhase, stopVoice],
-  );
-
-  const toggleVoice = useCallback(() => {
-    if (voiceActive) {
-      stopVoice();
-      return;
-    }
-
-    const speechWindow = window as SpeechWindow;
-    const SpeechRecognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setVoiceActive(true);
-      setPhase("error");
-      appendExchange(
-        "Голосовой режим",
-        "Браузер не поддерживает распознавание речи. Используйте Chrome, Edge или Safari, либо текстовый чат.",
-      );
-      window.setTimeout(() => stopVoice(), 2400);
-      return;
-    }
-
-    heardRef.current = false;
-    setVoiceActive(true);
-    setPhase("listen");
-
-    const recognition = new SpeechRecognition();
-    recognitionRef.current = recognition;
-    recognition.lang = "ru-RU";
-    recognition.interimResults = false;
-    recognition.continuous = false;
-    recognition.onstart = () => setPhase("listen");
-    recognition.onresult = (event: SpeechRecognitionResultEvent) => {
-      heardRef.current = true;
-      const transcript = event.results[0][0].transcript.trim();
-      recognitionRef.current = null;
-      void answerVoiceQuestion(transcript);
-    };
-    recognition.onerror = () => {
-      heardRef.current = true;
-      recognitionRef.current = null;
-      setPhase("error");
-      appendExchange(
-        "Голосовой режим",
-        "Не удалось получить доступ к микрофону. Разрешите микрофон в браузере и нажмите на шар ещё раз.",
-      );
-      window.setTimeout(() => stopVoice(), 2600);
-    };
-    recognition.onend = () => {
-      recognitionRef.current = null;
-      if (!heardRef.current && !speakingRef.current) stopVoice();
-    };
-    recognition.start();
-  }, [answerVoiceQuestion, appendExchange, setPhase, stopVoice, voiceActive]);
-
-  return { voiceActive, voicePhase, toggleVoice, stopVoice };
+  return useDelnoVoice({
+    mountRef: options.mountRef,
+    onTranscript: options.sendVoiceQuery,
+    onExchange: options.appendExchange,
+  });
 }
 
 export function useCrystalContrast(mountRef: React.RefObject<HTMLElement | null>) {

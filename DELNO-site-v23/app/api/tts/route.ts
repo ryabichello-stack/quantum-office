@@ -3,7 +3,10 @@ import { demoAnswers, type DemoAnswerId } from "../../v2/demoContent";
 export const runtime = "edge";
 
 const TTS_INSTRUCTIONS =
-  "Говори на чистом естественном русском языке. Голос мягкий, уверенный, современный и доброжелательный, как у премиального бизнес-помощника. Средний темп, живые интонации, без театральности, пафоса и рекламного нажима.";
+  process.env.DELNO_TTS_INSTRUCTIONS ||
+  "Говори на чистом естественном русском языке. Спокойный уверенный тон делового помощника, как на входящем звонке.";
+
+const TTS_VOICE = process.env.DELNO_TTS_VOICE || "cedar";
 
 function jsonError(message: string, status: number) {
   return Response.json({ error: message }, { status });
@@ -32,7 +35,8 @@ export async function GET(request: Request) {
     },
     body: JSON.stringify({
       model: "gpt-4o-mini-tts",
-      voice: "marin",
+      voice: TTS_VOICE,
+      speed: 1.0,
       input,
       instructions: TTS_INSTRUCTIONS,
       response_format: "mp3",

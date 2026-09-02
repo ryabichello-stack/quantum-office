@@ -42,7 +42,7 @@
   pointer-events: none;
 }
 
-.delno-crystal-mount .widget {
+.delno-crystal-mount.delno-crystal-floating .widget {
   position: fixed;
   left: 50%;
   bottom: calc(12px + env(safe-area-inset-bottom));
@@ -64,7 +64,7 @@
   contain: layout paint;
 }
 
-.delno-crystal-mount .panel {
+.delno-crystal-mount.delno-crystal-floating .panel {
   position: fixed;
   left: 50%;
   bottom: calc(110px + env(safe-area-inset-bottom));
@@ -132,7 +132,7 @@
   transform:translate3d(0,1px,0) scale3d(1.008,.992,1)
 }
 
-#delno-crystal-voice:checked ~ .widget .motion{
+.delno-crystal-mount[data-voice-active="true"] .widget .motion{
   animation:smoothJump .60s linear 1;
 }
 
@@ -145,7 +145,7 @@
   animation:breathe 5.4s ease-in-out infinite;
   will-change:transform
 }
-#delno-crystal-voice:checked ~ .widget .breath{
+.delno-crystal-mount[data-voice-active="true"] .widget .breath{
   animation:activeBreath 11.1s ease-in-out 1, breathe 5.4s ease-in-out 11.1s infinite;
 }
 
@@ -206,16 +206,16 @@
 
 /* On activation the floating spot disappears and is frozen.
    The centered spot appears and cannot move until activation ends. */
-#delno-crystal-voice:checked ~ .widget .fire-idle{
+.delno-crystal-mount[data-voice-active="true"] .widget .fire-idle{
   animation-play-state:paused !important;
   opacity:0 !important;
 }
-#delno-crystal-voice:checked ~ .widget .fire-active{
+.delno-crystal-mount[data-voice-active="true"] .widget .fire-active{
   opacity:1 !important;
   transform:translate3d(0,0,0) scale(1.06) !important;
 }
 
-#delno-crystal-voice:checked ~ .widget .fire{
+.delno-crystal-mount[data-voice-active="true"] .widget .fire{
   /* Position is controlled by the tiny activation script so it moves
      from its CURRENT floating position to the exact center without a snap. */
 }
@@ -230,7 +230,7 @@
   opacity:0;pointer-events:none;
   transition:opacity .28s ease,transform .38s ease
 }
-#delno-crystal-voice:checked ~ .widget .active-halo{
+.delno-crystal-mount[data-voice-active="true"] .widget .active-halo{
   opacity:.92;transform:translate3d(-50%,-50%,0) scale(1.16)
 }
 
@@ -259,13 +259,13 @@
 .rings i{position:absolute;inset:0;border-radius:50%;opacity:0}
 .rings .sharp{border:1px solid var(--ring-sharp)}
 .rings .soft{border:1px solid var(--ring-soft)}
-#delno-crystal-voice:checked ~ .widget .rings .r1{
+.delno-crystal-mount[data-voice-active="true"] .widget .rings .r1{
   animation:ringSharp 2.05s ease-out .58s 2,speakSharp 2.0s ease-out 7.30s 2
 }
-#delno-crystal-voice:checked ~ .widget .rings .r2{
+.delno-crystal-mount[data-voice-active="true"] .widget .rings .r2{
   animation:ringSoft 2.15s ease-out .96s 2,speakSoft 2.1s ease-out 7.70s 2
 }
-#delno-crystal-voice:checked ~ .widget .rings .r3{
+.delno-crystal-mount[data-voice-active="true"] .widget .rings .r3{
   animation:ringSharp 2.08s ease-out 1.36s 2,speakSharp 2.0s ease-out 8.12s 2
 }
 
@@ -292,9 +292,9 @@
 .wave i:nth-child(3){animation-duration:.50s}
 .wave i:nth-child(4){animation-duration:.43s}
 .wave i:nth-child(5){animation-duration:.57s}
-#delno-crystal-voice:checked ~ .widget .mic{animation:micTimeline 11.1s linear 1}
-#delno-crystal-voice:checked ~ .widget .dots{animation:thinkTimeline 11.1s linear 1}
-#delno-crystal-voice:checked ~ .widget .wave{animation:waveTimeline 11.1s linear 1}
+.delno-crystal-mount[data-voice-active="true"] .widget .mic{animation:micTimeline 11.1s linear 1}
+.delno-crystal-mount[data-voice-active="true"] .widget .dots{animation:thinkTimeline 11.1s linear 1}
+.delno-crystal-mount[data-voice-active="true"] .widget .wave{animation:waveTimeline 11.1s linear 1}
 
 /* minimal dynamic centered status */
 .state{
@@ -314,12 +314,12 @@
   transform:translate3d(-50%,-50%,0);
   white-space:nowrap;opacity:0
 }
-#delno-crystal-voice:checked ~ .widget .state{
+.delno-crystal-mount[data-voice-active="true"] .widget .state{
   animation:stateBox 11.1s linear 1,stateWidth 11.1s steps(1,end) 1
 }
-#delno-crystal-voice:checked ~ .widget .state .listen{animation:showListen 11.1s linear 1}
-#delno-crystal-voice:checked ~ .widget .state .think{animation:showThink 11.1s linear 1}
-#delno-crystal-voice:checked ~ .widget .state .speak{animation:showSpeak 11.1s linear 1}
+.delno-crystal-mount[data-voice-active="true"] .widget .state .listen{animation:showListen 11.1s linear 1}
+.delno-crystal-mount[data-voice-active="true"] .widget .state .think{animation:showThink 11.1s linear 1}
+.delno-crystal-mount[data-voice-active="true"] .widget .state .speak{animation:showSpeak 11.1s linear 1}
 
 /* chat bubble closer to orb */
 .chat{
@@ -601,53 +601,100 @@
 }
 
 /* Live voice — phase-driven UI instead of fixed 11.1s demo timeline */
-.delno-crystal-mount[data-voice-phase] #delno-crystal-voice:checked ~ .widget .mic,
-.delno-crystal-mount[data-voice-phase] #delno-crystal-voice:checked ~ .widget .dots,
-.delno-crystal-mount[data-voice-phase] #delno-crystal-voice:checked ~ .widget .wave,
-.delno-crystal-mount[data-voice-phase] #delno-crystal-voice:checked ~ .widget .state,
-.delno-crystal-mount[data-voice-phase] #delno-crystal-voice:checked ~ .widget .state span {
+.delno-crystal-mount[data-voice-phase][data-voice-active="true"] .widget .mic,
+.delno-crystal-mount[data-voice-phase][data-voice-active="true"] .widget .dots,
+.delno-crystal-mount[data-voice-phase][data-voice-active="true"] .widget .wave,
+.delno-crystal-mount[data-voice-phase][data-voice-active="true"] .widget .state,
+.delno-crystal-mount[data-voice-phase][data-voice-active="true"] .widget .state span {
   animation: none !important;
 }
 
-.delno-crystal-mount[data-voice-phase] #delno-crystal-voice:checked ~ .widget .mic,
-.delno-crystal-mount[data-voice-phase] #delno-crystal-voice:checked ~ .widget .dots,
-.delno-crystal-mount[data-voice-phase] #delno-crystal-voice:checked ~ .widget .wave {
+.delno-crystal-mount[data-voice-phase][data-voice-active="true"] .widget .mic,
+.delno-crystal-mount[data-voice-phase][data-voice-active="true"] .widget .dots,
+.delno-crystal-mount[data-voice-phase][data-voice-active="true"] .widget .wave {
   opacity: 0;
 }
 
-.delno-crystal-mount[data-voice-phase] #delno-crystal-voice:checked ~ .widget .state {
+.delno-crystal-mount[data-voice-phase][data-voice-active="true"] .widget .state {
   opacity: 1;
   transform: translate3d(-50%, 0, 0);
 }
 
-.delno-crystal-mount[data-voice-phase="listen"] #delno-crystal-voice:checked ~ .widget .mic,
-.delno-crystal-mount[data-voice-phase="listen"] #delno-crystal-voice:checked ~ .widget .state .listen {
+.delno-crystal-mount[data-voice-phase="listen"][data-voice-active="true"] .widget .mic,
+.delno-crystal-mount[data-voice-phase="listen"][data-voice-active="true"] .widget .state .listen {
   opacity: 1;
 }
-.delno-crystal-mount[data-voice-phase="listen"] #delno-crystal-voice:checked ~ .widget .state {
+.delno-crystal-mount[data-voice-phase="listen"][data-voice-active="true"] .widget .state {
   width: 58px;
 }
 
-.delno-crystal-mount[data-voice-phase="think"] #delno-crystal-voice:checked ~ .widget .dots,
-.delno-crystal-mount[data-voice-phase="think"] #delno-crystal-voice:checked ~ .widget .state .think {
+.delno-crystal-mount[data-voice-phase="think"][data-voice-active="true"] .widget .dots,
+.delno-crystal-mount[data-voice-phase="think"][data-voice-active="true"] .widget .state .think {
   opacity: 1;
 }
-.delno-crystal-mount[data-voice-phase="think"] #delno-crystal-voice:checked ~ .widget .state {
+.delno-crystal-mount[data-voice-phase="think"][data-voice-active="true"] .widget .state {
   width: 54px;
 }
 
-.delno-crystal-mount[data-voice-phase="speak"] #delno-crystal-voice:checked ~ .widget .wave,
-.delno-crystal-mount[data-voice-phase="speak"] #delno-crystal-voice:checked ~ .widget .state .speak {
+.delno-crystal-mount[data-voice-phase="speak"][data-voice-active="true"] .widget .wave,
+.delno-crystal-mount[data-voice-phase="speak"][data-voice-active="true"] .widget .state .speak {
   opacity: 1;
 }
-.delno-crystal-mount[data-voice-phase="speak"] #delno-crystal-voice:checked ~ .widget .state {
+.delno-crystal-mount[data-voice-phase="speak"][data-voice-active="true"] .widget .state {
   width: 66px;
 }
 
-.delno-crystal-mount[data-voice-phase="error"] #delno-crystal-voice:checked ~ .widget .dots,
-.delno-crystal-mount[data-voice-phase="error"] #delno-crystal-voice:checked ~ .widget .state .think {
+.delno-crystal-mount[data-voice-phase="error"][data-voice-active="true"] .widget .dots,
+.delno-crystal-mount[data-voice-phase="error"][data-voice-active="true"] .widget .state .think {
   opacity: 1;
 }
-.delno-crystal-mount[data-voice-phase="error"] #delno-crystal-voice:checked ~ .widget .state {
+.delno-crystal-mount[data-voice-phase="error"][data-voice-active="true"] .widget .state {
   width: 54px;
+}
+
+/* Demo section — same crystal orb, larger scale on dark background */
+.delno-crystal-mount.delno-crystal-demo {
+  --orb-size: 92px;
+  position: relative;
+  width: 280px;
+  height: 280px;
+  margin: 0 auto;
+}
+
+.delno-crystal-demo .widget.widget-demo {
+  position: relative;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.delno-crystal-demo .orb-anchor {
+  width: 176px;
+  height: 176px;
+}
+
+.delno-crystal-demo .orb-hit {
+  width: 176px;
+  height: 176px;
+}
+
+.delno-crystal-demo .state {
+  bottom: auto;
+  top: 18px;
+}
+
+.delno-crystal-demo .ground {
+  width: 140px;
+  height: 40px;
+}
+
+.voice-audio {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
