@@ -152,6 +152,21 @@ p {
   font-size: 14px;
 }
 
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent-strong, #e85a1a);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 .login-form input:focus {
   outline: 2px solid var(--y);
   border-color: var(--y);
@@ -786,6 +801,18 @@ p {
   padding: 10px 0;
   border-bottom: 1px solid #e9e9e4;
   font-size: 13px;
+}
+
+.embed-code {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #f4f6f8;
+  border: 1px solid var(--line);
+  font-size: 12px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .status-ok {

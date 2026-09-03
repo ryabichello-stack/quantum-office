@@ -98,6 +98,16 @@ class TenantSettingsSyncRequest(BaseModel):
     assistant_name: str = Field(default="DELNO", max_length=64)
 
 
+class DocumentUpsertRequest(BaseModel):
+    tenant_id: str = Field(..., min_length=1, max_length=64)
+    document_id: str = Field(..., min_length=4, max_length=120)
+    title: str = Field(..., min_length=1, max_length=255)
+    body: str = Field(..., min_length=20, max_length=50000)
+    visibility: str = Field(default="public", max_length=32)
+    channels: list[str] = Field(default_factory=lambda: ["office-assistant"])
+    source: str = Field(default="tenant:document", max_length=120)
+
+
 def _principal(
     x_principal_id: Optional[str],
     x_tenant_id: Optional[str],
@@ -355,6 +365,50 @@ def brain_tenant_settings_sync(
     )
     repo.conn.commit()
     return {"ok": True, "document_id": doc_id, "upsert": result, "stats": repo.stats(tenant)}
+
+
+@router.post("/documents/upsert")
+def brain_document_upsert(
+    req: DocumentUpsertRequest,
+    x_principal_id: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
+    x_groups: Optional[str] = Header(None),
+    x_user_id: Optional[str] = Header(None),
+    x_admin: Optional[str] = Header(None),
+):
+    """P2.2 — upsert tenant KB document (public or company visibility)."""
+    require_brain_enabled()
+    principal = _principal(
+        x_principal_id, x_tenant_id, x_groups, x_user_id, x_admin, req.tenant_id
+    )
+    allow_service = os.getenv("BRAIN_ALLOW_SERVICE_INGEST", "true").lower() in ("1", "true", "yes")
+    allowed = principal.principal_id in (
+        "service:cursor-admin",
+        "service:delno-admin",
+        "service:delno-api",
+    ) or allow_service
+    if not allowed:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=403, detail="document_upsert_forbidden")
+
+    tenant = req.tenant_id
+    visibility = req.visibility if req.visibility in ("public", "company", "team") else "company"
+    index_zone = "public" if visibility == "public" else "private"
+    repo = get_repo()
+    result = repo.upsert_document(
+        doc_id=req.document_id,
+        tenant_id=tenant,
+        title=req.title,
+        doc_type="doc",
+        body=req.body.strip(),
+        visibility=visibility,
+        channels=req.channels,
+        index_zone=index_zone,
+        source=req.source,
+    )
+    repo.conn.commit()
+    return {"ok": True, "document_id": req.document_id, "upsert": result, "stats": repo.stats(tenant)}
 
 
 @router.get("/ingest/status")

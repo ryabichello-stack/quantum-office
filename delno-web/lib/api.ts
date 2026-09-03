@@ -3,6 +3,8 @@ export const API_URL = process.env.NEXT_PUBLIC_DELNO_API_URL || "http://127.0.0.
 export type TenantMe = {
   tenant_id: string;
   tenant_slug: string;
+  tenant_name?: string;
+  public_key?: string;
   user_id: string | null;
   role: string | null;
 };
@@ -93,6 +95,44 @@ export async function apiLogin(email: string, password: string) {
   });
   if (!res.ok) throw new Error("Login failed");
   return res.json() as Promise<{ access_token: string }>;
+}
+
+export async function apiRegister(body: {
+  email: string;
+  password: string;
+  company_name: string;
+  inn?: string;
+  slug?: string;
+}) {
+  const res = await fetch(`${API_URL}/v1/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error("Register failed");
+  return res.json() as Promise<{
+    access_token: string;
+    tenant_slug: string;
+    tenant_name: string;
+    public_key: string;
+  }>;
+}
+
+export function apiTenantWidget(token: string) {
+  return apiFetch<{
+    site_key: string;
+    embed_html: string;
+    cdn_base: string;
+    api_base: string;
+  }>("/v1/tenant/widget", token);
+}
+
+export function apiKnowledgeUpload(token: string, title: string, body: string) {
+  return apiFetch<{ ok: boolean; document_id?: string }>("/v1/tenant/knowledge/documents", token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, body, visibility: "public" }),
+  });
 }
 
 export function apiTenantMe(token: string) {

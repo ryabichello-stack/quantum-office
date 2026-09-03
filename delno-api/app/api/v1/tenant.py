@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_tenant_context_auth
@@ -12,6 +12,7 @@ from app.services.audit import write_audit
 from app.services.events import emit_event
 from app.services.party_enrichment import enrich_tenant_legal_from_inn, lookup_party_by_inn, suggest_parties_by_query
 from app.services.tenant_settings_ingest import sync_tenant_settings_for_ctx
+from app.services.knowledge_documents import upsert_tenant_knowledge_document
 
 router = APIRouter(prefix="/tenant", tags=["tenant"])
 
@@ -27,6 +28,12 @@ class FeatureFlagUpdate(BaseModel):
 
 class TenantLegalUpdate(BaseModel):
     inn: str = Field(min_length=10, max_length=14)
+
+
+class KnowledgeDocumentCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=255)
+    body: str = Field(min_length=20, max_length=50000)
+    visibility: str = Field(default="public", max_length=32)
 
 
 def _require_tenant_admin(ctx: TenantContext) -> None:
@@ -73,10 +80,13 @@ def update_feature_flag(
 
 
 @router.get("/me")
-def tenant_me(ctx: TenantContext = Depends(get_tenant_context_auth)) -> dict:
+def tenant_me(db: Session = Depends(get_db), ctx: TenantContext = Depends(get_tenant_context_auth)) -> dict:
+    tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
     return {
         "tenant_id": str(ctx.tenant_id),
         "tenant_slug": ctx.tenant_slug,
+        "tenant_name": tenant.name,
+        "public_key": tenant.public_key,
         "user_id": str(ctx.user_id) if ctx.user_id else None,
         "role": ctx.role,
     }
@@ -169,3 +179,46 @@ def update_tenant_legal(
     kb_sync = sync_tenant_settings_for_ctx(db, ctx, source="tenant.legal.update")
     db.commit()
     return {"ok": True, "legal": result["legal"], "party_enriched": True, "knowledge_sync": kb_sync}
+
+
+@router.get("/widget")
+def tenant_widget_config(
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """P2.3 — embed snippet for tenant site_key (public_key)."""
+    tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
+    site_key = tenant.public_key
+    return {
+        "site_key": site_key,
+        "api_base": "https://api.dlno.ru/v1/public/widget",
+        "cdn_base": "https://cdn.dlno.ru/widget/v1",
+        "embed_html": (
+            f'<script src="https://cdn.dlno.ru/widget/v1/embed.js" '
+            f'data-site-key="{site_key}" data-theme="auto" async></script>'
+        ),
+    }
+
+
+@router.post("/knowledge/documents")
+def create_knowledge_document(
+    body: KnowledgeDocumentCreate,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """P2.2 — upload text KB document → brain search."""
+    _require_tenant_admin(ctx)
+    tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
+    visibility = body.visibility if body.visibility in ("public", "company") else "public"
+    result = upsert_tenant_knowledge_document(
+        db,
+        tenant,
+        title=body.title,
+        body=body.body,
+        visibility=visibility,
+        source="tenant.knowledge.upload",
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=502, detail=result.get("detail") or result.get("reason") or "knowledge_failed")
+    db.commit()
+    return result

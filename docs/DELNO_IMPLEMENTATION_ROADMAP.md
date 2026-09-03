@@ -45,10 +45,10 @@
 
 | # | Задача | Статус |
 |---|--------|--------|
-| P2.1 | Self-service register → tenant | ⬜ |
-| P2.2 | Upload KB → first search | ⬜ |
-| P2.3 | Widget embed → first message | ⬜ |
-| P2.4 | Time to First Value < 15 min | ⬜ |
+| P2.1 | Self-service register → tenant | ✅ POST /v1/auth/register |
+| P2.2 | Upload KB → first search | ✅ POST /v1/tenant/knowledge/documents |
+| P2.3 | Widget embed → first message | ✅ GET /v1/tenant/widget + CDN embed |
+| P2.4 | Time to First Value < 15 min | 🔄 flow ready, not measured |
 
 ---
 
