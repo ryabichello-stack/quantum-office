@@ -101,13 +101,13 @@
 
 | # | Задача | Статус |
 |---|--------|--------|
-| E2.1 | ChannelAdapter interface + registry | ⬜ |
-| E2.2 | Telegram Instant bot (DELNO shared) | ⬜ |
+| E2.1 | ChannelAdapter interface + registry | ✅ |
+| E2.2 | Telegram Instant bot (DELNO shared) | 🔄 webhook + record MVP |
 | E2.3 | Telegram Branded connect wizard | ⬜ |
 | E2.4 | MAX onboarding (client-owned bot) | ⬜ |
-| E2.5 | Webhook signing + retry + events | ⬜ |
-| E2.6 | Router: token → tenant → principal | ⬜ |
-| E2.7 | Inbound message → conversation record | ⬜ |
+| E2.5 | Webhook signing + retry + events | 🔄 secret verify + message.received |
+| E2.6 | Router: token → tenant → principal | ✅ channel_router + account id path |
+| E2.7 | Inbound message → conversation record | ✅ |
 | E2.8 | Email adapter stub | ⬜ |
 
 ---
@@ -118,11 +118,11 @@
 |---|--------|--------|
 | E3.1 | **delno-web** cabinet MVP: login, leads, inbox, operator, settings | ✅ |
 | E3.2 | Operator LLM loop — **basic read-only only** | ✅ KB search + model provider |
-| E3.3 | Tool registry + confirmation classes | ⬜ |
+| E3.3 | Tool registry + confirmation classes | ✅ |
 | E3.4 | Embeddable web widget JS | ✅ CDN embed.js + client + api.dlno.ru |
 | E3.5 | Voice widget WebRTC MVP | ⬜ |
 | E3.6 | Fallback voice→text | ⬜ |
-| E3.7 | KB UI upload/publish | ⬜ |
+| E3.7 | KB UI upload/publish | 🔄 list + upload in cabinet |
 | E3.8 | Lead capture from widget → inbox | ✅ name/phone → lead + conversation link |
 
 ---

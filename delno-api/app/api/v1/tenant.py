@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_tenant_context_auth
@@ -222,3 +222,39 @@ def create_knowledge_document(
         raise HTTPException(status_code=502, detail=result.get("detail") or result.get("reason") or "knowledge_failed")
     db.commit()
     return result
+
+
+@router.get("/knowledge/documents")
+def list_knowledge_documents(
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict:
+    """E3.7 — recent KB uploads for tenant cabinet."""
+    from app.services.events import list_events_for_tenant
+
+    _require_tenant_admin(ctx)
+    events = list_events_for_tenant(
+        db,
+        ctx.tenant_id,
+        event_type="knowledge.document_upserted",
+        limit=limit,
+    )
+    items = []
+    seen: set[str] = set()
+    for event in events:
+        payload = event.payload if isinstance(event.payload, dict) else {}
+        doc_id = str(payload.get("document_id") or "")
+        if doc_id and doc_id in seen:
+            continue
+        if doc_id:
+            seen.add(doc_id)
+        items.append(
+            {
+                "document_id": doc_id or None,
+                "title": payload.get("title"),
+                "source": payload.get("source") or event.payload.get("source") if isinstance(event.payload, dict) else None,
+                "published_at": event.created_at.isoformat() if event.created_at else None,
+            }
+        )
+    return {"items": items, "total": len(items)}

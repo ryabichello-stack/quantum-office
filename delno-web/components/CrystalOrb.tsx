@@ -13,66 +13,72 @@ export function CrystalOrb({ voiceActive, voicePhase, onOrbClick }: CrystalOrbPr
   const orbSrc = orbAssetPath();
 
   return (
-    <div className={`operator-crystal widget widget-operator${voiceActive ? " is-live" : ""}`}>
-      <div className="state" data-phase={voicePhase}>
-        <span className="listen">Слушаю…</span>
-        <span className="think">Думаю…</span>
-        <span className="speak">Отвечаю…</span>
-      </div>
+    <div
+      className="delno-crystal-mount"
+      data-voice-active={voiceActive ? "true" : "false"}
+      data-voice-phase={voicePhase}
+    >
+      <div className="widget widget-operator">
+        <div className="state" data-phase={voicePhase}>
+          <span className="listen">Слушаю…</span>
+          <span className="think">Думаю…</span>
+          <span className="speak">Отвечаю…</span>
+        </div>
 
-      <div className="orb-anchor">
-        <button
-          type="button"
-          className="orb-hit"
-          aria-label={voiceActive ? "Остановить голосовой режим" : "Говорить с DELNO"}
-          aria-pressed={voiceActive}
-          onClick={onOrbClick}
-        />
+        <div className="orb-anchor">
+          <button
+            type="button"
+            className="orb-hit"
+            aria-label={voiceActive ? "Остановить голосовой режим" : "Говорить с DELNO"}
+            aria-pressed={voiceActive}
+            onClick={onOrbClick}
+          />
 
-        <div className={`motion${voicePhase !== "idle" && voicePhase !== "error" ? " is-live" : ""}`}>
-          <span className="ground" />
-          <div className="rings" aria-hidden="true">
-            <i className="sharp r1" />
-            <i className="soft r2" />
-            <i className="sharp r3" />
-          </div>
-          <span className="active-halo" />
-          <div className="breath">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className="orb-img" src={orbSrc} alt="" />
-            <span className="fire-path">
-              <span className="fire fire-idle" />
-              <span className="fire fire-active" />
+          <div className="motion">
+            <span className="ground" />
+            <div className="rings" aria-hidden="true">
+              <i className="sharp r1" />
+              <i className="soft r2" />
+              <i className="sharp r3" />
+            </div>
+            <span className="active-halo" />
+            <div className="breath">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img className="orb-img" src={orbSrc} alt="" />
+              <span className="fire-path">
+                <span className="fire fire-idle" />
+                <span className="fire fire-active" />
+              </span>
+            </div>
+            <span className="icon mic">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden>
+                <path
+                  d="M12 15.1a3.6 3.6 0 0 0 3.6-3.6V7.2a3.6 3.6 0 1 0-7.2 0v4.3a3.6 3.6 0 0 0 3.6 3.6Z"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M6.8 11.3a5.2 5.2 0 0 0 10.4 0M12 16.5v3M9.5 19.5h5"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </span>
+            <span className="icon dots">
+              <i />
+              <i />
+              <i />
+            </span>
+            <span className="icon wave">
+              <i />
+              <i />
+              <i />
+              <i />
+              <i />
             </span>
           </div>
-          <span className="icon mic">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden>
-              <path
-                d="M12 15.1a3.6 3.6 0 0 0 3.6-3.6V7.2a3.6 3.6 0 1 0-7.2 0v4.3a3.6 3.6 0 0 0 3.6 3.6Z"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
-              <path
-                d="M6.8 11.3a5.2 5.2 0 0 0 10.4 0M12 16.5v3M9.5 19.5h5"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
-            </svg>
-          </span>
-          <span className="icon dots">
-            <i />
-            <i />
-            <i />
-          </span>
-          <span className="icon wave">
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
-          </span>
         </div>
       </div>
     </div>

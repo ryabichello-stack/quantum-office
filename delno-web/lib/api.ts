@@ -158,6 +158,20 @@ export function apiKnowledgeUpload(token: string, title: string, body: string) {
   });
 }
 
+export type KnowledgeDocumentItem = {
+  document_id: string | null;
+  title: string | null;
+  source: string | null;
+  published_at: string | null;
+};
+
+export function apiKnowledgeList(token: string, limit = 50) {
+  return apiFetch<{ items: KnowledgeDocumentItem[]; total: number }>(
+    `/v1/tenant/knowledge/documents?limit=${limit}`,
+    token,
+  );
+}
+
 export function apiTenantMe(token: string) {
   return apiFetch<TenantMe>("/v1/tenant/me", token);
 }

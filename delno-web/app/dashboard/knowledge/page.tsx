@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { FileText, Sparkles } from "lucide-react";
 import { useRequireAuth } from "@/lib/auth";
-import { apiKnowledgeUpload } from "@/lib/api";
+import { apiKnowledgeList, apiKnowledgeUpload, type KnowledgeDocumentItem } from "@/lib/api";
 import { DashboardFrame } from "@/components/DashboardFrame";
 
 export default function KnowledgePage() {
@@ -13,6 +13,21 @@ export default function KnowledgePage() {
   const [body, setBody] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [documents, setDocuments] = useState<KnowledgeDocumentItem[]>([]);
+
+  const loadDocuments = useCallback(async () => {
+    if (!token) return;
+    try {
+      const result = await apiKnowledgeList(token);
+      setDocuments(result.items);
+    } catch {
+      /* list is optional UX */
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void loadDocuments();
+  }, [loadDocuments]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -21,8 +36,9 @@ export default function KnowledgePage() {
     setStatus("");
     try {
       await apiKnowledgeUpload(token, title.trim(), body.trim());
-      setStatus("Документ отправлен в базу знаний");
+      setStatus("Документ опубликован в базе знаний");
       setBody("");
+      await loadDocuments();
     } catch {
       setError("Не удалось загрузить документ");
     }
@@ -49,6 +65,29 @@ export default function KnowledgePage() {
           </Link>
         </p>
       </div>
+
+      {documents.length > 0 && (
+        <section className="settings-section" style={{ marginBottom: 16 }}>
+          <h2>Опубликованные документы</h2>
+          <ul className="kb-doc-list">
+            {documents.map((doc) => (
+              <li key={doc.document_id || doc.published_at || doc.title || "doc"}>
+                <span>
+                  <b>{doc.title || "Без названия"}</b>
+                  {doc.document_id && (
+                    <small style={{ display: "block", color: "#888", marginTop: 2 }}>{doc.document_id}</small>
+                  )}
+                </span>
+                {doc.published_at && (
+                  <time dateTime={doc.published_at}>
+                    {new Date(doc.published_at).toLocaleDateString("ru-RU")}
+                  </time>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <form className="settings-section kb-upload-form" onSubmit={onSubmit}>
         <h2>
