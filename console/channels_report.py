@@ -862,6 +862,8 @@ def channels_setup_info() -> dict[str, Any]:
     webhook_url = (
         f"{public_base}/api/channels/tilda/lead?token={secret}" if secret else None
     )
+    metrika = metrika_status()
+    oauth = metrika_authorize_url()
     return {
         "tilda": tilda_project_info(),
         "webhook": {
@@ -869,7 +871,12 @@ def channels_setup_info() -> dict[str, Any]:
             "url": webhook_url,
             "hint": "В Tilda: Настройки сайта → Формы → Webhook (или у блока формы).",
         },
-        "metrika": metrika_status(),
+        "metrika": {
+            **metrika,
+            "authorize_url": oauth.get("authorize_url") if oauth.get("ok") else None,
+            "authorize_error": None if oauth.get("ok") else oauth.get("error"),
+            "authorize_hint": oauth.get("hint"),
+        },
         "notify": {
             "text_bot_base": (os.getenv("TEXT_BOT_BASE") or "http://127.0.0.1:8011"),
             "office_webhook_configured": bool(

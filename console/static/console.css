@@ -275,7 +275,25 @@ body { min-height: 100vh; }
   font-size: 0.9rem;
 }
 
-.top-actions { display: flex; gap: 0.5rem; }
+.top-actions { display: flex; gap: 0.5rem; align-items: center; }
+button.icon-btn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0 !important;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+button.icon-btn svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+}
+button.icon-btn[hidden] { display: none !important; }
 
 main {
   padding: 0.35rem 1.75rem 2.5rem;
@@ -415,16 +433,24 @@ button.ghost {
   height: 30px;
 }
 button.ghost:hover { background: rgba(255, 255, 255, 0.06); }
-button.btn-quiet {
+button.btn-quiet,
+a.btn-quiet {
   background: transparent;
-  border-color: var(--line);
+  border: 1px solid var(--line);
   color: var(--ink);
   font-weight: 500;
   height: 28px;
   padding: 0 0.55rem;
   font-size: 0.78rem;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  box-sizing: border-box;
 }
-button.btn-quiet:hover {
+button.btn-quiet:hover,
+a.btn-quiet:hover {
   border-color: rgba(232, 90, 26, 0.45);
   color: var(--accent-strong);
   background: rgba(232, 90, 26, 0.05);
@@ -1144,6 +1170,8 @@ a#campSheetLink:hover { text-decoration: underline; }
 }
 .channels-columns .surface { margin: 0; }
 .channels-box .section-title { margin-top: 0; }
+.channels-setup { margin-top: 0.85rem; }
+.channels-setup[hidden] { display: none !important; }
 .mono-wrap code {
   display: inline-block;
   max-width: 100%;

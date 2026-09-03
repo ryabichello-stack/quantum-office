@@ -139,6 +139,23 @@ body.embedded .app { padding-top: 0.35rem; }
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+.icon-btn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0 !important;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.icon-btn svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+}
 
 .badge {
   display: inline-flex;

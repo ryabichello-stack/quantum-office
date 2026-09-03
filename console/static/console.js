@@ -28,6 +28,8 @@
   };
 
   let currentUser = null;
+  let currentTab = "status";
+  let channelsSetupOpen = false;
 
   async function api(path, opts = {}) {
     const headers = Object.assign({}, opts.headers || {});
@@ -109,6 +111,7 @@
     $("loginGate").hidden = true;
     $("appShell").hidden = false;
     if ($("userLabel")) $("userLabel").textContent = currentUser || "admin";
+    syncSettingsGear();
   }
 
   async function checkAuth() {
@@ -1000,6 +1003,7 @@
   }
 
   function setTab(name) {
+    currentTab = name || "status";
     document.querySelectorAll(".side-nav button").forEach((b) => b.classList.remove("active"));
     document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
     const btn = document.querySelector(`.side-nav button[data-tab="${name}"]`);
@@ -1009,6 +1013,7 @@
     const meta = TAB_META[name] || { title: name, hint: "" };
     if ($("pageTitle")) $("pageTitle").textContent = meta.title;
     if ($("pageHint")) $("pageHint").textContent = meta.hint;
+    syncSettingsGear();
     if (name === "campaign") {
       loadCampaignPanel();
     } else {
@@ -1021,24 +1026,20 @@
       });
     }
     if (name === "outreach") {
-      const frame = $("outreachFrame");
       const status = $("outreachLoadStatus");
-      if (frame && !frame.getAttribute("src")) {
-        if (status) {
-          status.hidden = false;
-          status.textContent = "Загрузка Outreach…";
-        }
-        frame.onload = () => {
-          if (status) status.hidden = true;
-        };
+      if (status && $("outreachFrame") && !$("outreachFrame").getAttribute("src")) {
+        status.hidden = false;
+        status.textContent = "Загрузка Outreach…";
+      }
+      ensureOutreachFrame((frame) => {
+        if (status) status.hidden = true;
         frame.onerror = () => {
           if (status) {
             status.hidden = false;
             status.textContent = "Не удалось загрузить Outreach UI";
           }
         };
-        frame.src = BASE + "/assets/outreach/index.html?v=cb-dial1";
-      }
+      });
     }
   }
 
@@ -1251,6 +1252,76 @@
     </div>`;
   }
 
+  function syncSettingsGear() {
+    const gear = $("btnSettings");
+    if (!gear) return;
+    const show = currentTab === "channels" || currentTab === "outreach";
+    gear.hidden = !show;
+    gear.setAttribute("aria-pressed", currentTab === "channels" && channelsSetupOpen ? "true" : "false");
+  }
+
+  function setChannelsSetupOpen(open) {
+    channelsSetupOpen = !!open;
+    const box = $("channelsSetup");
+    if (box) box.hidden = !channelsSetupOpen;
+    syncSettingsGear();
+  }
+
+  function ensureOutreachFrame(onReady) {
+    const frame = $("outreachFrame");
+    if (!frame) return;
+    const ready = () => {
+      if (typeof onReady === "function") onReady(frame);
+    };
+    if (frame.getAttribute("src")) {
+      try {
+        if (frame.contentWindow && frame.contentDocument && frame.contentDocument.readyState === "complete") {
+          ready();
+          return;
+        }
+      } catch (_) {}
+      frame.addEventListener("load", ready, { once: true });
+      return;
+    }
+    frame.addEventListener("load", ready, { once: true });
+    frame.src = BASE + "/assets/outreach/index.html?v=ops57";
+  }
+
+  function openOutreachSettings() {
+    ensureOutreachFrame((frame) => {
+      try {
+        frame.contentWindow.postMessage({ type: "qc-outreach-tab", tab: "settings" }, "*");
+      } catch (e) {
+        console.warn("outreach settings postMessage failed", e);
+      }
+    });
+  }
+
+  async function loadChannelsSetupOnly() {
+    try {
+      const r = await api("/api/channels/setup");
+      renderChannelsSetup(r);
+    } catch (e) {
+      const box = $("channelsSetupBody");
+      if (box) box.textContent = e.message || String(e);
+    }
+  }
+
+  function toggleChannelsSetup() {
+    setChannelsSetupOpen(!channelsSetupOpen);
+    if (channelsSetupOpen) loadChannelsSetupOnly().catch(() => {});
+  }
+
+  function onSettingsClick() {
+    if (currentTab === "channels") {
+      toggleChannelsSetup();
+      return;
+    }
+    if (currentTab === "outreach") {
+      openOutreachSettings();
+    }
+  }
+
   function renderChannelsSetup(setup) {
     const box = $("channelsSetupBody");
     if (!box) return;
@@ -1281,14 +1352,22 @@
         metrika.token_configured ? "есть ✓" : "нет"
       }</p>
       <div class="channels-toolbar-actions" style="margin-top:0.5rem">
-        <button type="button" class="btn-quiet" id="btnMetrikaAuth">Получить OAuth Метрики</button>
+        ${
+          metrika.authorize_url
+            ? `<a class="btn-quiet" id="btnMetrikaAuth" href="${esc(
+                metrika.authorize_url
+              )}" target="_blank" rel="noopener">Получить OAuth Метрики</a>`
+            : `<button type="button" class="btn-quiet" id="btnMetrikaAuth">Получить OAuth Метрики</button>`
+        }
       </div>
       <label class="field" style="margin-top:0.65rem">
         <span>Вставить access_token Метрики</span>
         <input type="text" id="metrikaTokenInput" placeholder="y0_… или access_token из адресной строки" autocomplete="off" />
       </label>
       <button type="button" class="primary" id="btnMetrikaSave" style="margin-top:0.4rem">Сохранить токен</button>
-      <p id="metrikaSetupMsg" class="muted tight" style="margin-top:0.4rem"></p>
+      <p id="metrikaSetupMsg" class="muted tight" style="margin-top:0.4rem">${esc(
+        metrika.authorize_error || metrika.authorize_hint || ""
+      )}</p>
     `;
     const copyBtn = $("btnCopyWebhook");
     if (copyBtn && wh.url) {
@@ -1297,12 +1376,20 @@
           await navigator.clipboard.writeText(wh.url);
           copyBtn.textContent = "Скопировано";
         } catch {
+          const urlEl = $("tildaWebhookUrl");
+          if (urlEl && window.getSelection) {
+            const range = document.createRange();
+            range.selectNodeContents(urlEl);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
           copyBtn.textContent = "Выделите URL вручную";
         }
       };
     }
     const authBtn = $("btnMetrikaAuth");
-    if (authBtn) {
+    if (authBtn && authBtn.tagName === "BUTTON") {
       authBtn.onclick = async () => {
         const msg = $("metrikaSetupMsg");
         try {
@@ -1312,7 +1399,7 @@
             return;
           }
           if (msg) msg.textContent = r.hint || "";
-          window.open(r.authorize_url, "_blank", "noopener");
+          if (r.authorize_url) location.assign(r.authorize_url);
         } catch (e) {
           if (msg) msg.textContent = e.message || String(e);
         }
@@ -1487,6 +1574,9 @@
 
   if ($("loginForm")) $("loginForm").addEventListener("submit", doLogin);
   if ($("btnLogout")) $("btnLogout").onclick = () => doLogout();
+  if ($("btnSettings")) {
+    $("btnSettings").addEventListener("click", onSettingsClick);
+  }
   if ($("btnRefresh")) {
     $("btnRefresh").onclick = () => refreshAll().catch((e) => alert(e.message));
   }

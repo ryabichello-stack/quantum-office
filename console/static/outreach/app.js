@@ -941,14 +941,35 @@
       .join("");
   }
 
+  function openSettingsTab() {
+    const btn = document.querySelector('.tabs button[data-tab="settings"]');
+    if (btn) {
+      btn.click();
+      return;
+    }
+    document.querySelectorAll(".tabs button").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+    const panel = $("tab-settings");
+    if (panel) panel.classList.add("active");
+    if ($("pageTitle")) $("pageTitle").textContent = titles.settings || "Настройки";
+    if ($("pageHint")) $("pageHint").textContent = hints.settings || "";
+    loadSettingsIntoForms()
+      .then(() => loadAntiban())
+      .catch((e) => {
+        if ($("antibanLog")) $("antibanLog").textContent = String(e);
+        logAction(e);
+      });
+  }
+
   function bindTabs() {
-    document.querySelectorAll(".tabs button").forEach((btn) => {
+    document.querySelectorAll(".tabs button[data-tab]").forEach((btn) => {
       btn.addEventListener("click", () => {
         document.querySelectorAll(".tabs button").forEach((b) => b.classList.remove("active"));
         document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
         btn.classList.add("active");
         const tab = btn.dataset.tab;
-        $("tab-" + tab).classList.add("active");
+        const panel = $("tab-" + tab);
+        if (panel) panel.classList.add("active");
         $("pageTitle").textContent = titles[tab] || tab;
         if ($("pageHint")) $("pageHint").textContent = hints[tab] || "";
         if (tab === "clients") loadClients().catch((e) => ($("clientsLog").textContent = String(e)));
@@ -1112,6 +1133,22 @@
 
     $("refreshBtn").addEventListener("click", () => {
       loadDash().catch(logAction);
+    });
+    if ($("openSettingsBtn")) {
+      $("openSettingsBtn").addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openSettingsTab();
+      });
+    }
+    window.addEventListener("message", (ev) => {
+      const data = ev && ev.data;
+      if (!data || data.type !== "qc-outreach-tab") return;
+      if (data.tab === "settings") openSettingsTab();
+      else {
+        const nav = document.querySelector(`.tabs button[data-tab="${data.tab}"]`);
+        if (nav) nav.click();
+      }
     });
 
     async function runControl(action) {

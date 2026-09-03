@@ -82,6 +82,12 @@
           <p class="top-hint" id="pageHint">Линия, робот, outreach, звонки и сервисы</p>
         </div>
         <div class="top-actions">
+          <button type="button" id="btnSettings" class="btn-quiet icon-btn" title="Настройки" aria-label="Настройки" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+              <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke-linejoin="round" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke-linejoin="round" />
+            </svg>
+          </button>
           <button type="button" id="btnRefresh" class="primary">Обновить</button>
         </div>
       </header>
@@ -106,7 +112,7 @@
             </div>
           </div>
           <div id="channelsBox" class="channels-box">Выберите период и нажмите «Показать».</div>
-          <div id="channelsSetup" class="surface" style="margin-top:0.85rem">
+          <div id="channelsSetup" class="surface channels-setup" hidden>
             <h2 class="section-title" style="margin-top:0">Подключение Tilda / Метрики</h2>
             <div id="channelsSetupBody" class="muted">Загрузка…</div>
           </div>
