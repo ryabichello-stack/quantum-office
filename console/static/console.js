@@ -1251,6 +1251,97 @@
     </div>`;
   }
 
+  function renderChannelsSetup(setup) {
+    const box = $("channelsSetupBody");
+    if (!box) return;
+    const tilda = (setup && setup.tilda) || {};
+    const wh = (setup && setup.webhook) || {};
+    const metrika = (setup && setup.metrika) || {};
+    const notify = (setup && setup.notify) || {};
+    box.innerHTML = `
+      <p><strong>Tilda:</strong> ${
+        tilda.available
+          ? esc((tilda.title || "проект") + (tilda.domain ? " · " + tilda.domain : ""))
+          : esc(tilda.error || "не настроена")
+      }</p>
+      <p><strong>Webhook заявок:</strong></p>
+      ${
+        wh.url
+          ? `<p class="mono-wrap"><code id="tildaWebhookUrl">${esc(wh.url)}</code>
+             <button type="button" class="btn-quiet" id="btnCopyWebhook">Копировать</button></p>
+             <p class="muted tight">${esc(wh.hint || "")}</p>`
+          : `<p class="muted">Секрет webhook не задан</p>`
+      }
+      <p><strong>Уведомления:</strong> ${
+        notify.office_webhook_configured
+          ? "Telegram/Max через text-bot ✓"
+          : "OFFICE_WEBHOOK_TOKEN не проброшен в console"
+      }</p>
+      <p><strong>Метрика:</strong> счётчик ${esc(metrika.counter_id || "—")} · токен ${
+        metrika.token_configured ? "есть ✓" : "нет"
+      }</p>
+      <div class="channels-toolbar-actions" style="margin-top:0.5rem">
+        <button type="button" class="btn-quiet" id="btnMetrikaAuth">Получить OAuth Метрики</button>
+      </div>
+      <label class="field" style="margin-top:0.65rem">
+        <span>Вставить access_token Метрики</span>
+        <input type="text" id="metrikaTokenInput" placeholder="y0_… или access_token из адресной строки" autocomplete="off" />
+      </label>
+      <button type="button" class="primary" id="btnMetrikaSave" style="margin-top:0.4rem">Сохранить токен</button>
+      <p id="metrikaSetupMsg" class="muted tight" style="margin-top:0.4rem"></p>
+    `;
+    const copyBtn = $("btnCopyWebhook");
+    if (copyBtn && wh.url) {
+      copyBtn.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(wh.url);
+          copyBtn.textContent = "Скопировано";
+        } catch {
+          copyBtn.textContent = "Выделите URL вручную";
+        }
+      };
+    }
+    const authBtn = $("btnMetrikaAuth");
+    if (authBtn) {
+      authBtn.onclick = async () => {
+        const msg = $("metrikaSetupMsg");
+        try {
+          const r = await api("/api/channels/metrika/authorize-url");
+          if (!r.ok) {
+            if (msg) msg.textContent = r.error || "не удалось";
+            return;
+          }
+          if (msg) msg.textContent = r.hint || "";
+          window.open(r.authorize_url, "_blank", "noopener");
+        } catch (e) {
+          if (msg) msg.textContent = e.message || String(e);
+        }
+      };
+    }
+    const saveBtn = $("btnMetrikaSave");
+    if (saveBtn) {
+      saveBtn.onclick = async () => {
+        const msg = $("metrikaSetupMsg");
+        const tok = ($("metrikaTokenInput") && $("metrikaTokenInput").value) || "";
+        try {
+          const r = await api("/api/channels/metrika/token", {
+            method: "POST",
+            body: JSON.stringify({ token: tok }),
+          });
+          if (msg) {
+            const m = r.metrika || {};
+            msg.textContent = m.available
+              ? `Ок · визиты за 7 дн.: ${m.visits}, пользователи: ${m.users}`
+              : `Сохранено, но API: ${m.error || "нет данных"}`;
+          }
+          loadChannelsReport().catch(() => {});
+        } catch (e) {
+          if (msg) msg.textContent = e.message || String(e);
+        }
+      };
+    }
+  }
+
   async function loadChannelsReport() {
     initChannelsDates();
     const from = ($("chFrom") && $("chFrom").value) || "";
@@ -1269,11 +1360,17 @@
     const tg = (r.messengers && r.messengers.telegram) || {};
     const mx = (r.messengers && r.messengers.max) || {};
     const period = r.period || {};
+    const setup = r.setup || {};
+    renderChannelsSetup(setup);
 
     const emailOpenPct =
       email.delivered > 0
         ? ((100 * (email.opened || 0)) / email.delivered).toFixed(1) + "%"
         : "—";
+
+    const metrikaLine = tilda.metrika && tilda.metrika.available
+      ? `визиты ${tilda.visits} · пользователи ${tilda.users ?? "—"} · просмотры ${tilda.pageviews ?? "—"}`
+      : (tilda.metrika && tilda.metrika.error) || "визиты: подключите OAuth Метрики";
 
     box.innerHTML = `
       <p class="muted tight">Период: <strong>${esc(period.from)}</strong> — <strong>${esc(
@@ -1285,11 +1382,7 @@
         ${kpiCard("Max · чаты", s.max_chats ?? 0, (s.max_messages ?? 0) + " сообщ. от людей")}
         ${kpiCard("Email · отправлено", s.email_sent ?? 0, "открыто " + (s.email_opened ?? 0) + " · " + emailOpenPct)}
         ${kpiCard("Звонки · входящие", s.calls_inbound ?? 0, "исходящие " + (s.calls_outbound ?? 0))}
-        ${kpiCard(
-          "Tilda · заявки",
-          s.tilda_leads ?? 0,
-          s.tilda_visits != null ? "визиты " + s.tilda_visits : "визиты: подключите Metrika"
-        )}
+        ${kpiCard("Tilda · заявки", s.tilda_leads ?? 0, metrikaLine)}
       </div>
 
       <div class="channels-columns">
@@ -1336,7 +1429,12 @@
           <table class="calls-table"><tbody>
             <tr><td>Заявки (формы)</td><td>${esc(tilda.leads ?? 0)}</td></tr>
             <tr><td>Визиты</td><td>${esc(tilda.visits != null ? tilda.visits : "—")}</td></tr>
-            <tr><td>Конверсия</td><td>${esc(
+            <tr><td>Пользователи</td><td>${esc(tilda.users != null ? tilda.users : "—")}</td></tr>
+            <tr><td>Просмотры</td><td>${esc(tilda.pageviews != null ? tilda.pageviews : "—")}</td></tr>
+            <tr><td>Отказы</td><td>${esc(
+              tilda.bounce_rate_pct != null ? tilda.bounce_rate_pct + "%" : "—"
+            )}</td></tr>
+            <tr><td>Конверсия заявок</td><td>${esc(
               tilda.conversion_pct != null ? tilda.conversion_pct + "%" : "—"
             )}</td></tr>
           </tbody></table>

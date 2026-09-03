@@ -24,6 +24,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from datetime import datetime, timedelta, timezone
 
 import channels_report
 
@@ -870,7 +871,41 @@ async def api_tilda_lead(request: Request) -> dict[str, Any]:
     else:
         form = await request.form()
         payload = {k: form.get(k) for k in form.keys()}
-    return channels_report.store_tilda_lead(payload)
+    return channels_report.ingest_tilda_lead(payload)
+
+
+@app.get("/api/channels/setup")
+def api_channels_setup(x_console_token: str | None = Header(default=None)) -> dict[str, Any]:
+    _require_token(x_console_token)
+    return {"ok": True, **channels_report.channels_setup_info()}
+
+
+@app.get("/api/channels/metrika/authorize-url")
+def api_metrika_authorize_url(
+    x_console_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_token(x_console_token)
+    return channels_report.metrika_authorize_url()
+
+
+class MetrikaTokenBody(BaseModel):
+    token: str = Field(..., min_length=8, max_length=4000)
+
+
+@app.post("/api/channels/metrika/token")
+def api_metrika_token(
+    body: MetrikaTokenBody,
+    x_console_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    _require_token(x_console_token)
+    saved = channels_report.save_metrika_token(body.token)
+    if not saved.get("ok"):
+        raise HTTPException(400, saved.get("error") or "save failed")
+    # Smoke-check last 7 days
+    end = datetime.now(timezone.utc).date()
+    start = end - timedelta(days=6)
+    stats = channels_report.fetch_metrika_stats(start, end)
+    return {"ok": True, "saved": True, "metrika": stats, "status": channels_report.metrika_status()}
 
 
 @app.get("/api/status")

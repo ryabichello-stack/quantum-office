@@ -1,64 +1,42 @@
-# Каналы — единый отчёт в пульте
+# Каналы — Tilda + Яндекс.Метрика
 
-Раздел **Каналы** в [Центре управления](https://a.47z.ru/_quantum_console/): Telegram, Max, email-рассылка, звонки (вх/исх), заявки с Tilda за выбранный период.
+## Уже на проде
+
+В пульте → **Каналы**:
+
+1. **Webhook Tilda** — заявки пишутся в БД и уходят владельцу в **Telegram + Max**.
+2. **Метрика** — счётчик `104241036` (с сайта quantumpayouts.ru). Нужен один раз OAuth-токен.
+
+## Tilda: куда вставить webhook
+
+1. Откройте пульт → **Каналы** → блок «Подключение» → **Копировать** URL.
+2. В Tilda: сайт **Выплаты** → **Настройки сайта → Формы → Webhook**  
+   (или в настройках конкретного блока формы → отправка данных → Webhook).
+3. Вставьте URL вида:
+   `https://a.47z.ru/_quantum_console/api/channels/tilda/lead?token=…`
+4. Сохраните, отправьте тестовую заявку с сайта.
+
+Ответ API: `ok` + `notify.telegram` / `notify.max`.
+
+Секрет: `TILDA_WEBHOOK_SECRET` в `/opt/quantum-console/.env` (fallback — `CONSOLE_TOKEN`).
+
+## Метрика: выдать доступ (1 раз)
+
+1. В пульте **Каналы** → **Получить OAuth Метрики** (откроется Яндекс).
+2. Войдите аккаунтом, у которого есть доступ к счётчику **104241036**.
+3. Разрешите `metrika:read`.
+4. Из адресной строки скопируйте `access_token=…` (после `#`) и вставьте в поле пульта → **Сохранить токен**.
+
+Токен пишется в `TILDA_METRIKA_TOKEN` (mode 600). После этого в отчёте появятся визиты, пользователи, просмотры, отказы и конверсия заявок.
+
+Если приложение OAuth ругается на scope — в [oauth.yandex.ru](https://oauth.yandex.ru/) у приложения добавьте право **Яндекс.Метрика: чтение** (`metrika:read`), либо создайте отдельное приложение и пропишите `METRIKA_OAUTH_CLIENT_ID`.
 
 ## API
 
-```http
-GET /_quantum_console/api/channels/report?from_day=2026-08-01&to_day=2026-09-03
-```
-
-Auth: сессия пульта или `X-Console-Token`.
-
-## Источники
-
-| Канал | Откуда |
-|-------|--------|
-| Telegram / Max | `/opt/ava-text-bot/data/sessions.db` (сообщения и чаты) |
-| Email | `/opt/ava-outreach/data/modules.db` → `send_events` (без `@quantumlabs.ru`) |
-| Звонки | `/root/ava/data/call_history.db` → `call_records` (`outbound*` = исходящие, остальное ≈ входящие) |
-| Tilda заявки | webhook → SQLite `/opt/quantum-console/data/tilda_leads.db` |
-| Tilda визиты | опционально Yandex Metrika |
-
-## Подключение Tilda (заявки)
-
-1. В `.env` пульта задайте секрет (или используйте `CONSOLE_TOKEN`):
-
-```bash
-TILDA_WEBHOOK_SECRET=длинный-секрет
-```
-
-2. В Tilda: **Настройки сайта → Формы → Webhook** (или «отправка данных» у формы):
-
-```text
-https://a.47z.ru/_quantum_console/api/channels/tilda/lead?token=длинный-секрет
-```
-
-3. Отправьте тестовую заявку — она появится в разделе «Каналы».
-
-Tilda **не отдаёт** готовую публичную статистику визитов в наш API. Для посещений:
-
-- подключите счётчик **Яндекс.Метрики** на сайт Tilda;
-- в `.env` пульта:
-
-```bash
-TILDA_METRIKA_COUNTER=12345678
-TILDA_METRIKA_TOKEN=y0_oauth_token
-```
-
-Тогда в отчёте появятся визиты и конверсия заявок.
-
-## Деплой
-
-Скопировать в `/opt/quantum-console/`:
-
-- `main.py`
-- `channels_report.py`
-- `static/` (index.html, console.js, console.css)
-- `requirements.txt` (+ `python-multipart`)
-
-```bash
-cd /opt/quantum-console && ./venv/bin/pip install -r requirements.txt
-systemctl restart quantum-console
-curl -sf http://127.0.0.1:8013/health
-```
+| Метод | Назначение |
+|-------|------------|
+| `GET /api/channels/report` | сводный отчёт |
+| `GET /api/channels/setup` | webhook URL + статус Метрики |
+| `POST /api/channels/tilda/lead?token=` | публичный webhook форм |
+| `GET /api/channels/metrika/authorize-url` | ссылка OAuth |
+| `POST /api/channels/metrika/token` | сохранить access_token |

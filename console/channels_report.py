@@ -119,32 +119,48 @@ def _ensure_tilda_db() -> Path:
     return path
 
 
+def _pick_field(payload: dict[str, Any], *names: str) -> str:
+    lower_map = {str(k).lower(): v for k, v in payload.items()}
+    for name in names:
+        if name in payload and payload[name] not in (None, ""):
+            return str(payload[name]).strip()
+        low = name.lower()
+        if low in lower_map and lower_map[low] not in (None, ""):
+            return str(lower_map[low]).strip()
+    # Fuzzy: only for labels longer than 3 chars (avoid "id" ⊂ "formid")
+    for key, val in payload.items():
+        kl = str(key).lower()
+        if val in (None, ""):
+            continue
+        for name in names:
+            n = name.lower()
+            if len(n) <= 3:
+                continue
+            if n in kl:
+                return str(val).strip()
+    return ""
+
+
+def parse_tilda_lead(payload: dict[str, Any]) -> dict[str, str]:
+    return {
+        "formid": _pick_field(payload, "formid", "formname")[:120],
+        "tranid": _pick_field(payload, "tranid", "Id", "id")[:120],
+        "name": _pick_field(payload, "Name", "name", "Имя", "ФИО", "fio")[:200],
+        "phone": _pick_field(payload, "Phone", "phone", "Телефон", "tel", "mobile")[:80],
+        "email": _pick_field(payload, "Email", "email", "Почта", "E-mail", "mail")[:200],
+        "company": _pick_field(payload, "Company", "company", "Компания", "Организация")[:300],
+        "comment": _pick_field(
+            payload, "Comment", "comment", "Сообщение", "Текст", "Message", "Запрос"
+        )[:2000],
+        "page": _pick_field(payload, "page", "referer", "url", "Page")[:400],
+    }
+
+
 def store_tilda_lead(payload: dict[str, Any]) -> dict[str, Any]:
     """Persist a Tilda webhook / forms payload."""
     path = _ensure_tilda_db()
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
-    # Tilda sends flat fields + nested; keep common ones handy.
-    formid = str(payload.get("formid") or payload.get("formname") or "")[:120]
-    tranid = str(payload.get("tranid") or payload.get("Id") or "")[:120]
-    name = str(
-        payload.get("Name")
-        or payload.get("name")
-        or payload.get("Имя")
-        or ""
-    )[:200]
-    phone = str(
-        payload.get("Phone")
-        or payload.get("phone")
-        or payload.get("Телефон")
-        or ""
-    )[:80]
-    email = str(
-        payload.get("Email")
-        or payload.get("email")
-        or payload.get("Почта")
-        or ""
-    )[:200]
-    page = str(payload.get("page") or payload.get("referer") or "")[:400]
+    parsed = parse_tilda_lead(payload)
     conn = sqlite3.connect(path)
     try:
         cur = conn.execute(
@@ -154,20 +170,74 @@ def store_tilda_lead(payload: dict[str, Any]) -> dict[str, Any]:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                formid,
-                tranid,
-                name,
-                phone,
-                email,
-                page,
+                parsed["formid"],
+                parsed["tranid"],
+                parsed["name"],
+                parsed["phone"],
+                parsed["email"],
+                parsed["page"],
                 json.dumps(payload, ensure_ascii=False)[:20000],
                 now,
             ),
         )
         conn.commit()
-        return {"ok": True, "id": cur.lastrowid, "created_at": now}
+        return {
+            "ok": True,
+            "id": cur.lastrowid,
+            "created_at": now,
+            "lead": parsed,
+        }
     finally:
         conn.close()
+
+
+def notify_tilda_lead(lead: dict[str, Any]) -> dict[str, Any]:
+    """Push lead to text-bot owner alerts (Telegram + Max)."""
+    base = (os.getenv("TEXT_BOT_BASE") or "http://127.0.0.1:8011").rstrip("/")
+    token = (
+        os.getenv("OFFICE_WEBHOOK_TOKEN")
+        or os.getenv("WEBHOOK_TOKEN")
+        or ""
+    ).strip()
+    if not token:
+        return {"ok": False, "error": "OFFICE_WEBHOOK_TOKEN not configured in console"}
+    body = {
+        "name": lead.get("name") or "",
+        "phone": lead.get("phone") or "",
+        "email": lead.get("email") or "",
+        "company": lead.get("company") or "",
+        "comment": lead.get("comment") or "",
+        "source": "tilda",
+        "page": lead.get("page") or "",
+    }
+    data = json.dumps(body).encode("utf-8")
+    req = Request(
+        f"{base}/api/owner-alert/form",
+        data=data,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "X-Webhook-Token": token,
+        },
+    )
+    try:
+        with urlopen(req, timeout=12) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                parsed = {"raw": raw[:500]}
+            return {"ok": True, "status": getattr(resp, "status", 200), "result": parsed}
+    except (URLError, TimeoutError, OSError) as exc:
+        logger.warning("tilda lead notify failed: %s", exc)
+        return {"ok": False, "error": str(exc)}
+
+
+def ingest_tilda_lead(payload: dict[str, Any]) -> dict[str, Any]:
+    stored = store_tilda_lead(payload)
+    notify = notify_tilda_lead(stored.get("lead") or {})
+    stored["notify"] = notify
+    return stored
 
 
 def _messengers_stats(start: date, end: date) -> dict[str, Any]:
@@ -570,15 +640,21 @@ def _tilda_stats(start: date, end: date) -> dict[str, Any]:
                 (start.isoformat(), end.isoformat()),
             )
         ]
-        visits = _metrika_visits(start, end)
+        metrika = fetch_metrika_stats(start, end)
+        visits = metrika.get("visits")
         conversion = None
-        if visits is not None and visits > 0:
+        if isinstance(visits, int) and visits > 0:
             conversion = round(100.0 * int(leads) / visits, 2)
         return {
             "available": True,
             "leads": int(leads),
             "visits": visits,
+            "users": metrika.get("users"),
+            "pageviews": metrika.get("pageviews"),
+            "bounce_rate_pct": metrika.get("bounce_rate_pct"),
+            "avg_visit_duration_sec": metrika.get("avg_visit_duration_sec"),
             "conversion_pct": conversion,
+            "metrika": metrika,
             "by_day": by_day,
             "recent": recent,
             "notes": empty["notes"],
@@ -590,36 +666,217 @@ def _tilda_stats(start: date, end: date) -> dict[str, Any]:
         conn.close()
 
 
-def _metrika_visits(start: date, end: date) -> int | None:
-    """Optional Yandex Metrika visits for the site (Tilda-hosted or custom domain)."""
+def metrika_status() -> dict[str, Any]:
     counter = (os.getenv("TILDA_METRIKA_COUNTER") or os.getenv("METRIKA_COUNTER_ID") or "").strip()
     token = (os.getenv("TILDA_METRIKA_TOKEN") or os.getenv("METRIKA_OAUTH_TOKEN") or "").strip()
-    if not counter or not token:
-        return None
-    # Management API: https://api-metrika.yandex.net/stat/v1/data
-    url = (
-        "https://api-metrika.yandex.net/stat/v1/data"
-        f"?ids={urllib_quote(counter)}"
-        f"&metrics=ym:s:visits"
-        f"&date1={start.isoformat()}"
-        f"&date2={end.isoformat()}"
+    client_id = (
+        os.getenv("METRIKA_OAUTH_CLIENT_ID")
+        or os.getenv("YANDEX_OAUTH_CLIENT_ID")
+        or ""
+    ).strip()
+    return {
+        "counter_id": counter or None,
+        "token_configured": bool(token),
+        "oauth_client_configured": bool(client_id),
+        "ready": bool(counter and token),
+    }
+
+
+def metrika_authorize_url(*, force_confirm: bool = True) -> dict[str, Any]:
+    """Build Yandex OAuth URL for metrika:read (token in redirect fragment)."""
+    client_id = (
+        os.getenv("METRIKA_OAUTH_CLIENT_ID")
+        or os.getenv("YANDEX_OAUTH_CLIENT_ID")
+        or ""
+    ).strip()
+    if not client_id:
+        return {
+            "ok": False,
+            "error": "Задайте METRIKA_OAUTH_CLIENT_ID или YANDEX_OAUTH_CLIENT_ID",
+        }
+    from urllib.parse import urlencode
+
+    params = {
+        "response_type": "token",
+        "client_id": client_id,
+        "scope": "metrika:read",
+    }
+    if force_confirm:
+        params["force_confirm"] = "yes"
+    url = "https://oauth.yandex.ru/authorize?" + urlencode(params)
+    return {
+        "ok": True,
+        "authorize_url": url,
+        "hint": (
+            "Откройте ссылку под Яндекс-аккаунтом владельца счётчика, "
+            "разрешите доступ, скопируйте access_token из адресной строки "
+            "(после #access_token=...) и вставьте в пульт."
+        ),
+        "counter_id": (os.getenv("TILDA_METRIKA_COUNTER") or "").strip() or None,
+    }
+
+
+def save_metrika_token(token: str) -> dict[str, Any]:
+    """Persist OAuth token into console .env (TILDA_METRIKA_TOKEN)."""
+    tok = (token or "").strip()
+    if tok.lower().startswith("bearer "):
+        tok = tok[7:].strip()
+    # Fragment paste sometimes includes extras
+    if "access_token=" in tok:
+        from urllib.parse import parse_qs
+
+        frag = tok.split("access_token=", 1)[-1]
+        tok = frag.split("&", 1)[0].strip()
+    if not tok or len(tok) < 16:
+        return {"ok": False, "error": "пустой или слишком короткий token"}
+    env_path = Path(os.getenv("CONSOLE_ENV_PATH", "/opt/quantum-console/.env"))
+    try:
+        lines = env_path.read_text().splitlines() if env_path.is_file() else []
+        out: list[str] = []
+        seen = False
+        for line in lines:
+            if line.startswith("TILDA_METRIKA_TOKEN=") or line.startswith("METRIKA_OAUTH_TOKEN="):
+                if not seen:
+                    out.append(f"TILDA_METRIKA_TOKEN={tok}")
+                    seen = True
+                continue
+            out.append(line)
+        if not seen:
+            out.append(f"TILDA_METRIKA_TOKEN={tok}")
+        env_path.parent.mkdir(parents=True, exist_ok=True)
+        env_path.write_text("\n".join(out).rstrip() + "\n")
+        try:
+            env_path.chmod(0o600)
+        except OSError:
+            pass
+        os.environ["TILDA_METRIKA_TOKEN"] = tok
+        return {"ok": True, "token_configured": True, "env_path": str(env_path)}
+    except OSError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def fetch_metrika_stats(start: date, end: date) -> dict[str, Any]:
+    """Yandex Metrika totals for the period."""
+    counter = (os.getenv("TILDA_METRIKA_COUNTER") or os.getenv("METRIKA_COUNTER_ID") or "").strip()
+    token = (os.getenv("TILDA_METRIKA_TOKEN") or os.getenv("METRIKA_OAUTH_TOKEN") or "").strip()
+    out: dict[str, Any] = {
+        "available": False,
+        "counter_id": counter or None,
+        "visits": None,
+        "users": None,
+        "pageviews": None,
+        "bounce_rate_pct": None,
+        "avg_visit_duration_sec": None,
+        "error": None,
+    }
+    if not counter:
+        out["error"] = "нет TILDA_METRIKA_COUNTER"
+        return out
+    if not token:
+        out["error"] = "нет OAuth-токена (TILDA_METRIKA_TOKEN)"
+        return out
+    from urllib.parse import urlencode
+
+    metrics = ",".join(
+        [
+            "ym:s:visits",
+            "ym:s:users",
+            "ym:s:pageviews",
+            "ym:s:bounceRate",
+            "ym:s:avgVisitDurationSeconds",
+        ]
     )
+    qs = urlencode(
+        {
+            "ids": counter,
+            "metrics": metrics,
+            "date1": start.isoformat(),
+            "date2": end.isoformat(),
+        }
+    )
+    url = f"https://api-metrika.yandex.net/stat/v1/data?{qs}"
     try:
         req = Request(url, headers={"Authorization": f"OAuth {token}"})
-        with urlopen(req, timeout=8) as resp:
+        with urlopen(req, timeout=12) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         totals = data.get("totals") or []
-        if totals:
-            return int(float(totals[0]))
+        if len(totals) >= 5:
+            out.update(
+                {
+                    "available": True,
+                    "visits": int(float(totals[0])),
+                    "users": int(float(totals[1])),
+                    "pageviews": int(float(totals[2])),
+                    "bounce_rate_pct": round(float(totals[3]), 2),
+                    "avg_visit_duration_sec": round(float(totals[4]), 1),
+                    "error": None,
+                }
+            )
+        else:
+            out["error"] = f"unexpected totals: {totals!r}"
     except (URLError, TimeoutError, ValueError, KeyError, IndexError, TypeError) as exc:
-        logger.warning("metrika visits failed: %s", exc)
-    return None
+        logger.warning("metrika stats failed: %s", exc)
+        out["error"] = str(exc)
+    return out
 
 
-def urllib_quote(value: str) -> str:
-    from urllib.parse import quote
+def _metrika_visits(start: date, end: date) -> int | None:
+    stats = fetch_metrika_stats(start, end)
+    visits = stats.get("visits")
+    return int(visits) if isinstance(visits, int) else None
 
-    return quote(str(value), safe="")
+
+def tilda_project_info() -> dict[str, Any]:
+    pub = (os.getenv("TILDA_PUBLIC_KEY") or "").strip()
+    sec = (os.getenv("TILDA_SECRET_KEY") or "").strip()
+    pid = (os.getenv("TILDA_PROJECT_ID") or "").strip()
+    if not (pub and sec and pid):
+        return {"available": False, "error": "нет TILDA_PUBLIC_KEY/SECRET/PROJECT_ID"}
+    from urllib.parse import urlencode
+
+    qs = urlencode({"publickey": pub, "secretkey": sec, "projectid": pid})
+    url = f"https://api.tildacdn.info/v1/getproject/?{qs}"
+    try:
+        with urlopen(url, timeout=12) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        res = data.get("result") or {}
+        return {
+            "available": data.get("status") == "FOUND",
+            "id": res.get("id") or pid,
+            "title": res.get("title"),
+            "domain": res.get("customdomain"),
+        }
+    except (URLError, TimeoutError, ValueError) as exc:
+        return {"available": False, "error": str(exc)}
+
+
+def channels_setup_info() -> dict[str, Any]:
+    secret = (
+        os.getenv("TILDA_WEBHOOK_SECRET", "").strip()
+        or os.getenv("CONSOLE_TOKEN", "").strip()
+    )
+    public_base = (
+        os.getenv("CONSOLE_PUBLIC_BASE")
+        or "https://a.47z.ru/_quantum_console"
+    ).rstrip("/")
+    webhook_url = (
+        f"{public_base}/api/channels/tilda/lead?token={secret}" if secret else None
+    )
+    return {
+        "tilda": tilda_project_info(),
+        "webhook": {
+            "configured": bool(secret),
+            "url": webhook_url,
+            "hint": "В Tilda: Настройки сайта → Формы → Webhook (или у блока формы).",
+        },
+        "metrika": metrika_status(),
+        "notify": {
+            "text_bot_base": (os.getenv("TEXT_BOT_BASE") or "http://127.0.0.1:8011"),
+            "office_webhook_configured": bool(
+                (os.getenv("OFFICE_WEBHOOK_TOKEN") or os.getenv("WEBHOOK_TOKEN") or "").strip()
+            ),
+        },
+    }
 
 
 def build_channels_report(
@@ -660,5 +917,6 @@ def build_channels_report(
         "email": email,
         "calls": calls,
         "tilda": tilda,
+        "setup": channels_setup_info(),
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }

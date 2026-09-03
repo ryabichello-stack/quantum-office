@@ -4,5 +4,6 @@
 
 ### Console — channels report
 - New **Каналы** tab: Telegram / Max / email / calls / Tilda for a date range.
-- `GET /api/channels/report`, Tilda forms webhook `POST /api/channels/tilda/lead`.
-- Optional Yandex Metrika visits via `TILDA_METRIKA_*` env (see `docs/CHANNELS_REPORT.md`).
+- Tilda forms webhook → SQLite + owner notify (Telegram/Max via text-bot).
+- Yandex Metrika: counter + OAuth token setup in UI; visits/users/pageviews/bounce.
+- Docs: `docs/CHANNELS_REPORT.md`.
