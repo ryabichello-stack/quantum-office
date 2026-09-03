@@ -84,6 +84,9 @@ def list_conversations(
                 "id": str(row.id),
                 "channel": row.channel,
                 "status": row.status,
+                "contact_ref": row.contact_ref,
+                "visitor_name": (row.meta or {}).get("visitor_name") if isinstance(row.meta, dict) else None,
+                "lead_id": (row.meta or {}).get("lead_id") if isinstance(row.meta, dict) else None,
                 "created_at": row.created_at.isoformat() if row.created_at else None,
             }
             for row in rows

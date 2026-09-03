@@ -49,6 +49,7 @@ def list_leads(
                 "inn": row.inn,
                 "source": row.source,
                 "status": row.status,
+                "conversation_id": str(row.conversation_id) if row.conversation_id else None,
                 "party_enriched": row.party_json is not None,
                 "created_at": row.created_at.isoformat() if row.created_at else None,
             }

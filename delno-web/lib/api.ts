@@ -25,6 +25,9 @@ export type ConversationItem = {
   id: string;
   channel: string;
   status: string;
+  contact_ref?: string | null;
+  visitor_name?: string | null;
+  lead_id?: string | null;
   created_at: string | null;
 };
 

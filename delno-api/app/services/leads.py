@@ -1,3 +1,5 @@
+import uuid
+
 import httpx
 
 from sqlalchemy.orm import Session
@@ -54,6 +56,7 @@ def create_lead_record(
     audit_action: str = "lead.create",
     event_source: str = "api.leads",
     channel: str | None = None,
+    conversation_id: uuid.UUID | None = None,
 ) -> tuple[Lead, dict]:
     """Create lead, optional INN enrichment, audit + lead.created event."""
     lead = Lead(
@@ -64,6 +67,7 @@ def create_lead_record(
         email=email.strip() if email else None,
         company=company.strip() if company else None,
         website=website.strip() if website else None,
+        conversation_id=conversation_id,
     )
     db.add(lead)
     db.flush()

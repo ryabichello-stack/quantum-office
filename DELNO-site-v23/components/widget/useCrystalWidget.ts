@@ -11,7 +11,13 @@ type WidgetAnswer = {
   message?: string;
   conversation_id?: string;
   next_step?: string;
+  lead?: { id?: string; name?: string; phone?: string } | null;
 };
+
+function isLikelyPhone(text: string) {
+  const digits = text.replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 11;
+}
 
 const SITE_KEY = process.env.NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY || "demo_dlno";
 
@@ -49,6 +55,63 @@ export function useCrystalWidgetChat(apiPath: string) {
   const nameRef = useRef("");
   const askedNameRef = useRef(false);
   const awaitingNameRef = useRef(false);
+  const awaitingPhoneRef = useRef(false);
+
+  const persistSession = useCallback((id: string) => {
+    sessionIdRef.current = id;
+    setSessionId(id);
+    localStorage.setItem("delno_widget_session", id);
+  }, []);
+
+  const syncVisitor = useCallback(
+    async (fields: { name?: string; phone?: string }) => {
+      if (!sessionIdRef.current) return null;
+      try {
+        const res = await fetch(`${apiPath}?action=visitor`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            site_key: SITE_KEY,
+            session_id: sessionIdRef.current,
+            visitor_id: visitorIdRef.current,
+            name: fields.name || null,
+            phone: fields.phone || null,
+          }),
+        });
+        if (!res.ok) return null;
+        return (await res.json()) as { next_step?: string; lead?: WidgetAnswer["lead"] };
+      } catch {
+        return null;
+      }
+    },
+    [apiPath],
+  );
+
+  const ensureSession = useCallback(async () => {
+    if (sessionIdRef.current) return sessionIdRef.current;
+    try {
+      const res = await fetch(`${apiPath}?action=session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          site_key: SITE_KEY,
+          visitor_id: visitorIdRef.current,
+          page_url: typeof window !== "undefined" ? window.location.href : null,
+          referrer: typeof document !== "undefined" ? document.referrer || null : null,
+          channel: "web",
+        }),
+      });
+      if (!res.ok) return null;
+      const payload = (await res.json()) as { session_id?: string };
+      if (payload.session_id) {
+        persistSession(payload.session_id);
+        return payload.session_id;
+      }
+    } catch {
+      /* first message will create session */
+    }
+    return null;
+  }, [apiPath, persistSession]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -60,14 +123,10 @@ export function useCrystalWidgetChat(apiPath: string) {
     if (storedSession) {
       sessionIdRef.current = storedSession;
       setSessionId(storedSession);
+    } else {
+      void ensureSession();
     }
-  }, []);
-
-  const persistSession = useCallback((id: string) => {
-    sessionIdRef.current = id;
-    setSessionId(id);
-    localStorage.setItem("delno_widget_session", id);
-  }, []);
+  }, [ensureSession]);
 
   const requestAnswer = useCallback(
     async (value: string): Promise<{ answer: string | null; payload: WidgetAnswer | null; error?: string }> => {
@@ -82,6 +141,7 @@ export function useCrystalWidgetChat(apiPath: string) {
             message: value,
             visitor: {
               name: nameRef.current || null,
+              phone: null,
               page_url: typeof window !== "undefined" ? window.location.href : null,
               referrer: typeof document !== "undefined" ? document.referrer || null : null,
             },
@@ -111,9 +171,9 @@ export function useCrystalWidgetChat(apiPath: string) {
     [apiPath, persistSession],
   );
 
-  const maybeAskName = useCallback(async (payload: WidgetAnswer | null, messageLength: number) => {
-    const backendRequestsName = payload?.next_step === "ask_name";
-    if (!nameRef.current && (!askedNameRef.current || backendRequestsName) && messageLength >= 8) {
+  const maybeAskFollowUp = useCallback(async (payload: WidgetAnswer | null, messageLength: number) => {
+    const step = payload?.next_step;
+    if (step === "ask_name" && !nameRef.current && messageLength >= 8) {
       await new Promise((r) => setTimeout(r, 260));
       setMessages((prev) => [
         ...prev,
@@ -122,6 +182,15 @@ export function useCrystalWidgetChat(apiPath: string) {
       awaitingNameRef.current = true;
       askedNameRef.current = true;
       localStorage.setItem("delno_widget_asked_name", "1");
+      return;
+    }
+    if (step === "ask_phone" && nameRef.current && !localStorage.getItem("delno_widget_lead_id")) {
+      await new Promise((r) => setTimeout(r, 260));
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: "Оставьте номер телефона — передам коллеге, если понадобится связаться." },
+      ]);
+      awaitingPhoneRef.current = true;
     }
   }, []);
 
@@ -138,8 +207,28 @@ export function useCrystalWidgetChat(apiPath: string) {
         nameRef.current = value;
         localStorage.setItem("delno_widget_name", value);
         awaitingNameRef.current = false;
+        await ensureSession();
+        const synced = await syncVisitor({ name: value });
         const greeting = personalizedGreeting(value);
         setMessages((prev) => [...prev, { role: "assistant", text: greeting }]);
+        if (synced?.next_step === "ask_phone") {
+          await maybeAskFollowUp({ next_step: "ask_phone" }, value.length);
+        }
+        setBusy(false);
+        return;
+      }
+
+      if (awaitingPhoneRef.current && isLikelyPhone(value)) {
+        await new Promise((r) => setTimeout(r, 430));
+        awaitingPhoneRef.current = false;
+        const synced = await syncVisitor({ phone: value });
+        if (synced?.lead?.id) {
+          localStorage.setItem("delno_widget_lead_id", synced.lead.id);
+        }
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", text: "Спасибо! Передал контакт — при необходимости с вами свяжутся." },
+        ]);
         setBusy(false);
         return;
       }
@@ -162,10 +251,10 @@ export function useCrystalWidgetChat(apiPath: string) {
         return [...withoutTyping, { role: "assistant", text: reply }];
       });
 
-      await maybeAskName(payload, value.length);
+      await maybeAskFollowUp(payload, value.length);
       setBusy(false);
     },
-    [busy, maybeAskName, requestAnswer],
+    [busy, ensureSession, maybeAskFollowUp, requestAnswer, syncVisitor],
   );
 
   const sendVoiceQuery = useCallback(

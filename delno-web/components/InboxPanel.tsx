@@ -71,8 +71,8 @@ export function InboxPanel({
               <Icon />
             </div>
             <div>
-              <b>{row.channel}</b>
-              <p>{row.status}</p>
+              <b>{row.visitor_name || row.contact_ref || row.channel}</b>
+              <p>{row.lead_id ? "есть заявка" : row.status}</p>
             </div>
             <time>{formatTime(row.created_at)}</time>
           </Link>

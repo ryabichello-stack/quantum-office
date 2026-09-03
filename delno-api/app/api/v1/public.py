@@ -15,6 +15,14 @@ from app.services.events import emit_event
 from app.services.leads import create_lead_record
 from app.services.party_enrichment import suggest_parties_by_query
 from app.services.usage import record_usage
+from app.services.widget_flow import (
+    apply_widget_visitor,
+    get_conversation_for_widget,
+    lead_summary_for_conversation,
+    merge_widget_context,
+    tenant_public_profile,
+    widget_next_step,
+)
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -130,8 +138,25 @@ def get_published_cms_page(
 
 class WidgetVisitor(BaseModel):
     name: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=60)
     page_url: str | None = Field(default=None, max_length=500)
     referrer: str | None = Field(default=None, max_length=500)
+
+
+class PublicWidgetSession(BaseModel):
+    site_key: str = Field(min_length=2, max_length=64)
+    visitor_id: str | None = Field(default=None, max_length=64)
+    page_url: str | None = Field(default=None, max_length=500)
+    referrer: str | None = Field(default=None, max_length=500)
+    channel: str = Field(default="web", max_length=32)
+
+
+class PublicWidgetVisitorUpdate(BaseModel):
+    site_key: str = Field(min_length=2, max_length=64)
+    session_id: str = Field(min_length=8, max_length=64)
+    visitor_id: str | None = Field(default=None, max_length=64)
+    name: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=60)
 
 
 class PublicWidgetMessage(BaseModel):
@@ -159,6 +184,109 @@ def _parse_conversation_id(session_id: str | None) -> UUID | None:
         return UUID(session_id)
     except ValueError:
         return None
+
+
+@router.post("/widget/session")
+def public_widget_session(
+    body: PublicWidgetSession,
+    db: Session = Depends(get_db),
+    x_tenant_slug: str | None = Header(default=None, alias="X-Tenant-Slug"),
+) -> dict:
+    """E3.4 — create or restore widget conversation session."""
+    channel = _resolve_widget_context(db, body.site_key)
+    if not channel and x_tenant_slug:
+        channel = resolve_public_lead(db, x_tenant_slug)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Unknown site_key")
+
+    ctx = TenantContext(
+        tenant_id=channel.tenant_id,
+        tenant_slug=channel.tenant_slug,
+        role="public",
+    )
+
+    conversation = get_conversation_for_widget(db, ctx, None, create=True)
+    assert conversation is not None
+    meta = merge_widget_context(
+        db,
+        conversation,
+        visitor_id=body.visitor_id,
+        page_url=body.page_url,
+        referrer=body.referrer,
+    )
+
+    emit_event(
+        db,
+        tenant_id=ctx.tenant_id,
+        event_type="widget.opened",
+        category="operational",
+        source="public.widget",
+        payload={
+            "conversation_id": str(conversation.id),
+            "visitor_id": body.visitor_id,
+            "page_url": body.page_url,
+        },
+    )
+    db.commit()
+
+    return {
+        "session_id": str(conversation.id),
+        "tenant_public": tenant_public_profile(db, ctx.tenant_id),
+        "widget": {
+            "theme": "auto",
+            "collect_name": True,
+        },
+        "lead": lead_summary_for_conversation(db, meta),
+        "next_step": widget_next_step(meta),
+    }
+
+
+@router.post("/widget/visitor")
+def public_widget_visitor(
+    body: PublicWidgetVisitorUpdate,
+    db: Session = Depends(get_db),
+    x_tenant_slug: str | None = Header(default=None, alias="X-Tenant-Slug"),
+) -> dict:
+    """E3.8 — persist visitor name/phone and create lead linked to conversation."""
+    channel = _resolve_widget_context(db, body.site_key)
+    if not channel and x_tenant_slug:
+        channel = resolve_public_lead(db, x_tenant_slug)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Unknown site_key")
+
+    ctx = TenantContext(
+        tenant_id=channel.tenant_id,
+        tenant_slug=channel.tenant_slug,
+        role="public",
+    )
+
+    conversation_id = _parse_conversation_id(body.session_id)
+    if not conversation_id:
+        raise HTTPException(status_code=400, detail="Invalid session_id")
+
+    conversation = get_conversation_for_widget(db, ctx, conversation_id, create=False)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if not body.name and not body.phone:
+        raise HTTPException(status_code=400, detail="name or phone required")
+
+    merge_widget_context(db, conversation, visitor_id=body.visitor_id)
+    result = apply_widget_visitor(
+        db,
+        ctx,
+        conversation,
+        name=body.name,
+        phone=body.phone,
+    )
+    db.commit()
+
+    return {
+        "ok": True,
+        "session_id": str(conversation.id),
+        "next_step": result["next_step"],
+        "lead": result["lead"],
+    }
 
 
 @router.post("/widget/message")
@@ -193,19 +321,38 @@ def public_widget_message(
         },
     )
 
+    conversation_id = _parse_conversation_id(body.session_id)
+    conversation = get_conversation_for_widget(db, ctx, conversation_id, create=True)
+    assert conversation is not None
+    merge_widget_context(
+        db,
+        conversation,
+        visitor_id=body.visitor_id,
+        page_url=body.visitor.page_url if body.visitor else None,
+        referrer=body.visitor.referrer if body.visitor else None,
+    )
+
+    visitor_result = apply_widget_visitor(
+        db,
+        ctx,
+        conversation,
+        name=body.visitor.name if body.visitor else None,
+        phone=body.visitor.phone if body.visitor else None,
+    )
+    meta = visitor_result["meta"]
+
     result = run_operator_turn(
         db,
         ctx,
         message=body.message.strip(),
         channel="widget",
-        conversation_id=_parse_conversation_id(body.session_id),
+        conversation_id=conversation.id,
         input_modality="text",
     )
 
-    visitor_name = body.visitor.name if body.visitor else None
-    next_step = None
-    if not visitor_name and len(body.message.strip()) >= 8:
-        next_step = "ask_name"
+    next_step = widget_next_step(meta)
+    if next_step == "ask_name" and len(body.message.strip()) < 8:
+        next_step = None
 
     emit_event(
         db,
@@ -216,9 +363,12 @@ def public_widget_message(
         payload={"conversation_id": result["conversation_id"]},
     )
 
+    lead = visitor_result["lead"] or lead_summary_for_conversation(db, meta)
+
     return {
         "message": result["reply"],
         "conversation_id": result["conversation_id"],
         "sources": result.get("sources") or [],
         "next_step": next_step,
+        "lead": lead,
     }

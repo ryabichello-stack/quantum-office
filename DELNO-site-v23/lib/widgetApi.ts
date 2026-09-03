@@ -10,6 +10,10 @@ export function widgetMessagePath() {
   return `${getBasePath()}/api/widget/message`;
 }
 
+export function widgetGatewayPath(action: "session" | "visitor") {
+  return `${getBasePath()}/api/widget?action=${action}`;
+}
+
 export function widgetTtsPath(text: string) {
   const q = encodeURIComponent(prepareTtsText(text).slice(0, 800));
   return `${getBasePath()}/api/tts?text=${q}`;
