@@ -632,7 +632,7 @@ def _tilda_stats(start: date, end: date) -> dict[str, Any]:
             dict(r)
             for r in conn.execute(
                 f"""
-                SELECT id, formid, name, phone, email, page, created_at
+                SELECT id, formid, name, phone, page, created_at
                 FROM tilda_leads
                 WHERE {day_col} BETWEEN ? AND ?
                 ORDER BY created_at DESC LIMIT 20

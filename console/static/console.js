@@ -1442,12 +1442,12 @@
           ${
             (tilda.recent || []).length
               ? `<h3 class="section-title" style="font-size:0.92rem;margin-top:0.75rem">Последние заявки</h3>
-            <table class="calls-table"><thead><tr><th>Когда</th><th>Имя</th><th>Телефон</th><th>Email</th></tr></thead>
+            <table class="calls-table"><thead><tr><th>Когда</th><th>Имя</th><th>Телефон</th></tr></thead>
             <tbody>${(tilda.recent || [])
               .map(
                 (L) => `<tr><td>${esc(fmtMsk(L.created_at) || L.created_at || "")}</td><td>${esc(
                   L.name
-                )}</td><td>${esc(L.phone)}</td><td>${esc(L.email)}</td></tr>`
+                )}</td><td>${esc(L.phone)}</td></tr>`
               )
               .join("")}</tbody></table>`
               : `<p class="muted tight">Заявок за период пока нет — проверьте webhook в Tilda.</p>`
