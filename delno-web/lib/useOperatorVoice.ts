@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createVoiceController, type VoicePhase } from "@/lib/delnoVoice";
 
-export function useOperatorVoice(onTranscript: (text: string) => Promise<string>) {
+export function useOperatorVoice(onTranscript: (text: string) => Promise<string>, authToken?: string) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const controllerRef = useRef<ReturnType<typeof createVoiceController> | null>(null);
   const [voicePhase, setVoicePhase] = useState<VoicePhase>("idle");
@@ -17,9 +17,10 @@ export function useOperatorVoice(onTranscript: (text: string) => Promise<string>
         setVoiceActive(phase !== "idle" && phase !== "error");
       },
       audioRef,
+      authToken,
     });
     return () => controllerRef.current?.stop();
-  }, [onTranscript]);
+  }, [onTranscript, authToken]);
 
   function toggleVoice() {
     controllerRef.current?.toggle();

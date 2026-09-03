@@ -34,7 +34,12 @@ const ORB_CDN =
   process.env.NEXT_PUBLIC_DELNO_ORB_URL ||
   "https://cdn.dlno.ru/widget/v1/assets/crystal-orb-static.webp";
 
-const TTS_URL = process.env.NEXT_PUBLIC_DELNO_TTS_URL || "";
+const API_URL = process.env.NEXT_PUBLIC_DELNO_API_URL || "http://127.0.0.1:18020";
+
+function ttsEndpoint(text: string, token?: string) {
+  const base = `${API_URL}/v1/operator/tts?text=${encodeURIComponent(text.slice(0, 800))}`;
+  return { url: base, token };
+}
 
 export function orbAssetPath() {
   return ORB_CDN;
@@ -84,13 +89,49 @@ export async function playOperatorTts(
     onEnd?: () => void;
     onError?: () => void;
     signal?: AbortSignal;
+    token?: string;
   },
 ) {
   if (callbacks.signal?.aborted) return false;
 
-  if (TTS_URL) {
+  if (callbacks.token) {
     try {
-      const url = `${TTS_URL}${TTS_URL.includes("?") ? "&" : "?"}text=${encodeURIComponent(text.slice(0, 800))}`;
+      const { url } = ttsEndpoint(text, callbacks.token);
+      const response = await fetch(url, {
+        signal: callbacks.signal,
+        headers: {
+          Authorization: `Bearer ${callbacks.token}`,
+          Accept: "audio/mpeg",
+        },
+      });
+      if (response.ok) {
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        audio.src = objectUrl;
+        await new Promise<void>((resolve, reject) => {
+          audio.onplaying = () => callbacks.onStart?.();
+          audio.onended = () => {
+            URL.revokeObjectURL(objectUrl);
+            callbacks.onEnd?.();
+            resolve();
+          };
+          audio.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            reject(new Error("audio failed"));
+          };
+          void audio.play().catch(reject);
+        });
+        return true;
+      }
+    } catch {
+      /* fallback below */
+    }
+  }
+
+  const legacyUrl = process.env.NEXT_PUBLIC_DELNO_TTS_URL || "";
+  if (legacyUrl) {
+    try {
+      const url = `${legacyUrl}${legacyUrl.includes("?") ? "&" : "?"}text=${encodeURIComponent(text.slice(0, 800))}`;
       const response = await fetch(url, { signal: callbacks.signal });
       if (response.ok) {
         const blob = await response.blob();
@@ -133,10 +174,11 @@ export type VoiceSessionOptions = {
   setPhase: (phase: VoicePhase) => void;
   audioRef: RefObject<HTMLAudioElement | null>;
   listenSilenceMs?: number;
+  authToken?: string;
 };
 
 export function createVoiceController(options: VoiceSessionOptions) {
-  const { onTranscript, onExchange, setPhase, audioRef } = options;
+  const { onTranscript, onExchange, setPhase, audioRef, authToken } = options;
   const listenSilenceMs = options.listenSilenceMs ?? 8000;
 
   let engaged = false;
@@ -264,6 +306,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
         }
       },
       signal: abortTts.signal,
+      token: authToken,
     });
   }
 

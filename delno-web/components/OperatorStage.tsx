@@ -78,6 +78,7 @@ export function OperatorStage({ token }: { token: string }) {
 
   const { voiceActive, voicePhase, toggleVoice, audioRef } = useOperatorVoice(
     useCallback((text) => sendText(text, "voice").then((r) => r || ""), [sendText]),
+    token,
   );
 
   async function onSubmit(e: FormEvent) {

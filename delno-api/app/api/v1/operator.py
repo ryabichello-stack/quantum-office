@@ -3,6 +3,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -15,6 +16,7 @@ from app.services.conversation_present import (
     get_conversation_detail,
     list_conversation_items,
 )
+from app.services.tts import synthesize_speech
 
 router = APIRouter(prefix="/operator", tags=["operator"])
 
@@ -45,6 +47,27 @@ def operator_chat(
         channel=body.channel,
         conversation_id=body.conversation_id,
         input_modality=modality,
+    )
+
+
+@router.get("/tts")
+def operator_tts(
+    text: str = Query(..., min_length=1, max_length=800),
+    _ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> Response:
+    """Cabinet voice output — OpenAI TTS (JWT required)."""
+    audio, error = synthesize_speech(text)
+    if error or not audio:
+        code = error or "VOICE_GENERATION_FAILED"
+        status = 503 if code == "VOICE_NOT_CONFIGURED" else 502 if code != "TEXT_REQUIRED" else 400
+        raise HTTPException(status_code=status, detail=code)
+    return Response(
+        content=audio,
+        media_type="audio/mpeg",
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
