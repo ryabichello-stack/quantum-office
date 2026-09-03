@@ -2,7 +2,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -10,6 +10,11 @@ from app.core.auth import get_tenant_context_auth
 from app.core.tenant import TenantContext
 from app.models.conversation import Conversation, Message
 from app.operator.agent import execute_confirmed_tool, run_operator_turn
+from app.services.conversation_present import (
+    filter_conversation_items,
+    get_conversation_detail,
+    list_conversation_items,
+)
 
 router = APIRouter(prefix="/operator", tags=["operator"])
 
@@ -70,6 +75,8 @@ def list_conversations(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(get_tenant_context_auth),
     limit: int = 50,
+    q: str | None = Query(default=None, max_length=120),
+    filter: str | None = Query(default=None, max_length=16),
 ) -> dict:
     rows = (
         db.query(Conversation)
@@ -78,20 +85,22 @@ def list_conversations(
         .limit(min(limit, 100))
         .all()
     )
-    return {
-        "items": [
-            {
-                "id": str(row.id),
-                "channel": row.channel,
-                "status": row.status,
-                "contact_ref": row.contact_ref,
-                "visitor_name": (row.meta or {}).get("visitor_name") if isinstance(row.meta, dict) else None,
-                "lead_id": (row.meta or {}).get("lead_id") if isinstance(row.meta, dict) else None,
-                "created_at": row.created_at.isoformat() if row.created_at else None,
-            }
-            for row in rows
-        ]
-    }
+    items = list_conversation_items(db, ctx.tenant_id, rows)
+    new_count = sum(1 for i in items if i.get("is_new"))
+    items = filter_conversation_items(items, q=q, status_filter=filter)
+    return {"items": items, "total": len(items), "new_count": new_count}
+
+
+@router.get("/conversations/{conversation_id}")
+def get_conversation(
+    conversation_id: UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    detail = get_conversation_detail(db, ctx.tenant_id, conversation_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return detail
 
 
 @router.get("/conversations/{conversation_id}/messages")

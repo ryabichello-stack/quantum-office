@@ -26,11 +26,27 @@ export type LeadItem = {
 export type ConversationItem = {
   id: string;
   channel: string;
+  channel_label?: string;
   status: string;
   contact_ref?: string | null;
   visitor_name?: string | null;
+  visitor_phone?: string | null;
+  visitor_phone_masked?: string | null;
   lead_id?: string | null;
+  last_message_preview?: string | null;
+  message_count?: number | null;
+  is_new?: boolean;
   created_at: string | null;
+  updated_at?: string | null;
+};
+
+export type ConversationDetail = ConversationItem & {
+  subtitle?: string;
+  summary?: string | null;
+  tags?: string[];
+  recording_url?: string | null;
+  recording_duration_sec?: number | null;
+  call_status?: string | null;
 };
 
 export type MessageItem = {
@@ -150,8 +166,18 @@ export function apiLeadsList(token: string, limit = 50) {
   return apiFetch<{ items: LeadItem[] }>(`/v1/leads?limit=${limit}`, token);
 }
 
-export function apiConversations(token: string, limit = 50) {
-  return apiFetch<{ items: ConversationItem[] }>(`/v1/operator/conversations?limit=${limit}`, token);
+export function apiConversations(token: string, limit = 50, q?: string, filter?: string) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (q?.trim()) params.set("q", q.trim());
+  if (filter) params.set("filter", filter);
+  return apiFetch<{ items: ConversationItem[]; total: number; new_count: number }>(
+    `/v1/operator/conversations?${params}`,
+    token,
+  );
+}
+
+export function apiConversationDetail(token: string, conversationId: string) {
+  return apiFetch<ConversationDetail>(`/v1/operator/conversations/${conversationId}`, token);
 }
 
 export function apiConversationMessages(token: string, conversationId: string) {

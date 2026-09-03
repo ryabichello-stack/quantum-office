@@ -17,7 +17,7 @@ import type { TenantMe } from "@/lib/api";
 const nav = [
   { href: "/dashboard", label: "Обзор", Icon: LayoutGrid, exact: true },
   { href: "/dashboard/inbox", label: "Диалоги", Icon: MessageCircle },
-  { href: "/dashboard/leads", label: "Заявки", Icon: UserRound },
+  { href: "/dashboard/leads", label: "Клиенты", Icon: UserRound },
   { href: "/dashboard/operator", label: "Operator", Icon: Sparkles },
   { href: "/dashboard/settings", label: "Настройки", Icon: ShieldCheck },
 ];

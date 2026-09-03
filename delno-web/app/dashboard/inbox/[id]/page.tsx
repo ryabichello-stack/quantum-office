@@ -1,77 +1,91 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useRequireAuth } from "@/lib/auth";
-import { apiConversationMessages, type MessageItem } from "@/lib/api";
+import {
+  apiConversationDetail,
+  apiConversationMessages,
+  type ConversationDetail,
+  type KnowledgeSource,
+  type MessageItem,
+} from "@/lib/api";
+import { ConversationHeader } from "@/components/ConversationHeader";
+import { DelnoResultCard } from "@/components/DelnoResultCard";
+import { VoicePlayback } from "@/components/VoicePlayback";
 
 export default function InboxThreadPage() {
   const params = useParams();
   const conversationId = String(params.id || "");
   const { token } = useRequireAuth();
+  const [detail, setDetail] = useState<ConversationDetail | null>(null);
   const [items, setItems] = useState<MessageItem[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!token || !conversationId) return;
-    apiConversationMessages(token, conversationId)
-      .then((data) => setItems(data.items))
-      .catch(() => setError("Не удалось загрузить сообщения"));
+    setError("");
+    Promise.all([
+      apiConversationDetail(token, conversationId),
+      apiConversationMessages(token, conversationId),
+    ])
+      .then(([conv, messages]) => {
+        setDetail(conv);
+        setItems(messages.items);
+      })
+      .catch(() => setError("Не удалось загрузить диалог"));
   }, [token, conversationId]);
 
-  const firstUser = items.find((m) => m.role === "user");
+  const summaryBlock = detail?.summary ? (
+    <DelnoResultCard
+      subtitle="Итог разговора"
+      body={detail.summary}
+      tags={detail.tags}
+    />
+  ) : null;
 
   return (
     <>
-      <div className="person">
-        <div>
-          <b>Диалог · {conversationId.slice(0, 8)}</b>
-          <span>{firstUser?.body.slice(0, 60) || "Сообщения"}</span>
-        </div>
-        <div className="live-call">
-          <i /> {items.length} сообщений
-        </div>
-      </div>
+      <ConversationHeader detail={detail} />
 
       {error && <p className="status-error">{error}</p>}
 
       {items.length > 0 && (
-        <div className="timeline-label">
-          {formatDate(items[0]?.created_at)}
-        </div>
+        <div className="timeline-label">{formatDate(items[0]?.created_at)}</div>
+      )}
+
+      <VoicePlayback
+        recordingUrl={detail?.recording_url}
+        durationSec={detail?.recording_duration_sec}
+      />
+
+      {summaryBlock}
+
+      {detail?.tags && detail.tags.length > 0 && !detail.summary && (
+        <DelnoResultCard body="Краткий итог пока не сформирован." tags={detail.tags} />
       )}
 
       {items.map((msg) => (
         <div key={msg.id}>
           {msg.role === "assistant" ? (
-            <div className="delno-result">
-              <div className="result-head">
-                <span>
-                  <Sparkles /> DELNO
-                </span>
-                <small>{msg.role}</small>
-              </div>
-              <p style={{ margin: 0 }}>{msg.body}</p>
-              {Array.isArray((msg.meta as { sources?: { title?: string; citation?: string }[] } | null)?.sources) &&
-                (msg.meta as { sources: { title?: string; citation?: string }[] }).sources.length > 0 && (
-                  <ul className="msg-sources">
-                    {(msg.meta as { sources: { title?: string; citation?: string }[] }).sources.map((s, i) => (
-                      <li key={i}>{s.title || s.citation || "Источник KB"}</li>
-                    ))}
-                  </ul>
-                )}
-            </div>
+            <DelnoResultCard
+              body={msg.body}
+              sources={
+                Array.isArray((msg.meta as { sources?: KnowledgeSource[] } | null)?.sources)
+                  ? (msg.meta as { sources: KnowledgeSource[] }).sources
+                  : undefined
+              }
+            />
           ) : (
             <div className="msg-bubble user">
-              <div className="msg-meta">{msg.role} · {formatTime(msg.created_at)}</div>
+              <div className="msg-meta">{formatTime(msg.created_at)}</div>
               <div className="msg-body">{msg.body}</div>
             </div>
           )}
         </div>
       ))}
 
-      {!error && items.length === 0 && (
+      {!error && items.length === 0 && detail && (
         <p className="inbox-empty">Сообщений пока нет</p>
       )}
     </>
