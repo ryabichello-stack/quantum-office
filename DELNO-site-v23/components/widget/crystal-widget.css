@@ -51,6 +51,7 @@
   height: 160px;
   z-index: 10000;
   pointer-events: none;
+  overflow: visible;
 }
 
 .delno-crystal-mount .orb-anchor {
@@ -61,7 +62,7 @@
   height: 96px;
   transform: translateX(-50%);
   pointer-events: none;
-  contain: layout paint;
+  overflow: visible;
 }
 
 .delno-crystal-mount.delno-crystal-floating .panel {
@@ -691,45 +692,67 @@
   animation: ringSharp 2.2s ease-out 0.7s infinite;
 }
 
-/* Demo section — same crystal orb, larger scale on dark background */
+/* Demo section — same crystal orb as widget, room for rings + jump */
 .delno-crystal-mount.delno-crystal-demo {
   --orb-size: 176px;
   position: relative;
-  width: 280px;
-  height: 280px;
+  width: 420px;
+  height: 420px;
   margin: 0 auto;
+  overflow: visible;
 }
 
 .delno-crystal-demo[data-contrast="dark"] {
-  --ring-sharp: rgba(255, 255, 255, 0.55);
-  --ring-soft: rgba(164, 225, 255, 0.35);
-  --ring-glow: rgba(135, 211, 255, 0.22);
+  --ring-sharp: rgba(255, 255, 255, 0.62);
+  --ring-soft: rgba(164, 225, 255, 0.42);
+  --ring-glow: rgba(135, 211, 255, 0.28);
+  --icon: rgba(255, 255, 255, 0.96);
 }
 
 .delno-crystal-demo .widget.widget-demo {
-  position: relative;
-  left: auto;
-  bottom: auto;
-  transform: none;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 420px;
+  height: 420px;
   pointer-events: none;
+  overflow: visible;
 }
 
 .delno-crystal-demo .orb-anchor {
-  width: 176px;
-  height: 176px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  bottom: auto;
+  width: 420px;
+  height: 420px;
+  transform: translate(-50%, -50%);
+  overflow: visible;
 }
 
 .delno-crystal-demo .orb-hit {
+  position: absolute;
+  left: 50%;
+  top: 50%;
   width: 176px;
   height: 176px;
+  transform: translate(-50%, -50%);
+  inset: auto;
   pointer-events: auto;
+}
+
+.delno-crystal-demo .motion {
+  overflow: visible;
+}
+
+.delno-crystal-demo .rings {
+  z-index: 0;
 }
 
 .delno-crystal-demo .state {
   bottom: auto;
-  top: 18px;
+  top: 24px;
   opacity: 1;
   width: auto;
   min-width: 58px;
@@ -742,19 +765,52 @@
 }
 
 .delno-crystal-demo[data-voice-active="true"] .widget .active-halo {
-  opacity: 0.88;
+  opacity: 0.92;
+  transform: translate3d(-50%, -50%, 0) scale(1.22);
 }
 
 .delno-crystal-demo[data-voice-phase="listen"][data-voice-active="true"] .widget .mic {
   opacity: 1;
 }
 
+.delno-crystal-demo[data-voice-phase="listen"][data-voice-active="true"] .widget .rings .r1 {
+  animation: ringSharp 2.05s ease-out 0.58s infinite;
+}
+
+.delno-crystal-demo[data-voice-phase="listen"][data-voice-active="true"] .widget .rings .r2 {
+  animation: ringSoft 2.15s ease-out 0.96s infinite;
+}
+
+.delno-crystal-demo[data-voice-phase="listen"][data-voice-active="true"] .widget .rings .r3 {
+  animation: ringSharp 2.08s ease-out 1.36s infinite;
+}
+
 .delno-crystal-demo[data-voice-phase="speak"][data-voice-active="true"] .widget .wave {
   opacity: 1;
 }
 
+.delno-crystal-demo[data-voice-phase="speak"][data-voice-active="true"] .widget .rings .r1 {
+  animation: speakSharp 2s ease-out 0.5s infinite;
+}
+
+.delno-crystal-demo[data-voice-phase="speak"][data-voice-active="true"] .widget .rings .r2 {
+  animation: speakSoft 2.1s ease-out 0.88s infinite;
+}
+
+.delno-crystal-demo[data-voice-phase="speak"][data-voice-active="true"] .widget .rings .r3 {
+  animation: speakSharp 2s ease-out 1.26s infinite;
+}
+
 .delno-crystal-demo[data-voice-phase="think"][data-voice-active="true"] .widget .dots {
   opacity: 1;
+}
+
+.delno-crystal-demo[data-voice-phase="think"][data-voice-active="true"] .widget .rings .r1 {
+  animation: ringSoft 2.4s ease-out infinite;
+}
+
+.delno-crystal-demo[data-voice-phase="think"][data-voice-active="true"] .widget .rings .r2 {
+  animation: ringSharp 2.2s ease-out 0.7s infinite;
 }
 
 .voice-audio {

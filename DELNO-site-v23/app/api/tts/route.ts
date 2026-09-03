@@ -1,10 +1,11 @@
 import { demoAnswers, type DemoAnswerId } from "../../v2/demoContent";
+import { prepareTtsText } from "@/lib/ttsText";
 
 export const runtime = "edge";
 
 const TTS_INSTRUCTIONS =
   process.env.DELNO_TTS_INSTRUCTIONS ||
-  "Говори на чистом естественном русском языке. Спокойный уверенный тон делового помощника, как на входящем звонке.";
+  "Говори на чистом естественном русском языке. Спокойный уверенный тон делового помощника, как на входящем звонке. Название продукта «дельно» произноси по-русски, слитно: дель-но — не как английское DELNO.";
 
 const TTS_VOICE = process.env.DELNO_TTS_VOICE || "cedar";
 
@@ -26,6 +27,7 @@ export async function GET(request: Request) {
   }
   if (!input) return jsonError("TEXT_REQUIRED", 400);
   if (input.length > 800) input = input.slice(0, 800);
+  input = prepareTtsText(input);
 
   const response = await fetch("https://api.openai.com/v1/audio/speech", {
     method: "POST",

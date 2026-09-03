@@ -1,3 +1,5 @@
+import { prepareTtsText } from "./ttsText";
+
 const SITE_KEY = process.env.NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY || "demo_dlno";
 
 export function getBasePath() {
@@ -9,7 +11,7 @@ export function widgetMessagePath() {
 }
 
 export function widgetTtsPath(text: string) {
-  const q = encodeURIComponent(text.slice(0, 800));
+  const q = encodeURIComponent(prepareTtsText(text).slice(0, 800));
   return `${getBasePath()}/api/tts?text=${q}`;
 }
 

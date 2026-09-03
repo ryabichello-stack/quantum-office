@@ -402,7 +402,6 @@ export function createVoiceController(options: VoiceSessionOptions) {
 
     processing = false;
     onExchange?.(text, reply);
-    setPhase("speak");
     speaking = true;
     abortTts = new AbortController();
 
