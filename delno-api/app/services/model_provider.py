@@ -12,24 +12,44 @@ class ModelProvider(ABC):
     name: str
 
     @abstractmethod
-    def chat_completion(self, *, messages: list[dict[str, str]], model: str | None = None) -> dict[str, Any]:
+    def chat_completion(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         raise NotImplementedError
 
 
 class OpenAIProvider(ModelProvider):
     name = "openai"
 
-    def chat_completion(self, *, messages: list[dict[str, str]], model: str | None = None) -> dict[str, Any]:
+    def chat_completion(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         settings = get_settings()
         if not settings.openai_api_key:
             return {"ok": False, "error": "openai_api_key_not_configured"}
         try:
             import httpx
 
+            payload: dict[str, Any] = {
+                "model": model or settings.openai_model,
+                "messages": messages,
+            }
+            if tools:
+                payload["tools"] = tools
+                payload["tool_choice"] = "auto"
+
             response = httpx.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {settings.openai_api_key}"},
-                json={"model": model or settings.openai_model, "messages": messages},
+                json=payload,
                 timeout=60.0,
             )
             if response.status_code == 200:
@@ -42,7 +62,13 @@ class OpenAIProvider(ModelProvider):
 class StubProvider(ModelProvider):
     name = "stub"
 
-    def chat_completion(self, *, messages: list[dict[str, str]], model: str | None = None) -> dict[str, Any]:
+    def chat_completion(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         last = messages[-1]["content"] if messages else ""
         return {
             "ok": True,

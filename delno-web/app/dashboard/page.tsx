@@ -16,7 +16,7 @@ export default function DashboardOverviewPage() {
       .then(([leads, convs, legal]) => {
         setStats({
           leads: leads.items.length,
-          conversations: convs.items.length,
+          conversations: convs.total ?? convs.items.length,
           hasLegal: Boolean(legal.legal?.inn),
         });
       })
@@ -40,6 +40,11 @@ export default function DashboardOverviewPage() {
           <span>Диалоги</span>
           <b>{stats.conversations}</b>
           <small>Operator и каналы</small>
+        </Link>
+        <Link href="/dashboard/knowledge" className="stat-card">
+          <span>Знания</span>
+          <b style={{ fontSize: 18 }}>KB</b>
+          <small>текст и Operator</small>
         </Link>
         <Link href="/dashboard/settings" className="stat-card">
           <span>Юр. профиль</span>

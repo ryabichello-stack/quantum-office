@@ -31,6 +31,26 @@ class Tool(Protocol):
     def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult | PendingConfirmation: ...
 
 
+CONFIRMATION_READ = "READ"
+CONFIRMATION_SAFE_WRITE = "SAFE_WRITE"
+CONFIRMATION_HIGH_IMPACT = "HIGH_IMPACT"
+
+# Tools requiring explicit user confirm before execution in cabinet.
+_HIGH_IMPACT_TOOLS = frozenset({"create_lead"})
+
+
+def tool_confirmation_class(tool: Tool) -> str:
+    if tool.name in _HIGH_IMPACT_TOOLS:
+        return CONFIRMATION_HIGH_IMPACT
+    if getattr(tool, "critical_write", False):
+        return CONFIRMATION_SAFE_WRITE
+    return CONFIRMATION_READ
+
+
+def requires_confirmation(tool: Tool) -> bool:
+    return tool_confirmation_class(tool) != CONFIRMATION_READ
+
+
 class ToolRegistry:
     def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
@@ -41,9 +61,11 @@ class ToolRegistry:
     def get(self, name: str) -> Tool | None:
         return self._tools.get(name)
 
-    def list_openai_specs(self) -> list[dict[str, Any]]:
+    def list_openai_specs(self, *, names: list[str] | None = None) -> list[dict[str, Any]]:
         specs: list[dict[str, Any]] = []
         for tool in self._tools.values():
+            if names is not None and tool.name not in names:
+                continue
             specs.append(
                 {
                     "type": "function",

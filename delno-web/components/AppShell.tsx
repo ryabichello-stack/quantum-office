@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  LayoutGrid,
+  CalendarDays,
+  FileText,
   LogOut,
   MessageCircle,
   ShieldCheck,
@@ -15,11 +16,11 @@ import { clearToken } from "@/lib/auth";
 import type { TenantMe } from "@/lib/api";
 
 const nav = [
-  { href: "/dashboard", label: "Обзор", Icon: LayoutGrid, exact: true },
   { href: "/dashboard/inbox", label: "Диалоги", Icon: MessageCircle },
   { href: "/dashboard/leads", label: "Клиенты", Icon: UserRound },
-  { href: "/dashboard/operator", label: "Operator", Icon: Sparkles },
-  { href: "/dashboard/settings", label: "Настройки", Icon: ShieldCheck },
+  { href: "/dashboard/calendar", label: "Календарь", Icon: CalendarDays },
+  { href: "/dashboard/knowledge", label: "Знания", Icon: FileText },
+  { href: "/dashboard/operator", label: "Operator", Icon: Sparkles, operatorOrb: true },
 ];
 
 export function AppShell({
@@ -54,23 +55,24 @@ export function AppShell({
             <Link href="/dashboard" className="side-logo" aria-label="DELNO">
               <DelnoMark small />
             </Link>
-            {nav.map(({ href, label, Icon, exact }) => {
-              const active = exact
-                ? pathname === href
-                : pathname === href || pathname.startsWith(`${href}/`);
+            {nav.map(({ href, label, Icon, operatorOrb }) => {
+              const active = pathname === href || pathname.startsWith(`${href}/`);
               return (
                 <Link
                   key={href}
                   href={href}
-                  className={active ? "selected" : undefined}
+                  className={`${active ? "selected" : ""}${operatorOrb ? " nav-operator" : ""}`.trim()}
                   aria-label={label}
                   title={label}
                 >
-                  <Icon />
+                  {operatorOrb ? <span className="nav-orb-icon" aria-hidden /> : <Icon />}
                 </Link>
               );
             })}
             <div className="side-bottom">
+              <Link href="/dashboard/settings" className={pathname.startsWith("/dashboard/settings") ? "selected" : undefined} aria-label="Настройки" title="Настройки">
+                <ShieldCheck />
+              </Link>
               <button
                 type="button"
                 aria-label="Выйти"

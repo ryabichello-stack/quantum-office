@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
@@ -10,11 +11,25 @@ from sqlalchemy.orm import Session
 from app.core.tenant import TenantContext
 from app.models.conversation import Conversation, Message
 from app.operator.setup_intent import parse_setup_intent
-from app.operator.tools.registry import PendingConfirmation, ToolResult, registry
+from app.operator.tools.registry import (
+    PendingConfirmation,
+    ToolResult,
+    registry,
+    requires_confirmation,
+    tool_confirmation_class,
+)
 from app.services.audit import write_audit
 from app.services.events import emit_event
 from app.services.model_provider import get_model_provider
 from app.services.provenance import extract_sources_from_knowledge
+
+CABINET_LLM_TOOLS = (
+    "get_tenant_summary",
+    "update_tenant_settings",
+    "upload_knowledge_snippet",
+    "set_feature_flag",
+    "get_knowledge",
+)
 
 
 def run_operator_turn(
@@ -182,6 +197,126 @@ def _pending_confirmation_dict(
     }
 
 
+def _parse_tool_args(raw: str | None) -> dict[str, Any]:
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def _tool_summary(tool_name: str, params: dict[str, Any]) -> str:
+    if tool_name == "upload_knowledge_snippet":
+        return f"Добавить в KB: «{params.get('title', 'документ')}»"
+    if tool_name == "set_feature_flag":
+        state = "Включить" if params.get("enabled") else "Выключить"
+        return f"{state} «{params.get('flag_key', 'flag')}»"
+    if tool_name == "update_tenant_settings":
+        keys = list((params.get("patch") or {}).keys())
+        return f"Обновить настройки: {', '.join(keys) or 'patch'}"
+    if tool_name == "get_tenant_summary":
+        return "Показать текущие настройки"
+    return tool_name.replace("_", " ")
+
+
+def _execute_cabinet_tool(
+    db: Session,
+    ctx: TenantContext,
+    tool_name: str,
+    params: dict[str, Any],
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None]:
+    summary = _tool_summary(tool_name, params)
+    tool_calls: list[dict[str, Any]] = [{"tool": tool_name, "ok": None}]
+
+    tool = registry.get(tool_name)
+    if not tool:
+        tool_calls[0]["ok"] = False
+        return f"Инструмент «{tool_name}» недоступен.", tool_calls, [], None
+
+    tool_calls[0]["confirmation_class"] = tool_confirmation_class(tool)
+
+    if tool_name == "get_tenant_summary":
+        result = registry.run(db, ctx, tool_name, **params)
+        if isinstance(result, ToolResult) and result.ok:
+            tool_calls[0]["ok"] = True
+            return _format_tenant_summary(result.data), tool_calls, [], None
+        tool_calls[0]["ok"] = False
+        return "Не удалось загрузить настройки.", tool_calls, [], None
+
+    if tool_name == "get_knowledge":
+        result = registry.run(db, ctx, tool_name, **params)
+        if isinstance(result, ToolResult) and result.ok:
+            tool_calls[0]["ok"] = True
+            sources = extract_sources_from_knowledge(result.data)
+            text = _kb_context_from_result(result)
+            return text or result.message or "Ничего не найдено в базе знаний.", tool_calls, sources, None
+        tool_calls[0]["ok"] = False
+        return "Поиск в базе знаний не удался.", tool_calls, [], None
+
+    if requires_confirmation(tool):
+        pending = _pending_confirmation_dict(tool_name, params, summary)
+        tool_calls[0]["pending"] = True
+        reply = f"Готов выполнить: {summary}. Подтвердите действие кнопкой ниже."
+        return reply, tool_calls, [], pending
+
+    result = registry.run(db, ctx, tool_name, **params)
+    if isinstance(result, ToolResult) and result.ok:
+        tool_calls[0]["ok"] = True
+        return result.message or summary, tool_calls, [], None
+    tool_calls[0]["ok"] = False
+    msg = result.message if isinstance(result, ToolResult) else "Ошибка"
+    return f"Не удалось: {msg}", tool_calls, [], None
+
+
+def _try_cabinet_llm_tools(
+    db: Session,
+    ctx: TenantContext,
+    message: str,
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None] | None:
+    provider = get_model_provider()
+    if provider.name == "stub":
+        return None
+
+    tools = registry.list_openai_specs(names=list(CABINET_LLM_TOOLS))
+    completion = provider.chat_completion(
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    f"Ты DELNO Operator в кабинете tenant {ctx.tenant_slug}. "
+                    "Помогай владельцу настраивать DELNO: база знаний, часы, флаги каналов, сводка настроек. "
+                    "Для изменений вызывай tools. Отвечай кратко по-русски после tool result."
+                ),
+            },
+            {"role": "user", "content": message},
+        ],
+        tools=tools,
+    )
+    if not completion.get("ok"):
+        return None
+
+    try:
+        choice_msg = completion["data"]["choices"][0]["message"]
+    except (KeyError, IndexError, TypeError):
+        return None
+
+    tool_calls_raw = choice_msg.get("tool_calls") or []
+    if tool_calls_raw:
+        first = tool_calls_raw[0]
+        fn = first.get("function") or {}
+        tool_name = str(fn.get("name") or "")
+        params = _parse_tool_args(fn.get("arguments"))
+        if tool_name:
+            return _execute_cabinet_tool(db, ctx, tool_name, params)
+
+    content = str(choice_msg.get("content") or "").strip()
+    if content:
+        return content, [{"tool": "llm", "ok": True, "provider": provider.name}], [], None
+    return None
+
+
 def _try_cabinet_setup(
     db: Session,
     ctx: TenantContext,
@@ -193,38 +328,7 @@ def _try_cabinet_setup(
 
     tool_name = str(intent["tool"])
     params = dict(intent.get("params") or {})
-    summary = str(intent.get("summary") or tool_name)
-    tool_calls: list[dict[str, Any]] = [{"tool": tool_name, "ok": None, "pending": True}]
-
-    tool = registry.get(tool_name)
-    if not tool:
-        return (
-            f"Не удалось выполнить «{summary}»: инструмент недоступен.",
-            tool_calls,
-            [],
-            None,
-        )
-
-    if tool_name == "get_tenant_summary":
-        result = registry.run(db, ctx, tool_name, **params)
-        if isinstance(result, ToolResult) and result.ok:
-            tool_calls[0]["ok"] = True
-            return _format_tenant_summary(result.data), tool_calls, [], None
-        tool_calls[0]["ok"] = False
-        return "Не удалось загрузить настройки.", tool_calls, [], None
-
-    if getattr(tool, "critical_write", False):
-        pending = _pending_confirmation_dict(tool_name, params, summary)
-        reply = f"Готов выполнить: {summary}. Подтвердите действие кнопкой ниже."
-        return reply, tool_calls, [], pending
-
-    result = registry.run(db, ctx, tool_name, **params)
-    if isinstance(result, ToolResult) and result.ok:
-        tool_calls[0]["ok"] = True
-        return result.message or summary, tool_calls, [], None
-    tool_calls[0]["ok"] = False
-    msg = result.message if isinstance(result, ToolResult) else "Ошибка"
-    return f"Не удалось: {msg}", tool_calls, [], None
+    return _execute_cabinet_tool(db, ctx, tool_name, params)
 
 
 def _fallback_reply(kb_context: str) -> str:
@@ -253,6 +357,9 @@ def _generate_reply(
         setup = _try_cabinet_setup(db, ctx, message)
         if setup:
             return setup
+        llm_tools = _try_cabinet_llm_tools(db, ctx, message)
+        if llm_tools:
+            return llm_tools
 
     knowledge = registry.run(db, ctx, "get_knowledge", query=message)
     if isinstance(knowledge, ToolResult):

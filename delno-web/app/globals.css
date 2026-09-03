@@ -1195,6 +1195,66 @@ p {
   opacity: 1;
 }
 
+.side-bottom a,
+.side-bottom button {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 1;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  border-radius: 10px;
+}
+
+.nav-operator .nav-orb-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: block;
+  background: radial-gradient(circle at 32% 25%, #fff 0, #ffe372 15%, #b96eff 46%, #3157d8 72%, #161713 100%);
+  box-shadow: 0 0 12px #765fff55;
+}
+
+aside a.nav-operator.selected .nav-orb-icon {
+  box-shadow: 0 0 16px #ffd23388;
+}
+
+.stub-panel {
+  text-align: center;
+  padding: 28px 20px;
+}
+
+.kb-upload-form label {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.kb-upload-form input,
+.kb-upload-form textarea {
+  font: inherit;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.operator-crystal .motion.is-live {
+  animation: orb-stage-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes orb-stage-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.04);
+  }
+}
+
 .operator-crystal .ground {
   position: absolute;
   left: 50%;
