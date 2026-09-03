@@ -80,6 +80,16 @@ Certbot запрашивает сертификат для:
 
 `dlno.ru`, `www.dlno.ru`, `api.dlno.ru`, `app.dlno.ru`, `admin.dlno.ru`, `wiki.dlno.ru`, `cdn.dlno.ru`, `status.dlno.ru`
 
+### Сервер `5.35.86.62`: SNI mux на :443
+
+На этом хосте публичный **:443** занят stream SNI-мультиплексором (`/etc/nginx/stream.d/sni-mux-443.conf`) для `a.47z.ru` / Reality.  
+HTTPS для `*.dlno.ru` слушает **127.0.0.1:4444**; stream проксирует по SNI:
+
+- `dlno.ru`, `www`, `api`, `app`, `admin`, `wiki`, `cdn`, `status` → `127.0.0.1:4444`
+- остальное → `127.0.0.1:4443` (`a.47z.ru`)
+
+После `certbot --nginx` замените в `dlno.ru.conf` `listen 443 ssl` на `listen 127.0.0.1:4444 ssl http2` (и `[::1]:4444`), затем `nginx -t && systemctl reload nginx`.
+
 Проверка:
 
 ```bash
