@@ -880,3 +880,326 @@ p {
     padding: 16px;
   }
 }
+
+/* --- Operator stage + Crystal orb --- */
+.operator-stage {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.operator-head p {
+  max-width: 520px;
+  color: var(--gray);
+  font-size: 13px;
+}
+
+.operator-orb-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 0 18px;
+  position: relative;
+}
+
+.operator-phase {
+  margin: 14px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #5a8fb0;
+  min-height: 18px;
+  text-align: center;
+}
+
+.operator-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.operator-chips button {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: #444;
+}
+
+.operator-chips button:hover:not(:disabled) {
+  border-color: #bbb;
+}
+
+.operator-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.operator-form {
+  margin-top: auto;
+}
+
+.operator-confirm {
+  margin-top: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #fff9e6;
+  border: 1px solid #f0e4a8;
+}
+
+.operator-confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-ghost {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 700;
+}
+
+.operator-audio {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.operator-crystal.widget-operator {
+  --orb-size: 120px;
+  --main: #15181d;
+  --sub: #737b85;
+  --ring-sharp: rgba(28, 43, 61, 0.3);
+  --ring-soft: rgba(67, 116, 164, 0.22);
+  --bubble: rgba(255, 255, 255, 0.92);
+  --bubble-line: rgba(20, 32, 48, 0.09);
+  --fire-core: rgba(255, 255, 255, 1);
+  --fire-mid: rgba(242, 251, 255, 0.98);
+  --fire-edge: rgba(190, 231, 255, 0.62);
+  --fire-halo: rgba(218, 244, 255, 0.28);
+  position: relative;
+  width: 200px;
+  height: 200px;
+}
+
+.operator-crystal .orb-anchor {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 160px;
+  height: 160px;
+  transform: translate(-50%, -50%);
+}
+
+.operator-crystal .orb-hit {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  z-index: 20;
+  border-radius: 50%;
+}
+
+.operator-crystal .motion {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 74%;
+}
+
+.operator-crystal .breath {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--orb-size);
+  height: var(--orb-size);
+  transform: translate(-50%, -50%);
+  animation: orb-breathe 5.4s ease-in-out infinite;
+}
+
+.operator-crystal.is-live .breath,
+.operator-stage[data-voice-active="true"] .operator-crystal .breath {
+  animation: orb-active-breathe 1.2s ease-in-out infinite;
+}
+
+.operator-crystal .orb-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.operator-crystal .fire-path {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+.operator-crystal .fire {
+  position: absolute;
+  width: 68%;
+  height: 68%;
+  left: 16%;
+  top: 16%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 40% 36%,
+    var(--fire-core) 0 22%,
+    var(--fire-mid) 38%,
+    var(--fire-edge) 67%,
+    transparent 90%
+  );
+}
+
+.operator-crystal .fire-idle {
+  animation: orb-fire-float 8.4s ease-in-out infinite;
+}
+
+.operator-crystal.is-live .fire-idle,
+.operator-stage[data-voice-active="true"] .operator-crystal .fire-idle {
+  opacity: 0;
+}
+
+.operator-crystal .fire-active {
+  opacity: 0;
+  transform: scale(1.06);
+}
+
+.operator-crystal.is-live .fire-active,
+.operator-stage[data-voice-active="true"] .operator-crystal .fire-active {
+  opacity: 1;
+}
+
+.operator-crystal .ground {
+  position: absolute;
+  left: 50%;
+  top: 67%;
+  transform: translate(-50%, -50%);
+  width: 130px;
+  height: 36px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(255, 255, 255, 0.48) 0 7%, transparent 25%);
+  opacity: 0.72;
+  z-index: -3;
+}
+
+.operator-crystal .rings {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--orb-size);
+  height: var(--orb-size);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.operator-crystal .rings i {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  opacity: 0;
+  border: 1px solid var(--ring-sharp);
+}
+
+.operator-crystal .rings .soft {
+  border-color: var(--ring-soft);
+}
+
+.operator-crystal.is-live .rings .r1,
+.operator-stage[data-voice-active="true"] .operator-crystal .rings .r1 {
+  animation: orb-ring 2s ease-out infinite;
+}
+
+.operator-crystal.is-live .rings .r2,
+.operator-stage[data-voice-active="true"] .operator-crystal .rings .r2 {
+  animation: orb-ring 2.1s ease-out 0.35s infinite;
+}
+
+.operator-crystal .active-halo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0.88);
+  background: radial-gradient(circle, rgba(161, 226, 255, 0.16), transparent 72%);
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+.operator-crystal.is-live .active-halo,
+.operator-stage[data-voice-active="true"] .operator-crystal .active-halo {
+  opacity: 0.92;
+  transform: translate(-50%, -50%) scale(1.16);
+}
+
+.operator-crystal .icon {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  color: rgba(24, 34, 45, 0.82);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.operator-crystal .state {
+  display: none;
+}
+
+@keyframes orb-breathe {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.04);
+  }
+}
+
+@keyframes orb-active-breathe {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.07);
+  }
+}
+
+@keyframes orb-fire-float {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(0.97);
+  }
+  50% {
+    transform: translate(4px, -3px) scale(1);
+  }
+}
+
+@keyframes orb-ring {
+  0% {
+    transform: scale(0.75);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+}

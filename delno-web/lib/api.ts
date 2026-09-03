@@ -49,6 +49,13 @@ export type KnowledgeSource = {
   snippet_preview?: string;
 };
 
+export type PendingConfirmation = {
+  confirmation_id: string;
+  tool_name: string;
+  params: Record<string, unknown>;
+  summary: string;
+};
+
 export type FeatureFlag = {
   flag_key: string;
   enabled: boolean;
@@ -151,12 +158,18 @@ export function apiConversationMessages(token: string, conversationId: string) {
   return apiFetch<{ items: MessageItem[] }>(`/v1/operator/conversations/${conversationId}/messages`, token);
 }
 
-export function apiOperatorChat(token: string, message: string, conversationId?: string) {
+export function apiOperatorChat(
+  token: string,
+  message: string,
+  conversationId?: string,
+  modality: "text" | "voice" = "text",
+) {
   return apiFetch<{
     conversation_id: string;
     reply: string;
     sources: KnowledgeSource[];
     tool_calls: unknown[];
+    pending_confirmation: PendingConfirmation | null;
   }>("/v1/operator/chat", token, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -164,8 +177,21 @@ export function apiOperatorChat(token: string, message: string, conversationId?:
       message,
       channel: "cabinet",
       conversation_id: conversationId || null,
+      modality,
     }),
   });
+}
+
+export function apiOperatorConfirm(token: string, toolName: string, params: Record<string, unknown>) {
+  return apiFetch<{ ok: boolean; message: string; data: Record<string, unknown> }>(
+    "/v1/operator/confirm",
+    token,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tool_name: toolName, params }),
+    },
+  );
 }
 
 export function apiTenantLegalGet(token: string) {

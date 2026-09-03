@@ -1,4 +1,4 @@
-"""Operator LLM loop — read-only KB, tenant-scoped."""
+"""Operator LLM loop — read-only KB + cabinet live setup."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.tenant import TenantContext
 from app.models.conversation import Conversation, Message
+from app.operator.setup_intent import parse_setup_intent
 from app.operator.tools.registry import PendingConfirmation, ToolResult, registry
 from app.services.audit import write_audit
 from app.services.events import emit_event
@@ -42,7 +43,13 @@ def run_operator_turn(
         )
         db.flush()
 
-        reply, tool_calls, sources = _generate_reply(db, ctx, message)
+        reply, tool_calls, sources, pending = _generate_reply(
+            db, ctx, message, channel=channel
+        )
+
+        meta: dict[str, Any] = {"tool_calls": tool_calls, "sources": sources}
+        if pending:
+            meta["pending_confirmation"] = pending
 
         db.add(
             Message(
@@ -50,7 +57,7 @@ def run_operator_turn(
                 conversation_id=conversation.id,
                 role="assistant",
                 body=reply,
-                meta={"tool_calls": tool_calls, "sources": sources},
+                meta=meta,
             )
         )
         write_audit(
@@ -68,6 +75,7 @@ def run_operator_turn(
             "tool_calls": tool_calls,
             "sources": sources,
             "modality": input_modality,
+            "pending_confirmation": pending,
         }
     except Exception as exc:
         emit_event(
@@ -123,16 +131,100 @@ def _kb_context_from_result(result: ToolResult) -> str:
     return "\n\n".join(snippets)[:4000]
 
 
-def _system_prompt(ctx: TenantContext, kb_context: str) -> str:
+def _system_prompt(ctx: TenantContext, kb_context: str, *, cabinet: bool = False) -> str:
     base = (
         f"Ты DELNO — ИИ-сотрудник компании (tenant: {ctx.tenant_slug}). "
         "Отвечай кратко по-русски. Используй только факты из базы знаний ниже. "
         "Если данных недостаточно — честно скажи об этом и предложи оставить заявку на сайте. "
         "Не выдумывай цены, условия и действия. Не запрашивай tenant_id и не выполняй массовые операции."
     )
+    if cabinet:
+        base += (
+            " Ты в кабинете владельца: помогай настраивать DELNO на лету "
+            "(база знаний, часы работы, флаги каналов). Изменения применяются только после подтверждения."
+        )
     if kb_context:
         return f"{base}\n\n--- База знаний ---\n{kb_context}"
     return base
+
+
+def _format_tenant_summary(data: dict[str, Any]) -> str:
+    lines = [f"Компания: {data.get('tenant_name', '—')}"]
+    settings = data.get("settings") or {}
+    if settings.get("assistant_name"):
+        lines.append(f"Имя ассистента: {settings['assistant_name']}")
+    if settings.get("greeting"):
+        lines.append(f"Приветствие: {settings['greeting']}")
+    legal = settings.get("legal") or {}
+    if legal.get("company_name"):
+        lines.append(f"Юр. лицо: {legal['company_name']}")
+    flags = data.get("feature_flags") or {}
+    if flags:
+        enabled = [k for k, v in flags.items() if v]
+        disabled = [k for k, v in flags.items() if not v]
+        if enabled:
+            lines.append("Включено: " + ", ".join(enabled))
+        if disabled:
+            lines.append("Выключено: " + ", ".join(disabled))
+    return "\n".join(lines)
+
+
+def _pending_confirmation_dict(
+    tool_name: str,
+    params: dict[str, Any],
+    summary: str,
+) -> dict[str, Any]:
+    return {
+        "confirmation_id": str(uuid.uuid4()),
+        "tool_name": tool_name,
+        "params": params,
+        "summary": summary,
+    }
+
+
+def _try_cabinet_setup(
+    db: Session,
+    ctx: TenantContext,
+    message: str,
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None] | None:
+    intent = parse_setup_intent(message)
+    if not intent:
+        return None
+
+    tool_name = str(intent["tool"])
+    params = dict(intent.get("params") or {})
+    summary = str(intent.get("summary") or tool_name)
+    tool_calls: list[dict[str, Any]] = [{"tool": tool_name, "ok": None, "pending": True}]
+
+    tool = registry.get(tool_name)
+    if not tool:
+        return (
+            f"Не удалось выполнить «{summary}»: инструмент недоступен.",
+            tool_calls,
+            [],
+            None,
+        )
+
+    if tool_name == "get_tenant_summary":
+        result = registry.run(db, ctx, tool_name, **params)
+        if isinstance(result, ToolResult) and result.ok:
+            tool_calls[0]["ok"] = True
+            return _format_tenant_summary(result.data), tool_calls, [], None
+        tool_calls[0]["ok"] = False
+        return "Не удалось загрузить настройки.", tool_calls, [], None
+
+    if getattr(tool, "critical_write", False):
+        pending = _pending_confirmation_dict(tool_name, params, summary)
+        reply = f"Готов выполнить: {summary}. Подтвердите действие кнопкой ниже."
+        return reply, tool_calls, [], pending
+
+    result = registry.run(db, ctx, tool_name, **params)
+    if isinstance(result, ToolResult) and result.ok:
+        tool_calls[0]["ok"] = True
+        return result.message or summary, tool_calls, [], None
+    tool_calls[0]["ok"] = False
+    msg = result.message if isinstance(result, ToolResult) else "Ошибка"
+    return f"Не удалось: {msg}", tool_calls, [], None
 
 
 def _fallback_reply(kb_context: str) -> str:
@@ -145,12 +237,22 @@ def _fallback_reply(kb_context: str) -> str:
 
 
 def _generate_reply(
-    db: Session, ctx: TenantContext, message: str
-) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
-    """Read-only: always search KB; optional LLM synthesis; no auto write-tools."""
+    db: Session,
+    ctx: TenantContext,
+    message: str,
+    *,
+    channel: str = "web",
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None]:
+    """KB search + optional LLM; cabinet channel enables live setup intents."""
     tool_calls: list[dict[str, Any]] = []
     kb_context = ""
     sources: list[dict[str, Any]] = []
+    cabinet = channel in ("cabinet", "operator")
+
+    if cabinet:
+        setup = _try_cabinet_setup(db, ctx, message)
+        if setup:
+            return setup
 
     knowledge = registry.run(db, ctx, "get_knowledge", query=message)
     if isinstance(knowledge, ToolResult):
@@ -162,7 +264,7 @@ def _generate_reply(
     provider = get_model_provider()
     completion = provider.chat_completion(
         messages=[
-            {"role": "system", "content": _system_prompt(ctx, kb_context)},
+            {"role": "system", "content": _system_prompt(ctx, kb_context, cabinet=cabinet)},
             {"role": "user", "content": message},
         ]
     )
@@ -174,7 +276,7 @@ def _generate_reply(
             stub_echo = provider_name == "stub" and reply.startswith("[stub]")
             if reply and not stub_echo:
                 tool_calls.append({"tool": "llm", "ok": True, "provider": provider_name})
-                return reply, tool_calls, sources
+                return reply, tool_calls, sources, None
             if stub_echo:
                 tool_calls.append({"tool": "llm", "ok": False, "provider": provider_name, "error": "stub_echo"})
         except (KeyError, IndexError, TypeError):
@@ -186,9 +288,10 @@ def _generate_reply(
             "или напишите имя и телефон, и менеджер свяжется с вами.",
             tool_calls,
             sources,
+            None,
         )
 
-    return _fallback_reply(kb_context), tool_calls, sources
+    return _fallback_reply(kb_context), tool_calls, sources, None
 
 
 def execute_confirmed_tool(

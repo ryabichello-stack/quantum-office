@@ -6,11 +6,15 @@ from sqlalchemy.orm import Session
 from app.adapters.knowledge import KnowledgeAdapter
 from app.core.principals import principal_for_operator
 from app.core.tenant import TenantContext
+from app.models.feature_flag import FeatureFlag
+from app.models.tenant import Tenant
 from app.operator.tools.registry import ToolResult
 from app.services.audit import write_audit
 from app.services.events import emit_event
+from app.services.knowledge_documents import upsert_tenant_knowledge_document
 from app.services.leads import create_lead_record
 from app.services.party_enrichment import lookup_party_by_inn
+from app.services.tenant_settings_ingest import sync_tenant_settings_for_ctx
 
 
 class GetKnowledgeTool:
@@ -159,4 +163,194 @@ class CreateLeadTool:
                 "inn": lead.inn,
             },
             message="Lead created",
+        )
+
+
+class GetTenantSummaryTool:
+    name = "get_tenant_summary"
+    description = "Read tenant settings, legal profile and feature flags (read-only)."
+    critical_write = False
+    parameters_schema = {"type": "object", "properties": {}}
+
+    def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult:
+        tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
+        settings = tenant.settings if isinstance(tenant.settings, dict) else {}
+        flags = (
+            db.query(FeatureFlag)
+            .filter(FeatureFlag.tenant_id == ctx.tenant_id)
+            .order_by(FeatureFlag.flag_key)
+            .all()
+        )
+        write_audit(
+            db,
+            ctx,
+            action="tool.get_tenant_summary",
+            resource=f"tenant:{tenant.id}",
+            new_value={"flags": len(flags)},
+        )
+        return ToolResult(
+            ok=True,
+            data={
+                "tenant_name": tenant.name,
+                "tenant_slug": tenant.slug,
+                "settings": settings,
+                "feature_flags": {f.flag_key: f.enabled for f in flags},
+            },
+            message="Tenant summary loaded",
+        )
+
+
+class UpdateTenantSettingsTool:
+    name = "update_tenant_settings"
+    description = "Merge patch into tenant.settings (greeting, assistant_name, business note)."
+    critical_write = True
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "patch": {"type": "object", "description": "Partial settings dict to merge"},
+        },
+        "required": ["patch"],
+    }
+
+    def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult:
+        patch = params.get("patch")
+        if not isinstance(patch, dict) or not patch:
+            return ToolResult(ok=False, message="patch object is required")
+
+        tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
+        old_settings = dict(tenant.settings or {})
+        merged = {**old_settings, **patch}
+        tenant.settings = merged
+
+        sync = sync_tenant_settings_for_ctx(db, ctx, source="operator.update_settings")
+        write_audit(
+            db,
+            ctx,
+            action="tool.update_tenant_settings",
+            resource=f"tenant:{tenant.id}",
+            old_value={"settings": old_settings},
+            new_value={"settings": merged, "knowledge_sync": sync},
+        )
+        emit_event(
+            db,
+            tenant_id=ctx.tenant_id,
+            event_type="tenant.settings.updated",
+            category="operational",
+            source="operator.update_settings",
+            payload={"keys": list(patch.keys())},
+        )
+        db.commit()
+        return ToolResult(
+            ok=True,
+            data={"settings": merged, "knowledge_sync": sync},
+            message="Settings updated",
+        )
+
+
+class UploadKnowledgeSnippetTool:
+    name = "upload_knowledge_snippet"
+    description = "Upsert a KB text document for the tenant."
+    critical_write = True
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "body": {"type": "string"},
+            "visibility": {"type": "string", "enum": ["public", "company"]},
+        },
+        "required": ["title", "body"],
+    }
+
+    def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult:
+        title = str(params.get("title") or "").strip()
+        body = str(params.get("body") or "").strip()
+        visibility = str(params.get("visibility") or "public")
+        if len(title) < 2 or len(body) < 10:
+            return ToolResult(ok=False, message="title and body (min 10 chars) are required")
+
+        tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
+        result = upsert_tenant_knowledge_document(
+            db,
+            tenant,
+            title=title[:255],
+            body=body[:50000],
+            visibility=visibility if visibility in ("public", "company") else "public",
+            source="operator.knowledge_snippet",
+        )
+        if not result.get("ok"):
+            write_audit(
+                db,
+                ctx,
+                action="tool.upload_knowledge_snippet",
+                resource="knowledge",
+                new_value={"title": title, "ok": False},
+                result="error",
+            )
+            return ToolResult(ok=False, data=result, message=str(result.get("detail") or "knowledge_failed"))
+
+        write_audit(
+            db,
+            ctx,
+            action="tool.upload_knowledge_snippet",
+            resource="knowledge",
+            new_value={"title": title, "document_id": result.get("document_id")},
+        )
+        db.commit()
+        return ToolResult(
+            ok=True,
+            data=result,
+            message=f"Knowledge document «{title}» saved",
+        )
+
+
+class SetFeatureFlagTool:
+    name = "set_feature_flag"
+    description = "Enable or disable a tenant feature flag."
+    critical_write = True
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "flag_key": {"type": "string"},
+            "enabled": {"type": "boolean"},
+        },
+        "required": ["flag_key", "enabled"],
+    }
+
+    def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult:
+        flag_key = str(params.get("flag_key") or "").strip()
+        enabled = bool(params.get("enabled"))
+        if not flag_key:
+            return ToolResult(ok=False, message="flag_key is required")
+
+        flag = (
+            db.query(FeatureFlag)
+            .filter(FeatureFlag.tenant_id == ctx.tenant_id, FeatureFlag.flag_key == flag_key)
+            .one_or_none()
+        )
+        if not flag:
+            return ToolResult(ok=False, message=f"Feature flag not found: {flag_key}")
+
+        old = flag.enabled
+        flag.enabled = enabled
+        emit_event(
+            db,
+            tenant_id=ctx.tenant_id,
+            event_type="feature.flag.updated",
+            category="operational",
+            source="operator.set_feature_flag",
+            payload={"flag_key": flag_key, "enabled": enabled},
+        )
+        write_audit(
+            db,
+            ctx,
+            action="tool.set_feature_flag",
+            resource=f"feature_flag:{flag_key}",
+            old_value={"enabled": old},
+            new_value={"enabled": enabled},
+        )
+        db.commit()
+        return ToolResult(
+            ok=True,
+            data={"flag_key": flag_key, "enabled": enabled},
+            message=f"Flag {flag_key} → {'on' if enabled else 'off'}",
         )

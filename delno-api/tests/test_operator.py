@@ -24,7 +24,7 @@ def test_generate_reply_uses_kb_text_and_stub_llm():
                 "provider": "stub",
                 "data": {"choices": [{"message": {"content": "Тариф Диалоги — 2 990 ₽/мес."}}]},
             }
-            reply, tool_calls, sources = _generate_reply(db, ctx, "Сколько стоит DELNO?")
+            reply, tool_calls, sources, _pending = _generate_reply(db, ctx, "Сколько стоит DELNO?")
 
     assert "2 990" in reply or "2990" in reply
     assert any(t.get("tool") == "get_knowledge" for t in tool_calls)
@@ -43,7 +43,7 @@ def test_generate_reply_fallback_without_llm():
         )
         with patch("app.operator.agent.get_model_provider") as mock_provider:
             mock_provider.return_value.chat_completion.return_value = {"ok": False, "error": "no_key"}
-            reply, tool_calls, sources = _generate_reply(db, ctx, "комиссия")
+            reply, tool_calls, sources, _pending = _generate_reply(db, ctx, "комиссия")
 
     assert "1%" in reply
     assert tool_calls[0]["tool"] == "get_knowledge"
@@ -65,7 +65,7 @@ def test_generate_reply_ignores_stub_echo():
                 "provider": "stub",
                 "data": {"choices": [{"message": {"content": "[stub] Сколько стоит?"}}]},
             }
-            reply, tool_calls, _sources = _generate_reply(db, ctx, "Сколько стоит?")
+            reply, tool_calls, _sources, _pending = _generate_reply(db, ctx, "Сколько стоит?")
 
     assert "2 990" in reply
     assert any(t.get("tool") == "llm" and t.get("ok") is False for t in tool_calls)
@@ -81,7 +81,7 @@ def test_run_operator_turn_commits_messages():
     db.commit = MagicMock()
 
     with patch("app.operator.agent._get_or_create_conversation", return_value=conversation):
-        with patch("app.operator.agent._generate_reply", return_value=("Ответ", [{"tool": "get_knowledge", "ok": True}], [])):
+        with patch("app.operator.agent._generate_reply", return_value=("Ответ", [{"tool": "get_knowledge", "ok": True}], [], None)):
             with patch("app.operator.agent.write_audit"):
                 result = run_operator_turn(db, ctx, message="Привет")
 
