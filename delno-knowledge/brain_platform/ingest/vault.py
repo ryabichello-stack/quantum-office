@@ -10,6 +10,11 @@ from typing import Any
 from brain_platform.db.repository import BrainRepository, slug_id
 
 try:
+    from brain_platform.vault_paths import resolve_vault_path
+except ImportError:  # pragma: no cover
+    resolve_vault_path = None  # type: ignore
+
+try:
     import yaml
 except Exception:  # pragma: no cover
     yaml = None  # type: ignore
@@ -51,7 +56,7 @@ def ingest_vault(
     vault_path: Path | None = None,
     limit: int = 500,
 ) -> dict[str, Any]:
-    root = vault_path or default_vault_path()
+    root = vault_path or (resolve_vault_path(tenant_id) if resolve_vault_path else default_vault_path())
     if not root.exists():
         return {"ok": False, "error": f"vault_missing:{root}"}
 

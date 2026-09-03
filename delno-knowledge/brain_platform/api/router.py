@@ -91,6 +91,13 @@ class GraphRebuildRequest(BaseModel):
     tenant_id: Optional[str] = None
 
 
+class TenantSettingsSyncRequest(BaseModel):
+    tenant_id: str = Field(..., min_length=1, max_length=64)
+    tenant_name: str = Field(..., min_length=1, max_length=255)
+    settings: dict = Field(default_factory=dict)
+    assistant_name: str = Field(default="DELNO", max_length=64)
+
+
 def _principal(
     x_principal_id: Optional[str],
     x_tenant_id: Optional[str],
@@ -279,6 +286,75 @@ def brain_ingest_run(
         except Exception as exc:  # noqa: BLE001
             results["sync_pg"] = {"ok": False, "error": str(exc)}
     return {"ok": True, "results": results, "stats": repo.stats(tenant)}
+
+
+@router.post("/tenant/settings-sync")
+def brain_tenant_settings_sync(
+    req: TenantSettingsSyncRequest,
+    x_principal_id: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
+    x_groups: Optional[str] = Header(None),
+    x_user_id: Optional[str] = Header(None),
+    x_admin: Optional[str] = Header(None),
+):
+    """E1.8 — upsert office-assistant KB doc from tenant cabinet settings."""
+    require_brain_enabled()
+    principal = _principal(
+        x_principal_id, x_tenant_id, x_groups, x_user_id, x_admin, req.tenant_id
+    )
+    allow_service = os.getenv("BRAIN_ALLOW_SERVICE_INGEST", "true").lower() in ("1", "true", "yes")
+    allowed = principal.principal_id in (
+        "service:cursor-admin",
+        "service:delno-admin",
+        "service:delno-api",
+    ) or allow_service
+    if not allowed:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=403, detail="settings_sync_forbidden")
+
+    tenant = req.tenant_id
+    legal = req.settings.get("legal") if isinstance(req.settings, dict) else {}
+    legal = legal if isinstance(legal, dict) else {}
+    lines = [
+        f"# {req.tenant_name}",
+        "",
+        f"ИИ-ассистент: **{req.assistant_name}**",
+        "",
+        "## Профиль компании",
+    ]
+    if legal.get("name"):
+        lines.append(f"- Наименование: {legal.get('name')}")
+    if legal.get("inn"):
+        lines.append(f"- ИНН: {legal.get('inn')}")
+    if legal.get("ogrn"):
+        lines.append(f"- ОГРН: {legal.get('ogrn')}")
+    if legal.get("address"):
+        lines.append(f"- Адрес: {legal.get('address')}")
+    if legal.get("management"):
+        lines.append(f"- Руководитель: {legal.get('management')}")
+    locale = req.settings.get("locale") if isinstance(req.settings, dict) else None
+    if locale:
+        lines.append(f"- Локаль: {locale}")
+    body = "\n".join(lines).strip()
+    if len(body) < 40:
+        body += "\n\nНастройки tenant синхронизированы из кабинета DELNO (office-assistant)."
+
+    repo = get_repo()
+    doc_id = f"doc-{tenant}-tenant-settings"
+    result = repo.upsert_document(
+        doc_id=doc_id,
+        tenant_id=tenant,
+        title=f"{req.tenant_name} — настройки кабинета",
+        doc_type="settings",
+        body=body,
+        visibility="company",
+        channels=["office-assistant"],
+        index_zone="private",
+        source="tenant:settings-sync",
+    )
+    repo.conn.commit()
+    return {"ok": True, "document_id": doc_id, "upsert": result, "stats": repo.stats(tenant)}
 
 
 @router.get("/ingest/status")

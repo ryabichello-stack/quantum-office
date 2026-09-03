@@ -7,7 +7,8 @@ DELNO Crystal Widget **v28** — UX-прототип для embed на сайт�
 | `index.html` | theme `auto` |
 | `light.html` | светлый фон |
 | `dark.html` | тёмный фон |
-| `assets/crystal-orb-static.webp` | orb (~15 KB) |
+| `assets/crystal-orb-static.webp` | orb (~10 KB WebP, 192×192) |
+| `assets/crystal-orb.jpg` | исходник orb (reference) |
 | `INTEGRATION.md` | backend gateway spec |
 
 **Handoff (полное ТЗ):** [`../HANDOFF.md`](../HANDOFF.md)

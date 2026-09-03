@@ -85,8 +85,8 @@
 | E1.5 | CMS models: pages, revisions | ✅ |
 | E1.6 | Admin CMS CRUD draft/publish | ✅ |
 | E1.7 | Site fetch published CMS (FAQ block pilot) | ✅ FaqSection + /api/cms/faq |
-| E1.8 | Auto-ingest tenant settings → brain | ⬜ |
-| E1.9 | Per-tenant vault path isolation | ⬜ |
+| E1.8 | Auto-ingest tenant settings → brain | ✅ settings-sync API + legal update hook |
+| E1.9 | Per-tenant vault path isolation | ✅ vault/{tenant_slug}/ resolver |
 | E1.10 | **delno-admin** scaffold: login + tenants + CMS | ✅ |
 | E1.11 | **Exit E1:** KB search works; CMS FAQ from admin end-to-end | ✅ CMS chain tests + smoke |
 | E1.12 | **PartyLookupAdapter** (DaData) + PG cache + lookup API | ✅ `GET /v1/tenant/party/lookup` |
@@ -119,7 +119,7 @@
 | E3.1 | **delno-web** cabinet MVP: login, leads, inbox, operator, settings | ✅ |
 | E3.2 | Operator LLM loop — **basic read-only only** | ✅ KB search + model provider |
 | E3.3 | Tool registry + confirmation classes | ⬜ |
-| E3.4 | Embeddable web widget JS | 🔄 v28 + session/visitor API + site proxy |
+| E3.4 | Embeddable web widget JS | ✅ CDN embed.js + client + api.dlno.ru |
 | E3.5 | Voice widget WebRTC MVP | ⬜ |
 | E3.6 | Fallback voice→text | ⬜ |
 | E3.7 | KB UI upload/publish | ⬜ |

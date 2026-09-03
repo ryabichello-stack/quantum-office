@@ -11,6 +11,7 @@ from app.models.tenant import Tenant
 from app.services.audit import write_audit
 from app.services.events import emit_event
 from app.services.party_enrichment import enrich_tenant_legal_from_inn, lookup_party_by_inn, suggest_parties_by_query
+from app.services.tenant_settings_ingest import sync_tenant_settings_for_ctx
 
 router = APIRouter(prefix="/tenant", tags=["tenant"])
 
@@ -165,5 +166,6 @@ def update_tenant_legal(
         old_value={"legal": old_legal},
         new_value={"legal": result["legal"]},
     )
+    kb_sync = sync_tenant_settings_for_ctx(db, ctx, source="tenant.legal.update")
     db.commit()
-    return {"ok": True, "legal": result["legal"], "party_enriched": True}
+    return {"ok": True, "legal": result["legal"], "party_enriched": True, "knowledge_sync": kb_sync}

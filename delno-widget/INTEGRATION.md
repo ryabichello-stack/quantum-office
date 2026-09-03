@@ -123,3 +123,25 @@ Response:
 `https://api.dlno.ru/v1/public/widget/message`
 
 `siteKey` при установке виджета должен приходить из embed-конфига клиента.
+
+## Embed на сторонний сайт (E3.4)
+
+Один тег — iframe с Crystal Widget:
+
+```html
+<script
+  src="https://cdn.dlno.ru/widget/v1/embed.js"
+  data-site-key="PUBLIC_SITE_KEY"
+  data-theme="auto"
+  async
+></script>
+```
+
+| Атрибут | Значение |
+|---------|----------|
+| `data-site-key` | публичный ключ установки (не tenant_id) |
+| `data-theme` | `auto` · `light` · `dark` |
+| `data-api` | опционально, default `https://api.dlno.ru/v1/public/widget` |
+| `data-cdn` | опционально, default `https://cdn.dlno.ru/widget/v1` |
+
+CDN bundle: `embed.js`, `delno-widget-client.js`, `index.html`, `light.html`, `dark.html`, `assets/`.
