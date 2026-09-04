@@ -18,6 +18,29 @@ from app.api.v1.public import (
 )
 from app.models.conversation import Conversation
 from app.services.channel_router import ChannelContext
+from app.services.rate_limit import get_widget_rate_limiter
+from starlette.requests import Request
+
+
+def _request() -> Request:
+    scope = {
+        "type": "http",
+        "http_version": "1.1",
+        "method": "POST",
+        "path": "/v1/public/widget/session",
+        "headers": [],
+        "client": ("127.0.0.1", 12345),
+        "scheme": "http",
+        "server": ("test", 80),
+    }
+    return Request(scope)
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    get_widget_rate_limiter().reset()
+    yield
+    get_widget_rate_limiter().reset()
 
 
 @pytest.fixture
@@ -38,7 +61,7 @@ def test_public_widget_session_creates_conversation(channel_ctx):
     with patch("app.api.v1.public._resolve_widget_context", return_value=channel_ctx):
         with patch("app.api.v1.public.emit_event"):
             with patch("app.api.v1.public.tenant_public_profile", return_value={"name": "DELNO", "assistant_name": "DELNO"}):
-                result = public_widget_session(body=body, db=db, x_tenant_slug=None)
+                result = public_widget_session(body=body, request=_request(), db=db, x_tenant_slug=None)
 
     assert result["session_id"]
     assert result["widget"]["collect_name"] is True
@@ -70,7 +93,7 @@ def test_public_widget_visitor_creates_lead(channel_ctx):
                         "next_step": None,
                     },
                 ):
-                    result = public_widget_visitor(body=body, db=db, x_tenant_slug=None)
+                    result = public_widget_visitor(body=body, request=_request(), db=db, x_tenant_slug=None)
 
     assert result["ok"] is True
     assert result["lead"]["name"] == "Алексей"
@@ -111,7 +134,7 @@ def test_public_widget_message_returns_ask_phone(channel_ctx):
                                 "tool_calls": [],
                             },
                         ):
-                            result = public_widget_message(body=body, db=db, x_tenant_slug=None)
+                            result = public_widget_message(body=body, request=_request(), db=db, x_tenant_slug=None)
 
     assert "Доставка" in result["message"]
     assert result["next_step"] == "ask_phone"
@@ -123,6 +146,6 @@ def test_public_widget_unknown_site_key():
 
     with patch("app.api.v1.public._resolve_widget_context", return_value=None):
         with pytest.raises(HTTPException) as exc:
-            public_widget_message(body=body, db=db, x_tenant_slug=None)
+            public_widget_message(body=body, request=_request(), db=db, x_tenant_slug=None)
 
     assert exc.value.status_code == 404

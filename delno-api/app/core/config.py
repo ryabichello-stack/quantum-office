@@ -27,6 +27,15 @@ class Settings(BaseSettings):
     dadata_api_key: str | None = None
     dadata_secret_key: str | None = None
 
+    # Widget public API rate limits (Commit 2)
+    widget_rate_limit_per_minute: int = 60
+    widget_rate_limit_messages_per_minute: int = 30
+    widget_rate_limit_window_sec: int = 60
+
+    # CORS — comma-separated origins; empty = regex fallback in main.py
+    cors_allow_origins: str = ""
+    cors_allow_credentials: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -5,6 +5,7 @@
 - ✅ `POST /v1/public/widget/session|visitor|message` — реализовано в `delno-api`
 - ✅ Ответы через `run_operator_turn(channel="widget")` — tenant из `site_key`
 - 🔄 CDN bundle Commit 1: `widget-embed.html` + `crystal-widget.css` + `delno-widget-chat.js`
+- ✅ Commit 2: rate limit, visitor bind, CORS — see `app/services/widget_security.py`
 
 **Аудит и план:** [`../docs/DELNO_WIDGET_AUDIT.md`](../docs/DELNO_WIDGET_AUDIT.md)
 

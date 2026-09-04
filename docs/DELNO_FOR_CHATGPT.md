@@ -1,6 +1,6 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-4.2 · 2026-09-04 (Crystal Widget product phase — audit + Commit 1)
+**Revision:** REV-4.3 · 2026-09-04 (Widget Commit 2 — security hardening)
 
 **Активный продуктовый этап:** Crystal Widget + Conversation Core — см. [`DELNO_WIDGET_AUDIT.md`](DELNO_WIDGET_AUDIT.md) AUDIT-1.0.
 
@@ -145,7 +145,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | E3.1 Cabinet MVP | ✅ | login, leads, inbox, operator, settings |
 | E3.2 Operator read-only KB | ✅ | `/v1/operator/chat` |
 | E3.3 Tool registry + confirmation | ✅ | READ/SAFE_WRITE/HIGH_IMPACT; LLM tool calling |
-| E3.4 Embeddable widget | 🔄 | embed.js + API ✅; CDN embed page Commit 1 |
+| E3.4 Embeddable widget | 🔄 | CDN embed ✅; API security Commit 2 ✅ |
 | E3.5 Voice WebRTC widget | ⬜ | |
 | E3.6 Voice→text fallback | ⬜ | |
 | E3.7 KB UI upload/publish | 🔄 | upload + list in `/dashboard/knowledge` |
@@ -322,5 +322,7 @@ systemctl status ava-outreach ava-mailer ava-text-bot  # не ломать
 | GET | `/v1/operator/conversations/{id}` | Conversation detail |
 | GET | `/v1/tenant/knowledge/documents` | KB upload history (E3.7) |
 | POST | `/v1/webhooks/telegram/{channel_account_id}` | Telegram inbound (E2) |
+
+**Widget security (Commit 2):** rate limit per `site_key`+IP; `visitor_id` session bind (403 on mismatch); CORS `*.dlno.ru` regex.
 
 Полный список — в [`DELNO_IMPLEMENTATION_ROADMAP.md`](DELNO_IMPLEMENTATION_ROADMAP.md).

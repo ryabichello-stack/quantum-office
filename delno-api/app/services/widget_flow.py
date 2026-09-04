@@ -88,6 +88,20 @@ def merge_widget_context(
     return meta
 
 
+class WidgetVisitorMismatchError(ValueError):
+    """Raised when visitor_id does not match the bound session."""
+
+
+def validate_widget_visitor(conversation: Conversation, visitor_id: str | None) -> None:
+    """Bind session to visitor_id — reject cross-visitor access to same session UUID."""
+    meta = conversation_meta(conversation)
+    bound = meta.get("visitor_id")
+    if not bound:
+        return
+    if not visitor_id or str(bound) != str(visitor_id):
+        raise WidgetVisitorMismatchError("visitor_mismatch")
+
+
 def apply_widget_visitor(
     db: Session,
     ctx: TenantContext,

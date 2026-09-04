@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -21,8 +21,11 @@ from app.services.widget_flow import (
     lead_summary_for_conversation,
     merge_widget_context,
     tenant_public_profile,
+    validate_widget_visitor,
     widget_next_step,
+    WidgetVisitorMismatchError,
 )
+from app.services.widget_security import enforce_widget_rate_limit
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -189,10 +192,12 @@ def _parse_conversation_id(session_id: str | None) -> UUID | None:
 @router.post("/widget/session")
 def public_widget_session(
     body: PublicWidgetSession,
+    request: Request,
     db: Session = Depends(get_db),
     x_tenant_slug: str | None = Header(default=None, alias="X-Tenant-Slug"),
 ) -> dict:
     """E3.4 — create or restore widget conversation session."""
+    enforce_widget_rate_limit(request, site_key=body.site_key, action="session")
     channel = _resolve_widget_context(db, body.site_key)
     if not channel and x_tenant_slug:
         channel = resolve_public_lead(db, x_tenant_slug)
@@ -244,10 +249,12 @@ def public_widget_session(
 @router.post("/widget/visitor")
 def public_widget_visitor(
     body: PublicWidgetVisitorUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     x_tenant_slug: str | None = Header(default=None, alias="X-Tenant-Slug"),
 ) -> dict:
     """E3.8 — persist visitor name/phone and create lead linked to conversation."""
+    enforce_widget_rate_limit(request, site_key=body.site_key, action="visitor")
     channel = _resolve_widget_context(db, body.site_key)
     if not channel and x_tenant_slug:
         channel = resolve_public_lead(db, x_tenant_slug)
@@ -267,6 +274,11 @@ def public_widget_visitor(
     conversation = get_conversation_for_widget(db, ctx, conversation_id, create=False)
     if not conversation:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    try:
+        validate_widget_visitor(conversation, body.visitor_id)
+    except WidgetVisitorMismatchError:
+        raise HTTPException(status_code=403, detail="visitor_mismatch") from None
 
     if not body.name and not body.phone:
         raise HTTPException(status_code=400, detail="name or phone required")
@@ -292,10 +304,12 @@ def public_widget_visitor(
 @router.post("/widget/message")
 def public_widget_message(
     body: PublicWidgetMessage,
+    request: Request,
     db: Session = Depends(get_db),
     x_tenant_slug: str | None = Header(default=None, alias="X-Tenant-Slug"),
 ) -> dict:
     """E3.4 — public widget chat gateway (guest KB, tenant from site_key)."""
+    enforce_widget_rate_limit(request, site_key=body.site_key, action="message")
     channel = _resolve_widget_context(db, body.site_key)
     if not channel and x_tenant_slug:
         channel = resolve_public_lead(db, x_tenant_slug)
@@ -324,6 +338,12 @@ def public_widget_message(
     conversation_id = _parse_conversation_id(body.session_id)
     conversation = get_conversation_for_widget(db, ctx, conversation_id, create=True)
     assert conversation is not None
+
+    try:
+        validate_widget_visitor(conversation, body.visitor_id)
+    except WidgetVisitorMismatchError:
+        raise HTTPException(status_code=403, detail="visitor_mismatch") from None
+
     merge_widget_context(
         db,
         conversation,

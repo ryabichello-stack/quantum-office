@@ -273,8 +273,20 @@ Full CRM, E1.16 Bitrix push, marketplace, PSTN/SIP, booking, fake appointment UI
 
 ## 16. Следующий шаг
 
-**Commit 1:** ✅ `widget-embed.html` + `delno-widget-chat.js` + `crystal-widget.css` — deployed to `cdn.dlno.ru/widget/v1/`.
+**Commit 1:** ✅ `widget-embed.html` + functional text chat — CDN deployed.
 
-**Commit 2 (next):** security hardening — rate limit, visitor bind, CORS, integration tests.
+**Commit 2:** ✅ rate limit, visitor_id session bind, CORS regex for `*.dlno.ru`.
 
-После e2e smoke text chat — отметить DoD A.1–A.5 в этом документе.
+**Commit 3 (next):** unified text+voice session, voice transcript → `/message`.
+
+---
+
+## Commit 2 verified (2026-09-04)
+
+| Check | Status |
+|-------|--------|
+| Rate limit `(site_key, IP)` on session/visitor/message | ✅ `app/services/rate_limit.py` |
+| `visitor_id` bind — mismatch → 403 | ✅ `validate_widget_visitor` |
+| Cross-tenant `session_id` isolation | ✅ tenant filter + tests |
+| CORS `allow_credentials=False` + dlno.ru regex | ✅ `app/main.py` |
+| Tests | ✅ `test_widget_security.py` |
