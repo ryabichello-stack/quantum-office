@@ -65,12 +65,68 @@ def resolve_period(
     *,
     default_days: int = 30,
 ) -> tuple[date, date]:
-    today = datetime.now(timezone.utc).date()
+    today = today_msk()
     end = _parse_day(to_day, default=today)
     start = _parse_day(from_day, default=end - timedelta(days=max(1, default_days) - 1))
     if start > end:
         start, end = end, start
     return start, end
+
+
+def today_msk() -> date:
+    """Business «сегодня» in Europe/Moscow (not UTC)."""
+    try:
+        from zoneinfo import ZoneInfo
+
+        return datetime.now(ZoneInfo("Europe/Moscow")).date()
+    except Exception:
+        return datetime.now(timezone.utc).date() + timedelta(hours=3)
+
+
+def build_today_snapshot() -> dict[str, Any]:
+    """Compact snapshot for Telegram Mini App: Metrika + Tilda webhook leads for today."""
+    day = today_msk()
+    tilda = _tilda_stats(day, day)
+    metrika = tilda.get("metrika") or fetch_metrika_stats(day, day)
+    leads = list(tilda.get("recent") or [])
+    return {
+        "ok": True,
+        "day": day.isoformat(),
+        "timezone": "Europe/Moscow",
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "metrika": {
+            "available": bool(metrika.get("available")),
+            "counter_id": (os.getenv("TILDA_METRIKA_COUNTER") or "").strip() or None,
+            "visits": metrika.get("visits"),
+            "users": metrika.get("users"),
+            "pageviews": metrika.get("pageviews"),
+            "bounce_rate_pct": metrika.get("bounce_rate_pct"),
+            "avg_visit_duration_sec": metrika.get("avg_visit_duration_sec"),
+            "error": metrika.get("error"),
+        },
+        "webhook": {
+            "leads": int(tilda.get("leads") or 0),
+            "conversion_pct": tilda.get("conversion_pct"),
+            "recent": [
+                {
+                    "id": L.get("id"),
+                    "name": L.get("name") or "—",
+                    "phone": L.get("phone") or "—",
+                    "page": L.get("page") or "",
+                    "created_at": L.get("created_at") or "",
+                }
+                for L in leads
+            ],
+            "notes": (tilda.get("notes") or {}).get("leads"),
+        },
+        "summary": {
+            "visits": metrika.get("visits"),
+            "users": metrika.get("users"),
+            "pageviews": metrika.get("pageviews"),
+            "leads": int(tilda.get("leads") or 0),
+            "conversion_pct": tilda.get("conversion_pct"),
+        },
+    }
 
 
 def _connect(path: Path) -> sqlite3.Connection | None:

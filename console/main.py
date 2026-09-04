@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from datetime import datetime, timedelta, timezone
 
 import channels_report
+import telegram_webapp
 
 load_dotenv()
 
@@ -134,6 +135,8 @@ _PUBLIC_API_PATHS = {
     "/api/auth/logout",
     "/api/auth/me",
     "/api/channels/tilda/lead",
+    "/api/miniapp/today",
+    "/api/miniapp/me",
 }
 
 
@@ -822,6 +825,56 @@ def index() -> FileResponse:
 @app.get("/health")
 def health() -> dict[str, Any]:
     return {"ok": True, "service": "quantum-console"}
+
+
+def _extract_telegram_init_data(request: Request) -> str:
+    h = request.headers
+    return (
+        (h.get("x-telegram-init-data") or h.get("X-Telegram-Init-Data") or "").strip()
+        or (request.query_params.get("initData") or "").strip()
+    )
+
+
+def _require_miniapp(request: Request) -> dict[str, Any]:
+    """Auth for Mini App: Telegram initData (owners) or console session/token."""
+    init_data = _extract_telegram_init_data(request)
+    if init_data:
+        checked = telegram_webapp.validate_init_data(init_data)
+        if checked.get("ok"):
+            return checked
+        raise HTTPException(403, checked.get("error") or "forbidden")
+    # Dev / desk fallback: already-authenticated console session or token
+    if _request_authenticated(request):
+        return {"ok": True, "user": {"id": None, "username": "console"}, "via": "console"}
+    raise HTTPException(401, "open from Telegram Mini App or sign in to console")
+
+
+@app.get("/miniapp")
+@app.get("/miniapp/")
+def miniapp_index() -> FileResponse:
+    path = STATIC_DIR / "miniapp" / "index.html"
+    if not path.is_file():
+        raise HTTPException(404, "Mini App not installed")
+    return FileResponse(path)
+
+
+@app.get("/api/miniapp/me")
+def api_miniapp_me(request: Request) -> dict[str, Any]:
+    auth = _require_miniapp(request)
+    return {
+        "ok": True,
+        "user": auth.get("user") or {},
+        "user_id": auth.get("user_id"),
+        "miniapp_url": telegram_webapp.miniapp_public_url(),
+        "day": channels_report.today_msk().isoformat(),
+    }
+
+
+@app.get("/api/miniapp/today")
+def api_miniapp_today(request: Request) -> dict[str, Any]:
+    """Today (MSK): Yandex Metrika + Tilda webhook leads for Telegram Mini App."""
+    _require_miniapp(request)
+    return channels_report.build_today_snapshot()
 
 
 @app.get("/api/channels/report")

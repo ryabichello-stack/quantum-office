@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Каналы · сегодня</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script>
+    window.__QC_BASE__ = location.pathname.indexOf("/_quantum_console") === 0
+      ? "/_quantum_console"
+      : "";
+    window.__MINI_ASSETS__ = window.__QC_BASE__ + "/assets/miniapp";
+    document.write('<link rel="stylesheet" href="' + window.__MINI_ASSETS__ + '/miniapp.css?v=1" />');
+  </script>
+</head>
+<body>
+  <div class="app">
+    <header class="hero">
+      <p class="brand">Quantum Labs</p>
+      <h1>Каналы · сегодня</h1>
+      <p class="sub" id="dayLine">Загрузка…</p>
+    </header>
+
+    <section class="kpi-grid" id="kpiGrid" aria-live="polite">
+      <div class="kpi"><span class="k">Визиты</span><strong class="v" id="kVisits">—</strong></div>
+      <div class="kpi"><span class="k">Пользователи</span><strong class="v" id="kUsers">—</strong></div>
+      <div class="kpi"><span class="k">Просмотры</span><strong class="v" id="kViews">—</strong></div>
+      <div class="kpi accent"><span class="k">Заявки</span><strong class="v" id="kLeads">—</strong></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Яндекс.Метрика</h2>
+        <span class="pill" id="metrikaPill">…</span>
+      </div>
+      <dl class="stats" id="metrikaStats">
+        <div><dt>Отказы</dt><dd id="mBounce">—</dd></div>
+        <div><dt>Среднее время</dt><dd id="mDur">—</dd></div>
+        <div><dt>Конверсия</dt><dd id="mConv">—</dd></div>
+      </dl>
+      <p class="muted" id="metrikaErr" hidden></p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Webhook · заявки</h2>
+        <span class="pill" id="leadsPill">0</span>
+      </div>
+      <div id="leadsBox" class="leads">
+        <p class="muted">Загрузка…</p>
+      </div>
+    </section>
+
+    <p class="foot muted" id="footLine"></p>
+  </div>
+  <script>
+    document.write('<script src="' + window.__MINI_ASSETS__ + '/miniapp.js?v=1"><\/script>');
+  </script>
+</body>
+</html>

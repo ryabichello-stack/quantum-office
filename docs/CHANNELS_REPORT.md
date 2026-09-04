@@ -7,6 +7,25 @@
 1. **Webhook Tilda** — заявки пишутся в БД и уходят владельцу в **Telegram + Max**.
 2. **Метрика** — счётчик `104241036` (с сайта quantumpayouts.ru). Нужен один раз OAuth-токен.
 
+## Telegram Mini App · сегодня
+
+Откройте бота [@Quantum_office_bot](https://t.me/Quantum_office_bot) → кнопка меню **«Каналы сегодня»**.
+
+Показывает за **сегодня (МСК)**:
+- Яндекс.Метрика: визиты, пользователи, просмотры, отказы, среднее время
+- Webhook Tilda: число заявок + список (имя / телефон / время)
+
+URL: `https://a.47z.ru/_quantum_console/miniapp/`
+
+Доступ только владельцам из `MINIAPP_ALLOWED_IDS` / `SECRETARY_OWNER_IDS` (сейчас `963782`). Авторизация — Telegram `initData`.
+
+Зарегистрировать кнопку меню:
+
+```bash
+cd /opt/quantum-console && ./venv/bin/python scripts/set_miniapp_menu.py
+# или: python3 scripts/set_miniapp_menu.py
+```
+
 ## Tilda: куда вставить webhook
 
 1. Откройте пульт → **Каналы** → блок «Подключение» → **Копировать** URL.
@@ -37,6 +56,8 @@
 |-------|------------|
 | `GET /api/channels/report` | сводный отчёт |
 | `GET /api/channels/setup` | webhook URL + статус Метрики |
+| `GET /api/miniapp/today` | сегодня МСК: Метрика + webhook-заявки (Telegram initData) |
+| `GET /api/miniapp/me` | кто открыл Mini App |
 | `POST /api/channels/tilda/lead?token=` | публичный webhook форм |
 | `GET /api/channels/metrika/authorize-url` | ссылка OAuth |
 | `POST /api/channels/metrika/token` | сохранить access_token |
