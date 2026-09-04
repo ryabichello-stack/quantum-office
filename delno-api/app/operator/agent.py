@@ -383,6 +383,18 @@ def _generate_reply(
     onboarding = channel == "onboarding"
     cabinet = channel in ("cabinet", "operator")
 
+    if onboarding:
+        from app.services.onboarding_website import try_onboarding_url_ingest
+
+        url_ingest = try_onboarding_url_ingest(db, ctx, message)
+        if url_ingest:
+            return (
+                url_ingest["reply"],
+                url_ingest.get("tool_calls") or [],
+                url_ingest.get("sources") or [],
+                None,
+            )
+
     if cabinet:
         setup = _try_cabinet_setup(db, ctx, message)
         if setup:
