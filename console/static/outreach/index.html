@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Outreach · Quantum Labs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=cb-dial1" />
+  <script>
+    (function () {
+      function parentBase() {
+        try {
+          if (window.parent && window.parent !== window && typeof window.parent.__QC_BASE__ === "string") {
+            return window.parent.__QC_BASE__;
+          }
+        } catch (_) {}
+        return null;
+      }
+      var pb = parentBase();
+      if (pb !== null) {
+        window.__QC_OUTREACH_API__ = pb + "/api/outreach";
+        window.__QC_OUTREACH_EMBEDDED__ = true;
+      } else if (location.pathname.indexOf("/_quantum_console") === 0) {
+        window.__QC_OUTREACH_API__ = "/_quantum_console/api/outreach";
+        window.__QC_OUTREACH_EMBEDDED__ = true;
+      } else {
+        window.__QC_OUTREACH_API__ = "";
+        window.__QC_OUTREACH_EMBEDDED__ = false;
+      }
+    })();
+  </script>
+</head>
+<body class="embedded">
+  <div id="login" class="login-screen hidden">
+    <div class="login-card">
+      <p class="brand">Outreach</p>
+      <h1>Сессия консоли</h1>
+      <p class="muted tight">Войдите в Quantum Console — отдельный токен здесь не нужен.</p>
+      <p id="loginError" class="error"></p>
+    </div>
+  </div>
+
+  <div id="app" class="app hidden">
+    <header class="top">
+      <div>
+        <p class="brand">Outreach</p>
+        <h1 id="pageTitle" class="page-title">Кампания</h1>
+        <p class="top-hint" id="pageHint">Отрасль, письмо, цепочка и отправка</p>
+      </div>
+      <div class="top-actions">
+        <span id="runStateBadge" class="badge stopped">Стоп</span>
+        <div class="transport" role="group" aria-label="Управление рассылкой">
+          <button type="button" id="runPlayBtn" class="primary">Старт</button>
+          <button type="button" id="runPauseBtn" class="btn-quiet">Пауза</button>
+          <button type="button" id="runStopBtn" class="danger">Стоп</button>
+        </div>
+        <button type="button" class="btn-quiet icon-btn" id="openSettingsBtn" title="Настройки" aria-label="Настройки">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+            <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke-linejoin="round" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke-linejoin="round" />
+          </svg>
+        </button>
+        <button type="button" class="btn-quiet" id="refreshBtn">Обновить</button>
+      </div>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button type="button" data-tab="letter" class="active">Кампания</button>
+      <button type="button" data-tab="dash">Рассылка</button>
+      <button type="button" data-tab="outbox">Очередь</button>
+      <button type="button" data-tab="replies">Ответы</button>
+      <button type="button" data-tab="inbox">Входящие</button>
+      <button type="button" data-tab="clients">Клиенты</button>
+      <button type="button" data-tab="report">Отчёт</button>
+      <button type="button" data-tab="settings">Настройки</button>
+    </nav>
+
+    <main>
+      <!-- ========== КАМПАНИЯ (главное, как задание на звонок) ========== -->
+      <section id="tab-letter" class="panel active">
+        <div class="surface task-form">
+          <div class="task-intro">
+            <h2 class="section-title">Кампания по отрасли</h2>
+            <p class="muted tight">Выберите нишу — подставятся тема, письмо, follow-up и презентация. Один пакет — одна рассылка.</p>
+          </div>
+
+          <fieldset class="task-mode pack-mode">
+            <legend>Отрасль</legend>
+            <div id="packCards" class="pack-cards">Загрузка…</div>
+          </fieldset>
+
+          <div class="stack letter-chain">
+            <div class="letter-chain-head">
+              <p id="packActiveMeta" class="muted tight">Активный пакет не выбран</p>
+              <p id="packDraftBadge" class="muted tight" hidden>Есть сохранённый черновик цепочки</p>
+            </div>
+            <div class="letter-tabs-row">
+              <div id="letterTabs" class="letter-tabs" role="tablist" aria-label="Письма цепочки"></div>
+              <button type="button" id="letterAddBtn" class="btn-quiet">+ Письмо</button>
+            </div>
+            <div class="letter-order-actions">
+              <button type="button" id="letterMoveUp" class="btn-quiet" title="Раньше в цепочке">↑</button>
+              <button type="button" id="letterMoveDown" class="btn-quiet" title="Позже в цепочке">↓</button>
+              <button type="button" id="letterDupBtn" class="btn-quiet">Дублировать</button>
+              <button type="button" id="letterDelBtn" class="btn-quiet">Удалить</button>
+              <button type="button" id="letterResetChain" class="btn-quiet">Сбросить к базовым</button>
+            </div>
+            <p class="muted tight">Переключайте письма цепочки, меняйте текст и день отправки, добавляйте черновики. Порядок = порядок follow-up.</p>
+          </div>
+
+          <div class="letter-editor" id="letterEditor">
+            <div class="task-grid">
+              <label class="field full">Тема письма
+                <input id="letterSubject" type="text" placeholder="Тема этого письма" />
+              </label>
+              <label class="field">День отправки
+                <input id="letterDelayDays" type="number" min="0" max="120" step="1" value="0" />
+              </label>
+              <label class="field">Метка
+                <input id="letterLabel" type="text" placeholder="intro / scenarios / …" />
+              </label>
+            </div>
+            <label class="field check">
+              <input id="letterAttachPdf" type="checkbox" />
+              Прикреплять презентацию PDF к этому письму
+            </label>
+          </div>
+
+          <label class="field">Компания в подписи
+            <input id="letterCompany" type="text" placeholder="Quantum Labs" />
+          </label>
+
+          <label class="field full">Текст подписи
+            <textarea id="letterSignature" class="scroll-y" rows="4" placeholder="С уважением,&#10;команда Quantum Labs&#10;{company}"></textarea>
+          </label>
+          <p class="muted tight">Только «С уважением…». Можно {company}. Сайт, почта и телефон — ниже, один раз.</p>
+
+          <div class="contact-icon-fields">
+            <p class="sig-live-label">Контакты в письме</p>
+            <label class="contact-icon-row">
+              <img class="contact-icon" data-icon="web" width="16" height="16" alt="" />
+              <input id="letterWebsite" type="text" placeholder="https://quantumlabs.ru" autocomplete="url" />
+            </label>
+            <label class="contact-icon-row">
+              <img class="contact-icon" data-icon="mail" width="16" height="16" alt="" />
+              <input id="letterEmail" type="email" placeholder="office@quantumlabs.ru" autocomplete="email" />
+            </label>
+            <label class="contact-icon-row">
+              <img class="contact-icon" data-icon="phone" width="16" height="16" alt="" />
+              <input id="letterPhone" type="text" placeholder="+7 …" autocomplete="tel" />
+            </label>
+            <div class="task-actions" style="margin:0.35rem 0 0">
+              <button type="button" id="letterApplyContacts" class="primary">Применить контакты</button>
+              <span class="muted tight">Эти же значения со значками попадут в HTML-письмо</span>
+            </div>
+          </div>
+
+          <div class="brand-row">
+            <div class="brand-preview-wrap">
+              <img id="letterLogoPreview" class="brand-mark" alt="Логотип в письме" width="40" height="40" />
+              <div>
+                <p class="muted tight" style="margin:0">Микрологотип в шапке HTML-письма</p>
+                <p class="muted tight" id="letterLogoMeta" style="margin:0.2rem 0 0">Quantum Labs mark</p>
+              </div>
+            </div>
+            <div class="brand-actions">
+              <label class="field check" style="margin:0">
+                <input id="letterLogoEnabled" type="checkbox" checked />
+                Показывать в письме
+              </label>
+              <label class="btn-quiet file-btn">Загрузить
+                <input id="letterLogoFile" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden />
+              </label>
+              <button type="button" id="letterLogoReset" class="btn-quiet">Сбросить</button>
+            </div>
+          </div>
+
+          <div class="presentation-box">
+            <p class="muted tight" id="letterPdfMeta">Презентация отрасли не выбрана</p>
+            <div class="brand-actions">
+              <label class="btn-quiet file-btn">Загрузить / обновить PDF
+                <input id="letterPdfFile" type="file" accept="application/pdf,.pdf" hidden />
+              </label>
+              <button type="button" id="letterPdfReset" class="btn-quiet">Сбросить к базовой</button>
+            </div>
+            <p class="muted tight">PDF отрасли. Галочка «прикреплять» — у каждого письма отдельно (обычно только у первого).</p>
+          </div>
+
+          <div class="presentation-box">
+            <label class="field check">
+              <input id="letterCallbackCta" type="checkbox" checked />
+              Блок «Заказать звонок» в конце письма (ФИО + телефон)
+            </label>
+            <p class="muted tight">Кнопка ведёт на форму (ФИО + телефон). Уведомление на почту и автозвонок бота настраиваются на пульте → Сценарий.</p>
+          </div>
+
+          <label class="field full">Текст письма
+            <textarea id="letterPlain" class="scroll-y" rows="14" placeholder="Текст письма…&#10;&#10;**Заголовок**&#10;&#10;Абзац&#10;&#10;Что получает ваша команда&#10;&#10;- пункт&#10;- пункт"></textarea>
+          </label>
+          <p class="muted tight">Разметка: **жирный**, список с «- ». Отдельная строка **…** после приветствия = крупный заголовок; после списка = акцент перед кнопкой звонка.</p>
+
+          <details class="task-advanced" id="letterAdvanced">
+            <summary>HTML-версия и превью</summary>
+            <p class="muted tight">Плейсхолдеры: {greeting} {signature} {company} {website} {phone_line} {unsub} {unsub_url}</p>
+            <label class="field full">HTML
+              <textarea id="letterHtml" class="scroll-y" rows="10"></textarea>
+            </label>
+            <div class="grid2" style="margin-top:0.65rem">
+              <div>
+                <p id="previewSubject" class="preview-subject"></p>
+                <div id="previewFrame" class="preview-html" title="HTML preview"></div>
+              </div>
+              <pre id="previewPlain" class="log scroll-y"></pre>
+            </div>
+          </details>
+
+          <div class="task-actions">
+            <button type="button" id="letterApplyPack" class="primary">Применить отрасль</button>
+            <button type="button" id="letterPreview" class="btn-quiet">Превью</button>
+            <button type="button" id="letterSave" class="btn-quiet">Сохранить цепочку</button>
+            <span class="muted tight">Сохраняются все письма отрасли. Юрблок уже в шаблоне</span>
+          </div>
+
+          <fieldset class="task-mode" id="letterTestBox">
+            <legend>Тестовое письмо</legend>
+            <p class="muted tight">Разовая отправка на указанный адрес — проверить оформление и PDF. Очередь Bitrix не трогается.</p>
+            <div class="task-grid">
+              <label class="field">Кому
+                <input id="letterTestTo" type="email" placeholder="you@quantumlabs.ru" autocomplete="email" />
+              </label>
+              <label class="field">Имя в письме
+                <input id="letterTestName" type="text" placeholder="коллега" />
+              </label>
+            </div>
+            <div class="actions" style="margin-top:0.35rem">
+              <button type="button" class="btn-quiet" id="letterTestDryBtn">Превью SMTP</button>
+              <button type="button" class="primary" id="letterTestSendBtn">Отправить тест</button>
+            </div>
+            <p class="muted tight">Перед отправкой сохраняются текущие поля кампании. До 5 тестовых писем в сутки.</p>
+          </fieldset>
+
+          <pre id="letterLog" class="log" hidden></pre>
+        </div>
+      </section>
+
+      <!-- ========== РАССЫЛКА ========== -->
+      <section id="tab-dash" class="panel">
+        <div class="surface task-form">
+          <div class="task-intro">
+            <h2 class="section-title">Рассылка</h2>
+            <p class="muted tight">Сначала примените отрасль во вкладке «Кампания». Затем Старт и отправка из очереди.</p>
+          </div>
+
+          <div id="runBanner" class="run-banner stopped">
+            <p class="run-title" id="runBannerTitle">Рассылка остановлена</p>
+            <p class="muted tight" id="runBannerText">Нажмите «Старт», чтобы разрешить массовую отправку из очереди.</p>
+          </div>
+
+          <div class="stat-grid" id="statGrid"></div>
+
+          <div>
+            <h3 class="section-title" style="font-size:0.92rem">Отправки по дням</h3>
+            <div id="dailyChart" class="bars"></div>
+          </div>
+
+          <fieldset class="task-mode">
+            <legend>Тест себе</legend>
+            <p class="muted tight">Одно письмо с текущим шаблоном. Очередь Bitrix не трогается. То же есть во вкладке «Кампания».</p>
+            <div class="task-grid">
+              <label class="field">Кому
+                <input id="oneTo" type="email" placeholder="you@quantumlabs.ru" />
+              </label>
+              <label class="field">Имя в письме
+                <input id="oneName" type="text" placeholder="коллега" />
+              </label>
+            </div>
+            <div class="actions" style="margin-top:0.35rem">
+              <button type="button" class="btn-quiet" id="oneDryBtn">Превью</button>
+              <button type="button" class="primary" id="oneSendBtn">Отправить тест</button>
+            </div>
+            <p class="muted tight">До 5 тестовых писем в сутки. Старт массовой рассылки не нужен.</p>
+          </fieldset>
+
+          <fieldset class="task-mode">
+            <legend>Очередь Bitrix</legend>
+            <div class="task-grid">
+              <label class="field">Сколько писем сейчас
+                <input id="sendN" type="number" min="1" max="20" value="1" />
+              </label>
+            </div>
+            <div class="actions" style="margin-top:0.35rem">
+              <button type="button" id="syncBtn" class="btn-quiet">Синхронизировать Bitrix</button>
+              <button type="button" id="checkRepliesBtn" class="btn-quiet">Проверить ответы</button>
+              <button type="button" id="dryRunBtn" class="btn-quiet">Пробный прогон ×5</button>
+              <button type="button" id="sendBtn" class="primary">Отправить пачку</button>
+            </div>
+            <p class="muted tight">Пачка работает только после «Старт».</p>
+          </fieldset>
+
+          <div class="task-actions">
+            <button type="button" class="btn-quiet" id="gotoCampaignBtn">К кампании</button>
+            <button type="button" class="btn-quiet" id="gotoCallBtn">Задание на звонок</button>
+            <span class="muted tight">Звонок откроется во вкладке пульта</span>
+          </div>
+          <pre id="actionLog" class="log"></pre>
+        </div>
+      </section>
+
+      <!-- ========== ОЧЕРЕДЬ ========== -->
+      <section id="tab-outbox" class="panel">
+        <div class="surface task-form">
+          <div class="task-intro">
+            <h2 class="section-title">Очередь писем</h2>
+            <p class="muted tight">Кого отправим следующим. Можно пропустить или вернуть в ожидание.</p>
+          </div>
+          <div class="task-grid">
+            <label class="field">Статус
+              <select id="outboxStatus">
+                <option value="pending">Ожидают</option>
+                <option value="sent">Отправлены</option>
+                <option value="failed">Ошибки</option>
+                <option value="skipped">Пропущены</option>
+                <option value="">Все</option>
+              </select>
+            </label>
+            <div class="field" style="align-self:end">
+              <button type="button" id="outboxLoad" class="primary">Загрузить</button>
+            </div>
+          </div>
+          <p class="muted tight" id="outboxMeta"></p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th><th>Email</th><th>Компания</th><th>Статус</th><th>Отправлено</th><th>Сделка</th><th></th>
+                </tr>
+              </thead>
+              <tbody id="outboxBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== ОТВЕТЫ ========== -->
+      <section id="tab-replies" class="panel">
+        <div class="surface task-form">
+          <div class="task-intro">
+            <h2 class="section-title">Ответы на письма</h2>
+            <p class="muted tight">Входящие, привязанные к отправленным письмам.</p>
+          </div>
+          <div class="task-actions" style="border-top:0;padding-top:0">
+            <button type="button" id="repliesLoad" class="primary">Обновить</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Когда</th><th>От кого</th><th>Тема</th><th>Сделка</th></tr>
+              </thead>
+              <tbody id="repliesBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== ВХОДЯЩИЕ ========== -->
+      <section id="tab-inbox" class="panel">
+        <div class="surface task-form">
+          <div class="task-intro">
+            <h2 class="section-title">Входящие (классификация)</h2>
+            <p class="muted tight">Авторазбор ответов: интерес, отказ, отписка, bounce.</p>
+          </div>
+          <div class="task-actions" style="border-top:0;padding-top:0">
+            <button type="button" id="inboxLoad" class="primary">Необработанные</button>
+            <button type="button" class="btn-quiet" id="inboxLoadAll">Все</button>
+            <button type="button" class="btn-quiet" id="seqStatusBtn">Цепочки</button>
+          </div>
+          <div id="inboxStats" class="stat-grid"></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Когда</th><th>От</th><th>Класс</th><th>Тема</th><th>Компания</th><th></th>
+                </tr>
+              </thead>
+              <tbody id="inboxBody"></tbody>
+            </table>
+          </div>
+          <pre id="seqLog" class="log"></pre>
+        </div>
+      </section>
+
+      <!-- ========== КЛИЕНТЫ ========== -->
+      <section id="tab-clients" class="panel">
+        <div class="surface task-form">
+          <div class="task-intro">
+            <h2 class="section-title">Клиенты</h2>
+            <p class="muted tight">Локальное зеркало Bitrix. Рассылка может идти из этой базы.</p>
+          </div>
+          <div id="clientsStats" class="stat-grid"></div>
+          <div class="task-actions" style="border-top:0;padding-top:0">
+            <button type="button" id="clientsSyncBtn" class="primary">Скачать из Bitrix</button>
+            <button type="button" class="btn-quiet" id="clientsRebuildBtn">Обновить очередь</button>
+            <button type="button" class="btn-quiet" id="clientsReloadBtn">Обновить список</button>
+          </div>
+          <pre id="clientsLog" class="log"></pre>
+
+          <details class="task-advanced">
+            <summary>Обогащение по ИНН (DaData)</summary>
+            <p class="muted tight" id="dadataMeta">Ключ DADATA_API_KEY в /opt/ava-outreach/.env</p>
+            <div class="task-grid">
+              <label class="field">ИНН
+                <input id="dadataInn" type="text" placeholder="7707083893" maxlength="12" />
+              </label>
+            </div>
+            <div class="actions" style="margin-top:0.35rem">
+              <button type="button" id="dadataLookupBtn" class="primary">Найти</button>
+              <button type="button" class="btn-quiet" id="dadataLookupForceBtn">Найти заново</button>
+            </div>
+            <div class="task-grid" style="margin-top:0.55rem">
+              <label class="field">Обогатить N компаний без ФИО
+                <input id="dadataEnrichN" type="number" min="1" max="500" value="50" />
+              </label>
+            </div>
+            <div class="actions" style="margin-top:0.35rem">
+              <button type="button" id="dadataEnrichBtn" class="primary">Обогатить</button>
+              <button type="button" id="dadataPushBitrixBtn" class="btn-quiet">Записать в Bitrix</button>
+              <button type="button" class="btn-quiet" id="dadataCacheBtn">Кэш</button>
+            </div>
+            <pre id="dadataLog" class="log"></pre>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ИНН</th><th>Компания</th><th>Руководитель</th><th>Должность</th><th>ОКВЭД</th><th>Когда</th>
+                  </tr>
+                </thead>
+                <tbody id="dadataBody"></tbody>
+              </table>
+            </div>
+          </details>
+
+          <div class="toolbar">
+            <input id="clientsQ" type="search" placeholder="Поиск email / название" style="min-width:220px" />
+            <button type="button" id="clientsSearchBtn" class="btn-quiet">Найти</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Email</th><th>Имя</th><th>Источник</th><th>Bitrix</th><th>Компания</th></tr>
+              </thead>
+              <tbody id="clientsBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== ОТЧЁТ ========== -->
+      <section id="tab-report" class="panel">
+        <div class="surface task-form">
+          <div class="task-intro">
+            <h2 class="section-title">Отчёт по письмам</h2>
+            <p class="muted tight">Воронка: отправлено → открыто → ответ.</p>
+          </div>
+          <div class="toolbar report-toolbar">
+            <label class="field">Дней
+              <input id="reportDays" type="number" min="7" max="90" value="14" />
+            </label>
+            <button type="button" id="reportReload" class="primary">Обновить</button>
+          </div>
+          <p class="muted tight" id="reportMeta"></p>
+          <div class="stat-grid" id="reportFunnel"></div>
+
+          <div class="report-panel">
+            <p class="report-panel-head">Доли</p>
+            <div class="rates-row" id="reportRates"></div>
+          </div>
+
+          <div class="report-panel">
+            <p class="report-panel-head">Воронка</p>
+            <div class="funnel-viz" id="reportFunnelBars" aria-label="Воронка"></div>
+          </div>
+
+          <div class="grid2">
+            <div class="report-panel">
+              <p class="report-panel-head">По дням</p>
+              <div class="report-panel-body">
+                <div id="reportDaily" class="daily-bars"></div>
+              </div>
+            </div>
+            <div class="report-panel">
+              <p class="report-panel-head">Что это значит</p>
+              <ul class="notes-list" id="reportNotes"></ul>
+            </div>
+          </div>
+
+          <div class="report-panel">
+            <p class="report-panel-head">Последние письма</p>
+            <div class="table-wrap" style="margin:0;border:0;border-radius:0">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Статус</th><th>Кому</th><th>Компания</th><th>Тема</th>
+                    <th>Отправлено</th><th>Открыто</th><th>Bounce</th><th>Ответ</th>
+                  </tr>
+                </thead>
+                <tbody id="reportRecent"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== НАСТРОЙКИ (защита + окно + лимиты) ========== -->
+      <section id="tab-settings" class="panel">
+        <div class="surface task-form">
+          <div class="task-intro">
+            <h2 class="section-title">Настройки рассылки</h2>
+            <p class="muted tight">Лимиты, окно часов и защита ящика. Массовая отправка — кнопками Старт / Пауза / Стоп сверху.</p>
+          </div>
+
+          <div class="task-grid">
+            <label class="field">Писем в сутки
+              <input id="setDaily" type="number" min="1" max="500" />
+            </label>
+            <label class="field">Пауза мин, сек
+              <input id="setDelayMin" type="number" min="0" />
+            </label>
+            <label class="field">Пауза макс, сек
+              <input id="setDelayMax" type="number" min="0" />
+            </label>
+          </div>
+
+          <label class="field check">
+            <input id="setEnabled" type="checkbox" disabled />
+            Флаг OUTREACH_ENABLED (зеркало Старта, только просмотр)
+          </label>
+          <label class="field check">
+            <input id="setDeal" type="checkbox" />
+            Создавать сделку в Bitrix при отправке
+          </label>
+          <div class="task-grid">
+            <label class="field">Ответственный Bitrix (ID)
+              <input id="setAssigned" type="number" min="1" />
+            </label>
+            <label class="field">Стадия сделки
+              <input id="setStage" type="text" />
+            </label>
+          </div>
+          <label class="field check">
+            <input id="setReplyWatch" type="checkbox" />
+            Следить за ответами по IMAP
+          </label>
+          <p class="muted tight" id="settingsMeta"></p>
+          <div class="task-actions">
+            <button type="button" id="settingsSave" class="primary">Сохранить настройки</button>
+          </div>
+
+          <details class="task-advanced">
+            <summary>Окно часов</summary>
+            <label class="field check">
+              <input id="schedEnabled" type="checkbox" disabled />
+              Авто (зеркало Старта — только чтение)
+            </label>
+            <label class="field check">
+              <input id="runRespectWindow" type="checkbox" />
+              Учитывать окно часов при Старт
+            </label>
+            <div class="task-grid">
+              <label class="field">С часа
+                <input id="schedStart" type="number" min="0" max="23" />
+              </label>
+              <label class="field">До часа
+                <input id="schedEnd" type="number" min="1" max="24" />
+              </label>
+              <label class="field">Часовой пояс
+                <input id="schedTz" type="text" />
+              </label>
+              <label class="field">Писем за тик
+                <input id="schedBatch" type="number" min="1" max="20" />
+              </label>
+              <label class="field">Пауза между тиками, сек
+                <input id="schedTick" type="number" min="30" max="3600" />
+              </label>
+            </div>
+            <div class="actions" style="margin-top:0.45rem">
+              <button type="button" id="schedSave" class="primary">Сохранить окно</button>
+            </div>
+          </details>
+
+          <details class="task-advanced">
+            <summary>Защита ящика (anti-ban)</summary>
+            <div id="antibanStats" class="stat-grid"></div>
+            <label class="field check">
+              <input id="warmupEnabled" type="checkbox" />
+              Плавный рост дневного лимита
+            </label>
+            <label class="field">Лимит на один домен / сутки
+              <input id="domainCap" type="number" min="1" max="20" />
+            </label>
+            <label class="field check">
+              <input id="openTracking" type="checkbox" />
+              Трекинг открытий
+            </label>
+            <label class="field check">
+              <input id="plusReply" type="checkbox" />
+              Reply-To с plus-адресом (office+au.&lt;компания&gt;.&lt;id&gt;@…) — трекинг ответов
+            </label>
+            <p class="muted tight">Message-ID остаётся основным сигналом. Plus — дополнительный, удобно видеть компанию в Reply-To.</p>
+            <div class="actions" style="margin-top:0.45rem">
+              <button type="button" id="antibanSave" class="primary">Сохранить защиту</button>
+              <button type="button" class="btn-quiet" id="plusPreviewBtn">Пример plus-адреса</button>
+            </div>
+            <pre id="antibanLog" class="log"></pre>
+
+            <h3 class="section-title" style="font-size:0.9rem;margin-top:0.75rem">Стоп-лист</h3>
+            <div class="task-grid">
+              <label class="field">Email
+                <input id="suppEmail" type="email" placeholder="email@company.ru" />
+              </label>
+              <label class="field">Причина
+                <input id="suppReason" type="text" value="manual" />
+              </label>
+            </div>
+            <div class="actions" style="margin-top:0.35rem">
+              <button type="button" id="suppAdd" class="primary">Добавить</button>
+              <button type="button" class="btn-quiet" id="suppReload">Обновить список</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Email</th><th>Причина</th><th>Источник</th><th></th></tr></thead>
+                <tbody id="suppBody"></tbody>
+              </table>
+            </div>
+            <h3 class="section-title" style="font-size:0.9rem;margin-top:0.75rem">Последние события</h3>
+            <button type="button" class="btn-quiet" id="eventsReload">Обновить события</button>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>ID</th><th>Email</th><th>Статус</th><th>Открыто</th><th>Bounce</th><th>Message-ID</th></tr></thead>
+                <tbody id="eventsBody"></tbody>
+              </table>
+            </div>
+          </details>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="app.js?v=cb-dial1"></script>
+</body>
+</html>
