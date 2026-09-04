@@ -273,6 +273,8 @@ Full CRM, E1.16 Bitrix push, marketplace, PSTN/SIP, booking, fake appointment UI
 
 ## 16. Следующий шаг
 
-**Commit 1 (in progress):** production embed page + functional text chat через existing Public Widget API.
+**Commit 1:** ✅ `widget-embed.html` + `delno-widget-chat.js` + `crystal-widget.css` — deployed to `cdn.dlno.ru/widget/v1/`.
 
-После e2e smoke — обновить этот документ секцией «Commit 1 verified».
+**Commit 2 (next):** security hardening — rate limit, visitor bind, CORS, integration tests.
+
+После e2e smoke text chat — отметить DoD A.1–A.5 в этом документе.
