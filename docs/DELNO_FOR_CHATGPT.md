@@ -221,6 +221,7 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 
 | Коммит | Суть |
 |--------|------|
+| `a4e6a09` | O2: onboarding chat UI — `/dashboard/onboarding`, register redirect |
 | `5a6650b` | O1: conversation onboarding — draft KB + `/onboarding/start` + channel=onboarding |
 | `1ed28e5` | FOR_CHATGPT REV-4.6 + P4 docs |
 | `379c941` | P4: Website-to-Agent Instant Demo — import site → KB + widget (backend; UX pivot → O) |
