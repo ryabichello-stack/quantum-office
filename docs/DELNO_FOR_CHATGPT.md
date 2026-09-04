@@ -1,6 +1,6 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-4.7 · 2026-09-04 (O1 — Conversation-driven Onboarding)
+**Revision:** REV-4.8 · 2026-09-04 (O2 — Onboarding chat UI)
 
 **Активный продуктовый этап:** Crystal Widget + Conversation Core — см. [`DELNO_WIDGET_AUDIT.md`](DELNO_WIDGET_AUDIT.md) AUDIT-1.0.
 
@@ -36,12 +36,12 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DEL
 ## Промпт (скопируй целиком)
 
 ```
-Прочитай entry point и все связанные документы по raw URL из него (REV-4.7):
+Прочитай entry point и все связанные документы по raw URL из него (REV-4.8):
 
 https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DELNO_FOR_CHATGPT.md
 
 Открой каждый raw URL из секции «Карта документов».
-Подтверди revision REV-4.7.
+Подтверди revision REV-4.8.
 
 Твоя задача — аудит текущего состояния DELNO. Ответь структурированно:
 
@@ -201,7 +201,7 @@ E1.12–E1.15 ✅ · E1.16 CRM push ⬜ **DO NOT START**
 | # | Задача | Статус | Примечание |
 |---|--------|--------|------------|
 | O1 | Draft upsert API + `channel=onboarding` + `/onboarding/start` | ✅ `5a6650b` | brain publication params; events `onboarding.started` |
-| O2 | Onboarding chat UI (`/dashboard/onboarding`) | ⬜ | register redirect |
+| O2 | Onboarding chat UI (`/dashboard/onboarding`) | ✅ | register redirect; reuse operator chat |
 | O3 | File upload in chat | ⬜ | PDF/DOCX/XLSX/CSV/TXT |
 | O4 | URL in conversation + graceful fallback | ⬜ | reuse `website_import.py` |
 | O5 | Summary card + conflicts + publish confirm | ⬜ | HIGH_IMPACT tool |
@@ -336,7 +336,8 @@ systemctl status ava-outreach ava-mailer ava-text-bot  # не ломать
 | `delno-web/components/OperatorStage.tsx` | Operator UI + orb |
 | `delno-web/components/CrystalOrb.tsx` | Crystal orb component |
 | `delno-web/styles/crystal-operator.css` | Phase-driven orb CSS |
-| `delno-web/app/dashboard/` | Cabinet pages |
+| `delno-web/app/dashboard/onboarding/` | O2 conversation-first onboarding chat |
+| `delno-web/components/OnboardingChat.tsx` | Onboarding chat UI component |
 | `delno-knowledge/` | brain_platform, vault, search |
 | `DELNO-site-v23/` | Next.js marketing site |
 | `docs/DELNO_IMPLEMENTATION_ROADMAP.md` | Detailed checklist |

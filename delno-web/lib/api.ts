@@ -72,6 +72,23 @@ export type PendingConfirmation = {
   summary: string;
 };
 
+export type OnboardingStatus = {
+  ok?: boolean;
+  status: string;
+  conversation_id?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  draft?: Record<string, unknown>;
+};
+
+export type OnboardingStartResult = {
+  ok: boolean;
+  resumed: boolean;
+  conversation_id: string;
+  status: string;
+  reply: string;
+};
+
 export type FeatureFlag = {
   flag_key: string;
   enabled: boolean;
@@ -222,6 +239,7 @@ export function apiOperatorChat(
   message: string,
   conversationId?: string,
   modality: "text" | "voice" = "text",
+  channel = "cabinet",
 ) {
   return apiFetch<{
     conversation_id: string;
@@ -234,11 +252,23 @@ export function apiOperatorChat(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       message,
-      channel: "cabinet",
+      channel,
       conversation_id: conversationId || null,
       modality,
     }),
   });
+}
+
+export function apiOnboardingStart(token: string, forceNew = false) {
+  return apiFetch<OnboardingStartResult>("/v1/tenant/onboarding/start", token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ force_new: forceNew }),
+  });
+}
+
+export function apiOnboardingStatus(token: string) {
+  return apiFetch<OnboardingStatus>("/v1/tenant/onboarding/status", token);
 }
 
 export function apiOperatorConfirm(token: string, toolName: string, params: Record<string, unknown>) {

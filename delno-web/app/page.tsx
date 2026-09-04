@@ -33,7 +33,7 @@ export default function LoginPage() {
           inn: inn.replace(/\D/g, "") || undefined,
         });
         localStorage.setItem("delno_token", result.access_token);
-        router.push("/dashboard/settings");
+        router.push("/dashboard/onboarding");
       }
     } catch {
       setError(
@@ -68,7 +68,7 @@ export default function LoginPage() {
         <p>
           {mode === "login"
             ? "Единое рабочее пространство: диалоги, заявки и Operator."
-            : "Компания, база знаний и виджет для сайта — за несколько минут."}
+            : "Компания и первичная настройка — через разговор с DELNO за несколько минут."}
         </p>
         <form className="login-form" onSubmit={onSubmit}>
           {mode === "register" && (

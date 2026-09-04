@@ -76,43 +76,49 @@ export default function KnowledgePage() {
       <div className="delno-result" style={{ marginBottom: 16 }}>
         <div className="result-head">
           <span>
-            <Sparkles /> Operator
+            <Sparkles /> Onboarding
           </span>
         </div>
         <p style={{ margin: 0 }}>
-          Быстрее на лету:{" "}
+          Рекомендуемый способ:{" "}
+          <Link href="/dashboard/onboarding" style={{ fontWeight: 700 }}>
+            разговор с DELNO →
+          </Link>
+          {" · "}
           <Link href="/dashboard/operator" style={{ fontWeight: 700 }}>
-            «Добавь в базу знаний: …»
+            Operator →
           </Link>
         </p>
       </div>
 
-      <form className="settings-section kb-upload-form" onSubmit={onImportWebsite} style={{ marginBottom: 16 }}>
-        <h2>Instant Demo — с сайта</h2>
-        <p style={{ marginTop: 0, color: "#666" }}>
-          Укажите адрес сайта — DELNO соберёт базу знаний и подключит виджет.
-        </p>
-        <label>
-          URL сайта
-          <input
-            value={websiteUrl}
-            onChange={(e) => setWebsiteUrl(e.target.value)}
-            placeholder="https://ваша-компания.ru"
-            type="url"
-          />
-        </label>
-        <button type="submit" className="btn-primary" disabled={!token || websiteUrl.trim().length < 4}>
-          Создать сотрудника по сайту
-        </button>
-        {importStatus && <p className="login-status">{importStatus}</p>}
-        {importError && <p className="status-error">{importError}</p>}
-        {widgetEmbed && (
-          <label style={{ marginTop: 12 }}>
-            Код виджета
-            <textarea readOnly rows={3} value={widgetEmbed} />
+      <details className="settings-section" style={{ marginBottom: 16 }}>
+        <summary style={{ cursor: "pointer", fontWeight: 700 }}>Instant Demo — импорт с сайта (legacy)</summary>
+        <form className="kb-upload-form" onSubmit={onImportWebsite} style={{ marginTop: 12 }}>
+          <p style={{ marginTop: 0, color: "#666" }}>
+            Альтернатива onboarding-чату: быстрый импорт одной страницы сайта в KB.
+          </p>
+          <label>
+            URL сайта
+            <input
+              value={websiteUrl}
+              onChange={(e) => setWebsiteUrl(e.target.value)}
+              placeholder="https://ваша-компания.ru"
+              type="url"
+            />
           </label>
-        )}
-      </form>
+          <button type="submit" className="btn-primary" disabled={!token || websiteUrl.trim().length < 4}>
+            Импортировать сайт
+          </button>
+          {importStatus && <p className="login-status">{importStatus}</p>}
+          {importError && <p className="status-error">{importError}</p>}
+          {widgetEmbed && (
+            <label style={{ marginTop: 12 }}>
+              Код виджета
+              <textarea readOnly rows={3} value={widgetEmbed} />
+            </label>
+          )}
+        </form>
+      </details>
 
       {documents.length > 0 && (
         <section className="settings-section" style={{ marginBottom: 16 }}>

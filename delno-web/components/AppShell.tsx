@@ -7,6 +7,7 @@ import {
   FileText,
   LogOut,
   MessageCircle,
+  Rocket,
   ShieldCheck,
   Sparkles,
   UserRound,
@@ -16,6 +17,7 @@ import { clearToken } from "@/lib/auth";
 import type { TenantMe } from "@/lib/api";
 
 const nav = [
+  { href: "/dashboard/onboarding", label: "Старт", Icon: Rocket },
   { href: "/dashboard/inbox", label: "Диалоги", Icon: MessageCircle },
   { href: "/dashboard/leads", label: "Клиенты", Icon: UserRound },
   { href: "/dashboard/calendar", label: "Календарь", Icon: CalendarDays },

@@ -3,22 +3,29 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRequireAuth } from "@/lib/auth";
-import { apiConversations, apiLeadsList, apiTenantLegalGet } from "@/lib/api";
+import { apiConversations, apiLeadsList, apiOnboardingStatus, apiTenantLegalGet } from "@/lib/api";
 import { DashboardFrame } from "@/components/DashboardFrame";
 
 export default function DashboardOverviewPage() {
   const { token } = useRequireAuth();
   const [stats, setStats] = useState({ leads: 0, conversations: 0, hasLegal: false });
+  const [onboardingStatus, setOnboardingStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
-    Promise.all([apiLeadsList(token, 100), apiConversations(token, 100), apiTenantLegalGet(token)])
-      .then(([leads, convs, legal]) => {
+    Promise.all([
+      apiLeadsList(token, 100),
+      apiConversations(token, 100),
+      apiTenantLegalGet(token),
+      apiOnboardingStatus(token).catch(() => null),
+    ])
+      .then(([leads, convs, legal, onboarding]) => {
         setStats({
           leads: leads.items.length,
           conversations: convs.total ?? convs.items.length,
           hasLegal: Boolean(legal.legal?.inn),
         });
+        setOnboardingStatus(onboarding?.status || null);
       })
       .catch(() => undefined);
   }, [token]);
@@ -30,6 +37,19 @@ export default function DashboardOverviewPage() {
         <h1>Обзор</h1>
         <p>Заявки, диалоги и юридический профиль tenant</p>
       </div>
+      {onboardingStatus && onboardingStatus !== "published" && (
+        <div className="delno-result onboarding-banner" style={{ marginBottom: 16 }}>
+          <div className="result-head">
+            <span>Настройка DELNO</span>
+          </div>
+          <p style={{ margin: 0 }}>
+            Продолжите разговор с DELNO — расскажите о бизнесе или пришлите сайт.{" "}
+            <Link href="/dashboard/onboarding" style={{ fontWeight: 700 }}>
+              Перейти к onboarding →
+            </Link>
+          </p>
+        </div>
+      )}
       <div className="stat-grid">
         <Link href="/dashboard/leads" className="stat-card">
           <span>Заявки</span>

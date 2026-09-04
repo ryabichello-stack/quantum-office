@@ -1086,6 +1086,92 @@ p {
   pointer-events: none;
 }
 
+/* --- Onboarding chat (O2) --- */
+.onboarding-stage {
+  display: flex;
+  flex-direction: column;
+  min-height: min(72vh, 720px);
+}
+
+.onboarding-head {
+  flex-shrink: 0;
+}
+
+.onboarding-badge {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #fff9e6;
+  border: 1px solid #f0e4a8;
+  color: #6b5a00;
+}
+
+.onboarding-badge.status-published {
+  background: #eef8f0;
+  border-color: #b8dfc4;
+  color: var(--success);
+}
+
+.onboarding-thread {
+  flex: 1;
+  max-height: none;
+  min-height: 240px;
+  margin-bottom: 12px;
+}
+
+.onboarding-form {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.onboarding-compose {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.onboarding-compose textarea {
+  flex: 1;
+  min-height: 72px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font: inherit;
+  background: #fff;
+}
+
+.onboarding-attach {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #fafaf8;
+  color: #999;
+  display: grid;
+  place-items: center;
+}
+
+.onboarding-attach:not(:disabled) {
+  color: var(--black);
+  cursor: pointer;
+}
+
+.onboarding-typing {
+  opacity: 0.85;
+}
+
+.onboarding-banner {
+  border-color: #f0e4a8;
+  background: #fffdf5;
+}
+
 .side-bottom a,
 .side-bottom button {
   display: grid;
