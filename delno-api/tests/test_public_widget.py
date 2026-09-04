@@ -9,14 +9,16 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.v1.public import (
+    PublicWidgetHistory,
     PublicWidgetMessage,
     PublicWidgetSession,
     PublicWidgetVisitorUpdate,
+    public_widget_history,
     public_widget_message,
     public_widget_session,
     public_widget_visitor,
 )
-from app.models.conversation import Conversation
+from app.models.conversation import Conversation, Message
 from app.services.channel_router import ChannelContext
 from app.services.rate_limit import get_widget_rate_limiter
 from starlette.requests import Request
@@ -138,6 +140,92 @@ def test_public_widget_message_returns_ask_phone(channel_ctx):
 
     assert "Доставка" in result["message"]
     assert result["next_step"] == "ask_phone"
+
+
+def test_public_widget_message_voice_modality(channel_ctx):
+    db = MagicMock()
+    conversation_id = uuid.uuid4()
+    conversation = Conversation(
+        id=conversation_id,
+        tenant_id=channel_ctx.tenant_id,
+        channel="widget",
+        meta={"visitor_name": "Алексей"},
+    )
+    body = PublicWidgetMessage(
+        site_key="demo_dlno",
+        session_id=str(conversation_id),
+        message="Сколько стоит?",
+        visitor={"name": "Алексей"},
+        input_modality="voice",
+    )
+
+    with patch("app.api.v1.public._resolve_widget_context", return_value=channel_ctx):
+        with patch("app.api.v1.public.emit_event"):
+            with patch("app.api.v1.public.get_conversation_for_widget", return_value=conversation):
+                with patch("app.api.v1.public.merge_widget_context", return_value={"visitor_name": "Алексей"}):
+                    with patch(
+                        "app.api.v1.public.apply_widget_visitor",
+                        return_value={"meta": {"visitor_name": "Алексей"}, "lead": None, "next_step": None},
+                    ):
+                        with patch("app.api.v1.public.run_operator_turn") as mock_turn:
+                            mock_turn.return_value = {
+                                "conversation_id": str(conversation_id),
+                                "reply": "500 ₽",
+                                "sources": [],
+                                "tool_calls": [],
+                            }
+                            public_widget_message(body=body, request=_request(), db=db, x_tenant_slug=None)
+
+    mock_turn.assert_called_once()
+    assert mock_turn.call_args.kwargs["input_modality"] == "voice"
+
+
+def test_public_widget_history_returns_messages(channel_ctx):
+    db = MagicMock()
+    conversation_id = uuid.uuid4()
+    conversation = Conversation(
+        id=conversation_id,
+        tenant_id=channel_ctx.tenant_id,
+        channel="widget",
+        meta={"visitor_id": "v1"},
+    )
+    msg_user = Message(
+        id=uuid.uuid4(),
+        tenant_id=channel_ctx.tenant_id,
+        conversation_id=conversation_id,
+        role="user",
+        body="Привет",
+        meta={"modality": "voice"},
+    )
+    msg_assistant = Message(
+        id=uuid.uuid4(),
+        tenant_id=channel_ctx.tenant_id,
+        conversation_id=conversation_id,
+        role="assistant",
+        body="Здравствуйте",
+        meta={"modality": "voice"},
+    )
+
+    body = PublicWidgetHistory(
+        site_key="demo_dlno",
+        session_id=str(conversation_id),
+        visitor_id="v1",
+    )
+
+    query = MagicMock()
+    query.filter.return_value = query
+    query.order_by.return_value = query
+    query.all.return_value = [msg_user, msg_assistant]
+    db.query.return_value = query
+
+    with patch("app.api.v1.public._resolve_widget_context", return_value=channel_ctx):
+        with patch("app.api.v1.public.get_conversation_for_widget", return_value=conversation):
+            result = public_widget_history(body=body, request=_request(), db=db, x_tenant_slug=None)
+
+    assert result["session_id"] == str(conversation_id)
+    assert len(result["messages"]) == 2
+    assert result["messages"][0]["modality"] == "voice"
+    assert result["messages"][1]["text"] == "Здравствуйте"
 
 
 def test_public_widget_unknown_site_key():

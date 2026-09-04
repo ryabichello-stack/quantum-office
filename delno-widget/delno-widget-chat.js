@@ -1,5 +1,5 @@
 /**
- * DELNO Crystal Widget — functional text chat (Commit 1).
+ * DELNO Crystal Widget — text chat + unified voice session (Commit 3).
  * Uses DelnoWidgetClient → /v1/public/widget/* (never operator/chat).
  */
 (function (global) {
@@ -32,6 +32,15 @@
       : "Приятно познакомиться. Что ещё хотите уточнить?";
   }
 
+  function visitorPayload(state) {
+    return {
+      name: state.name || null,
+      phone: null,
+      page_url: typeof location !== "undefined" ? location.href : null,
+      referrer: typeof document !== "undefined" ? document.referrer || null : null,
+    };
+  }
+
   function initDelnoWidgetChat(options) {
     var form = options.form;
     var input = options.input;
@@ -40,6 +49,8 @@
     var panel = options.panel;
     var textToggle = options.textToggle;
     var client = options.client;
+    var mount = options.mount;
+    var audioEl = options.audioEl;
 
     if (!form || !input || !body || !send) return;
 
@@ -50,6 +61,17 @@
       awaitingPhone: false,
       busy: false,
     };
+
+    var voiceController = null;
+
+    function setVoicePhase(phase) {
+      if (!mount) return;
+      var active = phase !== "idle";
+      if (active) mount.setAttribute("data-voice-active", "true");
+      else mount.removeAttribute("data-voice-active");
+      if (phase === "idle") mount.removeAttribute("data-voice-phase");
+      else mount.setAttribute("data-voice-phase", phase);
+    }
 
     function openPanel() {
       if (textToggle) textToggle.checked = true;
@@ -95,6 +117,11 @@
       return row;
     }
 
+    function appendExchange(userText, assistantText) {
+      appendMessage("user", userText);
+      appendMessage("assistant", assistantText);
+    }
+
     function setBusy(v) {
       state.busy = v;
       send.disabled = v || !input.value.trim();
@@ -106,15 +133,58 @@
       return "Сейчас не могу ответить. Попробуйте ещё раз или напишите позже.";
     }
 
-    async function backendReply(message) {
+    async function backendReply(message, modality) {
       if (!client) return null;
       await client.ensureSession();
-      return client.sendMessage(message, {
-        name: state.name || null,
-        phone: null,
-        page_url: typeof location !== "undefined" ? location.href : null,
-        referrer: typeof document !== "undefined" ? document.referrer || null : null,
-      });
+      return client.sendMessage(message, visitorPayload(state), { modality: modality || "text" });
+    }
+
+    async function sendVoiceQuery(text) {
+      var value = String(text || "").trim();
+      if (!value) return "Не удалось распознать вопрос. Попробуйте ещё раз.";
+
+      if (state.awaitingName && isLikelyName(value)) {
+        state.name = value;
+        state.awaitingName = false;
+        localStorage.setItem("delno_widget_name", state.name);
+        if (client) await client.syncVisitor({ name: state.name }).catch(function () {});
+        return personalizedGreeting(state.name);
+      }
+
+      if (state.awaitingPhone && isLikelyPhone(value)) {
+        state.awaitingPhone = false;
+        if (client) await client.syncVisitor({ phone: value }).catch(function () {});
+        return "Спасибо! Передал контакт — при необходимости с вами свяжутся.";
+      }
+
+      var payload = null;
+      try {
+        payload = await backendReply(value, "voice");
+      } catch (err) {
+        console.warn("DELNO widget voice:", err);
+      }
+
+      var answer = payload && payload.message ? payload.message : backendErrorMessage();
+
+      var backendRequestsName = payload && payload.next_step === "ask_name";
+      var backendRequestsPhone = payload && payload.next_step === "ask_phone";
+
+      if (!state.name && (!state.askedName || backendRequestsName) && value.length >= 8) {
+        state.awaitingName = true;
+        state.askedName = true;
+        localStorage.setItem("delno_widget_asked_name", "1");
+        return answer + " Кстати, как я могу к вам обращаться?";
+      }
+      if (
+        state.name &&
+        backendRequestsPhone &&
+        !localStorage.getItem("delno_widget_lead_id")
+      ) {
+        state.awaitingPhone = true;
+        return answer + " Оставьте номер телефона — передам коллеге, если понадобится связаться.";
+      }
+
+      return answer;
     }
 
     async function sendMessage(text) {
@@ -153,7 +223,7 @@
       var typing = appendTyping();
       var payload = null;
       try {
-        payload = await backendReply(value);
+        payload = await backendReply(value, "text");
       } catch (err) {
         console.warn("DELNO widget:", err);
       }
@@ -184,6 +254,25 @@
       }
 
       setBusy(false);
+    }
+
+    async function loadHistory() {
+      if (!client) return;
+      try {
+        await client.ensureSession();
+        var payload = await client.fetchHistory();
+        var messages = (payload && payload.messages) || [];
+        if (!messages.length) return;
+        body.innerHTML = "";
+        for (var i = 0; i < messages.length; i += 1) {
+          var item = messages[i];
+          if (item.role === "user" || item.role === "assistant") {
+            appendMessage(item.role, item.text);
+          }
+        }
+      } catch (err) {
+        console.warn("DELNO widget history:", err);
+      }
     }
 
     input.addEventListener("input", function () {
@@ -220,13 +309,24 @@
       });
     }
 
-    if (options.orbButton) {
+    if (options.orbButton && typeof createDelnoVoiceController === "function") {
+      voiceController = createDelnoVoiceController({
+        onTranscript: sendVoiceQuery,
+        onExchange: appendExchange,
+        setPhase: setVoicePhase,
+        audioEl: audioEl || null,
+      });
+      options.orbButton.addEventListener("click", function (e) {
+        e.preventDefault();
+        voiceController.toggle();
+      });
+    } else if (options.orbButton) {
       options.orbButton.addEventListener("click", function (e) {
         e.preventDefault();
         openPanel();
         appendMessage(
           "assistant",
-          "Голосовой режим подключается. Пока напишите ваш вопрос здесь — я отвечу по базе знаний.",
+          "Голосовой режим недоступен в этом браузере. Напишите ваш вопрос здесь.",
         );
       });
     }
@@ -235,10 +335,18 @@
     send.disabled = true;
 
     if (client) {
-      client.ensureSession().catch(function () {});
+      client.ensureSession().then(loadHistory).catch(function () {});
     }
 
-    return { sendMessage: sendMessage, openPanel: openPanel };
+    return {
+      sendMessage: sendMessage,
+      sendVoiceQuery: sendVoiceQuery,
+      appendExchange: appendExchange,
+      openPanel: openPanel,
+      stopVoice: function () {
+        if (voiceController) voiceController.stop();
+      },
+    };
   }
 
   global.initDelnoWidgetChat = initDelnoWidgetChat;

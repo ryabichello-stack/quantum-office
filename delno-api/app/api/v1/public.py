@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.tenant import TenantContext
+from app.models.conversation import Message
 from app.operator.agent import run_operator_turn
 from app.services.channel_router import resolve_public_lead, resolve_widget
 from app.services.events import emit_event
@@ -169,6 +170,13 @@ class PublicWidgetMessage(BaseModel):
     message: str = Field(min_length=1, max_length=1200)
     visitor: WidgetVisitor | None = None
     channel: str = Field(default="web", max_length=32)
+    input_modality: str = Field(default="text", pattern="^(text|voice)$")
+
+
+class PublicWidgetHistory(BaseModel):
+    site_key: str = Field(min_length=2, max_length=64)
+    session_id: str = Field(min_length=8, max_length=64)
+    visitor_id: str | None = Field(default=None, max_length=64)
 
 
 def _resolve_widget_context(db: Session, site_key: str):
@@ -367,7 +375,7 @@ def public_widget_message(
         message=body.message.strip(),
         channel="widget",
         conversation_id=conversation.id,
-        input_modality="text",
+        input_modality=body.input_modality,
     )
 
     next_step = widget_next_step(meta)
@@ -391,4 +399,67 @@ def public_widget_message(
         "sources": result.get("sources") or [],
         "next_step": next_step,
         "lead": lead,
+    }
+
+
+@router.post("/widget/history")
+def public_widget_history(
+    body: PublicWidgetHistory,
+    request: Request,
+    db: Session = Depends(get_db),
+    x_tenant_slug: str | None = Header(default=None, alias="X-Tenant-Slug"),
+) -> dict:
+    """E3.4 — load conversation messages for widget session (text + voice unified)."""
+    enforce_widget_rate_limit(request, site_key=body.site_key, action="history")
+    channel = _resolve_widget_context(db, body.site_key)
+    if not channel and x_tenant_slug:
+        channel = resolve_public_lead(db, x_tenant_slug)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Unknown site_key")
+
+    ctx = TenantContext(
+        tenant_id=channel.tenant_id,
+        tenant_slug=channel.tenant_slug,
+        role="public",
+    )
+
+    conversation_id = _parse_conversation_id(body.session_id)
+    if not conversation_id:
+        raise HTTPException(status_code=400, detail="Invalid session_id")
+
+    conversation = get_conversation_for_widget(db, ctx, conversation_id, create=False)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    try:
+        validate_widget_visitor(conversation, body.visitor_id)
+    except WidgetVisitorMismatchError:
+        raise HTTPException(status_code=403, detail="visitor_mismatch") from None
+
+    rows = (
+        db.query(Message)
+        .filter(
+            Message.conversation_id == conversation.id,
+            Message.tenant_id == ctx.tenant_id,
+        )
+        .order_by(Message.created_at.asc())
+        .all()
+    )
+
+    messages = []
+    for row in rows:
+        if row.role not in ("user", "assistant"):
+            continue
+        meta = row.meta if isinstance(row.meta, dict) else {}
+        messages.append(
+            {
+                "role": row.role,
+                "text": row.body,
+                "modality": meta.get("modality") or "text",
+            }
+        )
+
+    return {
+        "session_id": str(conversation.id),
+        "messages": messages,
     }

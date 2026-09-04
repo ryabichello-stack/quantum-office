@@ -219,7 +219,7 @@ visitor → conversation → name → phone → lead (once)
 |---|-------|-----|
 | **1** | Crystal CDN embed + functional text chat | A.1–A.5 |
 | **2** | Security: rate limit, visitor bind, CORS, tests | D.* |
-| **3** | Unified session: voice transcript → `/message`, history | B.17–19 |
+| **3** | Unified session: voice transcript → `/message`, history | B.17–19 | ✅ |
 | **4** | E3.5 voice + E3.6 fallback | B.11–16, C.20–23 |
 | **5** | E2.2 Telegram auto-reply + docs | Telegram in inbox with reply |
 
@@ -278,6 +278,19 @@ Full CRM, E1.16 Bitrix push, marketplace, PSTN/SIP, booking, fake appointment UI
 **Commit 2:** ✅ rate limit, visitor_id session bind, CORS regex for `*.dlno.ru`.
 
 **Commit 3 (next):** unified text+voice session, voice transcript → `/message`.
+
+**Commit 3 verified (2026-09-04):**
+
+| Check | Status |
+|-------|--------|
+| `input_modality` text\|voice on `/widget/message` | ✅ |
+| `POST /widget/history` — unified session messages | ✅ |
+| CDN orb → STT → `/message` (modality=voice) | ✅ `delno-widget-voice.js` |
+| Text chat loads voice history | ✅ `fetchHistory()` |
+| Orb phase CSS `data-voice-phase` | ✅ runtime attributes on mount |
+| Tests | ✅ `test_public_widget.py` |
+
+**Commit 4 (next):** E3.5 WebRTC + E3.6 voice→text fallback.
 
 ---
 

@@ -2,10 +2,11 @@
 
 ## Статус backend (2026-09-04)
 
-- ✅ `POST /v1/public/widget/session|visitor|message` — реализовано в `delno-api`
+- ✅ `POST /v1/public/widget/session|visitor|message|history` — реализовано в `delno-api`
 - ✅ Ответы через `run_operator_turn(channel="widget")` — tenant из `site_key`
-- 🔄 CDN bundle Commit 1: `widget-embed.html` + `crystal-widget.css` + `delno-widget-chat.js`
+- ✅ CDN bundle: `widget-embed.html` + `crystal-widget.css` + `delno-widget-chat.js` + `delno-widget-voice.js`
 - ✅ Commit 2: rate limit, visitor bind, CORS — see `app/services/widget_security.py`
+- ✅ Commit 3: unified text+voice session, `input_modality`, history load, orb STT/TTS
 
 **Аудит и план:** [`../docs/DELNO_WIDGET_AUDIT.md`](../docs/DELNO_WIDGET_AUDIT.md)
 
@@ -20,7 +21,7 @@
 - Имя сохраняется в localStorage в демо.
 - Подпись «Работает на DELNO ↗».
 - Светлая, тёмная и авто-версии.
-- Голосовой orb и текстовый чат используют один UI-контейнер, но пока не одну backend session.
+- Голосовой orb и текстовый чат используют **одну backend session** (`session_id` = `conversations.id`).
 
 ## Как правильно связать с DELNO backend
 
@@ -68,6 +69,7 @@ Request:
   "session_id": "uuid",
   "visitor_id": "uuid",
   "message": "Сколько стоит доставка?",
+  "input_modality": "text",
   "visitor": {
     "name": null,
     "page_url": "https://client-site.ru/",
@@ -95,6 +97,29 @@ Response:
 }
 ```
 
+### 3. Загрузить историю сессии
+POST `/v1/public/widget/history`
+
+Request:
+```json
+{
+  "site_key": "public_site_key",
+  "session_id": "uuid",
+  "visitor_id": "uuid"
+}
+```
+
+Response:
+```json
+{
+  "session_id": "uuid",
+  "messages": [
+    { "role": "user", "text": "Привет", "modality": "voice" },
+    { "role": "assistant", "text": "Здравствуйте!", "modality": "voice" }
+  ]
+}
+```
+
 ## Безопасность
 - `site_key` — публичный идентификатор установки, НЕ tenant_id.
 - backend по `site_key` сам разрешает tenant.
@@ -105,13 +130,13 @@ Response:
 - LLM не определяет tenant.
 - Knowledge search строго tenant-scoped.
 
-## Дальнейшее объединение с голосом
-Одна и та же `session_id` должна использоваться:
-- текстовым чатом;
-- voice widget;
+## Голос + текст (Commit 3)
+Одна и та же `session_id` используется:
+- текстовым чатом (`input_modality: "text"`);
+- voice orb (`input_modality: "voice"`, browser STT + speechSynthesis TTS);
 - будущим handoff на человека.
 
-Тогда пользователь может спросить голосом, открыть текстовый чат и увидеть ту же историю.
+Пользователь может спросить голосом, открыть текстовый чат и увидеть ту же историю через `/history`.
 
 ## Лид
 После получения имени backend обновляет lead/session:

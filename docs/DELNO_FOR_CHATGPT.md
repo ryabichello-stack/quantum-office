@@ -145,8 +145,8 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | E3.1 Cabinet MVP | ✅ | login, leads, inbox, operator, settings |
 | E3.2 Operator read-only KB | ✅ | `/v1/operator/chat` |
 | E3.3 Tool registry + confirmation | ✅ | READ/SAFE_WRITE/HIGH_IMPACT; LLM tool calling |
-| E3.4 Embeddable widget | 🔄 | CDN embed ✅; API security Commit 2 ✅ |
-| E3.5 Voice WebRTC widget | ⬜ | |
+| E3.4 Embeddable widget | 🔄 | CDN embed ✅; security Commit 2 ✅; voice+history Commit 3 ✅ |
+| E3.5 Voice WebRTC widget | ⬜ | browser STT/TTS in CDN (Commit 3); WebRTC in Commit 4 |
 | E3.6 Voice→text fallback | ⬜ | |
 | E3.7 KB UI upload/publish | 🔄 | upload + list in `/dashboard/knowledge` |
 | E3.8 Widget lead → inbox | 🔄 | API ✅; CDN UX Commit 1 |

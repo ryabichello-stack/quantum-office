@@ -92,8 +92,10 @@
     });
   };
 
-  DelnoWidgetClient.prototype.sendMessage = function (message, visitor) {
+  DelnoWidgetClient.prototype.sendMessage = function (message, visitor, opts) {
     var self = this;
+    opts = opts || {};
+    var modality = opts.modality || "text";
     var run = function () {
       var body = {
         site_key: self.siteKey,
@@ -102,6 +104,7 @@
         message: message,
         visitor: visitor || {},
         channel: "web",
+        input_modality: modality,
       };
       return self._fetch("/message", body).then(function (payload) {
         if (payload.conversation_id) self.persistSession(payload.conversation_id);
@@ -115,6 +118,20 @@
       return self.ensureSession().then(run);
     }
     return run();
+  };
+
+  DelnoWidgetClient.prototype.fetchHistory = function () {
+    var self = this;
+    if (!self.sessionId) return Promise.resolve({ messages: [] });
+    return self
+      ._fetch("/history", {
+        site_key: self.siteKey,
+        session_id: self.sessionId,
+        visitor_id: self.visitorId,
+      })
+      .catch(function () {
+        return { messages: [] };
+      });
   };
 
   DelnoWidgetClient.fromParams = function () {

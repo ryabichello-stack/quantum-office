@@ -115,7 +115,10 @@
   </section>
 </div>
 
+<audio id="delnoVoiceAudio" preload="none" playsinline hidden aria-hidden="true"></audio>
+
 <script src="delno-widget-client.js"></script>
+<script src="delno-widget-voice.js"></script>
 <script src="delno-widget-contrast.js"></script>
 <script src="delno-widget-chat.js"></script>
 <script>
@@ -124,6 +127,8 @@
   var panel = document.getElementById("chatPanel");
   var textToggle = document.getElementById("delno-crystal-text");
   var closeBtn = document.getElementById("delnoCloseBtn");
+  var mount = document.getElementById("delnoMount");
+  var audioEl = document.getElementById("delnoVoiceAudio");
 
   if (closeBtn) {
     closeBtn.addEventListener("click", function () {
@@ -143,6 +148,8 @@
       chatButton: document.getElementById("delnoChatBtn"),
       orbButton: document.getElementById("delnoOrbBtn"),
       client: client,
+      mount: mount,
+      audioEl: audioEl,
     });
   }
 })();
