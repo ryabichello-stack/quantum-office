@@ -206,7 +206,7 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 | `1aff402` | Widget Commit 4: public TTS + mic fallback → text (E3.5/E3.6) |
 | `eb7a0f5` | Widget Commit 3: unified text+voice session + `/history` |
 | `7829fa1` | Commit 5: E2.2 Telegram webhook → auto-reply via Conversation Core |
-| *(P4)* | Website-to-Agent Instant Demo — import site → KB + widget |
+| `379c941` | P4: Website-to-Agent Instant Demo — import site → KB + widget |
 | `e77238a` | Widget Commit 2: rate limit, visitor bind, CORS |
 | `a7525b4` | E2 Telegram webhook → conversation; orb CSS parity; KB list UI |
 | `a0a84f5` | E3.3 LLM tool calling; sidebar nav; calendar/knowledge pages |
@@ -310,7 +310,8 @@ systemctl status ava-outreach ava-mailer ava-text-bot  # не ломать
 | `delno-api/app/services/conversation_present.py` | Inbox enrichment |
 | `delno-api/app/api/v1/public.py` | Public widget gateway (session, message, history, tts) |
 | `delno-api/app/services/widget_flow.py` | Widget session + lead funnel |
-| `delno-api/app/services/widget_security.py` | Rate limit + visitor bind |
+| `delno-api/app/services/website_import.py` | P4 scrape + SSRF-safe fetch |
+| `delno-api/app/services/instant_demo.py` | Website → KB + widget embed |
 | `delno-widget/` | CDN Crystal Widget (embed.js, voice, chat) |
 | `delno-api/app/services/tts.py` | Operator + public widget TTS |
 | `delno-web/components/OperatorStage.tsx` | Operator UI + orb |
