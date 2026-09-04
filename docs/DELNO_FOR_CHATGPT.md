@@ -1,6 +1,6 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-4.6 · 2026-09-04 (P4 — Website-to-Agent Instant Demo)
+**Revision:** REV-4.7 · 2026-09-04 (O1 — Conversation-driven Onboarding)
 
 **Активный продуктовый этап:** Crystal Widget + Conversation Core — см. [`DELNO_WIDGET_AUDIT.md`](DELNO_WIDGET_AUDIT.md) AUDIT-1.0.
 
@@ -36,12 +36,12 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DEL
 ## Промпт (скопируй целиком)
 
 ```
-Прочитай entry point и все связанные документы по raw URL из него (REV-4.6):
+Прочитай entry point и все связанные документы по raw URL из него (REV-4.7):
 
 https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DELNO_FOR_CHATGPT.md
 
 Открой каждый raw URL из секции «Карта документов».
-Подтверди revision REV-4.6.
+Подтверди revision REV-4.7.
 
 Твоя задача — аудит текущего состояния DELNO. Ответь структурированно:
 
@@ -69,6 +69,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | 7 | **DaData party enrichment** | E1.12–E1.15 spec | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/E1.12_DADATA_PARTY_ENRICHMENT.md |
 | 8 | **Site landing (v2 canonical)** | v4 rejected as `/` default | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/P1.1_SITE_LANDING.md |
 | 9 | **Widget product audit** | Crystal Widget + Conversation Core plan, DoD, commits | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DELNO_WIDGET_AUDIT.md |
+| 10 | **Onboarding audit (O1–O6)** | Conversation-driven onboarding pivot, gaps, commit plan | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DELNO_ONBOARDING_AUDIT.md |
 
 **Проверка версии master plan:** строка `DELNO-MASTER-PLAN-REV-3.3` + секция `Rev.3 — Implementation Status`.
 
@@ -136,7 +137,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | Self-service register | ✅ `POST /v1/auth/register` |
 | KB upload | ✅ `POST /v1/tenant/knowledge/documents` |
 | Widget embed in cabinet | ✅ `GET /v1/tenant/widget` |
-| Time to First Value | 🔄 | Instant Demo import ✅; not measured |
+| Time to First Value | 🔄 | O1 onboarding channel + draft KB started; P4 instant-demo → backend only |
 
 ### E3 — Widget + Operator + cabinet UI
 
@@ -193,6 +194,23 @@ Header: X-Telegram-Bot-Api-Secret-Token: {channel_accounts.meta.webhook_secret}
 
 E1.12–E1.15 ✅ · E1.16 CRM push ⬜ **DO NOT START**
 
+### O — Conversation-driven Onboarding (NEW pivot)
+
+**Продуктовый принцип:** пользователь не заполняет KB — он **разговаривает** с DELNO. Один диалог, URL + файлы + текст в одной conversation. Draft → summary → confirm → publish.
+
+| # | Задача | Статус | Примечание |
+|---|--------|--------|------------|
+| O1 | Draft upsert API + `channel=onboarding` + `/onboarding/start` | 🔄 | brain publication params; events `onboarding.started` |
+| O2 | Onboarding chat UI (`/dashboard/onboarding`) | ⬜ | register redirect |
+| O3 | File upload in chat | ⬜ | PDF/DOCX/XLSX/CSV/TXT |
+| O4 | URL in conversation + graceful fallback | ⬜ | reuse `website_import.py` |
+| O5 | Summary card + conflicts + publish confirm | ⬜ | HIGH_IMPACT tool |
+| O6 | TTFV events + tests A–E | ⬜ | |
+
+**Не делать:** site builder / визитка, отдельные ветки «есть сайт / нет сайта», wizard из 8 экранов.
+
+**P4 Instant Demo:** API остаётся как backend; primary UX → onboarding chat (см. [`DELNO_ONBOARDING_AUDIT.md`](DELNO_ONBOARDING_AUDIT.md)).
+
 ### E4+ — NOT STARTED
 
 Telephony, booking, billing, CRM — см. guardrails ниже.
@@ -203,10 +221,9 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 
 | Коммит | Суть |
 |--------|------|
-| `1aff402` | Widget Commit 4: public TTS + mic fallback → text (E3.5/E3.6) |
-| `eb7a0f5` | Widget Commit 3: unified text+voice session + `/history` |
-| `7829fa1` | Commit 5: E2.2 Telegram webhook → auto-reply via Conversation Core |
-| `379c941` | P4: Website-to-Agent Instant Demo — import site → KB + widget |
+| *(O1 pending)* | O1: conversation onboarding — draft KB + `/onboarding/start` + channel=onboarding |
+| `1ed28e5` | FOR_CHATGPT REV-4.6 + P4 docs |
+| `379c941` | P4: Website-to-Agent Instant Demo — import site → KB + widget (backend; UX pivot → O) |
 | `e77238a` | Widget Commit 2: rate limit, visitor bind, CORS |
 | `a7525b4` | E2 Telegram webhook → conversation; orb CSS parity; KB list UI |
 | `a0a84f5` | E3.3 LLM tool calling; sidebar nav; calendar/knowledge pages |
@@ -245,7 +262,7 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 2. **E2.3** — branded Telegram bot wizard
 3. Обновить master plan REV-3.4+ под E2/E3/P4 статус
 
-**Product MVP (Widget Commits 1–5 + P4 Instant Demo):** ✅ базовый цикл закрыт.
+**Product MVP (Widget Commits 1–5):** ✅ базовый цикл закрыт. **Onboarding pivot O1–O6** — текущий приоритет (см. onboarding audit).
 
 **Не начинать:**
 
@@ -310,7 +327,9 @@ systemctl status ava-outreach ava-mailer ava-text-bot  # не ломать
 | `delno-api/app/services/conversation_present.py` | Inbox enrichment |
 | `delno-api/app/api/v1/public.py` | Public widget gateway (session, message, history, tts) |
 | `delno-api/app/services/widget_flow.py` | Widget session + lead funnel |
-| `delno-api/app/services/website_import.py` | P4 scrape + SSRF-safe fetch |
+| `delno-api/app/services/onboarding_flow.py` | O1 onboarding conversation + draft orchestration |
+| `delno-api/app/services/knowledge_documents.py` | Draft/publish brain upsert wrappers |
+| `delno-api/app/services/website_import.py` | P4 scrape + SSRF-safe fetch (→ O4 in-chat) |
 | `delno-api/app/services/instant_demo.py` | Website → KB + widget embed |
 | `delno-widget/` | CDN Crystal Widget (embed.js, voice, chat) |
 | `delno-api/app/services/tts.py` | Operator + public widget TTS |
@@ -344,8 +363,10 @@ systemctl status ava-outreach ava-mailer ava-text-bot  # не ломать
 | POST | `/v1/public/widget/message` | Chat turn (`input_modality`: `text`\|`voice`) |
 | POST | `/v1/public/widget/history` | Load messages for session |
 | GET | `/v1/public/widget/tts?site_key=&session_id=&visitor_id=&text=` | OpenAI TTS mp3 (Commit 4) |
-| POST | `/v1/public/instant-demo/preview` | Scrape website preview (P4, rate limited) |
-| POST | `/v1/tenant/instant-demo` | Import website → KB + widget embed (JWT) |
+| POST | `/v1/tenant/onboarding/start` | Start/resume onboarding conversation (O1, JWT) |
+| GET | `/v1/tenant/onboarding/status` | Onboarding state + draft summary stub (O1, JWT) |
+| POST | `/v1/public/instant-demo/preview` | Scrape website preview (P4 backend, rate limited) |
+| POST | `/v1/tenant/instant-demo` | Import website → KB (P4 backend; primary UX → onboarding chat) |
 
 Browser **не** вызывает `/v1/operator/chat`. Tenant только через `site_key`.
 

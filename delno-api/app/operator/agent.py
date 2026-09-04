@@ -155,7 +155,27 @@ def _kb_context_from_result(result: ToolResult) -> str:
     return "\n\n".join(snippets)[:4000]
 
 
-def _system_prompt(ctx: TenantContext, kb_context: str, *, cabinet: bool = False) -> str:
+def _system_prompt(
+    ctx: TenantContext,
+    kb_context: str,
+    *,
+    cabinet: bool = False,
+    onboarding: bool = False,
+) -> str:
+    if onboarding:
+        base = (
+            f"Ты DELNO — помогаешь владельцу настроить ИИ-сотрудника для компании «{ctx.tenant_slug}». "
+            "Это первичный onboarding через разговор: собирай знания о бизнесе естественно. "
+            "Пользователь может прислать текст, ссылку на сайт или документы. "
+            "Не проси «заполнить базу знаний» или «настроить KB» — просто разговаривай. "
+            "Задавай 1–2 осмысленных уточняющих вопроса за шаг, исходя из пробелов. "
+            "Все данные сначала попадают в черновик (draft) — не публикуй без явного подтверждения владельца. "
+            "Если сайт не удалось прочитать — не показывай техническую ошибку, предложи рассказать или загрузить материалы."
+        )
+        if kb_context:
+            return f"{base}\n\n--- Черновик знаний ---\n{kb_context}"
+        return base
+
     base = (
         f"Ты DELNO — ИИ-сотрудник компании (tenant: {ctx.tenant_slug}). "
         "Отвечай кратко по-русски. Используй только факты из базы знаний ниже. "
@@ -360,6 +380,7 @@ def _generate_reply(
     tool_calls: list[dict[str, Any]] = []
     kb_context = ""
     sources: list[dict[str, Any]] = []
+    onboarding = channel == "onboarding"
     cabinet = channel in ("cabinet", "operator")
 
     if cabinet:
@@ -380,7 +401,15 @@ def _generate_reply(
     provider = get_model_provider()
     completion = provider.chat_completion(
         messages=[
-            {"role": "system", "content": _system_prompt(ctx, kb_context, cabinet=cabinet)},
+            {
+                "role": "system",
+                "content": _system_prompt(
+                    ctx,
+                    kb_context,
+                    cabinet=cabinet,
+                    onboarding=onboarding,
+                ),
+            },
             {"role": "user", "content": message},
         ]
     )

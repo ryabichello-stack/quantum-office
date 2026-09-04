@@ -14,6 +14,7 @@ from app.services.party_enrichment import enrich_tenant_legal_from_inn, lookup_p
 from app.services.tenant_settings_ingest import sync_tenant_settings_for_ctx
 from app.services.knowledge_documents import upsert_tenant_knowledge_document
 from app.services.instant_demo import import_website_to_tenant
+from app.services.onboarding_flow import get_onboarding_state, start_onboarding
 
 router = APIRouter(prefix="/tenant", tags=["tenant"])
 
@@ -39,6 +40,10 @@ class KnowledgeDocumentCreate(BaseModel):
 
 class InstantDemoImport(BaseModel):
     website_url: str = Field(min_length=4, max_length=500)
+
+
+class OnboardingStartRequest(BaseModel):
+    force_new: bool = False
 
 
 def _require_tenant_admin(ctx: TenantContext) -> None:
@@ -263,6 +268,29 @@ def list_knowledge_documents(
             }
         )
     return {"items": items, "total": len(items)}
+
+
+@router.post("/onboarding/start")
+def tenant_onboarding_start(
+    body: OnboardingStartRequest | None = None,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """O1 — start or resume conversation-driven onboarding."""
+    _require_tenant_admin(ctx)
+    force_new = bool(body.force_new) if body else False
+    return start_onboarding(db, ctx, force_new=force_new)
+
+
+@router.get("/onboarding/status")
+def tenant_onboarding_status(
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """O1 — onboarding state for cabinet UI."""
+    _require_tenant_admin(ctx)
+    tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
+    return {"ok": True, **get_onboarding_state(tenant)}
 
 
 @router.post("/instant-demo")

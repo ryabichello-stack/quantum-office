@@ -106,6 +106,9 @@ class DocumentUpsertRequest(BaseModel):
     visibility: str = Field(default="public", max_length=32)
     channels: list[str] = Field(default_factory=lambda: ["office-assistant"])
     source: str = Field(default="tenant:document", max_length=120)
+    status: str | None = Field(default=None, max_length=32)
+    index_zone: str | None = Field(default=None, max_length=32)
+    publication: dict | None = None
 
 
 def _principal(
@@ -394,7 +397,10 @@ def brain_document_upsert(
 
     tenant = req.tenant_id
     visibility = req.visibility if req.visibility in ("public", "company", "team") else "company"
-    index_zone = "public" if visibility == "public" else "private"
+    publication = req.publication if isinstance(req.publication, dict) else {}
+    default_index_zone = "public" if visibility == "public" else "private"
+    index_zone = req.index_zone if req.index_zone in ("public", "private", "secret") else default_index_zone
+    status = req.status if req.status in ("draft", "active", "deprecated", "quarantine") else "active"
     repo = get_repo()
     result = repo.upsert_document(
         doc_id=req.document_id,
@@ -405,6 +411,8 @@ def brain_document_upsert(
         visibility=visibility,
         channels=req.channels,
         index_zone=index_zone,
+        status=status,
+        publication=publication,
         source=req.source,
     )
     repo.conn.commit()
