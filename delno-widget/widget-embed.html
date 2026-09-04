@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>DELNO Widget</title>
+  <link rel="stylesheet" href="crystal-widget.css">
+  <style>
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: transparent;
+      overflow: hidden;
+    }
+    .delno-crystal-mount.delno-crystal-floating {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2147483000;
+    }
+    .delno-crystal-mount .widget,
+    .delno-crystal-mount .panel,
+    .delno-crystal-mount button,
+    .delno-crystal-mount label.chat,
+    .delno-crystal-mount .orb-hit {
+      pointer-events: auto;
+    }
+    .delno-crystal-mount .panel.is-open {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translate3d(-50%, 0, 0) scale(1);
+    }
+    .orb-img-fallback {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: radial-gradient(circle at 38% 32%, #fff 0, #f2fbff 22%, #bee7ff 55%, #3157d8 88%, #161713 100%);
+    }
+  </style>
+</head>
+<body>
+
+<div class="delno-crystal-mount delno-crystal-floating" id="delnoMount">
+  <input type="checkbox" id="delno-crystal-text" hidden aria-hidden>
+
+  <div class="widget">
+    <div class="state">
+      <span class="listen">Слушаю…</span>
+      <span class="think">Думаю…</span>
+      <span class="speak">Отвечаю…</span>
+    </div>
+
+    <button type="button" class="chat" id="delnoChatBtn" aria-label="Текстовый чат">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true">
+        <path d="M5.5 6.2h13a2.3 2.3 0 0 1 2.3 2.3v6.2a2.3 2.3 0 0 1-2.3 2.3H11l-4.5 2.8V17H5.5a2.3 2.3 0 0 1-2.3-2.3V8.5a2.3 2.3 0 0 1 2.3-2.3Z"
+          stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+      </svg>
+    </button>
+
+    <div class="orb-anchor">
+      <button type="button" class="orb-hit" id="delnoOrbBtn" aria-label="DELNO"></button>
+      <div class="motion">
+        <span class="ground"></span>
+        <div class="rings" aria-hidden="true">
+          <i class="sharp r1"></i>
+          <i class="soft r2"></i>
+          <i class="sharp r3"></i>
+        </div>
+        <span class="active-halo"></span>
+        <div class="breath">
+          <img class="orb-img" src="assets/crystal-orb-static.svg" alt="">
+          <span class="fire-path">
+            <span class="fire fire-idle"></span>
+            <span class="fire fire-active"></span>
+          </span>
+        </div>
+        <span class="icon mic">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true">
+            <path d="M12 15.1a3.6 3.6 0 0 0 3.6-3.6V7.2a3.6 3.6 0 1 0-7.2 0v4.3a3.6 3.6 0 0 0 3.6 3.6Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <path d="M6.8 11.3a5.2 5.2 0 0 0 10.4 0M12 16.5v3M9.5 19.5h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <span class="icon dots"><i></i><i></i><i></i></span>
+        <span class="icon wave"><i></i><i></i><i></i><i></i><i></i></span>
+      </div>
+    </div>
+  </div>
+
+  <section class="panel" id="chatPanel" aria-live="polite">
+    <div class="head">
+      <strong>DELNO</strong>
+      <button type="button" class="close" id="delnoCloseBtn" aria-label="Закрыть чат">×</button>
+    </div>
+    <div class="chat-body" id="chatBody">
+      <div class="message-row assistant">
+        <div class="message">Здравствуйте. Чем могу помочь?</div>
+      </div>
+    </div>
+    <form class="chat-form" id="chatForm">
+      <textarea class="chat-input" id="chatInput" rows="1" maxlength="1200" autocomplete="off"
+        enterkeyhint="send" placeholder="Введите сообщение…" aria-label="Сообщение"></textarea>
+      <button class="send-btn" id="sendBtn" type="submit" aria-label="Отправить">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" aria-hidden="true">
+          <path d="M5 12 19 5l-4.8 14-2.8-5.2L5 12Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+          <path d="m11.4 13.8 3.2-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </form>
+    <div class="powered-by">
+      <a href="https://dlno.ru/?utm_source=widget&utm_medium=branding&utm_campaign=powered_by_delno"
+         target="_blank" rel="noopener noreferrer" aria-label="Перейти на сайт DELNO">
+        Работает на DELNO ↗
+      </a>
+    </div>
+  </section>
+</div>
+
+<script src="delno-widget-client.js"></script>
+<script src="delno-widget-contrast.js"></script>
+<script src="delno-widget-chat.js"></script>
+<script>
+(function () {
+  var client = typeof DelnoWidgetClient !== "undefined" ? DelnoWidgetClient.fromParams() : null;
+  var panel = document.getElementById("chatPanel");
+  var textToggle = document.getElementById("delno-crystal-text");
+  var closeBtn = document.getElementById("delnoCloseBtn");
+
+  if (closeBtn) {
+    closeBtn.addEventListener("click", function () {
+      if (textToggle) textToggle.checked = false;
+      if (panel) panel.classList.remove("is-open");
+    });
+  }
+
+  if (typeof initDelnoWidgetChat === "function") {
+    initDelnoWidgetChat({
+      form: document.getElementById("chatForm"),
+      input: document.getElementById("chatInput"),
+      body: document.getElementById("chatBody"),
+      sendBtn: document.getElementById("sendBtn"),
+      panel: panel,
+      textToggle: textToggle,
+      chatButton: document.getElementById("delnoChatBtn"),
+      orbButton: document.getElementById("delnoOrbBtn"),
+      client: client,
+    });
+  }
+})();
+</script>
+</body>
+</html>

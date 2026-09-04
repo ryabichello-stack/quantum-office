@@ -1,5 +1,13 @@
 # DELNO Widget Chat — интеграция с платформой
 
+## Статус backend (2026-09-04)
+
+- ✅ `POST /v1/public/widget/session|visitor|message` — реализовано в `delno-api`
+- ✅ Ответы через `run_operator_turn(channel="widget")` — tenant из `site_key`
+- 🔄 CDN bundle Commit 1: `widget-embed.html` + `crystal-widget.css` + `delno-widget-chat.js`
+
+**Аудит и план:** [`../docs/DELNO_WIDGET_AUDIT.md`](../docs/DELNO_WIDGET_AUDIT.md)
+
 ## Что уже реализовано в прототипе
 - Настоящее textarea-поле.
 - Отправка по Enter; Shift+Enter — новая строка.

@@ -1,5 +1,5 @@
 /**
- * DELNO widget embed loader (E3.4).
+ * DELNO widget embed loader (E3.4 / Commit 1).
  *
  * Usage:
  * <script src="https://cdn.dlno.ru/widget/v1/embed.js"
@@ -14,14 +14,11 @@
   if (!script) return;
 
   var siteKey = script.getAttribute("data-site-key") || "demo_dlno";
-  var theme = (script.getAttribute("data-theme") || "auto").toLowerCase();
   var api = script.getAttribute("data-api") || "https://api.dlno.ru/v1/public/widget";
   var cdn = (script.getAttribute("data-cdn") || "https://cdn.dlno.ru/widget/v1").replace(/\/$/, "");
   var zIndex = script.getAttribute("data-z-index") || "2147483000";
 
-  var page = "index.html";
-  if (theme === "light") page = "light.html";
-  if (theme === "dark") page = "dark.html";
+  var page = "widget-embed.html";
 
   var src =
     cdn +
@@ -39,16 +36,21 @@
   iframe.allow = "microphone";
   iframe.style.cssText =
     "position:fixed;bottom:0;left:50%;transform:translateX(-50%);" +
-    "width:min(420px,100vw);height:min(720px,100vh);border:0;background:transparent;" +
-    "z-index:" +
+    "width:min(420px,100vw);height:min(640px,92vh);border:0;background:transparent;" +
+    "color-scheme:light dark;z-index:" +
     zIndex +
-    ";pointer-events:auto;";
+    ";pointer-events:none;overflow:hidden;";
 
-  if (document.body) {
+  iframe.onload = function () {
+    try {
+      iframe.style.pointerEvents = "auto";
+    } catch (_) {}
+  };
+
+  function mount() {
     document.body.appendChild(iframe);
-  } else {
-    document.addEventListener("DOMContentLoaded", function () {
-      document.body.appendChild(iframe);
-    });
   }
+
+  if (document.body) mount();
+  else document.addEventListener("DOMContentLoaded", mount);
 })();

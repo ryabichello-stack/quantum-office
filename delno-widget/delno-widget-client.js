@@ -94,18 +94,27 @@
 
   DelnoWidgetClient.prototype.sendMessage = function (message, visitor) {
     var self = this;
-    var body = {
-      site_key: self.siteKey,
-      session_id: self.sessionId,
-      visitor_id: self.visitorId,
-      message: message,
-      visitor: visitor || {},
-      channel: "web",
+    var run = function () {
+      var body = {
+        site_key: self.siteKey,
+        session_id: self.sessionId,
+        visitor_id: self.visitorId,
+        message: message,
+        visitor: visitor || {},
+        channel: "web",
+      };
+      return self._fetch("/message", body).then(function (payload) {
+        if (payload.conversation_id) self.persistSession(payload.conversation_id);
+        if (payload.lead && payload.lead.id && typeof localStorage !== "undefined") {
+          localStorage.setItem("delno_widget_lead_id", payload.lead.id);
+        }
+        return payload;
+      });
     };
-    return self._fetch("/message", body).then(function (payload) {
-      if (payload.conversation_id) self.persistSession(payload.conversation_id);
-      return payload;
-    });
+    if (!self.sessionId) {
+      return self.ensureSession().then(run);
+    }
+    return run();
   };
 
   DelnoWidgetClient.fromParams = function () {
