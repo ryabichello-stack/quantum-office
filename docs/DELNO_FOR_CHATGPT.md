@@ -1,6 +1,6 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-4.3 · 2026-09-04 (Widget Commit 2 — security hardening)
+**Revision:** REV-4.4 · 2026-09-04 (Widget Commit 4 — public TTS + voice→text fallback)
 
 **Активный продуктовый этап:** Crystal Widget + Conversation Core — см. [`DELNO_WIDGET_AUDIT.md`](DELNO_WIDGET_AUDIT.md) AUDIT-1.0.
 
@@ -36,12 +36,12 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DEL
 ## Промпт (скопируй целиком)
 
 ```
-Прочитай entry point и все связанные документы по raw URL из него (REV-4.1):
+Прочитай entry point и все связанные документы по raw URL из него (REV-4.4):
 
 https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DELNO_FOR_CHATGPT.md
 
 Открой каждый raw URL из секции «Карта документов».
-Подтверди revision REV-4.1.
+Подтверди revision REV-4.4.
 
 Твоя задача — аудит текущего состояния DELNO. Ответь структурированно:
 
@@ -145,11 +145,11 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | E3.1 Cabinet MVP | ✅ | login, leads, inbox, operator, settings |
 | E3.2 Operator read-only KB | ✅ | `/v1/operator/chat` |
 | E3.3 Tool registry + confirmation | ✅ | READ/SAFE_WRITE/HIGH_IMPACT; LLM tool calling |
-| E3.4 Embeddable widget | 🔄 | CDN embed ✅; security Commit 2 ✅; voice+history Commit 3 ✅ |
-| E3.5 Voice WebRTC widget | ⬜ | browser STT/TTS in CDN (Commit 3); WebRTC in Commit 4 |
-| E3.6 Voice→text fallback | ⬜ | |
+| E3.4 Embeddable widget | ✅ | CDN embed + security + unified session (Commits 1–4) |
+| E3.5 Voice widget (browser) | ✅ | STT + `GET /v1/public/widget/tts` (OpenAI mp3); full Realtime WebRTC → E4.3 |
+| E3.6 Voice→text fallback | ✅ | mic denied / no STT → text panel, same `session_id` |
 | E3.7 KB UI upload/publish | 🔄 | upload + list in `/dashboard/knowledge` |
-| E3.8 Widget lead → inbox | 🔄 | API ✅; CDN UX Commit 1 |
+| E3.8 Widget lead → inbox | ✅ | API + CDN name/phone funnel |
 
 **Product phase:** [`DELNO_WIDGET_AUDIT.md`](DELNO_WIDGET_AUDIT.md) — Crystal Widget + Conversation Core.
 
@@ -203,6 +203,9 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 
 | Коммит | Суть |
 |--------|------|
+| *(Commit 4)* | Public widget TTS + mic fallback → text (E3.5/E3.6) |
+| `eb7a0f5` | Widget Commit 3: unified text+voice session + `/history` |
+| `e77238a` | Widget Commit 2: rate limit, visitor bind, CORS |
 | `a7525b4` | E2 Telegram webhook → conversation; orb CSS parity; KB list UI |
 | `a0a84f5` | E3.3 LLM tool calling; sidebar nav; calendar/knowledge pages |
 | `3a4e8db` | Operator TTS via API (JWT, OpenAI mp3) |
@@ -224,7 +227,7 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 | **P1.9 clarity** | Нет теста 3+ людей | blocker P1 exit |
 | **P2.4 TTFV** | Flow есть, не измерен | low |
 | **E2.2 auto-reply** | Webhook пишет в PG, бот не отвечает | medium |
-| **E3.5 WebRTC** | Voice widget не начат | medium |
+| **E3.5 Realtime WebRTC** | Browser voice ✅; OpenAI Realtime WebRTC → E4.3 worker | low |
 | **E3.7 KB list** | Список из events, не из brain catalog | low |
 | **Appointment card** | Ждёт E4 booking | — не делать fake |
 | **PR #20 merge** | draft, возможен conflict с main | P1 |
@@ -236,10 +239,12 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 
 **Сейчас (без блокеров):**
 
-1. **E2.2** — shared DELNO Telegram bot: webhook → auto-reply → inbox thread
-2. **E3.5** — WebRTC voice widget MVP
+1. **E2.2 / Commit 5** — Telegram webhook → auto-reply через Conversation Core
+2. **P4** — Website-to-Agent MVP (Instant Demo) — после widget loop
 3. **P1.9** clarity test — ⏸ когда owner вернётся
 4. Обновить master plan REV-3.4+ под E2/E3 статус
+
+**Widget product loop (Commits 1–4):** ✅ закрыт для MVP. Не расширять scope без owner.
 
 **Не начинать:**
 
@@ -301,7 +306,11 @@ systemctl status ava-outreach ava-mailer ava-text-bot  # не ломать
 | `delno-api/app/api/v1/webhooks.py` | Telegram webhook endpoint |
 | `delno-api/app/services/inbound_messages.py` | Inbound → conversation |
 | `delno-api/app/services/conversation_present.py` | Inbox enrichment |
-| `delno-api/app/services/tts.py` | Operator TTS |
+| `delno-api/app/api/v1/public.py` | Public widget gateway (session, message, history, tts) |
+| `delno-api/app/services/widget_flow.py` | Widget session + lead funnel |
+| `delno-api/app/services/widget_security.py` | Rate limit + visitor bind |
+| `delno-widget/` | CDN Crystal Widget (embed.js, voice, chat) |
+| `delno-api/app/services/tts.py` | Operator + public widget TTS |
 | `delno-web/components/OperatorStage.tsx` | Operator UI + orb |
 | `delno-web/components/CrystalOrb.tsx` | Crystal orb component |
 | `delno-web/styles/crystal-operator.css` | Phase-driven orb CSS |
@@ -323,6 +332,18 @@ systemctl status ava-outreach ava-mailer ava-text-bot  # не ломать
 | GET | `/v1/tenant/knowledge/documents` | KB upload history (E3.7) |
 | POST | `/v1/webhooks/telegram/{channel_account_id}` | Telegram inbound (E2) |
 
-**Widget security (Commit 2):** rate limit per `site_key`+IP; `visitor_id` session bind (403 on mismatch); CORS `*.dlno.ru` regex.
+**Public Widget API (CDN — без JWT):**
+
+| Method | Path | Назначение |
+|--------|------|------------|
+| POST | `/v1/public/widget/session` | Create/restore session (`session_id` = `conversations.id`) |
+| POST | `/v1/public/widget/visitor` | Name/phone → lead |
+| POST | `/v1/public/widget/message` | Chat turn (`input_modality`: `text`\|`voice`) |
+| POST | `/v1/public/widget/history` | Load messages for session |
+| GET | `/v1/public/widget/tts?site_key=&session_id=&visitor_id=&text=` | OpenAI TTS mp3 (Commit 4) |
+
+Browser **не** вызывает `/v1/operator/chat`. Tenant только через `site_key`.
+
+**Widget security (Commits 2–4):** rate limit per `site_key`+IP; `visitor_id` session bind (403 on mismatch); CORS `*.dlno.ru` regex.
 
 Полный список — в [`DELNO_IMPLEMENTATION_ROADMAP.md`](DELNO_IMPLEMENTATION_ROADMAP.md).

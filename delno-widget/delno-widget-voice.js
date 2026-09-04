@@ -1,6 +1,7 @@
 /**
- * DELNO Crystal Widget — browser STT + speechSynthesis TTS (Commit 3).
- * Public widget has no JWT — uses browser TTS fallback only.
+ * DELNO Crystal Widget — browser STT + API TTS with fallback (Commit 3–4).
+ * Public widget: OpenAI TTS via /v1/public/widget/tts (no JWT).
+ * E3.6: mic denied / STT unavailable → onFallbackToText (same session).
  */
 (function (global) {
   "use strict";
@@ -59,20 +60,68 @@
     });
   }
 
-  function playReplyTts(text, audio, callbacks) {
+  function playAudioBlob(audio, blob, callbacks) {
+    var objectUrl = URL.createObjectURL(blob);
+    audio.src = objectUrl;
+    return new Promise(function (resolve, reject) {
+      audio.onplaying = function () {
+        callbacks.onStart && callbacks.onStart();
+      };
+      audio.onended = function () {
+        URL.revokeObjectURL(objectUrl);
+        callbacks.onEnd && callbacks.onEnd();
+        resolve(true);
+      };
+      audio.onerror = function () {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("audio failed"));
+      };
+      var playPromise = audio.play();
+      if (playPromise && playPromise.catch) playPromise.catch(reject);
+    });
+  }
+
+  function playReplyTts(text, audio, callbacks, ttsUrl) {
     callbacks = callbacks || {};
     if (callbacks.signal && callbacks.signal.aborted) return Promise.resolve(false);
 
-    return speakWithBrowser(text)
-      .then(function () {
-        callbacks.onStart && callbacks.onStart();
-        callbacks.onEnd && callbacks.onEnd();
-        return true;
+    function browserFallback() {
+      return speakWithBrowser(text)
+        .then(function () {
+          callbacks.onStart && callbacks.onStart();
+          callbacks.onEnd && callbacks.onEnd();
+          return true;
+        })
+        .catch(function () {
+          callbacks.onError && callbacks.onError();
+          return false;
+        });
+    }
+
+    if (!ttsUrl || !audio) return browserFallback();
+
+    return fetch(ttsUrl, { signal: callbacks.signal, headers: { Accept: "audio/mpeg" } })
+      .then(function (res) {
+        if (!res.ok) throw new Error("tts http " + res.status);
+        return res.blob();
+      })
+      .then(function (blob) {
+        return playAudioBlob(audio, blob, callbacks);
       })
       .catch(function () {
-        callbacks.onError && callbacks.onError();
-        return false;
+        return browserFallback();
       });
+  }
+
+  function requestMicAccess() {
+    if (!global.navigator || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return Promise.resolve();
+    }
+    return navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      stream.getTracks().forEach(function (track) {
+        track.stop();
+      });
+    });
   }
 
   /**
@@ -81,6 +130,8 @@
    * @param {(userText: string, assistantText: string) => void} [options.onExchange]
    * @param {(phase: string) => void} options.setPhase
    * @param {HTMLAudioElement|null} options.audioEl
+   * @param {(text: string) => string|null} [options.buildTtsUrl]
+   * @param {(message: string) => void} [options.onFallbackToText]
    * @param {number} [options.listenSilenceMs]
    */
   function createVoiceController(options) {
@@ -88,11 +139,12 @@
     var onExchange = options.onExchange;
     var setPhase = options.setPhase;
     var audioEl = options.audioEl || null;
+    var buildTtsUrl = options.buildTtsUrl || null;
+    var onFallbackToText = options.onFallbackToText || null;
     var listenSilenceMs = options.listenSilenceMs || 8000;
 
     var engaged = false;
     var recognition = null;
-    var heard = false;
     var speaking = false;
     var processing = false;
     var turnId = 0;
@@ -134,7 +186,6 @@
       abortTts = null;
       processing = false;
       speaking = false;
-      heard = false;
       engaged = false;
       clearErrorTimer();
       if (audioEl) {
@@ -143,6 +194,11 @@
       }
       if (global.speechSynthesis) global.speechSynthesis.cancel();
       setPhase("idle");
+    }
+
+    function fallbackToText(message) {
+      stop();
+      if (onFallbackToText) onFallbackToText(message);
     }
 
     function showError(userText, assistantText) {
@@ -190,6 +246,8 @@
             return;
           }
 
+          var ttsUrl = buildTtsUrl ? buildTtsUrl(reply) : null;
+
           var startTts = function () {
             return playReplyTts(reply, audioEl, {
               onStart: function () {
@@ -214,7 +272,7 @@
                 }
               },
               signal: abortTts.signal,
-            });
+            }, ttsUrl);
           };
 
           if (fromMic) {
@@ -235,11 +293,12 @@
       if (!engaged || processing || speaking) return;
       var SpeechRecognition = getSpeechRecognition();
       if (!SpeechRecognition) {
-        showError("Голос", "Браузер не поддерживает распознавание речи. Напишите вопрос в чате.");
+        fallbackToText(
+          "Голос недоступен в этом браузере. Напишите вопрос в текстовом чате — история сохранится.",
+        );
         return;
       }
 
-      heard = false;
       setPhase("listen");
       resetListenTimer();
       if (recognition) {
@@ -253,9 +312,10 @@
       recognition.continuous = true;
 
       var pending = "";
+      var micDenied = false;
+
       recognition.onresult = function (event) {
         if (!engaged || processing || speaking) return;
-        heard = true;
         resetListenTimer();
         for (var i = event.resultIndex; i < event.results.length; i += 1) {
           if (event.results[i].isFinal) {
@@ -264,12 +324,22 @@
         }
       };
 
-      recognition.onerror = function () {
+      recognition.onerror = function (event) {
+        var code = event && event.error ? event.error : "";
+        if (code === "not-allowed" || code === "service-not-allowed") {
+          micDenied = true;
+        }
         recognition = null;
       };
 
       recognition.onend = function () {
         recognition = null;
+        if (micDenied) {
+          fallbackToText(
+            "Нет доступа к микрофону. Напишите вопрос в текстовом чате — я отвечу в той же сессии.",
+          );
+          return;
+        }
         if (pending && engaged && !processing && !speaking) {
           var captured = pending;
           pending = "";
@@ -280,8 +350,26 @@
       try {
         recognition.start();
       } catch (_) {
-        /* ignore */
+        fallbackToText(
+          "Не удалось включить микрофон. Напишите вопрос в текстовом чате — история сохранится.",
+        );
       }
+    }
+
+    function beginVoiceSession() {
+      engaged = true;
+      if (audioEl) unlockAudioElement(audioEl);
+      requestMicAccess()
+        .then(function () {
+          if (!engaged) return;
+          startMic();
+        })
+        .catch(function () {
+          if (!engaged) return;
+          fallbackToText(
+            "Нет доступа к микрофону. Напишите вопрос в текстовом чате — я отвечу в той же сессии.",
+          );
+        });
     }
 
     function toggle() {
@@ -289,9 +377,7 @@
         stop();
         return;
       }
-      engaged = true;
-      if (audioEl) unlockAudioElement(audioEl);
-      startMic();
+      beginVoiceSession();
     }
 
     return {

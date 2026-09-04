@@ -16,6 +16,7 @@ from app.api.v1.public import (
     public_widget_history,
     public_widget_message,
     public_widget_session,
+    public_widget_tts,
     public_widget_visitor,
 )
 from app.models.conversation import Conversation, Message
@@ -226,6 +227,33 @@ def test_public_widget_history_returns_messages(channel_ctx):
     assert len(result["messages"]) == 2
     assert result["messages"][0]["modality"] == "voice"
     assert result["messages"][1]["text"] == "Здравствуйте"
+
+
+def test_public_widget_tts_validates_session(channel_ctx):
+    db = MagicMock()
+    conversation_id = uuid.uuid4()
+    conversation = Conversation(
+        id=conversation_id,
+        tenant_id=channel_ctx.tenant_id,
+        channel="widget",
+        meta={"visitor_id": "v1"},
+    )
+
+    with patch("app.api.v1.public._resolve_widget_context", return_value=channel_ctx):
+        with patch("app.api.v1.public.get_conversation_for_widget", return_value=conversation):
+            with patch("app.api.v1.public.synthesize_speech", return_value=(b"mp3", None)):
+                response = public_widget_tts(
+                    request=_request(),
+                    site_key="demo_dlno",
+                    session_id=str(conversation_id),
+                    text="Привет",
+                    visitor_id="v1",
+                    db=db,
+                    x_tenant_slug=None,
+                )
+
+    assert response.body == b"mp3"
+    assert response.media_type == "audio/mpeg"
 
 
 def test_public_widget_unknown_site_key():

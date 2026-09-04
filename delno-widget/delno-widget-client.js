@@ -134,6 +134,17 @@
       });
   };
 
+  DelnoWidgetClient.prototype.buildTtsUrl = function (text) {
+    if (!this.sessionId || !text) return null;
+    var params = new URLSearchParams({
+      site_key: this.siteKey,
+      session_id: this.sessionId,
+      visitor_id: this.visitorId,
+      text: String(text).slice(0, 800),
+    });
+    return this.apiBase + "/tts?" + params.toString();
+  };
+
   DelnoWidgetClient.fromParams = function () {
     var params = new URLSearchParams(typeof location !== "undefined" ? location.search : "");
     return new DelnoWidgetClient({

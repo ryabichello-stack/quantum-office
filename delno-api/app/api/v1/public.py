@@ -3,7 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -27,6 +28,7 @@ from app.services.widget_flow import (
     WidgetVisitorMismatchError,
 )
 from app.services.widget_security import enforce_widget_rate_limit
+from app.services.tts import synthesize_speech
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -463,3 +465,56 @@ def public_widget_history(
         "session_id": str(conversation.id),
         "messages": messages,
     }
+
+
+@router.get("/widget/tts")
+def public_widget_tts(
+    request: Request,
+    site_key: str = Query(..., min_length=2, max_length=64),
+    session_id: str = Query(..., min_length=8, max_length=64),
+    text: str = Query(..., min_length=1, max_length=800),
+    visitor_id: str | None = Query(default=None, max_length=64),
+    db: Session = Depends(get_db),
+    x_tenant_slug: str | None = Header(default=None, alias="X-Tenant-Slug"),
+) -> Response:
+    """E3.5 — public widget voice output (OpenAI TTS, validated by site_key + session)."""
+    enforce_widget_rate_limit(request, site_key=site_key, action="tts")
+    channel = _resolve_widget_context(db, site_key)
+    if not channel and x_tenant_slug:
+        channel = resolve_public_lead(db, x_tenant_slug)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Unknown site_key")
+
+    ctx = TenantContext(
+        tenant_id=channel.tenant_id,
+        tenant_slug=channel.tenant_slug,
+        role="public",
+    )
+
+    conversation_id = _parse_conversation_id(session_id)
+    if not conversation_id:
+        raise HTTPException(status_code=400, detail="Invalid session_id")
+
+    conversation = get_conversation_for_widget(db, ctx, conversation_id, create=False)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    try:
+        validate_widget_visitor(conversation, visitor_id)
+    except WidgetVisitorMismatchError:
+        raise HTTPException(status_code=403, detail="visitor_mismatch") from None
+
+    audio, error = synthesize_speech(text)
+    if error or not audio:
+        code = error or "VOICE_GENERATION_FAILED"
+        status = 503 if code == "VOICE_NOT_CONFIGURED" else 502 if code != "TEXT_REQUIRED" else 400
+        raise HTTPException(status_code=status, detail=code)
+
+    return Response(
+        content=audio,
+        media_type="audio/mpeg",
+        headers={
+            "Cache-Control": "private, max-age=300",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )

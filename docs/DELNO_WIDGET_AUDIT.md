@@ -31,8 +31,8 @@
 | Crystal UI (React, dlno.ru) | ✅ | `DELNO-site-v23/components/widget/` |
 | CDN embed bundle | 🔄 | `delno-widget/` — iframe, voice mock, assets missing |
 | Text chat end-to-end (CDN) | 🔄 | логика есть в `index.html`, embed page не production-ready |
-| Voice WebRTC E3.5 | ⬜ | |
-| Voice→text fallback E3.6 | ⬜ | |
+| Voice WebRTC E3.5 | ✅ | browser STT + public TTS; full Realtime → E4.3 |
+| Voice→text fallback E3.6 | ✅ | mic denied → text panel |
 | Telegram auto-reply E2.2 | 🔄 | inbound only |
 | Security (rate limit, session bind) | ⬜ | |
 | Instant Demo / Website-to-Agent | ⬜ | P4 |
@@ -73,6 +73,8 @@
 POST /v1/public/widget/session   → conversation UUID (= session_id)
 POST /v1/public/widget/visitor   → name/phone → lead
 POST /v1/public/widget/message   → run_operator_turn → reply + next_step
+POST /v1/public/widget/history     → load messages (text + voice)
+GET  /v1/public/widget/tts         → OpenAI mp3 (validated session)
 ```
 
 Browser **не** вызывает `/v1/operator/chat`.
@@ -148,8 +150,8 @@ visitor → conversation → name → phone → lead (once)
 
 ### P3 — Voice + channels
 
-- [ ] E3.5 WebRTC / Realtime voice, same session
-- [ ] E3.6 voice fail → open text, same session
+- [x] E3.5 public TTS + browser STT, same session
+- [x] E3.6 voice fail → open text, same session
 - [ ] E2.2 Telegram: webhook → operator → send_reply
 - [ ] Runtime voice phases → orb UI (не CSS timer)
 
@@ -220,7 +222,7 @@ visitor → conversation → name → phone → lead (once)
 | **1** | Crystal CDN embed + functional text chat | A.1–A.5 |
 | **2** | Security: rate limit, visitor bind, CORS, tests | D.* |
 | **3** | Unified session: voice transcript → `/message`, history | B.17–19 | ✅ |
-| **4** | E3.5 voice + E3.6 fallback | B.11–16, C.20–23 |
+| **4** | E3.5 voice + E3.6 fallback | B.11–16, C.20–23 | ✅ |
 | **5** | E2.2 Telegram auto-reply + docs | Telegram in inbox with reply |
 
 **P4 отдельно:** Website-to-Agent MVP.
@@ -291,6 +293,17 @@ Full CRM, E1.16 Bitrix push, marketplace, PSTN/SIP, booking, fake appointment UI
 | Tests | ✅ `test_public_widget.py` |
 
 **Commit 4 (next):** E3.5 WebRTC + E3.6 voice→text fallback.
+
+**Commit 4 verified (2026-09-04):**
+
+| Check | Status |
+|-------|--------|
+| `GET /v1/public/widget/tts` — OpenAI mp3, site_key+session validated | ✅ |
+| CDN voice uses API TTS → browser speechSynthesis fallback | ✅ |
+| Mic denied / no STT → text panel, same session (E3.6) | ✅ `onFallbackToText` |
+| Tests | ✅ `test_public_widget.py` |
+
+**Commit 5 (next):** E2.2 Telegram auto-reply + docs sync.
 
 ---
 

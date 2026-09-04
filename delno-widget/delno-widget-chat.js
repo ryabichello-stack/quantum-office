@@ -315,6 +315,15 @@
         onExchange: appendExchange,
         setPhase: setVoicePhase,
         audioEl: audioEl || null,
+        buildTtsUrl: client
+          ? function (text) {
+              return client.buildTtsUrl(text);
+            }
+          : null,
+        onFallbackToText: function (message) {
+          openPanel();
+          appendMessage("assistant", message);
+        },
       });
       options.orbButton.addEventListener("click", function (e) {
         e.preventDefault();

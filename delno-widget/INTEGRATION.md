@@ -7,6 +7,7 @@
 - ✅ CDN bundle: `widget-embed.html` + `crystal-widget.css` + `delno-widget-chat.js` + `delno-widget-voice.js`
 - ✅ Commit 2: rate limit, visitor bind, CORS — see `app/services/widget_security.py`
 - ✅ Commit 3: unified text+voice session, `input_modality`, history load, orb STT/TTS
+- ✅ Commit 4: public TTS (`GET /tts`), mic fallback → text panel (E3.6)
 
 **Аудит и план:** [`../docs/DELNO_WIDGET_AUDIT.md`](../docs/DELNO_WIDGET_AUDIT.md)
 
@@ -130,10 +131,16 @@ Response:
 - LLM не определяет tenant.
 - Knowledge search строго tenant-scoped.
 
-## Голос + текст (Commit 3)
+### 4. Голосовой ответ (TTS)
+GET `/v1/public/widget/tts?site_key=&session_id=&visitor_id=&text=`
+
+Response: `audio/mpeg` (OpenAI TTS). При ошибке CDN fallback на `speechSynthesis`.
+
+## Голос + текст (Commit 3–4)
 Одна и та же `session_id` используется:
 - текстовым чатом (`input_modality: "text"`);
-- voice orb (`input_modality: "voice"`, browser STT + speechSynthesis TTS);
+- voice orb (`input_modality: "voice"`, browser STT + API TTS / speechSynthesis fallback);
+- при отказе микрофона — автоматически открывается текстовый чат, `session_id` сохраняется.
 - будущим handoff на человека.
 
 Пользователь может спросить голосом, открыть текстовый чат и увидеть ту же историю через `/history`.
