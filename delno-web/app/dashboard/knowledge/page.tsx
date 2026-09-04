@@ -4,7 +4,7 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { FileText, Sparkles } from "lucide-react";
 import { useRequireAuth } from "@/lib/auth";
-import { apiKnowledgeList, apiKnowledgeUpload, type KnowledgeDocumentItem } from "@/lib/api";
+import { apiInstantDemoImport, apiKnowledgeList, apiKnowledgeUpload, type KnowledgeDocumentItem } from "@/lib/api";
 import { DashboardFrame } from "@/components/DashboardFrame";
 
 export default function KnowledgePage() {
@@ -14,6 +14,10 @@ export default function KnowledgePage() {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [documents, setDocuments] = useState<KnowledgeDocumentItem[]>([]);
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [importStatus, setImportStatus] = useState("");
+  const [importError, setImportError] = useState("");
+  const [widgetEmbed, setWidgetEmbed] = useState("");
 
   const loadDocuments = useCallback(async () => {
     if (!token) return;
@@ -44,6 +48,23 @@ export default function KnowledgePage() {
     }
   }
 
+  async function onImportWebsite(e: FormEvent) {
+    e.preventDefault();
+    if (!token || websiteUrl.trim().length < 4) return;
+    setImportError("");
+    setImportStatus("");
+    setWidgetEmbed("");
+    try {
+      const result = await apiInstantDemoImport(token, websiteUrl.trim());
+      setImportStatus(`Импортировано: ${result.title}. DELNO готов отвечать по вашему сайту.`);
+      setWidgetEmbed(result.widget_embed);
+      setTitle(result.title);
+      await loadDocuments();
+    } catch {
+      setImportError("Не удалось импортировать сайт. Проверьте URL и попробуйте снова.");
+    }
+  }
+
   return (
     <DashboardFrame>
       <div className="page-head">
@@ -65,6 +86,33 @@ export default function KnowledgePage() {
           </Link>
         </p>
       </div>
+
+      <form className="settings-section kb-upload-form" onSubmit={onImportWebsite} style={{ marginBottom: 16 }}>
+        <h2>Instant Demo — с сайта</h2>
+        <p style={{ marginTop: 0, color: "#666" }}>
+          Укажите адрес сайта — DELNO соберёт базу знаний и подключит виджет.
+        </p>
+        <label>
+          URL сайта
+          <input
+            value={websiteUrl}
+            onChange={(e) => setWebsiteUrl(e.target.value)}
+            placeholder="https://ваша-компания.ru"
+            type="url"
+          />
+        </label>
+        <button type="submit" className="btn-primary" disabled={!token || websiteUrl.trim().length < 4}>
+          Создать сотрудника по сайту
+        </button>
+        {importStatus && <p className="login-status">{importStatus}</p>}
+        {importError && <p className="status-error">{importError}</p>}
+        {widgetEmbed && (
+          <label style={{ marginTop: 12 }}>
+            Код виджета
+            <textarea readOnly rows={3} value={widgetEmbed} />
+          </label>
+        )}
+      </form>
 
       {documents.length > 0 && (
         <section className="settings-section" style={{ marginBottom: 16 }}>

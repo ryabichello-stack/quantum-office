@@ -172,6 +172,25 @@ export function apiKnowledgeList(token: string, limit = 50) {
   );
 }
 
+export type InstantDemoResult = {
+  ok: boolean;
+  job_id: string;
+  url: string;
+  title: string;
+  document_id?: string;
+  site_key: string;
+  widget_embed: string;
+  sample_questions: string[];
+};
+
+export function apiInstantDemoImport(token: string, websiteUrl: string) {
+  return apiFetch<InstantDemoResult>("/v1/tenant/instant-demo", token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ website_url: websiteUrl }),
+  });
+}
+
 export function apiTenantMe(token: string) {
   return apiFetch<TenantMe>("/v1/tenant/me", token);
 }

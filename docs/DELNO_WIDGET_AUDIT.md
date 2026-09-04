@@ -35,7 +35,7 @@
 | Voice→text fallback E3.6 | ✅ | mic denied → text panel |
 | Telegram auto-reply E2.2 | ✅ | Commit 5 |
 | Security (rate limit, session bind) | ⬜ | |
-| Instant Demo / Website-to-Agent | ⬜ | P4 |
+| Instant Demo / Website-to-Agent | ✅ | P4 MVP |
 
 **Вывод:** backend Conversation Core готов; основная работа — **CDN Crystal Widget UI + hardening**, затем voice и Telegram reply через тот же core.
 
@@ -157,9 +157,9 @@ visitor → conversation → name → phone → lead (once)
 
 ### P4 — Product-led growth
 
-- [ ] «Создать сотрудника по моему сайту» (Instant Demo)
+- [x] «Создать сотрудника по моему сайту» (Instant Demo)
 - [ ] Operator onboarding assistant
-- [ ] TTFV events (< 3–5 min target)
+- [x] TTFV events (`instant_demo.*`, `ttfv.website_imported`)
 
 ---
 
@@ -316,7 +316,18 @@ Full CRM, E1.16 Bitrix push, marketplace, PSTN/SIP, booking, fake appointment UI
 | Fallback reply on operator error | ✅ |
 | Tests | ✅ `test_telegram_auto_reply.py` |
 
-**Next product track:** P4 Website-to-Agent MVP (Instant Demo).
+**Next product track:** polish TTFV measurement, P1.9 clarity test.
+
+## P4 verified (2026-09-04)
+
+| Check | Status |
+|-------|--------|
+| `POST /v1/tenant/instant-demo` — scrape → KB upsert | ✅ |
+| `POST /v1/public/instant-demo/preview` — rate limited preview | ✅ |
+| SSRF-safe URL fetch | ✅ `website_import.py` |
+| Cabinet «Создать сотрудника по сайту» | ✅ `/dashboard/knowledge` |
+| Events `instant_demo.*`, `ttfv.website_imported` | ✅ |
+| Tests | ✅ `test_instant_demo.py` |
 
 ---
 

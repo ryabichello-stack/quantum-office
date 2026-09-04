@@ -29,6 +29,7 @@ from app.services.widget_flow import (
 )
 from app.services.widget_security import enforce_widget_rate_limit
 from app.services.tts import synthesize_speech
+from app.services.instant_demo import preview_website
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -179,6 +180,10 @@ class PublicWidgetHistory(BaseModel):
     site_key: str = Field(min_length=2, max_length=64)
     session_id: str = Field(min_length=8, max_length=64)
     visitor_id: str | None = Field(default=None, max_length=64)
+
+
+class PublicInstantDemoPreview(BaseModel):
+    website_url: str = Field(min_length=4, max_length=500)
 
 
 def _resolve_widget_context(db: Session, site_key: str):
@@ -518,3 +523,20 @@ def public_widget_tts(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@router.post("/instant-demo/preview")
+def public_instant_demo_preview(
+    body: PublicInstantDemoPreview,
+    request: Request,
+) -> dict:
+    """P4 — scrape website preview without persisting (rate limited)."""
+    enforce_widget_rate_limit(request, site_key="instant_demo", action="instant_demo")
+    try:
+        return preview_website(body.website_url)
+    except ValueError as exc:
+        code = str(exc)
+        status = 400
+        if code in ("fetch_failed", "url_unreachable"):
+            status = 502
+        raise HTTPException(status_code=status, detail=code) from exc

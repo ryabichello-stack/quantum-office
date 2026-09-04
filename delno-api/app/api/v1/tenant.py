@@ -13,6 +13,7 @@ from app.services.events import emit_event
 from app.services.party_enrichment import enrich_tenant_legal_from_inn, lookup_party_by_inn, suggest_parties_by_query
 from app.services.tenant_settings_ingest import sync_tenant_settings_for_ctx
 from app.services.knowledge_documents import upsert_tenant_knowledge_document
+from app.services.instant_demo import import_website_to_tenant
 
 router = APIRouter(prefix="/tenant", tags=["tenant"])
 
@@ -34,6 +35,10 @@ class KnowledgeDocumentCreate(BaseModel):
     title: str = Field(min_length=2, max_length=255)
     body: str = Field(min_length=20, max_length=50000)
     visibility: str = Field(default="public", max_length=32)
+
+
+class InstantDemoImport(BaseModel):
+    website_url: str = Field(min_length=4, max_length=500)
 
 
 def _require_tenant_admin(ctx: TenantContext) -> None:
@@ -258,3 +263,27 @@ def list_knowledge_documents(
             }
         )
     return {"items": items, "total": len(items)}
+
+
+@router.post("/instant-demo")
+def tenant_instant_demo(
+    body: InstantDemoImport,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """P4 — import public website into tenant KB (Website-to-Agent MVP)."""
+    _require_tenant_admin(ctx)
+    try:
+        result = import_website_to_tenant(db, ctx, website_url=body.website_url)
+    except ValueError as exc:
+        code = str(exc)
+        status = 400
+        if code in ("fetch_failed", "url_unreachable"):
+            status = 502
+        raise HTTPException(status_code=status, detail=code) from exc
+
+    if not result.get("kb", {}).get("ok"):
+        raise HTTPException(status_code=502, detail="knowledge_failed")
+
+    db.commit()
+    return result

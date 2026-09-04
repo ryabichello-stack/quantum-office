@@ -1,6 +1,6 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-4.5 · 2026-09-04 (Commit 5 — Telegram auto-reply)
+**Revision:** REV-4.6 · 2026-09-04 (P4 — Website-to-Agent Instant Demo)
 
 **Активный продуктовый этап:** Crystal Widget + Conversation Core — см. [`DELNO_WIDGET_AUDIT.md`](DELNO_WIDGET_AUDIT.md) AUDIT-1.0.
 
@@ -36,12 +36,12 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DEL
 ## Промпт (скопируй целиком)
 
 ```
-Прочитай entry point и все связанные документы по raw URL из него (REV-4.5):
+Прочитай entry point и все связанные документы по raw URL из него (REV-4.6):
 
 https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DELNO_FOR_CHATGPT.md
 
 Открой каждый raw URL из секции «Карта документов».
-Подтверди revision REV-4.5.
+Подтверди revision REV-4.6.
 
 Твоя задача — аудит текущего состояния DELNO. Ответь структурированно:
 
@@ -136,7 +136,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | Self-service register | ✅ `POST /v1/auth/register` |
 | KB upload | ✅ `POST /v1/tenant/knowledge/documents` |
 | Widget embed in cabinet | ✅ `GET /v1/tenant/widget` |
-| Time to First Value | 🔄 flow ready, not measured |
+| Time to First Value | 🔄 | Instant Demo import ✅; not measured |
 
 ### E3 — Widget + Operator + cabinet UI
 
@@ -206,6 +206,7 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 | `1aff402` | Widget Commit 4: public TTS + mic fallback → text (E3.5/E3.6) |
 | `eb7a0f5` | Widget Commit 3: unified text+voice session + `/history` |
 | `7829fa1` | Commit 5: E2.2 Telegram webhook → auto-reply via Conversation Core |
+| *(P4)* | Website-to-Agent Instant Demo — import site → KB + widget |
 | `e77238a` | Widget Commit 2: rate limit, visitor bind, CORS |
 | `a7525b4` | E2 Telegram webhook → conversation; orb CSS parity; KB list UI |
 | `a0a84f5` | E3.3 LLM tool calling; sidebar nav; calendar/knowledge pages |
@@ -240,11 +241,11 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 
 **Сейчас (без блокеров):**
 
-1. **P4** — Website-to-Agent MVP (Instant Demo)
-2. **P1.9** clarity test — ⏸ когда owner вернётся
-3. Обновить master plan REV-3.4+ под E2/E3 статус
+1. **P1.9** clarity test — ⏸ когда owner вернётся
+2. **E2.3** — branded Telegram bot wizard
+3. Обновить master plan REV-3.4+ под E2/E3/P4 статус
 
-**Widget + Telegram MVP (Commits 1–5):** ✅ закрыт. Не расширять scope без owner.
+**Product MVP (Widget Commits 1–5 + P4 Instant Demo):** ✅ базовый цикл закрыт.
 
 **Не начинать:**
 
@@ -342,6 +343,8 @@ systemctl status ava-outreach ava-mailer ava-text-bot  # не ломать
 | POST | `/v1/public/widget/message` | Chat turn (`input_modality`: `text`\|`voice`) |
 | POST | `/v1/public/widget/history` | Load messages for session |
 | GET | `/v1/public/widget/tts?site_key=&session_id=&visitor_id=&text=` | OpenAI TTS mp3 (Commit 4) |
+| POST | `/v1/public/instant-demo/preview` | Scrape website preview (P4, rate limited) |
+| POST | `/v1/tenant/instant-demo` | Import website → KB + widget embed (JWT) |
 
 Browser **не** вызывает `/v1/operator/chat`. Tenant только через `site_key`.
 
