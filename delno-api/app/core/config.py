@@ -34,7 +34,9 @@ class Settings(BaseSettings):
 
     # CORS — comma-separated origins; empty = regex fallback in main.py
     cors_allow_origins: str = ""
-    cors_allow_credentials: bool = False
+    # Onboarding file uploads (O3)
+    onboarding_upload_dir: str = "/data/onboarding"
+    onboarding_upload_max_bytes: int = 20 * 1024 * 1024
 
 
 @lru_cache

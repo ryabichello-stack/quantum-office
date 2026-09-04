@@ -201,7 +201,7 @@ E1.12–E1.15 ✅ · E1.16 CRM push ⬜ **DO NOT START**
 | # | Задача | Статус | Примечание |
 |---|--------|--------|------------|
 | O1 | Draft upsert API + `channel=onboarding` + `/onboarding/start` | ✅ `5a6650b` | brain publication params; events `onboarding.started` |
-| O2 | Onboarding chat UI (`/dashboard/onboarding`) | ✅ | register redirect; reuse operator chat |
+| O2 | Onboarding chat UI (`/dashboard/onboarding`) | ✅ `a4e6a09` | register redirect; reuse operator chat |
 | O3 | File upload in chat | ⬜ | PDF/DOCX/XLSX/CSV/TXT |
 | O4 | URL in conversation + graceful fallback | ⬜ | reuse `website_import.py` |
 | O5 | Summary card + conflicts + publish confirm | ⬜ | HIGH_IMPACT tool |

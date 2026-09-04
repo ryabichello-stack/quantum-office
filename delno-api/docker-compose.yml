@@ -29,6 +29,8 @@ services:
       KNOWLEDGE_BASE_URL: http://knowledge:8021
     ports:
       - "127.0.0.1:18020:8020"
+    volumes:
+      - delno-onboarding-uploads:/data/onboarding
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,3 +65,5 @@ volumes:
     name: delno-pg-data-dev
   delno-brain-data:
     name: delno-brain-data-dev
+  delno-onboarding-uploads:
+    name: delno-onboarding-uploads-dev

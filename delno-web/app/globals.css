@@ -1163,6 +1163,55 @@ p {
   cursor: pointer;
 }
 
+.onboarding-file-input {
+  display: none;
+}
+
+.onboarding-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.onboarding-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #fff;
+  font-size: 13px;
+  max-width: 100%;
+}
+
+.onboarding-file-chip.status-parsed {
+  border-color: #b8dfc4;
+  background: #f6fbf7;
+}
+
+.onboarding-file-chip.status-failed,
+.onboarding-file-chip.status-empty,
+.onboarding-file-chip.status-kb_failed {
+  border-color: #f0c4c4;
+  background: #fff8f8;
+}
+
+.onboarding-file-name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.onboarding-file-status {
+  color: var(--gray);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .onboarding-typing {
   opacity: 0.85;
 }

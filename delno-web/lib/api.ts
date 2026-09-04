@@ -81,6 +81,29 @@ export type OnboardingStatus = {
   draft?: Record<string, unknown>;
 };
 
+export type OnboardingUploadItem = {
+  upload_id: string;
+  file_name: string;
+  size_bytes: number;
+  parse_status: string;
+  document_id?: string | null;
+  created_at?: string | null;
+  meta?: Record<string, unknown>;
+};
+
+export type OnboardingUploadResult = {
+  ok: boolean;
+  upload_id?: string;
+  file_name?: string;
+  size_bytes?: number;
+  parse_status?: string;
+  document_id?: string | null;
+  extract_method?: string;
+  reply?: string;
+  error?: string;
+  conversation_id?: string | null;
+};
+
 export type OnboardingStartResult = {
   ok: boolean;
   resumed: boolean;
@@ -269,6 +292,34 @@ export function apiOnboardingStart(token: string, forceNew = false) {
 
 export function apiOnboardingStatus(token: string) {
   return apiFetch<OnboardingStatus>("/v1/tenant/onboarding/status", token);
+}
+
+export function apiOnboardingUploads(token: string, conversationId?: string) {
+  const params = new URLSearchParams();
+  if (conversationId) params.set("conversation_id", conversationId);
+  const qs = params.toString();
+  return apiFetch<{ items: OnboardingUploadItem[]; total: number }>(
+    `/v1/tenant/onboarding/uploads${qs ? `?${qs}` : ""}`,
+    token,
+  );
+}
+
+export async function apiOnboardingUpload(token: string, file: File, conversationId?: string) {
+  const form = new FormData();
+  form.append("file", file);
+  if (conversationId) form.append("conversation_id", conversationId);
+  const res = await fetch(`${API_URL}/v1/tenant/onboarding/upload`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: form,
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(detail || `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<OnboardingUploadResult>;
 }
 
 export function apiOperatorConfirm(token: string, toolName: string, params: Record<string, unknown>) {

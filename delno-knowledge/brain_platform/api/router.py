@@ -5,11 +5,12 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, UploadFile, File
 from pydantic import BaseModel, Field
 
 from brain_platform.auth import DEFAULT_TENANT, principal_from_headers, require_brain_enabled
 from brain_platform.db.factory import get_brain_repo, reset_repo_singleton
+from brain_platform.ingest.extract_text import extract_text_from_bytes
 from brain_platform.ingest.files import ingest_files
 from brain_platform.ingest.legacy_faq import ingest_legacy_faq
 from brain_platform.ingest.mail import (
@@ -417,6 +418,38 @@ def brain_document_upsert(
     )
     repo.conn.commit()
     return {"ok": True, "document_id": req.document_id, "upsert": result, "stats": repo.stats(tenant)}
+
+
+@router.post("/ingest/extract")
+async def brain_ingest_extract(
+    file: UploadFile = File(...),
+    x_principal_id: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
+    x_groups: Optional[str] = Header(None),
+    x_user_id: Optional[str] = Header(None),
+    x_admin: Optional[str] = Header(None),
+):
+    """O3 — extract text from uploaded bytes (service ingest)."""
+    require_brain_enabled()
+    principal = _principal(x_principal_id, x_tenant_id, x_groups, x_user_id, x_admin, None)
+    allow_service = os.getenv("BRAIN_ALLOW_SERVICE_INGEST", "true").lower() in ("1", "true", "yes")
+    allowed = principal.principal_id in (
+        "service:cursor-admin",
+        "service:delno-admin",
+        "service:delno-api",
+    ) or allow_service
+    if not allowed:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=403, detail="extract_forbidden")
+
+    data = await file.read()
+    result = extract_text_from_bytes(
+        data,
+        filename=file.filename or "",
+        content_type=file.content_type or "",
+    )
+    return {"ok": True, **result}
 
 
 @router.get("/ingest/status")

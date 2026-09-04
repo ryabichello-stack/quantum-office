@@ -1,6 +1,8 @@
 from pydantic import BaseModel, Field
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_tenant_context_auth
@@ -15,6 +17,7 @@ from app.services.tenant_settings_ingest import sync_tenant_settings_for_ctx
 from app.services.knowledge_documents import upsert_tenant_knowledge_document
 from app.services.instant_demo import import_website_to_tenant
 from app.services.onboarding_flow import get_onboarding_state, start_onboarding
+from app.services.onboarding_upload import ingest_onboarding_upload, list_onboarding_uploads
 
 router = APIRouter(prefix="/tenant", tags=["tenant"])
 
@@ -291,6 +294,36 @@ def tenant_onboarding_status(
     _require_tenant_admin(ctx)
     tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
     return {"ok": True, **get_onboarding_state(tenant)}
+
+
+@router.get("/onboarding/uploads")
+def tenant_onboarding_uploads(
+    conversation_id: UUID | None = None,
+    limit: int = Query(default=50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """O3 — list onboarding file uploads for UI chips."""
+    _require_tenant_admin(ctx)
+    items = list_onboarding_uploads(db, ctx, conversation_id=conversation_id, limit=limit)
+    return {"items": items, "total": len(items)}
+
+
+@router.post("/onboarding/upload")
+async def tenant_onboarding_upload(
+    file: UploadFile = File(...),
+    conversation_id: UUID | None = Form(default=None),
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """O3 — multipart file upload → extract → draft KB + chat feedback."""
+    _require_tenant_admin(ctx)
+    return await ingest_onboarding_upload(
+        db,
+        ctx,
+        upload_file=file,
+        conversation_id=conversation_id,
+    )
 
 
 @router.post("/instant-demo")
