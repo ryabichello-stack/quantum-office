@@ -203,7 +203,7 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 
 | Коммит | Суть |
 |--------|------|
-| *(Commit 4)* | Public widget TTS + mic fallback → text (E3.5/E3.6) |
+| `1aff402` | Widget Commit 4: public TTS + mic fallback → text (E3.5/E3.6) |
 | `eb7a0f5` | Widget Commit 3: unified text+voice session + `/history` |
 | `e77238a` | Widget Commit 2: rate limit, visitor bind, CORS |
 | `a7525b4` | E2 Telegram webhook → conversation; orb CSS parity; KB list UI |

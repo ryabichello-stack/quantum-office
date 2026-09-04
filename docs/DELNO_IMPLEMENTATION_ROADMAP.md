@@ -121,11 +121,11 @@
 | E3.1 | **delno-web** cabinet MVP: login, leads, inbox, operator, settings | ✅ |
 | E3.2 | Operator LLM loop — **basic read-only only** | ✅ KB search + model provider |
 | E3.3 | Tool registry + confirmation classes | ✅ |
-| E3.4 | Embeddable web widget JS | 🔄 embed.js + API; CDN embed page Commit 1 |
-| E3.5 | Voice widget WebRTC MVP | ⬜ |
-| E3.6 | Fallback voice→text | ⬜ |
+| E3.4 | Embeddable web widget JS | ✅ CDN embed + Commits 1–4 |
+| E3.5 | Voice widget (browser STT + public TTS) | ✅ Realtime WebRTC → E4.3 |
+| E3.6 | Fallback voice→text | ✅ |
 | E3.7 | KB UI upload/publish | 🔄 list + upload in cabinet |
-| E3.8 | Lead capture from widget → inbox | 🔄 API ✅; CDN UX Commit 1 |
+| E3.8 | Lead capture from widget → inbox | ✅ |
 
 ---
 
