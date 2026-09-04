@@ -200,7 +200,7 @@ E1.12–E1.15 ✅ · E1.16 CRM push ⬜ **DO NOT START**
 
 | # | Задача | Статус | Примечание |
 |---|--------|--------|------------|
-| O1 | Draft upsert API + `channel=onboarding` + `/onboarding/start` | 🔄 | brain publication params; events `onboarding.started` |
+| O1 | Draft upsert API + `channel=onboarding` + `/onboarding/start` | ✅ `5a6650b` | brain publication params; events `onboarding.started` |
 | O2 | Onboarding chat UI (`/dashboard/onboarding`) | ⬜ | register redirect |
 | O3 | File upload in chat | ⬜ | PDF/DOCX/XLSX/CSV/TXT |
 | O4 | URL in conversation + graceful fallback | ⬜ | reuse `website_import.py` |
@@ -221,7 +221,7 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 
 | Коммит | Суть |
 |--------|------|
-| *(O1 pending)* | O1: conversation onboarding — draft KB + `/onboarding/start` + channel=onboarding |
+| `5a6650b` | O1: conversation onboarding — draft KB + `/onboarding/start` + channel=onboarding |
 | `1ed28e5` | FOR_CHATGPT REV-4.6 + P4 docs |
 | `379c941` | P4: Website-to-Agent Instant Demo — import site → KB + widget (backend; UX pivot → O) |
 | `e77238a` | Widget Commit 2: rate limit, visitor bind, CORS |
