@@ -1,6 +1,6 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-4.4 · 2026-09-04 (Widget Commit 4 — public TTS + voice→text fallback)
+**Revision:** REV-4.5 · 2026-09-04 (Commit 5 — Telegram auto-reply)
 
 **Активный продуктовый этап:** Crystal Widget + Conversation Core — см. [`DELNO_WIDGET_AUDIT.md`](DELNO_WIDGET_AUDIT.md) AUDIT-1.0.
 
@@ -36,12 +36,12 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DEL
 ## Промпт (скопируй целиком)
 
 ```
-Прочитай entry point и все связанные документы по raw URL из него (REV-4.4):
+Прочитай entry point и все связанные документы по raw URL из него (REV-4.5):
 
 https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DELNO_FOR_CHATGPT.md
 
 Открой каждый raw URL из секции «Карта документов».
-Подтверди revision REV-4.4.
+Подтверди revision REV-4.5.
 
 Твоя задача — аудит текущего состояния DELNO. Ответь структурированно:
 
@@ -175,7 +175,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | # | Задача | Статус |
 |---|--------|--------|
 | E2.1 ChannelAdapter + registry | ✅ |
-| E2.2 Telegram shared bot | 🔄 webhook MVP; auto-reply ⬜ |
+| E2.2 Telegram shared bot | ✅ | webhook → auto-reply → inbox (Commit 5) |
 | E2.5 Webhook signing + events | 🔄 `X-Telegram-Bot-Api-Secret-Token` + `message.received` |
 | E2.6 Router token → tenant | ✅ `channel_router` + account id in URL |
 | E2.7 Inbound → conversation | ✅ `POST /v1/webhooks/telegram/{channel_account_id}` |
@@ -205,6 +205,7 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 |--------|------|
 | `1aff402` | Widget Commit 4: public TTS + mic fallback → text (E3.5/E3.6) |
 | `eb7a0f5` | Widget Commit 3: unified text+voice session + `/history` |
+| *(Commit 5)* | E2.2 Telegram webhook → auto-reply via Conversation Core |
 | `e77238a` | Widget Commit 2: rate limit, visitor bind, CORS |
 | `a7525b4` | E2 Telegram webhook → conversation; orb CSS parity; KB list UI |
 | `a0a84f5` | E3.3 LLM tool calling; sidebar nav; calendar/knowledge pages |
@@ -226,7 +227,7 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 |---------|-----|-------------|
 | **P1.9 clarity** | Нет теста 3+ людей | blocker P1 exit |
 | **P2.4 TTFV** | Flow есть, не измерен | low |
-| **E2.2 auto-reply** | Webhook пишет в PG, бот не отвечает | medium |
+| **E2.2 auto-reply** | ✅ webhook → `run_operator_turn` → `sendMessage` | — |
 | **E3.5 Realtime WebRTC** | Browser voice ✅; OpenAI Realtime WebRTC → E4.3 worker | low |
 | **E3.7 KB list** | Список из events, не из brain catalog | low |
 | **Appointment card** | Ждёт E4 booking | — не делать fake |
@@ -239,12 +240,11 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 
 **Сейчас (без блокеров):**
 
-1. **E2.2 / Commit 5** — Telegram webhook → auto-reply через Conversation Core
-2. **P4** — Website-to-Agent MVP (Instant Demo) — после widget loop
-3. **P1.9** clarity test — ⏸ когда owner вернётся
-4. Обновить master plan REV-3.4+ под E2/E3 статус
+1. **P4** — Website-to-Agent MVP (Instant Demo)
+2. **P1.9** clarity test — ⏸ когда owner вернётся
+3. Обновить master plan REV-3.4+ под E2/E3 статус
 
-**Widget product loop (Commits 1–4):** ✅ закрыт для MVP. Не расширять scope без owner.
+**Widget + Telegram MVP (Commits 1–5):** ✅ закрыт. Не расширять scope без owner.
 
 **Не начинать:**
 
@@ -303,6 +303,7 @@ systemctl status ava-outreach ava-mailer ava-text-bot  # не ломать
 |------|------------|
 | `delno-api/app/operator/` | Operator agent, tools, setup intents |
 | `delno-api/app/adapters/channels/` | E2 ChannelAdapter (Telegram) |
+| `delno-api/app/services/channel_auto_reply.py` | Inbound → operator turn → channel reply |
 | `delno-api/app/api/v1/webhooks.py` | Telegram webhook endpoint |
 | `delno-api/app/services/inbound_messages.py` | Inbound → conversation |
 | `delno-api/app/services/conversation_present.py` | Inbox enrichment |
@@ -330,7 +331,7 @@ systemctl status ava-outreach ava-mailer ava-text-bot  # не ломать
 | GET | `/v1/operator/conversations` | Enriched inbox list |
 | GET | `/v1/operator/conversations/{id}` | Conversation detail |
 | GET | `/v1/tenant/knowledge/documents` | KB upload history (E3.7) |
-| POST | `/v1/webhooks/telegram/{channel_account_id}` | Telegram inbound (E2) |
+| POST | `/v1/webhooks/telegram/{channel_account_id}` | Telegram inbound + auto-reply (E2.2) |
 
 **Public Widget API (CDN — без JWT):**
 

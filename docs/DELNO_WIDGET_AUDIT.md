@@ -33,7 +33,7 @@
 | Text chat end-to-end (CDN) | 🔄 | логика есть в `index.html`, embed page не production-ready |
 | Voice WebRTC E3.5 | ✅ | browser STT + public TTS; full Realtime → E4.3 |
 | Voice→text fallback E3.6 | ✅ | mic denied → text panel |
-| Telegram auto-reply E2.2 | 🔄 | inbound only |
+| Telegram auto-reply E2.2 | ✅ | Commit 5 |
 | Security (rate limit, session bind) | ⬜ | |
 | Instant Demo / Website-to-Agent | ⬜ | P4 |
 
@@ -152,7 +152,7 @@ visitor → conversation → name → phone → lead (once)
 
 - [x] E3.5 public TTS + browser STT, same session
 - [x] E3.6 voice fail → open text, same session
-- [ ] E2.2 Telegram: webhook → operator → send_reply
+- [x] E2.2 Telegram: webhook → operator → send_reply
 - [ ] Runtime voice phases → orb UI (не CSS timer)
 
 ### P4 — Product-led growth
@@ -223,7 +223,7 @@ visitor → conversation → name → phone → lead (once)
 | **2** | Security: rate limit, visitor bind, CORS, tests | D.* |
 | **3** | Unified session: voice transcript → `/message`, history | B.17–19 | ✅ |
 | **4** | E3.5 voice + E3.6 fallback | B.11–16, C.20–23 | ✅ |
-| **5** | E2.2 Telegram auto-reply + docs | Telegram in inbox with reply |
+| **5** | E2.2 Telegram auto-reply + docs | Telegram in inbox with reply | ✅ |
 
 **P4 отдельно:** Website-to-Agent MVP.
 
@@ -304,6 +304,19 @@ Full CRM, E1.16 Bitrix push, marketplace, PSTN/SIP, booking, fake appointment UI
 | Tests | ✅ `test_public_widget.py` |
 
 **Commit 5 (next):** E2.2 Telegram auto-reply + docs sync.
+
+**Commit 5 verified (2026-09-04):**
+
+| Check | Status |
+|-------|--------|
+| Webhook → `record_inbound_message` → `run_operator_turn(channel=telegram)` | ✅ |
+| No duplicate user message (`record_user_message=False`) | ✅ |
+| `TelegramAdapter.send_reply` delivers answer | ✅ |
+| `message.sent` event emitted | ✅ |
+| Fallback reply on operator error | ✅ |
+| Tests | ✅ `test_telegram_auto_reply.py` |
+
+**Next product track:** P4 Website-to-Agent MVP (Instant Demo).
 
 ---
 

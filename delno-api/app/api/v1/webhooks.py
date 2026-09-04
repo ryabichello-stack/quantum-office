@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.adapters.channels import get_channel_adapter
 from app.core.db import get_db
+from app.services.channel_auto_reply import process_inbound_auto_reply
 from app.services.channel_router import ChannelContext
-from app.services.inbound_messages import record_inbound_message, resolve_channel_account
+from app.services.inbound_messages import resolve_channel_account
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
@@ -68,11 +69,18 @@ async def telegram_webhook(
 
     account.tenant = tenant  # type: ignore[attr-defined]
     ctx = _context_for_account(account)
+    credentials = account.credentials_encrypted if isinstance(account.credentials_encrypted, dict) else {}
 
     recorded = []
     for inbound in adapter.parse_webhook(payload):
-        conv, msg = record_inbound_message(db, ctx, inbound)
-        recorded.append({"conversation_id": str(conv.id), "message_id": str(msg.id)})
+        item = process_inbound_auto_reply(
+            db,
+            ctx,
+            inbound,
+            adapter=adapter,
+            credentials=credentials,
+        )
+        recorded.append(item)
 
     db.commit()
     return {"ok": True, "recorded": recorded}

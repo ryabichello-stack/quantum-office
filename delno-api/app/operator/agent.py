@@ -40,6 +40,8 @@ def run_operator_turn(
     channel: str = "web",
     conversation_id: uuid.UUID | None = None,
     input_modality: str = "text",
+    record_user_message: bool = True,
+    commit: bool = True,
 ) -> dict[str, Any]:
     """
     Single operator turn. Text and voice (post-STT) use the same path.
@@ -47,16 +49,17 @@ def run_operator_turn(
     """
     try:
         conversation = _get_or_create_conversation(db, ctx, channel, conversation_id)
-        db.add(
-            Message(
-                tenant_id=ctx.tenant_id,
-                conversation_id=conversation.id,
-                role="user",
-                body=message,
-                meta={"modality": input_modality},
+        if record_user_message:
+            db.add(
+                Message(
+                    tenant_id=ctx.tenant_id,
+                    conversation_id=conversation.id,
+                    role="user",
+                    body=message,
+                    meta={"modality": input_modality},
+                )
             )
-        )
-        db.flush()
+            db.flush()
 
         reply, tool_calls, sources, pending = _generate_reply(
             db, ctx, message, channel=channel
@@ -82,7 +85,10 @@ def run_operator_turn(
             resource=f"conversation:{conversation.id}",
             new_value={"channel": channel, "modality": input_modality},
         )
-        db.commit()
+        if commit:
+            db.commit()
+        else:
+            db.flush()
 
         return {
             "conversation_id": str(conversation.id),
@@ -107,7 +113,10 @@ def run_operator_turn(
                 "stage": "run_operator_turn",
             },
         )
-        db.commit()
+        if commit:
+            db.commit()
+        else:
+            db.flush()
         raise
 
 
