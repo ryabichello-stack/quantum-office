@@ -104,7 +104,7 @@
 | # | Задача | Статус |
 |---|--------|--------|
 | E2.1 | ChannelAdapter interface + registry | ✅ |
-| E2.2 | Telegram Instant bot (DELNO shared) | 🔄 webhook + record MVP |
+| E2.2 | Telegram Instant bot (DELNO shared) | ✅ webhook → auto-reply (Commit 5) |
 | E2.3 | Telegram Branded connect wizard | ⬜ |
 | E2.4 | MAX onboarding (client-owned bot) | ⬜ |
 | E2.5 | Webhook signing + retry + events | 🔄 secret verify + message.received |

@@ -205,7 +205,7 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 |--------|------|
 | `1aff402` | Widget Commit 4: public TTS + mic fallback → text (E3.5/E3.6) |
 | `eb7a0f5` | Widget Commit 3: unified text+voice session + `/history` |
-| *(Commit 5)* | E2.2 Telegram webhook → auto-reply via Conversation Core |
+| `7829fa1` | Commit 5: E2.2 Telegram webhook → auto-reply via Conversation Core |
 | `e77238a` | Widget Commit 2: rate limit, visitor bind, CORS |
 | `a7525b4` | E2 Telegram webhook → conversation; orb CSS parity; KB list UI |
 | `a0a84f5` | E3.3 LLM tool calling; sidebar nav; calendar/knowledge pages |
