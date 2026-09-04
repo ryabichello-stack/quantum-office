@@ -1,6 +1,8 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-4.1 · 2026-09-04 (E2 webhook, E3.3 operator tools, cabinet visual parity)
+**Revision:** REV-4.2 · 2026-09-04 (Crystal Widget product phase — audit + Commit 1)
+
+**Активный продуктовый этап:** Crystal Widget + Conversation Core — см. [`DELNO_WIDGET_AUDIT.md`](DELNO_WIDGET_AUDIT.md) AUDIT-1.0.
 
 ---
 
@@ -66,6 +68,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | 6 | **Mobile pass** | P1.5 checklist 375/390px | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/P1.5_MOBILE_PASS.md |
 | 7 | **DaData party enrichment** | E1.12–E1.15 spec | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/E1.12_DADATA_PARTY_ENRICHMENT.md |
 | 8 | **Site landing (v2 canonical)** | v4 rejected as `/` default | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/P1.1_SITE_LANDING.md |
+| 9 | **Widget product audit** | Crystal Widget + Conversation Core plan, DoD, commits | https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DELNO_WIDGET_AUDIT.md |
 
 **Проверка версии master plan:** строка `DELNO-MASTER-PLAN-REV-3.3` + секция `Rev.3 — Implementation Status`.
 
@@ -142,11 +145,13 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | E3.1 Cabinet MVP | ✅ | login, leads, inbox, operator, settings |
 | E3.2 Operator read-only KB | ✅ | `/v1/operator/chat` |
 | E3.3 Tool registry + confirmation | ✅ | READ/SAFE_WRITE/HIGH_IMPACT; LLM tool calling |
-| E3.4 Embeddable widget | ✅ | CDN embed.js |
+| E3.4 Embeddable widget | 🔄 | embed.js + API ✅; CDN embed page Commit 1 |
 | E3.5 Voice WebRTC widget | ⬜ | |
 | E3.6 Voice→text fallback | ⬜ | |
 | E3.7 KB UI upload/publish | 🔄 | upload + list in `/dashboard/knowledge` |
-| E3.8 Widget lead → inbox | ✅ | |
+| E3.8 Widget lead → inbox | 🔄 | API ✅; CDN UX Commit 1 |
+
+**Product phase:** [`DELNO_WIDGET_AUDIT.md`](DELNO_WIDGET_AUDIT.md) — Crystal Widget + Conversation Core.
 
 **Cabinet visual parity (marketing mock):**
 

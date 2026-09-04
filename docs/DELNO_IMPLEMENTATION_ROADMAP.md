@@ -2,7 +2,9 @@
 
 **Canonical strategy:** [`DELNO_MASTER_PLAN.md`](DELNO_MASTER_PLAN.md)  
 **Домены:** [`DLNO_DOMAINS.md`](DLNO_DOMAINS.md)  
-**Обновлено:** 2026-09-01 · **Revision REV-3.4** (dlno.ru DNS schema + nginx ingress)
+**Обновлено:** 2026-09-04 · **Revision REV-3.5** (Crystal Widget product phase)
+
+**Product audit:** [`DELNO_WIDGET_AUDIT.md`](DELNO_WIDGET_AUDIT.md) AUDIT-1.0
 
 Легенда: ✅ done · 🔄 in progress · ⬜ todo
 
@@ -119,11 +121,11 @@
 | E3.1 | **delno-web** cabinet MVP: login, leads, inbox, operator, settings | ✅ |
 | E3.2 | Operator LLM loop — **basic read-only only** | ✅ KB search + model provider |
 | E3.3 | Tool registry + confirmation classes | ✅ |
-| E3.4 | Embeddable web widget JS | ✅ CDN embed.js + client + api.dlno.ru |
+| E3.4 | Embeddable web widget JS | 🔄 embed.js + API; CDN embed page Commit 1 |
 | E3.5 | Voice widget WebRTC MVP | ⬜ |
 | E3.6 | Fallback voice→text | ⬜ |
 | E3.7 | KB UI upload/publish | 🔄 list + upload in cabinet |
-| E3.8 | Lead capture from widget → inbox | ✅ name/phone → lead + conversation link |
+| E3.8 | Lead capture from widget → inbox | 🔄 API ✅; CDN UX Commit 1 |
 
 ---
 
