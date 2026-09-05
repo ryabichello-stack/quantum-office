@@ -1,0 +1,1042 @@
+<!doctype html>
+<html lang="ru" data-contrast="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>DELNO Crystal Orb — v19 Smooth Mobile</title>
+<style>
+:root {
+  --orb-size:50px;
+  --main:#15181d;
+  --sub:#737b85;
+  --ring-sharp:rgba(28,43,61,.30);
+  --ring-soft:rgba(67,116,164,.22);
+  --ring-glow:rgba(80,143,200,.13);
+  --icon:rgba(24,34,45,.82);
+  --bubble:rgba(255,255,255,.92);
+  --bubble-line:rgba(20,32,48,.09);
+  --bubble-shadow:0 8px 22px rgba(20,34,50,.07);
+
+  /* На светлом фоне пятно светлое */
+  --fire-core: rgba(255,255,255,1);
+  --fire-mid: rgba(242,251,255,.98);
+  --fire-edge: rgba(190,231,255,.62);
+  --fire-halo: rgba(218,244,255,.28);
+}
+html[data-contrast="dark"] {
+  --main:#fff;
+  --sub:rgba(255,255,255,.70);
+  --ring-sharp:rgba(255,255,255,.60);
+  --ring-soft:rgba(164,225,255,.30);
+  --ring-glow:rgba(135,211,255,.18);
+  --icon:rgba(255,255,255,.96);
+  --bubble:rgba(12,18,28,.78);
+  --bubble-line:rgba(255,255,255,.12);
+  --bubble-shadow:0 10px 26px rgba(0,0,0,.27);
+
+  /* На тёмном фоне пятно тёмное */
+  --fire-core: rgba(18,25,35,.98);
+  --fire-mid: rgba(30,42,57,.96);
+  --fire-edge: rgba(57,77,101,.72);
+  --fire-halo: rgba(18,29,43,.34);
+}
+*{box-sizing:border-box}
+html,body{
+  margin:0;min-height:100%;
+  font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:#f5f7f9;color:#111820
+}
+body{min-height:100vh;overflow-x:hidden}
+
+#demoTheme,#voice,#text{position:fixed;opacity:0;pointer-events:none}
+
+.page{
+  min-height:100vh;padding:16px 16px 150px;
+  background:
+    radial-gradient(circle at 78% 15%,rgba(194,214,234,.23),transparent 31%),
+    linear-gradient(180deg,#fcfdff,#f2f5f8);
+  transition:background .25s ease,color .25s ease
+}
+#demoTheme:checked ~ .page{
+  background:
+    radial-gradient(circle at 78% 15%,rgba(65,95,130,.15),transparent 31%),
+    linear-gradient(180deg,#0d1118,#070a0f);
+  color:#fff
+}
+.shell{
+  max-width:1180px;margin:0 auto;min-height:680px;
+  background:rgba(255,255,255,.82);
+  border:1px solid rgba(20,32,48,.055);
+  border-radius:30px;overflow:hidden;
+  box-shadow:0 24px 80px rgba(18,32,48,.075)
+}
+#demoTheme:checked ~ .page .shell{background:rgba(12,16,23,.78);border-color:rgba(255,255,255,.07)}
+header{
+  height:76px;padding:0 40px;display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid rgba(20,32,48,.05)
+}
+#demoTheme:checked ~ .page header{border-bottom-color:rgba(255,255,255,.06)}
+.logo{font-size:26px;font-weight:760;letter-spacing:.1em}
+nav{display:flex;gap:28px;font-size:13px;color:#66717d}
+#demoTheme:checked ~ .page nav{color:#98a4b1}
+.themeSwitch{
+  cursor:pointer;border-radius:999px;padding:8px 11px;
+  border:1px solid rgba(20,32,48,.08);
+  background:rgba(255,255,255,.72);color:#29333d;font-size:12px
+}
+#demoTheme:checked ~ .page .themeSwitch{
+  background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.10);color:#fff
+}
+.hero{
+  min-height:600px;padding:62px 48px;
+  display:grid;grid-template-columns:1.05fr .95fr;align-items:center;gap:30px
+}
+h1{
+  font-size:59px;line-height:1.01;letter-spacing:-.052em;
+  font-weight:590;margin:0 0 20px;max-width:650px
+}
+h1 em{font-style:normal;color:#8e959d;font-weight:430}
+#demoTheme:checked ~ .page h1 em{color:#8d98a5}
+.sub{font-size:18px;line-height:1.55;color:#69737e;max-width:560px}
+#demoTheme:checked ~ .page .sub{color:#98a4b1}
+.visual{height:420px;position:relative;display:flex;align-items:center;justify-content:center}
+.visual:before,.visual:after{
+  content:"";position:absolute;border-radius:50%;border:1px solid rgba(56,81,108,.07)
+}
+#demoTheme:checked ~ .page .visual:before,
+#demoTheme:checked ~ .page .visual:after{border-color:rgba(255,255,255,.06)}
+.visual:before{width:360px;height:360px}
+.visual:after{width:240px;height:240px}
+.core{
+  width:190px;height:190px;border-radius:48px;
+  background:linear-gradient(145deg,rgba(255,255,255,.97),rgba(217,226,235,.66));
+  border:1px solid rgba(255,255,255,.95);
+  box-shadow:0 22px 60px rgba(38,61,88,.11);
+  display:grid;place-items:center;color:#788590;letter-spacing:.1em;font-weight:650
+}
+#demoTheme:checked ~ .page .core{
+  background:linear-gradient(145deg,rgba(255,255,255,.06),rgba(255,255,255,.02));
+  border-color:rgba(255,255,255,.08);color:#a4afba
+}
+
+/* ===== PERFORMANCE-SAFE WIDGET ===== */
+.widget{
+  position:fixed;left:50%;
+  bottom:calc(12px + env(safe-area-inset-bottom));
+  transform:translateX(-50%);
+  width:150px;height:160px;z-index:100;pointer-events:none
+}
+
+.orb-anchor{
+  position:absolute;left:50%;bottom:0;
+  width:96px;height:96px;
+  transform:translateX(-50%);
+  pointer-events:none;
+  contain:layout paint;
+}
+
+.orb-hit{
+  position:absolute;inset:0;width:96px;height:96px;
+  border:0;background:transparent;
+  pointer-events:auto;cursor:pointer;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;z-index:20
+}
+
+/* Only this layer moves on tap. Pure transform => GPU-friendly. */
+.motion{
+  position:absolute;inset:0;
+  transform-origin:50% 74%;
+  will-change:transform;
+  backface-visibility:hidden;
+  transform:translate3d(0,0,0)
+}
+
+.orb-hit:active ~ .motion{
+  transform:translate3d(0,1px,0) scale3d(1.008,.992,1)
+}
+
+#voice:checked ~ .widget .motion{
+  animation:smoothJump .60s linear 1;
+}
+
+/* breathing is separate from jump, and pauses while active */
+.breath{
+  position:absolute;left:50%;top:50%;
+  width:var(--orb-size);height:var(--orb-size);
+  transform:translate3d(-50%,-50%,0);
+  transform-origin:50% 50%;
+  animation:breathe 5.4s ease-in-out infinite;
+  will-change:transform
+}
+#voice:checked ~ .widget .breath{
+  animation:activeBreath 11.1s ease-in-out 1, breathe 5.4s ease-in-out 11.1s infinite;
+}
+
+.orb-img{
+  position:absolute;inset:0;width:100%;height:100%;
+  display:block;border-radius:50%;object-fit:cover;
+  /* static image: no animated WebP decode during movement */
+}
+
+/* one small "living light" moving inside the sphere */
+.fire-path{
+  position:absolute;inset:0;border-radius:50%;
+  overflow:hidden;pointer-events:none;
+  mix-blend-mode:screen
+}
+.fire{
+  position:absolute;
+  width:68%;
+  height:68%;
+  left:16%;
+  top:16%;
+  border-radius:50%;
+  background:
+    radial-gradient(circle at 40% 36%,
+      var(--fire-core) 0 22%,
+      var(--fire-mid) 38%,
+      var(--fire-edge) 67%,
+      transparent 90%);
+  opacity:.98;
+  transform:translate3d(0,0,0) scale(.97);
+  will-change:transform,opacity;
+}
+.fire::after{
+  content:"";
+  position:absolute;
+  inset:-4px;
+  border-radius:50%;
+  background:radial-gradient(circle,var(--fire-halo),transparent 74%);
+}
+
+/* Idle light: the ONLY moving spot */
+.fire-idle{
+  animation:fireFloat 8.4s cubic-bezier(.45,.05,.55,.95) infinite;
+  opacity:.98;
+  transition:opacity .055s linear;
+}
+
+/* Active light: permanently centered, no motion animation at all */
+.fire-active{
+  left:16%;
+  top:16%;
+  transform:translate3d(0,0,0) scale(1.06);
+  opacity:0;
+  animation:none !important;
+  transition:opacity .055s linear, transform .09s cubic-bezier(.20,.82,.22,1);
+  will-change:opacity,transform;
+}
+
+/* On activation the floating spot disappears and is frozen.
+   The centered spot appears and cannot move until activation ends. */
+#voice:checked ~ .widget .fire-idle{
+  animation-play-state:paused !important;
+  opacity:0 !important;
+}
+#voice:checked ~ .widget .fire-active{
+  opacity:1 !important;
+  transform:translate3d(0,0,0) scale(1.06) !important;
+}
+
+#voice:checked ~ .widget .fire{
+  /* Position is controlled by the tiny activation script so it moves
+     from its CURRENT floating position to the exact center without a snap. */
+}
+
+/* active halo becomes brighter without animating expensive filters */
+.active-halo{
+  position:absolute;
+  left:50%;top:50%;
+  width:58px;height:58px;border-radius:50%;
+  transform:translate3d(-50%,-50%,0) scale(.88);
+  background:radial-gradient(circle,rgba(161,226,255,.16),rgba(154,182,255,.08) 40%,transparent 72%);
+  opacity:0;pointer-events:none;
+  transition:opacity .28s ease,transform .38s ease
+}
+#voice:checked ~ .widget .active-halo{
+  opacity:.92;transform:translate3d(-50%,-50%,0) scale(1.16)
+}
+
+.ground{
+  position:absolute;left:50%;top:67%;
+  transform:translate3d(-50%,-50%,0);
+  width:84px;height:25px;border-radius:50%;
+  pointer-events:none;z-index:-3;
+  background:
+    radial-gradient(ellipse,rgba(255,255,255,.48) 0 7%,transparent 25%),
+    conic-gradient(from 0deg,
+      transparent 0 9%,rgba(255,194,117,.13) 17%,transparent 27%,
+      rgba(106,218,255,.15) 40%,transparent 50%,
+      rgba(184,138,255,.11) 62%,transparent 73%,
+      rgba(102,255,209,.12) 84%,transparent 100%);
+  opacity:.72
+}
+
+/* rings start a little later so the jump itself remains light */
+.rings{
+  position:absolute;left:50%;top:50%;
+  width:var(--orb-size);height:var(--orb-size);
+  transform:translate3d(-50%,-50%,0);
+  pointer-events:none;z-index:-1
+}
+.rings i{position:absolute;inset:0;border-radius:50%;opacity:0}
+.rings .sharp{border:1px solid var(--ring-sharp)}
+.rings .soft{border:1px solid var(--ring-soft)}
+#voice:checked ~ .widget .rings .r1{
+  animation:ringSharp 2.05s ease-out .58s 2,speakSharp 2.0s ease-out 7.30s 2
+}
+#voice:checked ~ .widget .rings .r2{
+  animation:ringSoft 2.15s ease-out .96s 2,speakSoft 2.1s ease-out 7.70s 2
+}
+#voice:checked ~ .widget .rings .r3{
+  animation:ringSharp 2.08s ease-out 1.36s 2,speakSharp 2.0s ease-out 8.12s 2
+}
+
+/* icon exactly in center */
+.icon{
+  position:absolute;left:50%;top:50%;
+  transform:translate3d(-50%,-50%,0);
+  z-index:5;color:var(--icon);opacity:0;pointer-events:none
+}
+.mic{width:24px;height:24px;display:grid;place-items:center}
+.dots{display:flex;gap:3px;align-items:center;justify-content:center}
+.dots i{
+  width:3px;height:3px;border-radius:50%;background:currentColor;
+  animation:dot .62s ease-in-out infinite alternate
+}
+.dots i:nth-child(2){animation-delay:.12s}
+.dots i:nth-child(3){animation-delay:.24s}
+.wave{display:flex;gap:2px;align-items:center;justify-content:center}
+.wave i{
+  width:2px;height:8px;border-radius:99px;background:currentColor;
+  transform-origin:center;animation:bar .55s ease-in-out infinite alternate
+}
+.wave i:nth-child(2){animation-duration:.40s}
+.wave i:nth-child(3){animation-duration:.50s}
+.wave i:nth-child(4){animation-duration:.43s}
+.wave i:nth-child(5){animation-duration:.57s}
+#voice:checked ~ .widget .mic{animation:micTimeline 11.1s linear 1}
+#voice:checked ~ .widget .dots{animation:thinkTimeline 11.1s linear 1}
+#voice:checked ~ .widget .wave{animation:waveTimeline 11.1s linear 1}
+
+/* minimal dynamic centered status */
+.state{
+  position:absolute;left:50%;bottom:94px;
+  transform:translate3d(-50%,3px,0);
+  width:56px;height:22px;
+  border-radius:999px;
+  background:var(--bubble);
+  border:1px solid var(--bubble-line);
+  box-shadow:var(--bubble-shadow);
+  color:var(--main);
+  font-size:10px;line-height:1;font-weight:620;
+  opacity:0;pointer-events:none;overflow:hidden
+}
+.state span{
+  display:block;position:absolute;left:50%;top:50%;
+  transform:translate3d(-50%,-50%,0);
+  white-space:nowrap;opacity:0
+}
+#voice:checked ~ .widget .state{
+  animation:stateBox 11.1s linear 1,stateWidth 11.1s steps(1,end) 1
+}
+#voice:checked ~ .widget .state .listen{animation:showListen 11.1s linear 1}
+#voice:checked ~ .widget .state .think{animation:showThink 11.1s linear 1}
+#voice:checked ~ .widget .state .speak{animation:showSpeak 11.1s linear 1}
+
+/* chat bubble closer to orb */
+.chat{
+  position:absolute;right:11px;bottom:67px;
+  width:31px;height:29px;border-radius:15px;
+  border:1px solid var(--bubble-line);
+  background:var(--bubble);box-shadow:var(--bubble-shadow);
+  display:grid;place-items:center;color:var(--main);
+  pointer-events:auto;cursor:pointer;
+  animation:chatFloat 5.4s ease-in-out infinite
+}
+.chat::after{
+  content:"";position:absolute;right:5px;bottom:-3px;
+  width:7px;height:7px;background:var(--bubble);
+  border-right:1px solid var(--bubble-line);
+  border-bottom:1px solid var(--bubble-line);
+  transform:rotate(45deg);border-radius:1px
+}
+
+.panel{
+  position:fixed;left:50%;
+  bottom:calc(110px + env(safe-area-inset-bottom));
+  transform:translate3d(-50%,12px,0) scale(.985);
+  width:min(372px,calc(100vw - 24px));
+  min-height:156px;
+  max-height:min(560px,calc(100vh - 150px));
+  padding:12px 12px 10px;
+  border-radius:22px;
+  background:var(--bubble);
+  border:1px solid var(--bubble-line);
+  box-shadow:0 28px 75px rgba(12,27,43,.14);
+  color:var(--main);
+  opacity:0;
+  pointer-events:none;
+  transition:
+    opacity .20s ease,
+    transform .22s cubic-bezier(.2,.8,.2,1),
+    height .26s cubic-bezier(.2,.8,.2,1);
+  z-index:90;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+#text:checked ~ .panel{
+  opacity:1;pointer-events:auto;
+  transform:translate3d(-50%,0,0) scale(1)
+}
+.head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  min-height:30px;
+  padding:0 2px 6px;
+  flex:0 0 auto;
+}
+.head strong{letter-spacing:.06em;font-size:13px}
+.close{
+  width:28px;height:28px;border:0;background:transparent;
+  font-size:21px;line-height:1;color:var(--sub);cursor:pointer;
+  border-radius:50%;
+}
+.close:active{background:rgba(128,145,160,.10)}
+
+.chat-body{
+  flex:1 1 auto;
+  min-height:58px;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  padding:5px 1px 8px;
+  scroll-behavior:smooth;
+}
+.chat-body::-webkit-scrollbar{width:0;height:0}
+
+.message-row{
+  display:flex;
+  width:100%;
+  margin:5px 0;
+}
+.message-row.user{justify-content:flex-end}
+.message-row.assistant{justify-content:flex-start}
+
+.message{
+  max-width:84%;
+  border-radius:16px;
+  padding:9px 11px;
+  font-size:13px;
+  line-height:1.38;
+  word-wrap:break-word;
+  overflow-wrap:anywhere;
+}
+.message-row.assistant .message{
+  background:rgba(128,145,160,.10);
+  color:var(--main);
+  border-bottom-left-radius:6px;
+}
+.message-row.user .message{
+  background:var(--main);
+  color:var(--bubble);
+  border-bottom-right-radius:6px;
+}
+
+.typing{
+  display:inline-flex;
+  align-items:center;
+  gap:3px;
+  min-width:42px;
+}
+.typing i{
+  width:4px;height:4px;border-radius:50%;
+  background:currentColor;opacity:.45;
+  animation:typingDot .8s ease-in-out infinite alternate;
+}
+.typing i:nth-child(2){animation-delay:.14s}
+.typing i:nth-child(3){animation-delay:.28s}
+
+.chat-form{
+  flex:0 0 auto;
+  display:flex;
+  align-items:flex-end;
+  gap:7px;
+  padding-top:7px;
+  border-top:1px solid color-mix(in srgb,var(--bubble-line) 72%,transparent);
+}
+.chat-input{
+  flex:1 1 auto;
+  min-width:0;
+  min-height:40px;
+  max-height:104px;
+  resize:none;
+  border:1px solid var(--bubble-line);
+  border-radius:14px;
+  padding:10px 11px;
+  background:rgba(128,145,160,.065);
+  color:var(--main);
+  font:inherit;
+  font-size:13px;
+  line-height:1.35;
+  outline:none;
+  overflow-y:auto;
+}
+.chat-input::placeholder{color:var(--sub)}
+.chat-input:focus{
+  border-color:color-mix(in srgb,var(--main) 20%,var(--bubble-line));
+  background:rgba(128,145,160,.085);
+}
+.send-btn{
+  flex:0 0 40px;
+  width:40px;height:40px;
+  border:0;border-radius:13px;
+  background:var(--main);
+  color:var(--bubble);
+  display:grid;place-items:center;
+  cursor:pointer;
+  transition:transform .12s ease,opacity .12s ease;
+}
+.send-btn:active{transform:scale(.94)}
+.send-btn:disabled{opacity:.32;cursor:default}
+.send-btn svg{display:block}
+
+.name-chip{
+  display:inline-flex;
+  margin-top:6px;
+  padding:5px 8px;
+  border-radius:999px;
+  border:1px solid var(--bubble-line);
+  color:var(--sub);
+  font-size:10px;
+  background:rgba(128,145,160,.06);
+}
+
+.powered-by{
+  margin-top:7px;
+  text-align:center;
+  font-size:10px;
+  line-height:1.2;
+  letter-spacing:.01em;
+  flex:0 0 auto;
+}
+.powered-by a{
+  color:var(--sub);
+  text-decoration:none;
+  opacity:.56;
+  transition:opacity .16s ease,color .16s ease;
+}
+.powered-by a:hover,
+.powered-by a:focus-visible{
+  opacity:.92;
+  outline:none;
+}
+
+
+/* ===== animations ===== */
+
+/* Slightly more intermediate points, but only transform — no expensive frame decoding */
+@keyframes smoothJump {
+  0%   {transform:translate3d(0,1px,0) scale3d(1.008,.992,1)}
+  7%   {transform:translate3d(0,.7px,0) scale3d(1.005,.995,1)}
+  14%  {transform:translate3d(0,0,0) scale3d(1,1,1)}
+  22%  {transform:translate3d(0,-2px,0) scale3d(.999,1.003,1)}
+  30%  {transform:translate3d(0,-5px,0) scale3d(.998,1.006,1)}
+  38%  {transform:translate3d(0,-9px,0) scale3d(.997,1.008,1)}
+  46%  {transform:translate3d(0,-13px,0) scale3d(.997,1.009,1)}
+  54%  {transform:translate3d(0,-16px,0) scale3d(.998,1.007,1)}
+  60%  {transform:translate3d(0,-17px,0) scale3d(.999,1.004,1)}
+  67%  {transform:translate3d(0,-15px,0) scale3d(1,1.002,1)}
+  74%  {transform:translate3d(0,-11px,0) scale3d(1,1,1)}
+  81%  {transform:translate3d(0,-7px,0) scale3d(1.001,.999,1)}
+  88%  {transform:translate3d(0,-3px,0) scale3d(1.003,.997,1)}
+  94%  {transform:translate3d(0,.35px,0) scale3d(1.007,.993,1)}
+  97%  {transform:translate3d(0,-.45px,0) scale3d(.999,1.002,1)}
+  100% {transform:translate3d(0,0,0) scale3d(1,1,1)}
+}
+
+@keyframes breathe {
+  0%,100%{transform:translate3d(-50%,-50%,0) scale(.988)}
+  50%{transform:translate3d(-50%,-50%,0) scale(1.020)}
+}
+@keyframes activeBreath {
+  0%{transform:translate3d(-50%,-50%,0) scale(1)}
+  12%,88%{transform:translate3d(-50%,-50%,0) scale(1.024)}
+  100%{transform:translate3d(-50%,-50%,0) scale(1)}
+}
+
+/* slow asymmetric path: feels like a little light swimming inside */
+@keyframes fireFloat {
+  0%   {transform:translate3d(0,0,0) scale(.97);opacity:.92}
+  14%  {transform:translate3d(3px,-2px,0) scale(.99);opacity:.96}
+  29%  {transform:translate3d(5px,1px,0) scale(1.01);opacity:1}
+  44%  {transform:translate3d(3px,4px,0) scale(.99);opacity:.97}
+  59%  {transform:translate3d(0,5px,0) scale(.97);opacity:.94}
+  74%  {transform:translate3d(-3px,3px,0) scale(1.00);opacity:.98}
+  88%  {transform:translate3d(-2px,-2px,0) scale(.98);opacity:.95}
+  100% {transform:translate3d(0,0,0) scale(.97);opacity:.92}
+}
+
+
+@keyframes ringSharp {
+  0%{opacity:0;transform:scale(.90)}
+  16%{opacity:.78}
+  100%{opacity:0;transform:scale(2.28)}
+}
+@keyframes ringSoft {
+  0%{opacity:0;transform:scale(.96)}
+  18%{opacity:.52}
+  100%{opacity:0;transform:scale(2.72)}
+}
+@keyframes speakSharp {
+  0%{opacity:0;transform:scale(.94)}
+  15%{opacity:.70}
+  100%{opacity:0;transform:scale(2.45)}
+}
+@keyframes speakSoft {
+  0%{opacity:0;transform:scale(.98)}
+  15%{opacity:.50}
+  100%{opacity:0;transform:scale(2.85)}
+}
+
+@keyframes micTimeline {
+  0%,6%{opacity:0} 9%,50%{opacity:1} 53%,100%{opacity:0}
+}
+@keyframes thinkTimeline {
+  0%,50%{opacity:0} 53%,63%{opacity:1} 66%,100%{opacity:0}
+}
+@keyframes waveTimeline {
+  0%,63%{opacity:0} 66%,94%{opacity:1} 97%,100%{opacity:0}
+}
+@keyframes dot {
+  from{transform:translateY(1px);opacity:.62}
+  to{transform:translateY(-2px);opacity:1}
+}
+@keyframes bar {
+  from{transform:scaleY(.58);opacity:.74}
+  to{transform:scaleY(1.6);opacity:1}
+}
+@keyframes stateBox {
+  0%,6%{opacity:0;transform:translate3d(-50%,3px,0)}
+  9%,94%{opacity:1;transform:translate3d(-50%,0,0)}
+  97%,100%{opacity:0;transform:translate3d(-50%,3px,0)}
+}
+@keyframes stateWidth {
+  0%,8%{width:56px}
+  9%,50%{width:58px}
+  51%,65%{width:54px}
+  66%,94%{width:66px}
+  95%,100%{width:56px}
+}
+@keyframes showListen {
+  0%,6%{opacity:0} 9%,50%{opacity:1} 53%,100%{opacity:0}
+}
+@keyframes showThink {
+  0%,50%{opacity:0} 53%,63%{opacity:1} 66%,100%{opacity:0}
+}
+@keyframes showSpeak {
+  0%,63%{opacity:0} 66%,94%{opacity:1} 97%,100%{opacity:0}
+}
+@keyframes typingDot{from{transform:translateY(0);opacity:.38}to{transform:translateY(-2px);opacity:.88}}
+@keyframes chatFloat {
+  0%,100%{transform:translateY(0)}
+  50%{transform:translateY(-1.2px)}
+}
+
+@media(max-width:820px){
+  .page{padding:12px 12px 140px}
+  header{height:68px;padding:0 20px}
+  nav{display:none}
+  .hero{grid-template-columns:1fr;padding:42px 20px 140px}
+  h1{font-size:44px}
+  .sub{font-size:16px}
+  .visual{height:310px}
+  .core{width:170px;height:170px}
+  :root{--orb-size:48px}
+}
+
+@media(prefers-reduced-motion:reduce){
+  .breath,.fire,.chat,.dots i,.wave i{animation:none!important}
+}
+</style>
+</head>
+<body>
+
+<input type="checkbox" id="demoTheme" disabled>
+<input type="checkbox" id="voice">
+<input type="checkbox" id="text">
+
+<div class="page">
+  <div class="shell">
+    <header>
+      <div class="logo">DELNO</div>
+      <nav><span>Продукт</span><span>Решения</span><span>Тарифы</span><span>Ресурсы</span></nav>
+      <span class="themeSwitch" style="pointer-events:none">Светлый фон</span>
+    </header>
+    <section class="hero">
+      <div>
+        <h1>Ваш ИИ-сотрудник,<br><em>который отвечает клиентам</em></h1>
+        <div class="sub">
+          Прыжок занимает 0,6 секунды. После нажатия плавающее пятно сразу исчезает, а в центре появляется отдельное неподвижное пятно. Оно не может двигаться до конца активации.
+        </div>
+      </div>
+      <div class="visual"><div class="core">DELNO</div></div>
+    </section>
+  </div>
+</div>
+
+<div class="widget">
+  <div class="state">
+    <span class="listen">Слушаю…</span>
+    <span class="think">Думаю…</span>
+    <span class="speak">Отвечаю…</span>
+  </div>
+
+  <label class="chat" for="text" aria-label="Текстовый чат">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none">
+      <path d="M5.5 6.2h13a2.3 2.3 0 0 1 2.3 2.3v6.2a2.3 2.3 0 0 1-2.3 2.3H11l-4.5 2.8V17H5.5a2.3 2.3 0 0 1-2.3-2.3V8.5a2.3 2.3 0 0 1 2.3-2.3Z"
+        stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+    </svg>
+  </label>
+
+  <div class="orb-anchor">
+    <label class="orb-hit" for="voice" aria-label="Говорить с DELNO"></label>
+
+    <div class="motion">
+      <span class="ground"></span>
+
+      <div class="rings" aria-hidden="true">
+        <i class="sharp r1"></i>
+        <i class="soft r2"></i>
+        <i class="sharp r3"></i>
+      </div>
+
+      <span class="active-halo"></span>
+
+      <div class="breath">
+        <img class="orb-img" src="assets/crystal-orb-static.webp" alt="">
+        <span class="fire-path"><span class="fire fire-idle"></span><span class="fire fire-active"></span></span>
+      </div>
+
+      <span class="icon mic">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none">
+          <path d="M12 15.1a3.6 3.6 0 0 0 3.6-3.6V7.2a3.6 3.6 0 1 0-7.2 0v4.3a3.6 3.6 0 0 0 3.6 3.6Z"
+            stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M6.8 11.3a5.2 5.2 0 0 0 10.4 0M12 16.5v3M9.5 19.5h5"
+            stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </span>
+
+      <span class="icon dots"><i></i><i></i><i></i></span>
+      <span class="icon wave"><i></i><i></i><i></i><i></i><i></i></span>
+    </div>
+  </div>
+</div>
+
+<section class="panel" id="chatPanel" aria-live="polite">
+  <div class="head">
+    <strong>DELNO</strong>
+    <label class="close" for="text" aria-label="Закрыть чат">×</label>
+  </div>
+
+  <div class="chat-body" id="chatBody">
+    <div class="message-row assistant">
+      <div class="message">Здравствуйте. Чем могу помочь?</div>
+    </div>
+  </div>
+
+  <form class="chat-form" id="chatForm">
+    <textarea
+      class="chat-input"
+      id="chatInput"
+      rows="1"
+      maxlength="1200"
+      autocomplete="off"
+      enterkeyhint="send"
+      placeholder="Введите сообщение…"
+      aria-label="Сообщение"></textarea>
+    <button class="send-btn" id="sendBtn" type="submit" aria-label="Отправить">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none">
+        <path d="M5 12 19 5l-4.8 14-2.8-5.2L5 12Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        <path d="m11.4 13.8 3.2-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </form>
+
+  <div class="powered-by">
+    <a href="https://dlno.ru/?utm_source=widget&utm_medium=branding&utm_campaign=powered_by_delno"
+       target="_blank"
+       rel="noopener noreferrer"
+       aria-label="Перейти на сайт DELNO">
+      Работает на DELNO ↗
+    </a>
+  </div>
+</section>
+
+<script>
+/* Tiny contrast detector only; all visual motion is CSS. */
+(function(){
+  var root=document.documentElement;
+  var toggle=document.getElementById('demoTheme');
+
+  function parseColor(str){
+    var m=String(str).match(/rgba?\(([^)]+)\)/i);
+    if(!m) return null;
+    var p=m[1].split(',').map(function(v){return parseFloat(v.trim())});
+    return {r:p[0]||0,g:p[1]||0,b:p[2]||0,a:p.length>3?p[3]:1};
+  }
+  function lum(c){return .2126*c.r+.7152*c.g+.0722*c.b}
+
+  function detect(){
+    root.setAttribute('data-contrast','light');
+    return;
+    var els=document.elementsFromPoint
+      ? document.elementsFromPoint(window.innerWidth/2,window.innerHeight-60)
+      : [];
+    var c=null;
+    for(var i=0;i<els.length && !c;i++){
+      if(els[i].closest && (els[i].closest('.widget')||els[i].closest('.panel'))) continue;
+      var n=els[i];
+      while(n && n!==document.documentElement){
+        var pc=parseColor(getComputedStyle(n).backgroundColor);
+        if(pc && pc.a>.55){c=pc;break}
+        n=n.parentElement;
+      }
+    }
+    if(!c)c=parseColor(getComputedStyle(document.body).backgroundColor)||{r:255,g:255,b:255,a:1};
+    root.setAttribute('data-contrast',lum(c)<145?'light':'dark');
+  }
+  if(toggle)toggle.addEventListener('change',detect);
+  window.addEventListener('resize',detect,{passive:true});
+  window.addEventListener('scroll',detect,{passive:true});
+  setTimeout(detect,50);
+
+})();
+</script>
+
+
+<script>
+(function(){
+  const form = document.getElementById('chatForm');
+  const input = document.getElementById('chatInput');
+  const body = document.getElementById('chatBody');
+  const send = document.getElementById('sendBtn');
+  const textToggle = document.getElementById('text');
+
+  if(!form || !input || !body || !send) return;
+
+  const CONFIG = {
+    // Когда backend будет готов, достаточно указать URL.
+    // Например: https://api.dlno.ru/v1/public/widget/message
+    endpoint: "",
+    siteKey: "demo_dlno",
+    timeoutMs: 18000
+  };
+
+  const state = {
+    sessionId: localStorage.getItem('delno_widget_session') || cryptoSafeId(),
+    visitorId: localStorage.getItem('delno_widget_visitor') || cryptoSafeId(),
+    name: localStorage.getItem('delno_widget_name') || "",
+    askedName: localStorage.getItem('delno_widget_asked_name') === '1',
+    awaitingName: false,
+    busy: false,
+    messages: []
+  };
+  localStorage.setItem('delno_widget_session', state.sessionId);
+  localStorage.setItem('delno_widget_visitor', state.visitorId);
+
+  function cryptoSafeId(){
+    try{
+      if(crypto && crypto.randomUUID) return crypto.randomUUID();
+    }catch(_){}
+    return 'w_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,10);
+  }
+
+  function autoSize(){
+    input.style.height='auto';
+    input.style.height=Math.min(input.scrollHeight,104)+'px';
+  }
+
+  function scrollDown(){
+    requestAnimationFrame(()=>{ body.scrollTop = body.scrollHeight; });
+  }
+
+  function appendMessage(role,text,extraClass){
+    const row=document.createElement('div');
+    row.className='message-row '+role;
+    const msg=document.createElement('div');
+    msg.className='message'+(extraClass?' '+extraClass:'');
+    msg.textContent=text;
+    row.appendChild(msg);
+    body.appendChild(row);
+    scrollDown();
+    return row;
+  }
+
+  function appendTyping(){
+    const row=document.createElement('div');
+    row.className='message-row assistant';
+    row.dataset.typing='1';
+    const msg=document.createElement('div');
+    msg.className='message typing';
+    msg.innerHTML='<i></i><i></i><i></i>';
+    row.appendChild(msg);
+    body.appendChild(row);
+    scrollDown();
+    return row;
+  }
+
+  function setBusy(v){
+    state.busy=v;
+    send.disabled=v || !input.value.trim();
+    input.disabled=v;
+    if(!v) input.focus({preventScroll:true});
+  }
+
+  function isLikelyName(text){
+    const s=text.trim();
+    if(!s || s.length>48) return false;
+    if(/[?!.:,;]/.test(s)) return false;
+    return s.split(/\s+/).length<=4;
+  }
+
+  function personalizedGreeting(name){
+    const first=name.trim().split(/\s+/)[0];
+    return first ? `Приятно познакомиться, ${first}. Что ещё хотите уточнить?` : 'Приятно познакомиться. Что ещё хотите уточнить?';
+  }
+
+  async function backendReply(message){
+    if(!CONFIG.endpoint) return null;
+    const ctrl=new AbortController();
+    const timer=setTimeout(()=>ctrl.abort(),CONFIG.timeoutMs);
+    try{
+      const res=await fetch(CONFIG.endpoint,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        signal:ctrl.signal,
+        body:JSON.stringify({
+          site_key:CONFIG.siteKey,
+          session_id:state.sessionId,
+          visitor_id:state.visitorId,
+          message,
+          visitor:{
+            name:state.name || null,
+            page_url:location.href,
+            referrer:document.referrer || null
+          },
+          channel:'web'
+        })
+      });
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      return await res.json();
+    }finally{
+      clearTimeout(timer);
+    }
+  }
+
+  function mockAnswer(question){
+    // Только для демонстрации UI до подключения DELNO backend.
+    const q=question.trim();
+    if(q.length<8) return 'Да, могу помочь. Уточните, пожалуйста, вопрос чуть подробнее.';
+    return 'Понял ваш вопрос. Я могу ответить по базе знаний компании и, если нужно, передать обращение сотруднику.';
+  }
+
+  async function sendMessage(text){
+    const value=text.trim();
+    if(!value || state.busy) return;
+
+    appendMessage('user',value);
+    state.messages.push({role:'user',content:value});
+    input.value='';
+    autoSize();
+    setBusy(true);
+
+    // Если мы именно ждём имя, считаем это отдельным шагом.
+    if(state.awaitingName && isLikelyName(value)){
+      const typing=appendTyping();
+      await delay(430);
+      typing.remove();
+
+      state.name=value;
+      state.awaitingName=false;
+      localStorage.setItem('delno_widget_name',state.name);
+      appendMessage('assistant',personalizedGreeting(state.name));
+      state.messages.push({role:'assistant',content:personalizedGreeting(state.name)});
+      setBusy(false);
+      return;
+    }
+
+    const typing=appendTyping();
+
+    let payload=null;
+    try{
+      payload=await backendReply(value);
+    }catch(err){
+      console.warn('DELNO widget backend:',err);
+    }
+
+    // Небольшая минимальная пауза нужна только для ощущения живого ответа.
+    await delay(payload ? 120 : 620);
+    typing.remove();
+
+    const answer =
+      payload?.message ||
+      payload?.answer ||
+      payload?.reply ||
+      mockAnswer(value);
+
+    appendMessage('assistant',answer);
+    state.messages.push({role:'assistant',content:answer});
+
+    // После первого полноценного ответа мягко запрашиваем имя.
+    const backendRequestsName =
+      payload?.next_step === 'ask_name' ||
+      payload?.collect?.includes?.('name');
+
+    if(!state.name && (!state.askedName || backendRequestsName)){
+      await delay(260);
+      appendMessage('assistant','Кстати, как я могу к вам обращаться?');
+      state.awaitingName=true;
+      state.askedName=true;
+      localStorage.setItem('delno_widget_asked_name','1');
+    }
+
+    setBusy(false);
+  }
+
+  function delay(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+  input.addEventListener('input',()=>{
+    autoSize();
+    send.disabled=state.busy || !input.value.trim();
+  });
+
+  input.addEventListener('keydown',(e)=>{
+    if(e.key==='Enter' && !e.shiftKey){
+      e.preventDefault();
+      form.requestSubmit();
+    }
+  });
+
+  form.addEventListener('submit',(e)=>{
+    e.preventDefault();
+    sendMessage(input.value);
+  });
+
+  if(textToggle){
+    textToggle.addEventListener('change',()=>{
+      if(textToggle.checked){
+        setTimeout(()=>input.focus({preventScroll:true}),180);
+      }
+    });
+  }
+
+  autoSize();
+  send.disabled=true;
+})();
+</script>
+
+</body>
+</html>
