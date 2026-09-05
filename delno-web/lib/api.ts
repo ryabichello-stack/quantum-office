@@ -79,6 +79,23 @@ export type OnboardingStatus = {
   started_at?: string | null;
   completed_at?: string | null;
   draft?: Record<string, unknown>;
+  ttfv?: {
+    started_at?: string | null;
+    milestones?: Record<string, string>;
+    elapsed_ms?: Record<string, number | null>;
+    published?: boolean;
+  };
+};
+
+export type ChannelAccountItem = {
+  id: string;
+  type: string;
+  status: string;
+  bot_username?: string | null;
+  bot_name?: string | null;
+  webhook_url?: string | null;
+  verified_at?: string | null;
+  created_at?: string | null;
 };
 
 export type OnboardingUploadItem = {
@@ -416,4 +433,33 @@ export function apiPatchFeatureFlag(token: string, flagKey: string, enabled: boo
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled }),
   });
+}
+
+export function apiTenantChannels(token: string) {
+  return apiFetch<{ items: ChannelAccountItem[]; total: number }>("/v1/tenant/channels", token);
+}
+
+export function apiTelegramConnect(token: string, botToken: string) {
+  return apiFetch<{ ok: boolean; account: ChannelAccountItem }>("/v1/tenant/channels/telegram/connect", token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ bot_token: botToken }),
+  });
+}
+
+export function apiTelegramDisconnect(token: string, accountId: string) {
+  return apiFetch<{ ok: boolean; account: ChannelAccountItem }>(
+    `/v1/tenant/channels/telegram/${accountId}/disconnect`,
+    token,
+    { method: "POST" },
+  );
+}
+
+export function apiTelegramHealth(token: string, accountId: string) {
+  return apiFetch<{
+    ok: boolean;
+    bot?: Record<string, unknown> | null;
+    webhook?: { url?: string | null; expected_url?: string; ok?: boolean; pending_update_count?: number | null };
+    account?: ChannelAccountItem;
+  }>(`/v1/tenant/channels/telegram/${accountId}/health`, token);
 }

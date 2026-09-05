@@ -927,6 +927,24 @@ p {
   word-break: break-all;
 }
 
+.telegram-connected {
+  display: grid;
+  gap: 12px;
+  max-width: 560px;
+}
+
+.telegram-connected-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.embed-code-wrap {
+  display: grid;
+  gap: 6px;
+}
+
 .status-ok {
   color: var(--success);
   font-size: 13px;

@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     knowledge_base_url: str = "http://127.0.0.1:8021"
     knowledge_use_legacy_principals: bool = True
     messenger_base_url: str = ""
+    api_public_base_url: str = ""
 
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None

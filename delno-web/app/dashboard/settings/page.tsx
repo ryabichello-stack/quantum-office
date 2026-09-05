@@ -15,6 +15,7 @@ import {
   type PartySuggestion,
 } from "@/lib/api";
 import { DashboardFrame } from "@/components/DashboardFrame";
+import { TelegramConnectWizard } from "@/components/TelegramConnectWizard";
 
 export default function SettingsPage() {
   const { token } = useRequireAuth();
@@ -190,6 +191,8 @@ export default function SettingsPage() {
           <p className="inbox-empty">Загрузка…</p>
         )}
       </section>
+
+      {token && <TelegramConnectWizard token={token} />}
 
       <section className="settings-section panel-card">
         <h2>Feature flags</h2>

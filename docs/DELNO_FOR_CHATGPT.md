@@ -1,6 +1,6 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-5.1 · 2026-09-05 (O6 — TTFV metrics + tests)
+**Revision:** REV-5.2 · 2026-09-05 (E2.3 — Telegram branded wizard)
 
 **Активный продуктовый этап:** Crystal Widget + Conversation Core — см. [`DELNO_WIDGET_AUDIT.md`](DELNO_WIDGET_AUDIT.md) AUDIT-1.0.
 
@@ -180,7 +180,7 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 | E2.5 Webhook signing + events | 🔄 `X-Telegram-Bot-Api-Secret-Token` + `message.received` |
 | E2.6 Router token → tenant | ✅ `channel_router` + account id in URL |
 | E2.7 Inbound → conversation | ✅ `POST /v1/webhooks/telegram/{channel_account_id}` |
-| E2.3 Branded bot wizard | ⬜ |
+| E2.3 Branded bot wizard | ✅ | settings → Telegram token → webhook auto |
 | E2.8 Email stub | ⬜ |
 
 **Telegram webhook URL (per tenant channel account):**
@@ -221,8 +221,8 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 
 | Коммит | Суть |
 |--------|------|
-| *(O6)* | O6: TTFV milestones + onboarding tests A–E + status `ttfv` |
-| `9df5435` | O5: summary card, conflicts, publish confirm |
+| *(E2.3)* | E2.3: branded Telegram connect wizard — token, webhook, settings UI |
+| `e88690d` | O6: TTFV milestones + onboarding tests A–E + docs REV-5.1 |
 | `95009fc` | O4: URL in conversation + graceful fallback |
 | `1ad5aff` | O3: file upload, migration `005_onboarding_uploads` |
 | `a4e6a09` | O2: onboarding chat UI — `/dashboard/onboarding`, register redirect |
@@ -264,7 +264,7 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 **Сейчас (без блокеров):**
 
 1. **P1.9** clarity test — ⏸ когда owner вернётся
-2. **E2.3** — branded Telegram bot wizard
+2. **E2.4** — MAX onboarding (client-owned bot)
 3. Обновить master plan REV-3.4+ под E2/E3/P4 статус
 
 **Product MVP (Widget Commits 1–5):** ✅ базовый цикл закрыт. **Onboarding pivot O1–O6** ✅ закрыт (deploy + P1.9 — следующие шаги).
