@@ -34,25 +34,26 @@ def _context_for_account(account) -> ChannelContext:
     )
 
 
-@router.post("/telegram/{channel_account_id}")
-async def telegram_webhook(
+async def _handle_channel_webhook(
+    *,
+    channel_type: str,
     channel_account_id: UUID,
     request: Request,
-    db: Session = Depends(get_db),
-    x_telegram_bot_api_secret_token: str | None = Header(default=None, alias="X-Telegram-Bot-Api-Secret-Token"),
+    db: Session,
+    secret_header: str | None,
 ) -> dict:
     account = resolve_channel_account(db, channel_account_id)
-    if not account or account.type != "telegram":
+    if not account or account.type != channel_type:
         raise HTTPException(status_code=404, detail="channel_account_not_found")
 
-    adapter = get_channel_adapter("telegram")
+    adapter = get_channel_adapter(channel_type)
     if not adapter:
-        raise HTTPException(status_code=503, detail="telegram_adapter_unavailable")
+        raise HTTPException(status_code=503, detail=f"{channel_type}_adapter_unavailable")
 
     meta = account.meta if isinstance(account.meta, dict) else {}
     expected_secret = meta.get("webhook_secret")
     if not adapter.verify_webhook_secret(
-        secret_header=x_telegram_bot_api_secret_token,
+        secret_header=secret_header,
         expected_secret=str(expected_secret) if expected_secret else None,
     ):
         raise HTTPException(status_code=403, detail="invalid_webhook_secret")
@@ -84,3 +85,35 @@ async def telegram_webhook(
 
     db.commit()
     return {"ok": True, "recorded": recorded}
+
+
+@router.post("/telegram/{channel_account_id}")
+async def telegram_webhook(
+    channel_account_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    x_telegram_bot_api_secret_token: str | None = Header(default=None, alias="X-Telegram-Bot-Api-Secret-Token"),
+) -> dict:
+    return await _handle_channel_webhook(
+        channel_type="telegram",
+        channel_account_id=channel_account_id,
+        request=request,
+        db=db,
+        secret_header=x_telegram_bot_api_secret_token,
+    )
+
+
+@router.post("/max/{channel_account_id}")
+async def max_webhook(
+    channel_account_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    x_max_bot_api_secret: str | None = Header(default=None, alias="X-Max-Bot-Api-Secret"),
+) -> dict:
+    return await _handle_channel_webhook(
+        channel_type="max",
+        channel_account_id=channel_account_id,
+        request=request,
+        db=db,
+        secret_header=x_max_bot_api_secret,
+    )

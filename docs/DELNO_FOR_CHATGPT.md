@@ -1,6 +1,6 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-5.2 · 2026-09-05 (E2.3 — Telegram branded wizard)
+**Revision:** REV-5.3 · 2026-09-05 (E2.4 — MAX branded wizard)
 
 **Активный продуктовый этап:** Crystal Widget + Conversation Core — см. [`DELNO_WIDGET_AUDIT.md`](DELNO_WIDGET_AUDIT.md) AUDIT-1.0.
 
@@ -36,12 +36,12 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DEL
 ## Промпт (скопируй целиком)
 
 ```
-Прочитай entry point и все связанные документы по raw URL из него (REV-5.1):
+Прочитай entry point и все связанные документы по raw URL из него (REV-5.2):
 
 https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DELNO_FOR_CHATGPT.md
 
 Открой каждый raw URL из секции «Карта документов».
-Подтверди revision REV-5.1.
+Подтверди revision REV-5.2.
 
 Твоя задача — аудит текущего состояния DELNO. Ответь структурированно:
 

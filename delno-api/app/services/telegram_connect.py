@@ -11,11 +11,12 @@ from uuid import UUID
 import httpx
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
 from app.core.tenant import TenantContext
 from app.models.channel_account import ChannelAccount
 from app.services.audit import write_audit
+from app.services.channel_webhooks import webhook_url_for_account
 from app.services.events import emit_event
+from app.services.max_connect import public_channel_account
 
 BOT_TOKEN_RE = re.compile(r"^\d{8,12}:[A-Za-z0-9_-]{30,}$")
 TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
@@ -23,18 +24,6 @@ TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def api_public_base_url() -> str:
-    settings = get_settings()
-    base = (getattr(settings, "api_public_base_url", None) or settings.messenger_base_url or "").strip().rstrip("/")
-    if not base:
-        base = "https://api.dlno.ru"
-    return base
-
-
-def webhook_url_for_account(account_id: UUID) -> str:
-    return f"{api_public_base_url()}/v1/webhooks/telegram/{account_id}"
 
 
 def _telegram_call(token: str, method: str, *, json: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -94,27 +83,7 @@ def _token_used_by_other_tenant(db: Session, token: str, tenant_id: UUID) -> boo
 
 
 def _public_account(account: ChannelAccount) -> dict[str, Any]:
-    meta = account.meta if isinstance(account.meta, dict) else {}
-    return {
-        "id": str(account.id),
-        "type": account.type,
-        "status": account.status,
-        "bot_username": meta.get("bot_username"),
-        "bot_name": meta.get("bot_name"),
-        "webhook_url": meta.get("webhook_url") or webhook_url_for_account(account.id),
-        "verified_at": account.verified_at.isoformat() if account.verified_at else None,
-        "created_at": account.created_at.isoformat() if account.created_at else None,
-    }
-
-
-def list_tenant_channels(db: Session, ctx: TenantContext) -> dict[str, Any]:
-    rows = (
-        db.query(ChannelAccount)
-        .filter(ChannelAccount.tenant_id == ctx.tenant_id)
-        .order_by(ChannelAccount.created_at.desc())
-        .all()
-    )
-    return {"items": [_public_account(row) for row in rows], "total": len(rows)}
+    return public_channel_account(account)
 
 
 def connect_telegram_branded(db: Session, ctx: TenantContext, bot_token: str) -> dict[str, Any]:
@@ -149,7 +118,7 @@ def connect_telegram_branded(db: Session, ctx: TenantContext, bot_token: str) ->
         db.flush()
 
     webhook_secret = secrets.token_urlsafe(32)
-    webhook_url = webhook_url_for_account(account.id)
+    webhook_url = webhook_url_for_account(account.id, "telegram")
     hook = _telegram_call(
         token,
         "setWebhook",
@@ -269,7 +238,7 @@ def healthcheck_telegram_branded(db: Session, ctx: TenantContext, account_id: UU
     validation = validate_bot_token(token)
     webhook = _telegram_call(token, "getWebhookInfo")
     info = webhook.get("result") if webhook.get("ok") else {}
-    expected_url = webhook_url_for_account(account.id)
+    expected_url = webhook_url_for_account(account.id, "telegram")
     webhook_ok = isinstance(info, dict) and info.get("url") == expected_url
 
     return {

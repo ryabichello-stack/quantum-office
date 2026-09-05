@@ -463,3 +463,28 @@ export function apiTelegramHealth(token: string, accountId: string) {
     account?: ChannelAccountItem;
   }>(`/v1/tenant/channels/telegram/${accountId}/health`, token);
 }
+
+export function apiMaxConnect(token: string, accessToken: string) {
+  return apiFetch<{ ok: boolean; account: ChannelAccountItem }>("/v1/tenant/channels/max/connect", token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ access_token: accessToken }),
+  });
+}
+
+export function apiMaxDisconnect(token: string, accountId: string) {
+  return apiFetch<{ ok: boolean; account: ChannelAccountItem }>(
+    `/v1/tenant/channels/max/${accountId}/disconnect`,
+    token,
+    { method: "POST" },
+  );
+}
+
+export function apiMaxHealth(token: string, accountId: string) {
+  return apiFetch<{
+    ok: boolean;
+    bot?: Record<string, unknown> | null;
+    webhook?: { expected_url?: string; ok?: boolean; subscriptions?: unknown[] };
+    account?: ChannelAccountItem;
+  }>(`/v1/tenant/channels/max/${accountId}/health`, token);
+}

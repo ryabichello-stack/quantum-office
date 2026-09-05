@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     knowledge_use_legacy_principals: bool = True
     messenger_base_url: str = ""
     api_public_base_url: str = ""
+    # E2.4 MAX Bot API (platform-api2)
+    max_api_base_url: str = "https://platform-api2.max.ru"
 
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None

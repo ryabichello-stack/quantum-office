@@ -16,6 +16,7 @@ import {
 } from "@/lib/api";
 import { DashboardFrame } from "@/components/DashboardFrame";
 import { TelegramConnectWizard } from "@/components/TelegramConnectWizard";
+import { MaxConnectWizard } from "@/components/MaxConnectWizard";
 
 export default function SettingsPage() {
   const { token } = useRequireAuth();
@@ -193,6 +194,8 @@ export default function SettingsPage() {
       </section>
 
       {token && <TelegramConnectWizard token={token} />}
+
+      {token && <MaxConnectWizard token={token} />}
 
       <section className="settings-section panel-card">
         <h2>Feature flags</h2>
