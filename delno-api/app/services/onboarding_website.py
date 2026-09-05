@@ -12,7 +12,7 @@ from app.core.tenant import TenantContext
 from app.models.tenant import Tenant
 from app.services.events import emit_event
 from app.services.knowledge_documents import upsert_draft_knowledge
-from app.services.onboarding_flow import _merge_tenant_settings, get_onboarding_state
+from app.services.onboarding_summary import maybe_mark_summary_ready, register_onboarding_draft_document
 from app.services.website_import import (
     build_knowledge_markdown,
     fetch_website_content,
@@ -50,22 +50,6 @@ def extract_url_from_message(message: str) -> str | None:
             except ValueError:
                 continue
     return None
-
-
-def _append_website_source(tenant: Tenant, *, url: str, document_id: str | None, title: str) -> None:
-    state = get_onboarding_state(tenant)
-    draft = dict(state.get("draft") or {})
-    sources = list(draft.get("sources") or [])
-    sources.append(
-        {
-            "type": "website",
-            "url": url,
-            "document_id": document_id,
-            "title": title,
-        }
-    )
-    draft["sources"] = sources[-50:]
-    _merge_tenant_settings(tenant, {"onboarding_draft": draft})
 
 
 def _build_success_feedback(extracted: dict[str, Any]) -> str:
@@ -154,7 +138,16 @@ def try_onboarding_url_ingest(
         if not kb.get("ok"):
             raise ValueError("draft_upsert_failed")
 
-        _append_website_source(tenant, url=url, document_id=doc_id, title=title)
+        register_onboarding_draft_document(
+            tenant,
+            document_id=doc_id,
+            title=f"Сайт: {title}",
+            body=markdown[:50000],
+            source_type="website",
+            source_label=url,
+            extra={"url": url},
+        )
+        maybe_mark_summary_ready(db, tenant)
 
         emit_event(
             db,

@@ -21,6 +21,7 @@ from app.models.tenant import Tenant
 from app.services.events import emit_event
 from app.services.knowledge_documents import upsert_draft_knowledge
 from app.services.onboarding_flow import _merge_tenant_settings, get_onboarding_state
+from app.services.onboarding_summary import maybe_mark_summary_ready, register_onboarding_draft_document
 
 ALLOWED_EXTENSIONS = frozenset(
     {
@@ -156,15 +157,6 @@ def _build_feedback(filename: str, text: str, *, method: str, error: str) -> str
     )
 
 
-def _append_source_to_draft(tenant: Tenant, source: dict[str, Any]) -> None:
-    state = get_onboarding_state(tenant)
-    draft = dict(state.get("draft") or {})
-    sources = list(draft.get("sources") or [])
-    sources.append(source)
-    draft["sources"] = sources[-50:]
-    _merge_tenant_settings(tenant, {"onboarding_draft": draft})
-
-
 async def ingest_onboarding_upload(
     db: Session,
     ctx: TenantContext,
@@ -262,16 +254,16 @@ async def ingest_onboarding_upload(
         if kb.get("ok"):
             document_id = str(kb.get("document_id") or "")
             row.extracted_document_id = document_id
-            _append_source_to_draft(
+            register_onboarding_draft_document(
                 tenant,
-                {
-                    "type": "file",
-                    "file_name": filename,
-                    "upload_id": str(upload_id),
-                    "document_id": document_id,
-                    "method": method,
-                },
+                document_id=document_id,
+                title=title[:255],
+                body=body[:50000],
+                source_type="file",
+                source_label=filename,
+                extra={"upload_id": str(upload_id), "method": method},
             )
+            maybe_mark_summary_ready(db, tenant)
             emit_event(
                 db,
                 tenant_id=ctx.tenant_id,

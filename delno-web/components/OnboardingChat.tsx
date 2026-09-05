@@ -13,6 +13,7 @@ import {
   type OnboardingStatus,
   type OnboardingUploadItem,
 } from "@/lib/api";
+import { OnboardingSummaryCard } from "@/components/OnboardingSummaryCard";
 
 type ChatLine = {
   id?: string;
@@ -52,6 +53,25 @@ export function OnboardingChat({ token }: { token: string }) {
   const [error, setError] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const refreshStatus = useCallback(async () => {
+    try {
+      const status = await apiOnboardingStatus(token);
+      setOnboardingStatus(status);
+    } catch {
+      /* optional */
+    }
+  }, [token]);
+
+  const reloadConversation = useCallback(async () => {
+    if (!conversationId) return;
+    try {
+      const history = await apiConversationMessages(token, conversationId);
+      setLines(mapMessages(history.items));
+    } catch {
+      /* optional */
+    }
+  }, [token, conversationId]);
 
   const scrollToBottom = useCallback(() => {
     const el = threadRef.current;
@@ -214,6 +234,19 @@ export function OnboardingChat({ token }: { token: string }) {
               ))}
             </div>
           )}
+
+          <OnboardingSummaryCard
+            token={token}
+            published={onboardingStatus?.status === "published"}
+            onPublished={() => {
+              void refreshStatus();
+              void reloadConversation();
+            }}
+            onRefresh={() => {
+              void refreshStatus();
+              void reloadConversation();
+            }}
+          />
 
           <div
             className="onboarding-thread operator-thread"

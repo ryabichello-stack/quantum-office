@@ -1221,6 +1221,85 @@ p {
   background: #fffdf5;
 }
 
+.onboarding-summary-wrap {
+  margin-bottom: 12px;
+}
+
+.onboarding-summary-toggle {
+  width: 100%;
+  text-align: center;
+}
+
+.onboarding-summary-card {
+  margin-bottom: 12px;
+}
+
+.onboarding-summary-grid {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.onboarding-summary-grid small {
+  display: block;
+  color: var(--gray);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.onboarding-summary-grid p,
+.onboarding-summary-grid ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.onboarding-summary-missing {
+  margin: 0 0 12px;
+  color: #6b5a00;
+  font-size: 13px;
+}
+
+.onboarding-conflicts {
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #fff9e6;
+  border: 1px solid #f0e4a8;
+}
+
+.onboarding-conflict-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.onboarding-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.onboarding-summary-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.onboarding-badge.status-summary_ready {
+  background: #eef4ff;
+  border-color: #c5d8ff;
+  color: #3157d8;
+}
+
+.onboarding-badge.status-published {
+  background: #eef8f0;
+  border-color: #b8dfc4;
+  color: var(--success);
+}
+
 .side-bottom a,
 .side-bottom button {
   display: grid;

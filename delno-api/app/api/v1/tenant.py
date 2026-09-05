@@ -18,6 +18,12 @@ from app.services.knowledge_documents import upsert_tenant_knowledge_document
 from app.services.instant_demo import import_website_to_tenant
 from app.services.onboarding_flow import get_onboarding_state, start_onboarding
 from app.services.onboarding_upload import ingest_onboarding_upload, list_onboarding_uploads
+from app.services.onboarding_summary import (
+    build_onboarding_summary,
+    format_summary_message,
+    publish_onboarding_from_summary,
+    resolve_onboarding_conflict,
+)
 
 router = APIRouter(prefix="/tenant", tags=["tenant"])
 
@@ -47,6 +53,15 @@ class InstantDemoImport(BaseModel):
 
 class OnboardingStartRequest(BaseModel):
     force_new: bool = False
+
+
+class OnboardingConflictResolve(BaseModel):
+    field: str = Field(min_length=3, max_length=120)
+    canonical_value: str | int
+
+
+class OnboardingPublishRequest(BaseModel):
+    confirm: bool = True
 
 
 def _require_tenant_admin(ctx: TenantContext) -> None:
@@ -307,6 +322,50 @@ def tenant_onboarding_uploads(
     _require_tenant_admin(ctx)
     items = list_onboarding_uploads(db, ctx, conversation_id=conversation_id, limit=limit)
     return {"items": items, "total": len(items)}
+
+
+@router.get("/onboarding/summary")
+def tenant_onboarding_summary(
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """O5 — compact business summary + conflicts + missing fields."""
+    _require_tenant_admin(ctx)
+    tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
+    summary = build_onboarding_summary(tenant)
+    summary["summary_text"] = format_summary_message(summary)
+    return summary
+
+
+@router.post("/onboarding/conflicts/resolve")
+def tenant_onboarding_resolve_conflict(
+    body: OnboardingConflictResolve,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """O5 — set canonical value for conflicting field (e.g. price)."""
+    _require_tenant_admin(ctx)
+    tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
+    return resolve_onboarding_conflict(
+        db,
+        tenant,
+        field=body.field,
+        canonical_value=body.canonical_value,
+    )
+
+
+@router.post("/onboarding/publish")
+def tenant_onboarding_publish(
+    body: OnboardingPublishRequest | None = None,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """O5 — confirm and publish onboarding draft knowledge (HIGH_IMPACT)."""
+    _require_tenant_admin(ctx)
+    if body and not body.confirm:
+        raise HTTPException(status_code=400, detail="confirm_required")
+    approved_by = f"user:{ctx.user_id}" if ctx.user_id else f"tenant:{ctx.tenant_slug}"
+    return publish_onboarding_from_summary(db, ctx, approved_by=approved_by)
 
 
 @router.post("/onboarding/upload")

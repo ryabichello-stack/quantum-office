@@ -385,6 +385,7 @@ def _generate_reply(
 
     if onboarding:
         from app.services.onboarding_website import try_onboarding_url_ingest
+        from app.services.onboarding_summary import try_onboarding_summary_reply
 
         url_ingest = try_onboarding_url_ingest(db, ctx, message)
         if url_ingest:
@@ -392,6 +393,15 @@ def _generate_reply(
                 url_ingest["reply"],
                 url_ingest.get("tool_calls") or [],
                 url_ingest.get("sources") or [],
+                None,
+            )
+
+        summary_reply = try_onboarding_summary_reply(db, ctx, message)
+        if summary_reply:
+            return (
+                summary_reply["reply"],
+                summary_reply.get("tool_calls") or [],
+                summary_reply.get("sources") or [],
                 None,
             )
 

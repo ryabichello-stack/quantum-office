@@ -104,6 +104,35 @@ export type OnboardingUploadResult = {
   conversation_id?: string | null;
 };
 
+export type OnboardingSummaryProfile = {
+  company_name?: string | null;
+  services?: string[];
+  prices?: string[];
+  address?: string | null;
+  hours?: string | null;
+  contacts?: string | null;
+  conditions?: string | null;
+  faq?: string[];
+};
+
+export type OnboardingConflict = {
+  field: string;
+  label: string;
+  values: Array<{ price: number; source_type: string; source_label: string }>;
+};
+
+export type OnboardingSummary = {
+  ok: boolean;
+  status: string;
+  summary_ready: boolean;
+  profile: OnboardingSummaryProfile;
+  missing_fields: string[];
+  conflicts: OnboardingConflict[];
+  document_ids: string[];
+  sources_count: number;
+  summary_text?: string;
+};
+
 export type OnboardingStartResult = {
   ok: boolean;
   resumed: boolean;
@@ -320,6 +349,30 @@ export async function apiOnboardingUpload(token: string, file: File, conversatio
     throw new Error(detail || `HTTP ${res.status}`);
   }
   return res.json() as Promise<OnboardingUploadResult>;
+}
+
+export function apiOnboardingSummary(token: string) {
+  return apiFetch<OnboardingSummary>("/v1/tenant/onboarding/summary", token);
+}
+
+export function apiOnboardingPublish(token: string) {
+  return apiFetch<{ ok: boolean; message?: string; error?: string; published?: unknown[] }>(
+    "/v1/tenant/onboarding/publish",
+    token,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm: true }),
+    },
+  );
+}
+
+export function apiOnboardingResolveConflict(token: string, field: string, canonicalValue: string | number) {
+  return apiFetch<{ ok: boolean }>("/v1/tenant/onboarding/conflicts/resolve", token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ field, canonical_value: canonicalValue }),
+  });
 }
 
 export function apiOperatorConfirm(token: string, toolName: string, params: Record<string, unknown>) {

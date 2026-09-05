@@ -1,6 +1,6 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-4.9 · 2026-09-04 (O3 — Onboarding file upload)
+**Revision:** REV-5.0 · 2026-09-05 (O5 — Summary + publish)
 
 **Активный продуктовый этап:** Crystal Widget + Conversation Core — см. [`DELNO_WIDGET_AUDIT.md`](DELNO_WIDGET_AUDIT.md) AUDIT-1.0.
 
@@ -204,7 +204,7 @@ E1.12–E1.15 ✅ · E1.16 CRM push ⬜ **DO NOT START**
 | O2 | Onboarding chat UI (`/dashboard/onboarding`) | ✅ `a4e6a09` | register redirect; reuse operator chat |
 | O3 | File upload in chat | ✅ `1ad5aff` | PDF/DOCX/XLSX/CSV/TXT; migration `005_onboarding_uploads` |
 | O4 | URL in conversation + graceful fallback | ✅ | reuse `website_import.py` |
-| O5 | Summary card + conflicts + publish confirm | ⬜ | HIGH_IMPACT tool |
+| O5 | Summary card + conflicts + publish confirm | ✅ | HIGH_IMPACT publish endpoint |
 | O6 | TTFV events + tests A–E | ⬜ | |
 
 **Не делать:** site builder / визитка, отдельные ветки «есть сайт / нет сайта», wizard из 8 экранов.
@@ -366,7 +366,9 @@ systemctl status ava-outreach ava-mailer ava-text-bot  # не ломать
 | POST | `/v1/public/widget/history` | Load messages for session |
 | GET | `/v1/public/widget/tts?site_key=&session_id=&visitor_id=&text=` | OpenAI TTS mp3 (Commit 4) |
 | POST | `/v1/tenant/onboarding/start` | Start/resume onboarding conversation (O1, JWT) |
-| POST | `/v1/tenant/onboarding/upload` | Multipart file → extract → draft KB (O3, JWT) |
+| POST | `/v1/tenant/onboarding/summary` | Business summary + conflicts (O5, JWT) |
+| POST | `/v1/tenant/onboarding/publish` | Confirm → publish draft KB (O5, JWT) |
+| POST | `/v1/tenant/onboarding/conflicts/resolve` | Resolve price conflict (O5, JWT) |
 | GET | `/v1/tenant/onboarding/uploads` | File upload list for chips (O3, JWT) |
 | POST | `/v1/public/instant-demo/preview` | Scrape website preview (P4 backend, rate limited) |
 | POST | `/v1/tenant/instant-demo` | Import website → KB (P4 backend; primary UX → onboarding chat) |
