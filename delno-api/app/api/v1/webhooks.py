@@ -11,6 +11,7 @@ from app.adapters.channels import get_channel_adapter
 from app.core.db import get_db
 from app.services.channel_auto_reply import process_inbound_auto_reply
 from app.services.channel_router import ChannelContext
+from app.services.events import emit_event
 from app.services.inbound_messages import resolve_channel_account
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -72,19 +73,63 @@ async def _handle_channel_webhook(
     ctx = _context_for_account(account)
     credentials = account.credentials_encrypted if isinstance(account.credentials_encrypted, dict) else {}
 
-    recorded = []
-    for inbound in adapter.parse_webhook(payload):
-        item = process_inbound_auto_reply(
-            db,
-            ctx,
-            inbound,
-            adapter=adapter,
-            credentials=credentials,
-        )
-        recorded.append(item)
+    inbounds = adapter.parse_webhook(payload)
+    emit_event(
+        db,
+        tenant_id=tenant.id,
+        event_type="webhook.received",
+        category="operational",
+        source=f"webhook.{channel_type}",
+        payload={
+            "channel": channel_type,
+            "channel_account_id": str(account.id),
+            "update_type": payload.get("update_type"),
+            "inbound_count": len(inbounds),
+        },
+    )
 
-    db.commit()
-    return {"ok": True, "recorded": recorded}
+    recorded = []
+    try:
+        for inbound in inbounds:
+            item = process_inbound_auto_reply(
+                db,
+                ctx,
+                inbound,
+                adapter=adapter,
+                credentials=credentials,
+            )
+            recorded.append(item)
+
+        emit_event(
+            db,
+            tenant_id=tenant.id,
+            event_type="webhook.processed",
+            category="operational",
+            source=f"webhook.{channel_type}",
+            payload={
+                "channel": channel_type,
+                "channel_account_id": str(account.id),
+                "recorded_count": len(recorded),
+                "delivered_count": sum(1 for item in recorded if item.get("delivered")),
+            },
+        )
+        db.commit()
+        return {"ok": True, "recorded": recorded}
+    except Exception as exc:
+        emit_event(
+            db,
+            tenant_id=tenant.id,
+            event_type="webhook.failed",
+            category="operational",
+            source=f"webhook.{channel_type}",
+            payload={
+                "channel": channel_type,
+                "channel_account_id": str(account.id),
+                "error": str(exc)[:300],
+            },
+        )
+        db.commit()
+        raise
 
 
 @router.post("/telegram/{channel_account_id}")

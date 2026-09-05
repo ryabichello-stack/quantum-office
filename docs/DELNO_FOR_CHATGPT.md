@@ -1,6 +1,6 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-5.3 · 2026-09-05 (E2.4 — MAX branded wizard)
+**Revision:** REV-5.4 · 2026-09-05 (E2.5 — webhook delivery retry + events)
 
 **Активный продуктовый этап:** Crystal Widget + Conversation Core — см. [`DELNO_WIDGET_AUDIT.md`](DELNO_WIDGET_AUDIT.md) AUDIT-1.0.
 
@@ -36,12 +36,12 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DEL
 ## Промпт (скопируй целиком)
 
 ```
-Прочитай entry point и все связанные документы по raw URL из него (REV-5.2):
+Прочитай entry point и все связанные документы по raw URL из него (REV-5.4):
 
 https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DELNO_FOR_CHATGPT.md
 
 Открой каждый raw URL из секции «Карта документов».
-Подтверди revision REV-5.2.
+Подтверди revision REV-5.4.
 
 Твоя задача — аудит текущего состояния DELNO. Ответь структурированно:
 
@@ -177,10 +177,11 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-
 |---|--------|--------|
 | E2.1 ChannelAdapter + registry | ✅ |
 | E2.2 Telegram shared bot | ✅ | webhook → auto-reply → inbox (Commit 5) |
-| E2.5 Webhook signing + events | 🔄 `X-Telegram-Bot-Api-Secret-Token` + `message.received` |
+| E2.5 Webhook signing + events | ✅ | secret verify + retry + `webhook.*` / `channel.message.*` events |
 | E2.6 Router token → tenant | ✅ `channel_router` + account id in URL |
 | E2.7 Inbound → conversation | ✅ `POST /v1/webhooks/telegram/{channel_account_id}` |
 | E2.3 Branded bot wizard | ✅ | settings → Telegram token → webhook auto |
+| E2.4 MAX onboarding | ✅ | client-owned bot → `/subscriptions` webhook |
 | E2.8 Email stub | ⬜ |
 
 **Telegram webhook URL (per tenant channel account):**
@@ -221,6 +222,8 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 
 | Коммит | Суть |
 |--------|------|
+| *(E2.5)* | E2.5: webhook delivery retry (3x) + delivery/webhook events |
+| *(E2.4)* | E2.4: MAX branded bot — adapter, webhook, connect wizard |
 | *(E2.3)* | E2.3: branded Telegram connect wizard — token, webhook, settings UI |
 | `e88690d` | O6: TTFV milestones + onboarding tests A–E + docs REV-5.1 |
 | `95009fc` | O4: URL in conversation + graceful fallback |
@@ -264,7 +267,7 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 **Сейчас (без блокеров):**
 
 1. **P1.9** clarity test — ⏸ когда owner вернётся
-2. **E2.4** — MAX onboarding (client-owned bot)
+2. **E2.8** — email adapter stub
 3. Обновить master plan REV-3.4+ под E2/E3/P4 статус
 
 **Product MVP (Widget Commits 1–5):** ✅ базовый цикл закрыт. **Onboarding pivot O1–O6** ✅ закрыт (deploy + P1.9 — следующие шаги).

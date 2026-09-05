@@ -6,11 +6,12 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.adapters.channels.base import ChannelAdapter, InboundMessage, OutboundMessage
+from app.adapters.channels.base import ChannelAdapter, InboundMessage
 from app.core.tenant import TenantContext
 from app.models.conversation import Message
 from app.operator.agent import run_operator_turn
 from app.services.channel_router import ChannelContext
+from app.services.channel_delivery import send_channel_reply_with_retry
 from app.services.events import emit_event
 from app.services.inbound_messages import record_inbound_message
 from app.services.widget_flow import conversation_meta
@@ -75,11 +76,19 @@ def process_inbound_auto_reply(
     meta["last_reply_preview"] = reply_text[:240]
     conversation.meta = meta
 
-    send_result = adapter.send_reply(
+    send_outcome = send_channel_reply_with_retry(
+        db,
+        tenant_id=ctx.tenant_id,
+        channel_type=inbound.channel_type,
+        channel_account_id=ctx.channel_account_id,
+        conversation_id=conversation.id,
+        user_message_id=user_message.id,
         external_user_id=inbound.external_user_id,
-        message=OutboundMessage(text=reply_text),
+        reply_text=reply_text,
+        adapter=adapter,
         credentials=credentials,
     )
+    send_result = send_outcome.get("result") or {}
 
     emit_event(
         db,
@@ -91,9 +100,12 @@ def process_inbound_auto_reply(
             "conversation_id": str(conversation.id),
             "user_message_id": str(user_message.id),
             "channel": inbound.channel_type,
+            "channel_account_id": str(ctx.channel_account_id) if ctx.channel_account_id else None,
             "external_user_id": inbound.external_user_id,
-            "delivered": bool(send_result.get("ok")),
+            "delivered": bool(send_outcome.get("ok")),
+            "attempts": send_outcome.get("attempts"),
             "telegram_message_id": send_result.get("message_id"),
+            "provider_message_id": send_result.get("message_id"),
         },
     )
 
@@ -101,6 +113,7 @@ def process_inbound_auto_reply(
         "conversation_id": str(conversation.id),
         "message_id": str(user_message.id),
         "reply": reply_text,
-        "delivered": bool(send_result.get("ok")),
-        "send_error": None if send_result.get("ok") else send_result.get("error") or send_result.get("detail"),
+        "delivered": bool(send_outcome.get("ok")),
+        "attempts": send_outcome.get("attempts"),
+        "send_error": None if send_outcome.get("ok") else send_result.get("error") or send_result.get("detail"),
     }

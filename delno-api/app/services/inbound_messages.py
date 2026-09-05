@@ -94,6 +94,7 @@ def record_inbound_message(
             "conversation_id": str(conversation.id),
             "message_id": str(message.id),
             "channel": inbound.channel_type,
+            "channel_account_id": str(ctx.channel_account_id) if ctx.channel_account_id else None,
             "external_user_id": inbound.external_user_id,
         },
     )
