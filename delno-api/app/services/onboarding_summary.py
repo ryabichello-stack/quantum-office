@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -13,6 +14,13 @@ from app.models.tenant import Tenant
 from app.services.events import emit_event
 from app.services.knowledge_documents import publish_tenant_knowledge_document, upsert_draft_knowledge
 from app.services.onboarding_flow import _merge_tenant_settings, get_onboarding_state
+from app.services.onboarding_metrics import (
+    MILESTONE_FIRST_EXTRACTION,
+    MILESTONE_PUBLISHED,
+    MILESTONE_STARTED,
+    MILESTONE_SUMMARY_READY,
+    record_ttfv_milestone,
+)
 
 PRICE_LINE_RE = re.compile(
     r"^[\s\-•*]*(.{2,50}?)\s+(\d[\d\s]{2,7})\s*(?:₽|руб\.?|RUB)?\s*$",
@@ -82,6 +90,36 @@ def register_onboarding_draft_document(
         deduped.append(item)
     draft["sources"] = list(reversed(deduped))[-50:]
     _merge_tenant_settings(tenant, {"onboarding_draft": draft})
+
+
+def register_onboarding_draft_document_with_metrics(
+    db: Session,
+    tenant: Tenant,
+    *,
+    tenant_id: UUID,
+    document_id: str,
+    title: str,
+    body: str,
+    source_type: str,
+    source_label: str,
+    extra: dict[str, Any] | None = None,
+) -> None:
+    register_onboarding_draft_document(
+        tenant,
+        document_id=document_id,
+        title=title,
+        body=body,
+        source_type=source_type,
+        source_label=source_label,
+        extra=extra,
+    )
+    record_ttfv_milestone(
+        db,
+        tenant,
+        MILESTONE_FIRST_EXTRACTION,
+        tenant_id=tenant_id,
+        extra={"source_type": source_type, "document_id": document_id},
+    )
 
 
 def _normalize_service_key(name: str) -> str:
@@ -297,6 +335,13 @@ def maybe_mark_summary_ready(db: Session, tenant: Tenant) -> None:
                 "missing_fields": summary["missing_fields"],
                 "conflicts_count": len(summary["conflicts"]),
             },
+        )
+        record_ttfv_milestone(
+            db,
+            tenant,
+            MILESTONE_SUMMARY_READY,
+            tenant_id=tenant.id,
+            extra={"conflicts_count": len(summary["conflicts"])},
         )
         db.flush()
 
@@ -525,6 +570,13 @@ def publish_onboarding_from_summary(
         category="domain",
         source="onboarding.publish",
         payload={"document_ids": [p["document_id"] for p in published]},
+    )
+    record_ttfv_milestone(
+        db,
+        tenant,
+        MILESTONE_PUBLISHED,
+        tenant_id=tenant.id,
+        extra={"document_ids": [p["document_id"] for p in published], "count": len(published)},
     )
     db.commit()
 

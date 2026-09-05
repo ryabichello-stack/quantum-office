@@ -12,7 +12,7 @@ from app.core.tenant import TenantContext
 from app.models.tenant import Tenant
 from app.services.events import emit_event
 from app.services.knowledge_documents import upsert_draft_knowledge
-from app.services.onboarding_summary import maybe_mark_summary_ready, register_onboarding_draft_document
+from app.services.onboarding_summary import maybe_mark_summary_ready, register_onboarding_draft_document_with_metrics
 from app.services.website_import import (
     build_knowledge_markdown,
     fetch_website_content,
@@ -138,8 +138,10 @@ def try_onboarding_url_ingest(
         if not kb.get("ok"):
             raise ValueError("draft_upsert_failed")
 
-        register_onboarding_draft_document(
+        register_onboarding_draft_document_with_metrics(
+            db,
             tenant,
+            tenant_id=ctx.tenant_id,
             document_id=doc_id,
             title=f"Сайт: {title}",
             body=markdown[:50000],

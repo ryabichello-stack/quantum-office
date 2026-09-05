@@ -18,6 +18,7 @@ from app.services.knowledge_documents import upsert_tenant_knowledge_document
 from app.services.instant_demo import import_website_to_tenant
 from app.services.onboarding_flow import get_onboarding_state, start_onboarding
 from app.services.onboarding_upload import ingest_onboarding_upload, list_onboarding_uploads
+from app.services.onboarding_metrics import get_ttfv_status
 from app.services.onboarding_summary import (
     build_onboarding_summary,
     format_summary_message,
@@ -308,7 +309,7 @@ def tenant_onboarding_status(
     """O1 — onboarding state for cabinet UI."""
     _require_tenant_admin(ctx)
     tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
-    return {"ok": True, **get_onboarding_state(tenant)}
+    return {"ok": True, **get_onboarding_state(tenant), "ttfv": get_ttfv_status(tenant)}
 
 
 @router.get("/onboarding/uploads")

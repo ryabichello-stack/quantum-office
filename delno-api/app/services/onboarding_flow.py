@@ -13,6 +13,7 @@ from app.models.conversation import Conversation, Message
 from app.models.tenant import Tenant
 from app.services.events import emit_event
 from app.services.knowledge_documents import publish_tenant_knowledge_document, upsert_draft_knowledge
+from app.services.onboarding_metrics import MILESTONE_STARTED, record_ttfv_milestone
 
 ONBOARDING_CHANNEL = "onboarding"
 
@@ -126,6 +127,7 @@ def start_onboarding(
             "resumed": False,
         },
     )
+    record_ttfv_milestone(db, tenant, MILESTONE_STARTED, tenant_id=ctx.tenant_id)
     db.commit()
 
     return {

@@ -20,8 +20,7 @@ from app.models.onboarding_upload import OnboardingUpload
 from app.models.tenant import Tenant
 from app.services.events import emit_event
 from app.services.knowledge_documents import upsert_draft_knowledge
-from app.services.onboarding_flow import _merge_tenant_settings, get_onboarding_state
-from app.services.onboarding_summary import maybe_mark_summary_ready, register_onboarding_draft_document
+from app.services.onboarding_summary import maybe_mark_summary_ready, register_onboarding_draft_document_with_metrics
 
 ALLOWED_EXTENSIONS = frozenset(
     {
@@ -254,8 +253,10 @@ async def ingest_onboarding_upload(
         if kb.get("ok"):
             document_id = str(kb.get("document_id") or "")
             row.extracted_document_id = document_id
-            register_onboarding_draft_document(
+            register_onboarding_draft_document_with_metrics(
+                db,
                 tenant,
+                tenant_id=ctx.tenant_id,
                 document_id=document_id,
                 title=title[:255],
                 body=body[:50000],

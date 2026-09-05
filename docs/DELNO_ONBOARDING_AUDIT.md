@@ -325,11 +325,11 @@ Deprecate (UI, не API сразу): отдельная форма `POST /tenant
 
 | Scenario | Current | Target |
 |----------|---------|--------|
-| A — только разговор | ⚠️ Operator cabinet only | Onboarding channel |
-| B — сайт | ⚠️ REST instant-demo | In-conversation URL |
-| C — сайт fail | ❌ HTTP 502 errors | Conversational fallback |
-| D — файл | ❌ | Upload + parse |
-| E — multi-source conflict | ❌ | Conflict tool + ask |
+| A — только разговор | ✅ | Onboarding channel |
+| B — сайт | ✅ | In-conversation URL |
+| C — сайт fail | ✅ | Conversational fallback |
+| D — файл | ✅ | Upload + parse |
+| E — multi-source conflict | ✅ | Conflict tool + ask |
 
 ---
 
@@ -346,14 +346,9 @@ Deprecate (UI, не API сразу): отдельная форма `POST /tenant
 
 ## 6. Следующий шаг
 
-**Commit O1 (первый минимальный):**
+**O1–O6 ✅ закрыты.** Следующее:
 
-1. Brain upsert: optional `publication`, `status`, `index_zone`
-2. delno-api: `upsert_draft_knowledge` / `publish_tenant_knowledge`
-3. `channel=onboarding` в operator + system prompt stub
-4. `POST /v1/tenant/onboarding/start`
-5. Events: `onboarding.started`
-6. Tests: draft not guest-visible
-7. FOR_CHATGPT REV-4.7
-
-**Не начинать:** file upload UI до O2–O3.
+1. Deploy: `alembic upgrade head` (migration `005_onboarding_uploads`), rebuild delno-api + delno-knowledge + delno-web
+2. Smoke: scenarios A–E на staging
+3. P1.9 clarity test
+4. E2.3 branded Telegram bot wizard

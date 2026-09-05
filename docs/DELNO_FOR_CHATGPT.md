@@ -1,6 +1,6 @@
 # DELNO — единая точка входа для ChatGPT
 
-**Revision:** REV-5.0 · 2026-09-05 (O5 — Summary + publish)
+**Revision:** REV-5.1 · 2026-09-05 (O6 — TTFV metrics + tests)
 
 **Активный продуктовый этап:** Crystal Widget + Conversation Core — см. [`DELNO_WIDGET_AUDIT.md`](DELNO_WIDGET_AUDIT.md) AUDIT-1.0.
 
@@ -36,12 +36,12 @@ https://raw.githubusercontent.com/ryabichello-stack/quantum-office/main/docs/DEL
 ## Промпт (скопируй целиком)
 
 ```
-Прочитай entry point и все связанные документы по raw URL из него (REV-4.8):
+Прочитай entry point и все связанные документы по raw URL из него (REV-5.1):
 
 https://raw.githubusercontent.com/ryabichello-stack/quantum-office/cursor/delno-api-scaffold-14e9/docs/DELNO_FOR_CHATGPT.md
 
 Открой каждый raw URL из секции «Карта документов».
-Подтверди revision REV-4.8.
+Подтверди revision REV-5.1.
 
 Твоя задача — аудит текущего состояния DELNO. Ответь структурированно:
 
@@ -205,7 +205,7 @@ E1.12–E1.15 ✅ · E1.16 CRM push ⬜ **DO NOT START**
 | O3 | File upload in chat | ✅ `1ad5aff` | PDF/DOCX/XLSX/CSV/TXT; migration `005_onboarding_uploads` |
 | O4 | URL in conversation + graceful fallback | ✅ | reuse `website_import.py` |
 | O5 | Summary card + conflicts + publish confirm | ✅ | HIGH_IMPACT publish endpoint |
-| O6 | TTFV events + tests A–E | ⬜ | |
+| O6 | TTFV events + tests A–E | ✅ | `onboarding.ttfv_milestone`; scenarios A–E unit tests |
 
 **Не делать:** site builder / визитка, отдельные ветки «есть сайт / нет сайта», wizard из 8 экранов.
 
@@ -221,6 +221,10 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 
 | Коммит | Суть |
 |--------|------|
+| *(O6)* | O6: TTFV milestones + onboarding tests A–E + status `ttfv` |
+| `9df5435` | O5: summary card, conflicts, publish confirm |
+| `95009fc` | O4: URL in conversation + graceful fallback |
+| `1ad5aff` | O3: file upload, migration `005_onboarding_uploads` |
 | `a4e6a09` | O2: onboarding chat UI — `/dashboard/onboarding`, register redirect |
 | `5a6650b` | O1: conversation onboarding — draft KB + `/onboarding/start` + channel=onboarding |
 | `1ed28e5` | FOR_CHATGPT REV-4.6 + P4 docs |
@@ -263,7 +267,7 @@ Telephony, booking, billing, CRM — см. guardrails ниже.
 2. **E2.3** — branded Telegram bot wizard
 3. Обновить master plan REV-3.4+ под E2/E3/P4 статус
 
-**Product MVP (Widget Commits 1–5):** ✅ базовый цикл закрыт. **Onboarding pivot O1–O6** — текущий приоритет (см. onboarding audit).
+**Product MVP (Widget Commits 1–5):** ✅ базовый цикл закрыт. **Onboarding pivot O1–O6** ✅ закрыт (deploy + P1.9 — следующие шаги).
 
 **Не начинать:**
 
