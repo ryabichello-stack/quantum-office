@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DELNO — {{SERVICE}}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 520px; margin: 10vh auto; padding: 0 24px; color: #222; line-height: 1.6; }
+    h1 { font-size: 1.35rem; margin-bottom: 0.5rem; }
+    p { color: #555; font-size: 0.95rem; }
+    code { background: #f3f3f0; padding: 2px 6px; border-radius: 4px; }
+    .badge { display: inline-block; background: #fff5cf; border: 1px solid #ead371; color: #5e501a; font-size: 0.75rem; padding: 4px 10px; border-radius: 999px; margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="badge">503 · ещё не запущено</div>
+  <h1>{{SERVICE}}</h1>
+  <p>{{DESCRIPTION}}</p>
+  <p>DNS для <code>{{HOST}}</code> уже настроен; сервис будет подключён отдельным деплоем. Маркетинг: <a href="https://dlno.ru">dlno.ru</a> · API: <a href="https://api.dlno.ru/v1/health">api.dlno.ru</a></p>
+</body>
+</html>

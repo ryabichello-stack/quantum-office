@@ -1,0 +1,36 @@
+---
+tenant_id: delno-demo
+visibility: public
+classification:
+  level: public
+channels:
+  - office-assistant
+publication:
+  status: published
+  approved: true
+  approved_by: user:admin
+  approved_at: "2026-09-08T00:00:00+00:00"
+  public_version: 1
+ai_processing:
+  external_llm_allowed: true
+  external_embedding_allowed: true
+  local_processing_required: false
+---
+
+# Как начать с DELNO
+
+DELNO — ваш ИИ-сотрудник первой линии. Он отвечает клиентам **24/7** на сайте, в Telegram, MAX, по почте и по телефону (в расширенном тарифе).
+
+## Быстрый старт
+
+1. **Попробуйте на сайте** — откройте [dlno.ru](https://dlno.ru), задайте вопрос в чате или голосом через виджет.
+2. **Выберите тариф** — «Диалоги» (2 990 ₽/мес) для сайта и мессенджеров или «Диалоги + звонки» (5 990 ₽/мес), если нужен телефон.
+3. **Оставьте заявку** — позвоните **8 800 555-00-00**, напишите в **Telegram @Dlno_bot** или на **office@dlno.ru**.
+
+## Что DELNO делает с первого дня
+
+- Отвечает на типовые вопросы по вашим услугам, ценам и правилам.
+- Принимает контакты и заявки.
+- Передаёт сложные обращения человеку с полным контекстом диалога.
+
+Подробнее о продукте, тарифах и каналах — в других разделах базы знаний DELNO.
