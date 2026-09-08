@@ -66,8 +66,8 @@ def exchange_widget_realtime_sdp(
     if not api_key:
         return None, "VOICE_NOT_CONFIGURED"
 
-    offer = (sdp_offer or "").strip()
-    if not offer:
+    offer = sdp_offer if sdp_offer is not None else ""
+    if not offer.strip():
         return None, "SDP_REQUIRED"
 
     kb_context = load_widget_kb_context(db, ctx)

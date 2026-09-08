@@ -562,8 +562,8 @@ async def public_widget_voice_realtime(
             raise HTTPException(status_code=403, detail="visitor_mismatch") from None
 
     raw = await request.body()
-    sdp_offer = raw.decode("utf-8", errors="replace").strip()
-    if not sdp_offer:
+    sdp_offer = raw.decode("utf-8", errors="replace")
+    if not sdp_offer.strip():
         raise HTTPException(status_code=400, detail="SDP_REQUIRED")
 
     answer, error = exchange_widget_realtime_sdp(
