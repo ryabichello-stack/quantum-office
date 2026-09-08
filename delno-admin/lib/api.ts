@@ -1,4 +1,31 @@
 const API_URL = process.env.NEXT_PUBLIC_DELNO_API_URL || "http://127.0.0.1:18020";
+export const ADMIN_TOKEN_KEY = "delno_admin_token";
+
+export type AdminUser = {
+  id: string;
+  email: string;
+  role: string;
+  tenant_slug: string;
+};
+
+export type SecretItem = {
+  key: string;
+  label: string;
+  hint?: string;
+  sensitive: boolean;
+  configured: boolean;
+  preview?: string;
+};
+
+export type SecretGroup = {
+  id: string;
+  title: string;
+  items: SecretItem[];
+};
+
+function authHeaders(token: string) {
+  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+}
 
 export async function apiLogin(email: string, password: string) {
   const res = await fetch(`${API_URL}/v1/auth/login`, {
@@ -10,20 +37,50 @@ export async function apiLogin(email: string, password: string) {
   return res.json() as Promise<{ access_token: string }>;
 }
 
+export async function apiMe(token: string) {
+  const res = await fetch(`${API_URL}/v1/auth/me`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error("Auth failed");
+  return res.json() as Promise<AdminUser>;
+}
+
 export async function apiGetTenants(token: string) {
-  const res = await fetch(`${API_URL}/v1/admin/tenants`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await fetch(`${API_URL}/v1/admin/tenants`, { headers: authHeaders(token) });
   if (!res.ok) throw new Error("Failed to load tenants");
   return res.json();
 }
 
 export async function apiGetCmsPages(token: string) {
-  const res = await fetch(`${API_URL}/v1/admin/cms/pages`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await fetch(`${API_URL}/v1/admin/cms/pages`, { headers: authHeaders(token) });
   if (!res.ok) throw new Error("Failed to load CMS pages");
   return res.json();
+}
+
+export async function apiGetPlatformSecrets(token: string) {
+  const res = await fetch(`${API_URL}/v1/admin/platform-secrets`, { headers: authHeaders(token) });
+  if (!res.ok) throw new Error("Failed to load secrets");
+  return res.json() as Promise<{
+    env_file: { path: string; exists: boolean; writable: boolean };
+    groups: SecretGroup[];
+  }>;
+}
+
+export async function apiPatchPlatformSecrets(token: string, values: Record<string, string>) {
+  const res = await fetch(`${API_URL}/v1/admin/platform-secrets`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify({ values }),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    let detail = text.slice(0, 200);
+    try {
+      detail = JSON.parse(text).detail || detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail || "Save failed");
+  }
+  return JSON.parse(text) as { ok: boolean; changed: string[] };
 }
 
 export { API_URL };

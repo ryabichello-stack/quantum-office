@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     onboarding_upload_dir: str = "/data/onboarding"
     onboarding_upload_max_bytes: int = 20 * 1024 * 1024
 
+    # Platform secrets file (admin panel writes here). Prod: /opt/delno/.env
+    platform_env_file: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:
