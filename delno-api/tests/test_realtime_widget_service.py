@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from unittest.mock import MagicMock, patch
 
@@ -57,4 +58,6 @@ def test_exchange_widget_realtime_sdp_sends_sdp_as_form_field():
     assert answer is not None and answer.startswith("v=0")
     files = mock_post.call_args.kwargs["files"]
     assert files["sdp"][0] is None
-    assert files["sdp"][1] == offer
+    assert files["sdp"][1] == offer.strip()
+    assert files["session"][0] is None
+    assert json.loads(files["session"][1])["type"] == "realtime"
