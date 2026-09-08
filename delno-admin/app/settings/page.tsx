@@ -52,7 +52,33 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!token) return;
     apiGetPlatformSecrets(token)
-      .then(applyPayload)
+      .then(async (data) => {
+        applyPayload(data);
+        const openaiKeySet = data.groups
+          .flatMap((g) => g.items)
+          .some((item) => item.key === "OPENAI_API_KEY" && item.configured);
+        const needsLiveLists =
+          openaiKeySet &&
+          (data.options.source !== "openai" ||
+            data.options.realtime_models.length <= 2 ||
+            data.options.chat_models.length <= 2);
+        if (needsLiveLists) {
+          setRefreshing(true);
+          try {
+            const refreshed = await apiRefreshPlatformOptions(token);
+            setOptions(refreshed);
+            if (refreshed.source === "openai") {
+              setStatus(
+                `Списки моделей загружены из OpenAI (${refreshed.realtime_models.length} realtime, ${refreshed.chat_models.length} chat)`,
+              );
+            }
+          } catch {
+            /* keep fallback lists from initial load */
+          } finally {
+            setRefreshing(false);
+          }
+        }
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "load failed"));
   }, [token, applyPayload]);
 
@@ -109,6 +135,19 @@ export default function SettingsPage() {
       setDraft({});
       const refreshed = await apiGetPlatformSecrets(token);
       applyPayload(refreshed);
+      if (result.changed.includes("OPENAI_API_KEY")) {
+        try {
+          const live = await apiRefreshPlatformOptions(token);
+          setOptions(live);
+          setStatus(
+            live.source === "openai"
+              ? `Ключ сохранён. Списки моделей загружены (${live.realtime_models.length} realtime). Выберите модель и голос.`
+              : `Ключ сохранён, но OpenAI не ответил${live.fetch_error ? `: ${live.fetch_error}` : ""}`,
+          );
+        } catch {
+          /* initial payload already applied */
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "save failed");
     } finally {
