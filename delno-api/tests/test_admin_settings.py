@@ -18,7 +18,7 @@ def platform_admin():
     return User(
         id=uuid.uuid4(),
         tenant_id=uuid.uuid4(),
-        email="admin@delno.one",
+        email="admin@dlno.ru",
         role="platform_admin",
         password_hash="x",
     )

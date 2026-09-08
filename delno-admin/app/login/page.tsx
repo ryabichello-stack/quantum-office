@@ -6,7 +6,7 @@ import { ADMIN_TOKEN_KEY, apiLogin, apiMe } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("admin@delno.one");
+  const [email, setEmail] = useState("admin@dlno.ru");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
