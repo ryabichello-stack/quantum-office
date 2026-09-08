@@ -458,12 +458,15 @@ export function createVoiceController(options: VoiceSessionOptions) {
       teardownRealtime();
       releaseVoiceSession(stop);
       setPhase("error");
+      const raw = err instanceof Error ? err.message : "";
       const detail =
-        err instanceof Error && err.message.includes("Permission")
+        raw.includes("Permission") || raw.includes("NotAllowed")
           ? "Разрешите микрофон для сайта и нажмите на кристалл ещё раз."
-          : err instanceof Error && err.message.trim()
-            ? `Не удалось подключить голос Realtime: ${err.message.trim().slice(0, 180)}`
-            : "Не удалось подключить голос Realtime. Используйте кнопки с вопросами ниже.";
+          : raw.includes("NotFound") || raw.includes("device not found")
+            ? "Микрофон не найден. Подключите микрофон или используйте текстовый чат ниже."
+            : raw.trim()
+              ? `Не удалось подключить голос Realtime: ${raw.trim().slice(0, 180)}`
+              : "Не удалось подключить голос Realtime. Используйте текстовый чат или кнопки с вопросами.";
       onExchange?.("Голосовой режим", detail);
       clearErrorTimer();
       errorTimer = window.setTimeout(() => setPhase("idle"), 5000);

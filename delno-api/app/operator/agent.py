@@ -384,6 +384,24 @@ def _try_cabinet_setup(
     return _execute_cabinet_tool(db, ctx, tool_name, params)
 
 
+def _widget_kb_reply(kb_context: str, message: str) -> str:
+    """Short KB-based answer when LLM is slow or unavailable."""
+    text = kb_context.strip()
+    if not text:
+        return _fallback_reply("")
+    lower = message.lower()
+    if any(w in lower for w in ("сколько", "стоит", "цена", "тариф", "₽", "руб")):
+        if "2 990" in text or "2990" in text:
+            return (
+                "Тариф «Диалоги» — 2 990 ₽ в месяц, «Диалоги + звонки» — 5 990 ₽ в месяц. "
+                "Подробности — на сайте или office@dlno.ru."
+            )
+    excerpt = text[:900].strip()
+    if len(text) > 900:
+        excerpt += "…"
+    return excerpt
+
+
 def _fallback_reply(kb_context: str) -> str:
     if kb_context:
         return kb_context[:2000]
@@ -476,6 +494,10 @@ def _generate_reply(
                 tool_calls.append({"tool": "llm", "ok": False, "provider": provider_name, "error": "stub_echo"})
         except (KeyError, IndexError, TypeError):
             tool_calls.append({"tool": "llm", "ok": False, "error": "invalid_completion_shape"})
+
+    if widget and kb_context:
+        tool_calls.append({"tool": "llm", "ok": False, "fallback": "kb_direct"})
+        return _widget_kb_reply(kb_context, message), tool_calls, sources, None
 
     if any(word in message.lower() for word in ("заявк", "оставить", "позвон", "связ")):
         return (

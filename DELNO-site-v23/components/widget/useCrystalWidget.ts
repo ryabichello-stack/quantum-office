@@ -1,18 +1,14 @@
 "use client";
 
 import { useDelnoVoice, type VoicePhase } from "@/hooks/useDelnoVoice";
+import { postWidgetMessage, type WidgetMessagePayload } from "@/lib/widgetApi";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 type ChatMessage = { role: "user" | "assistant"; text: string; typing?: boolean };
 
 export type { VoicePhase };
 
-type WidgetAnswer = {
-  message?: string;
-  conversation_id?: string;
-  next_step?: string;
-  lead?: { id?: string; name?: string; phone?: string } | null;
-};
+type WidgetAnswer = WidgetMessagePayload;
 
 function isLikelyPhone(text: string) {
   const digits = text.replace(/\D/g, "");
@@ -133,45 +129,17 @@ export function useCrystalWidgetChat(apiPath: string) {
 
   const requestAnswer = useCallback(
     async (value: string): Promise<{ answer: string | null; payload: WidgetAnswer | null; error?: string }> => {
-      try {
-        const res = await fetch(apiPath, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            site_key: SITE_KEY,
-            session_id: sessionIdRef.current,
-            visitor_id: visitorIdRef.current,
-            message: value,
-            visitor: {
-              name: nameRef.current || null,
-              phone: null,
-              page_url: typeof window !== "undefined" ? window.location.href : null,
-              referrer: typeof document !== "undefined" ? document.referrer || null : null,
-            },
-            channel: "web",
-          }),
-        });
-        const raw = await res.text();
-        if (!res.ok) {
-          let detail = raw.slice(0, 200);
-          try {
-            const parsed = JSON.parse(raw) as { error?: string; detail?: string };
-            detail = parsed.detail || parsed.error || detail;
-          } catch {
-            /* ignore */
-          }
-          return { answer: null, payload: null, error: detail || `HTTP ${res.status}` };
-        }
-        const payload = JSON.parse(raw) as WidgetAnswer;
-        if (payload.conversation_id) persistSession(payload.conversation_id);
-        return { answer: payload.message || null, payload };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "fetch failed";
-        console.warn("DELNO widget:", err);
-        return { answer: null, payload: null, error: message };
+      const { payload, error } = await postWidgetMessage(value, {
+        sessionId: sessionIdRef.current,
+      });
+      if (error) {
+        console.warn("DELNO widget:", error);
+        return { answer: null, payload: null, error };
       }
+      if (payload?.conversation_id) persistSession(payload.conversation_id);
+      return { answer: payload?.message || null, payload };
     },
-    [apiPath, persistSession],
+    [persistSession],
   );
 
   const maybeAskFollowUp = useCallback(async (payload: WidgetAnswer | null, messageLength: number) => {
@@ -244,7 +212,9 @@ export function useCrystalWidgetChat(apiPath: string) {
       const reply =
         answer ||
         (error
-          ? "Сейчас не удалось получить ответ. Попробуйте ещё раз или напишите вопрос чуть иначе."
+          ? error.includes("ожидания")
+            ? "Ответ занимает больше обычного — попробуйте ещё раз через пару секунд или задайте вопрос короче."
+            : "Сейчас не удалось получить ответ. Попробуйте ещё раз или напишите вопрос чуть иначе."
           : value.length < 8
             ? "Да, могу помочь. Уточните, пожалуйста, вопрос чуть подробнее."
             : "Понял ваш вопрос. Я могу ответить по базе знаний компании и, если нужно, передать обращение сотруднику.");

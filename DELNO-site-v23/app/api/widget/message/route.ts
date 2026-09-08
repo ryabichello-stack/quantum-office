@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 
+export const maxDuration = 120;
+
 type WidgetBody = {
   site_key?: string;
   session_id?: string | null;
@@ -37,6 +39,7 @@ async function proxyWidget(path: string, payload: Record<string, unknown>) {
       "X-Tenant-Slug": tenantSlug,
     },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(85000),
   });
 
   const detail = await response.text();

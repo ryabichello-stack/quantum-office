@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 
+export const maxDuration = 120;
+
 const tenantSlug = process.env.DELNO_TENANT_SLUG || "delno-demo";
 const siteKey = process.env.NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY || "demo_dlno";
 
@@ -32,6 +34,7 @@ export async function POST(req: NextRequest) {
       "X-Tenant-Slug": tenantSlug,
     },
     body: sdpOffer,
+    signal: AbortSignal.timeout(85000),
   });
 
   const detail = await upstream.text();

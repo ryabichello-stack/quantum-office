@@ -80,7 +80,7 @@ def test_exchange_widget_realtime_sdp_full_duplex_session():
 def test_search_widget_knowledge():
     db = MagicMock()
     ctx = TenantContext(tenant_id=uuid.uuid4(), tenant_slug="delno-demo", role="public")
-    with patch("app.services.realtime_widget.KnowledgeAdapter") as mock_cls:
+    with patch("app.adapters.knowledge.KnowledgeAdapter") as mock_cls:
         mock_cls.return_value.search.return_value = {
             "ok": True,
             "text": "2990 руб",

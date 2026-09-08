@@ -43,6 +43,10 @@ export function CrystalWidget() {
   const textRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (voicePhase === "error") setTextOpen(true);
+  }, [voicePhase]);
+
+  useEffect(() => {
     if (textRef.current) textRef.current.checked = textOpen;
   }, [textOpen]);
 

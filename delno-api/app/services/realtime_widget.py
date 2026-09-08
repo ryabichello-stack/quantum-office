@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import time
 from typing import Any
 
 import httpx
@@ -14,12 +16,18 @@ from app.operator.agent import _kb_context_from_result, build_widget_realtime_in
 from app.operator.tools.registry import ToolResult, registry
 from app.services.platform_env import get_openai_runtime
 
+logger = logging.getLogger(__name__)
+
 # Preload public KB slices for Realtime session instructions (guest ACL).
 WIDGET_KB_SEED_QUERIES = (
     "DELNO компания продукт для кого чем занимается",
     "DELNO тарифы цены подключение услуги",
     "DELNO возможности каналы контакты",
 )
+
+_KB_CONTEXT_CACHE: dict[str, tuple[float, str]] = {}
+_KB_CONTEXT_TTL_SEC = 300.0
+_REALTIME_CONNECT_ATTEMPTS = 3
 
 WIDGET_REALTIME_KB_TOOL: dict[str, Any] = {
     "type": "function",
@@ -57,6 +65,13 @@ def sanitize_realtime_answer_sdp(raw: str) -> str:
 
 
 def load_widget_kb_context(db: Session, ctx: TenantContext) -> str:
+    """Cached KB preload — optional hint for Realtime; tool get_knowledge is authoritative."""
+    cache_key = ctx.tenant_slug or "default"
+    now = time.monotonic()
+    cached = _KB_CONTEXT_CACHE.get(cache_key)
+    if cached and now - cached[0] < _KB_CONTEXT_TTL_SEC:
+        return cached[1]
+
     snippets: list[str] = []
     seen: set[str] = set()
     for query in WIDGET_KB_SEED_QUERIES:
@@ -66,7 +81,9 @@ def load_widget_kb_context(db: Session, ctx: TenantContext) -> str:
             if chunk and chunk not in seen:
                 seen.add(chunk)
                 snippets.append(chunk)
-    return "\n\n".join(snippets)[:4000]
+    result = "\n\n".join(snippets)[:4000]
+    _KB_CONTEXT_CACHE[cache_key] = (now, result)
+    return result
 
 
 def _realtime_session_config(instructions: str) -> dict[str, Any]:
@@ -140,17 +157,29 @@ def exchange_widget_realtime_sdp(
     if safety:
         headers["OpenAI-Safety-Identifier"] = safety
 
-    try:
-        response = httpx.post(
-            "https://api.openai.com/v1/realtime/calls",
-            headers=headers,
-            files=files,
-            timeout=60.0,
-        )
-    except httpx.HTTPError as exc:
-        import logging
+    response: httpx.Response | None = None
+    last_exc: Exception | None = None
+    for attempt in range(_REALTIME_CONNECT_ATTEMPTS):
+        try:
+            response = httpx.post(
+                "https://api.openai.com/v1/realtime/calls",
+                headers=headers,
+                files=files,
+                timeout=45.0,
+            )
+            break
+        except httpx.HTTPError as exc:
+            last_exc = exc
+            logger.warning(
+                "openai_realtime_http_error attempt=%s err=%s",
+                attempt + 1,
+                exc.__class__.__name__,
+            )
+            if attempt + 1 < _REALTIME_CONNECT_ATTEMPTS:
+                time.sleep(0.6 * (attempt + 1))
 
-        logging.getLogger(__name__).warning("openai_realtime_http_error: %s", exc.__class__.__name__)
+    if response is None:
+        logger.warning("openai_realtime_http_error final: %s", last_exc.__class__.__name__ if last_exc else "unknown")
         return None, "REALTIME_CONNECTION_FAILED"
 
     if response.status_code in (401, 403):
@@ -158,9 +187,7 @@ def exchange_widget_realtime_sdp(
     if response.status_code == 429:
         return None, "VOICE_LIMIT_REACHED"
     if response.status_code not in (200, 201):
-        import logging
-
-        logging.getLogger(__name__).warning(
+        logger.warning(
             "openai_realtime_failed status=%s body=%s",
             response.status_code,
             (response.text or "")[:300],
@@ -169,9 +196,7 @@ def exchange_widget_realtime_sdp(
 
     answer = sanitize_realtime_answer_sdp(response.text or "")
     if not answer.startswith("v="):
-        import logging
-
-        logging.getLogger(__name__).warning("openai_realtime_empty_answer status=%s", response.status_code)
+        logger.warning("openai_realtime_empty_answer status=%s", response.status_code)
         return None, "REALTIME_CONNECTION_FAILED"
     return answer, None
 
