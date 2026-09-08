@@ -58,6 +58,24 @@ echo "==> sync docker-compose stack (env mount for admin secrets)"
 rsync -az -e "${RSYNC_SSH[*]}" \
   "${REPO_ROOT}/delno-api/deploy/docker-compose.stack.yml" "${SSH_HOST}:${STACK_DIR}/docker-compose.yml"
 
+echo "==> migrate platform secrets to secrets/platform.env (directory mount)"
+ssh "${SSH_OPTS[@]}" "$SSH_HOST" bash -s <<REMOTE
+set -euo pipefail
+STACK_DIR="${STACK_DIR}"
+mkdir -p "\${STACK_DIR}/secrets"
+if [ -f "\${STACK_DIR}/.env" ] && [ ! -f "\${STACK_DIR}/secrets/platform.env" ]; then
+  cp -a "\${STACK_DIR}/.env" "\${STACK_DIR}/secrets/platform.env"
+  chmod 600 "\${STACK_DIR}/secrets/platform.env"
+  echo "migrated \${STACK_DIR}/.env → secrets/platform.env"
+elif [ -f "\${STACK_DIR}/.env" ] && [ -f "\${STACK_DIR}/secrets/platform.env" ]; then
+  if [ "\${STACK_DIR}/.env" -nt "\${STACK_DIR}/secrets/platform.env" ]; then
+    cp -a "\${STACK_DIR}/.env" "\${STACK_DIR}/secrets/platform.env"
+    chmod 600 "\${STACK_DIR}/secrets/platform.env"
+    echo "refreshed secrets/platform.env from host .env"
+  fi
+fi
+REMOTE
+
 echo "==> rebuild + restart containers"
 ssh "${SSH_OPTS[@]}" "$SSH_HOST" bash -s <<REMOTE
 set -euo pipefail

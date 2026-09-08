@@ -36,9 +36,9 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${DELNO_PG_USER:-delno}:${DELNO_PG_PASSWORD}@postgres:5432/${DELNO_PG_DB:-delno}
       KNOWLEDGE_BASE_URL: http://knowledge:8021
-      PLATFORM_ENV_FILE: /opt/delno/.env
+      PLATFORM_ENV_FILE: /opt/delno/secrets/platform.env
     volumes:
-      - ./.env:/opt/delno/.env
+      - ./secrets:/opt/delno/secrets
     ports:
       - "127.0.0.1:18020:8020"
     depends_on:

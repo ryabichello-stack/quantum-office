@@ -96,6 +96,38 @@ def _merge_unique(*lists: list[str]) -> list[str]:
     return out
 
 
+def invalidate_openai_catalog_cache() -> None:
+    _CACHE["payload"] = None
+    _CACHE["expires_at"] = 0.0
+
+
+def verify_openai_api_key(api_key: str) -> dict[str, Any]:
+    """Verify key format and OpenAI /v1/models access. Never returns full key."""
+    from app.services.platform_env import mask_secret, validate_secret_value
+
+    trimmed = (api_key or "").strip()
+    if not trimmed:
+        return {"ok": False, "error": "openai_key_missing"}
+
+    format_error = validate_secret_value("OPENAI_API_KEY", trimmed)
+    if format_error:
+        return {"ok": False, "error": format_error}
+
+    model_ids, fetch_error = _fetch_model_ids(trimmed)
+    if not model_ids:
+        return {"ok": False, "error": fetch_error or "openai_unreachable"}
+
+    chat_models = [mid for mid in model_ids if _is_chat_model(mid)]
+    realtime_models = [mid for mid in model_ids if _is_realtime_model(mid)]
+    return {
+        "ok": True,
+        "key_preview": mask_secret(trimmed),
+        "models_total": len(model_ids),
+        "chat_models_count": len(chat_models),
+        "realtime_models_count": len(realtime_models),
+    }
+
+
 def fetch_openai_options(*, force_refresh: bool = False) -> dict[str, Any]:
     now = time.time()
     if not force_refresh and _CACHE["payload"] and now < float(_CACHE["expires_at"]):

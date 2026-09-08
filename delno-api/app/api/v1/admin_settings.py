@@ -16,15 +16,21 @@ from app.services.events import emit_event
 from app.services.platform_env import (
     env_file_status,
     list_secret_fields,
+    read_env_values,
     update_env_values,
+    validate_secret_value,
 )
-from app.services.openai_catalog import fetch_openai_options
+from app.services.openai_catalog import fetch_openai_options, verify_openai_api_key
 
 router = APIRouter(prefix="/admin/platform-secrets", tags=["admin-settings"])
 
 
 class PlatformSecretsUpdate(BaseModel):
     values: dict[str, str] = Field(default_factory=dict)
+
+
+class OpenAiKeyTestRequest(BaseModel):
+    api_key: str | None = None  # empty → test key saved in platform.env
 
 
 @router.get("")
@@ -47,6 +53,22 @@ def get_platform_secrets(
         },
         "updated_by": str(admin.id),
     }
+
+
+@router.post("/openai/test")
+def verify_platform_openai_key(
+    body: OpenAiKeyTestRequest,
+    admin: User = Depends(require_platform_admin),
+) -> dict:
+    """Test OpenAI API key from draft input or saved platform.env."""
+    candidate = (body.api_key or "").strip()
+    if not candidate:
+        candidate = (read_env_values().get("OPENAI_API_KEY") or "").strip()
+    if not candidate:
+        raise HTTPException(status_code=400, detail="openai_key_missing")
+    if body.api_key and validate_secret_value("OPENAI_API_KEY", candidate):
+        raise HTTPException(status_code=400, detail="openai_key_invalid_format")
+    return verify_openai_api_key(candidate)
 
 
 @router.post("/options/refresh")
@@ -79,7 +101,7 @@ def patch_platform_secrets(
     filtered = {k: v for k, v in body.values.items() if v is not None}
     changed, error = update_env_values(filtered)
     if error:
-        if error.startswith("unknown_keys"):
+        if error.startswith("unknown_keys") or error == "openai_key_invalid_format":
             raise HTTPException(status_code=400, detail=error)
         raise HTTPException(status_code=500, detail=error)
 

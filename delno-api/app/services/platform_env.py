@@ -107,6 +107,17 @@ SECRET_FIELDS: tuple[SecretFieldDef, ...] = (
 ALLOWED_KEYS = frozenset(field.key for field in SECRET_FIELDS)
 
 
+def validate_secret_value(key: str, value: str) -> str | None:
+    """Return error code or None if value is acceptable."""
+    if key == "OPENAI_API_KEY" and value:
+        trimmed = value.strip()
+        if not trimmed.startswith("sk-"):
+            return "openai_key_invalid_format"
+        if len(trimmed) < 20:
+            return "openai_key_invalid_format"
+    return None
+
+
 def platform_env_path() -> Path:
     settings = get_settings()
     raw = (settings.platform_env_file or "").strip()
@@ -210,6 +221,13 @@ def update_env_values(updates: dict[str, str]) -> tuple[list[str], str | None]:
     if unknown:
         return [], f"unknown_keys:{','.join(unknown)}"
 
+    for key, value in updates.items():
+        if value == "":
+            continue
+        validation_error = validate_secret_value(key, value)
+        if validation_error:
+            return [], validation_error
+
     path = platform_env_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -247,6 +265,10 @@ def update_env_values(updates: dict[str, str]) -> tuple[list[str], str | None]:
             del os.environ[key]
 
     get_settings.cache_clear()
+    if "OPENAI_API_KEY" in changed:
+        from app.services.openai_catalog import invalidate_openai_catalog_cache
+
+        invalidate_openai_catalog_cache()
     return changed, None
 
 

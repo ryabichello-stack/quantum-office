@@ -86,6 +86,34 @@ export async function apiRefreshPlatformOptions(token: string) {
   return res.json() as Promise<OpenAiOptions>;
 }
 
+export type OpenAiKeyTestResult = {
+  ok: boolean;
+  error?: string;
+  key_preview?: string;
+  models_total?: number;
+  chat_models_count?: number;
+  realtime_models_count?: number;
+};
+
+export async function apiTestOpenAiKey(token: string, apiKey?: string) {
+  const res = await fetch(`${API_URL}/v1/admin/platform-secrets/openai/test`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ api_key: apiKey?.trim() || null }),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    let detail = text.slice(0, 200);
+    try {
+      detail = JSON.parse(text).detail || detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail || "Key test failed");
+  }
+  return JSON.parse(text) as OpenAiKeyTestResult;
+}
+
 export async function apiPatchPlatformSecrets(token: string, values: Record<string, string>) {
   const res = await fetch(`${API_URL}/v1/admin/platform-secrets`, {
     method: "PATCH",

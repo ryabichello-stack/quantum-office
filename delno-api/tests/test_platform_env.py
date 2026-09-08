@@ -37,16 +37,16 @@ def test_read_and_update_env(env_file: Path):
     values = read_env_values()
     assert values["OPENAI_API_KEY"] == "old-key"
 
-    changed, error = update_env_values({"OPENAI_API_KEY": "sk-new-secret-key"})
+    changed, error = update_env_values({"OPENAI_API_KEY": "sk-new-secret-key-abcdefgh"})
     assert error is None
     assert "OPENAI_API_KEY" in changed
 
     reloaded = read_env_values()
-    assert reloaded["OPENAI_API_KEY"] == "sk-new-secret-key"
+    assert reloaded["OPENAI_API_KEY"] == "sk-new-secret-key-abcdefgh"
     assert "OPENAI_MODEL" in reloaded
 
     content = env_file.read_text(encoding="utf-8")
-    assert "sk-new-secret-key" in content
+    assert "sk-new-secret-key-abcdefgh" in content
     assert os.stat(env_file).st_mode & 0o777 == 0o600
 
 
@@ -54,6 +54,16 @@ def test_rejects_unknown_keys(env_file: Path):
     changed, error = update_env_values({"EVIL_KEY": "x"})
     assert changed == []
     assert error and "unknown_keys" in error
+
+
+def test_rejects_invalid_openai_key_format(env_file: Path):
+    changed, error = update_env_values({"OPENAI_API_KEY": "admin123456"})
+    assert changed == []
+    assert error == "openai_key_invalid_format"
+
+    changed, error = update_env_values({"OPENAI_API_KEY": "sk-valid-looking-test-key-xx"})
+    assert error is None
+    assert "OPENAI_API_KEY" in changed
 
 
 def test_platform_env_path_uses_setting(tmp_path, monkeypatch):

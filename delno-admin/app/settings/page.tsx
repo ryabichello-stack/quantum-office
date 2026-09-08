@@ -7,10 +7,25 @@ import {
   apiGetPlatformSecrets,
   apiPatchPlatformSecrets,
   apiRefreshPlatformOptions,
+  apiTestOpenAiKey,
   type OpenAiOptions,
   type SecretGroup,
   type SecretItem,
 } from "@/lib/api";
+
+function formatFetchError(code: string | null | undefined): string {
+  if (!code) return "";
+  if (code === "auth_failed") {
+    return "OpenAI отклонил ключ (401). Проверьте, что вставлен ключ sk-... с platform.openai.com, а не пароль от админки.";
+  }
+  if (code === "openai_key_missing") {
+    return "Сначала сохраните OpenAI API Key.";
+  }
+  if (code === "openai_key_invalid_format") {
+    return "Ключ OpenAI должен начинаться с sk- (скопируйте с platform.openai.com/account/api-keys).";
+  }
+  return code;
+}
 
 function optionsForItem(item: SecretItem, options: OpenAiOptions | null): string[] {
   if (!options) return item.value ? [item.value] : [];
@@ -32,6 +47,7 @@ export default function SettingsPage() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [testingKey, setTestingKey] = useState(false);
 
   const applyPayload = useCallback((data: Awaited<ReturnType<typeof apiGetPlatformSecrets>>) => {
     setGroups(data.groups);
@@ -109,6 +125,39 @@ export default function SettingsPage() {
     }
   }
 
+  async function testOpenAiKey(configured: boolean) {
+    if (!token) return;
+    const draftKey = draft["OPENAI_API_KEY"]?.trim() || "";
+    if (draftKey && !draftKey.startsWith("sk-")) {
+      setError(formatFetchError("openai_key_invalid_format"));
+      setStatus("");
+      return;
+    }
+    if (!draftKey && !configured) {
+      setError("Введите ключ sk-... в поле или сначала сохраните его на сервер");
+      setStatus("");
+      return;
+    }
+
+    setTestingKey(true);
+    setError("");
+    setStatus("");
+    try {
+      const result = await apiTestOpenAiKey(token, draftKey || undefined);
+      if (result.ok) {
+        setStatus(
+          `Ключ работает (${result.key_preview}): ${result.realtime_models_count} realtime, ${result.chat_models_count} chat моделей в OpenAI`,
+        );
+      } else {
+        setError(formatFetchError(result.error));
+      }
+    } catch (err) {
+      setError(formatFetchError(err instanceof Error ? err.message : "test failed"));
+    } finally {
+      setTestingKey(false);
+    }
+  }
+
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
     if (!token) return;
@@ -119,6 +168,12 @@ export default function SettingsPage() {
     }
     for (const [key, value] of Object.entries(draft)) {
       if (value.trim()) payload[key] = value.trim();
+    }
+
+    const draftOpenAi = draft["OPENAI_API_KEY"]?.trim();
+    if (draftOpenAi && !draftOpenAi.startsWith("sk-")) {
+      setError(formatFetchError("openai_key_invalid_format"));
+      return;
     }
 
     if (Object.keys(payload).length === 0) {
@@ -142,7 +197,9 @@ export default function SettingsPage() {
           setStatus(
             live.source === "openai"
               ? `Ключ сохранён. Списки моделей загружены (${live.realtime_models.length} realtime). Выберите модель и голос.`
-              : `Ключ сохранён, но OpenAI не ответил${live.fetch_error ? `: ${live.fetch_error}` : ""}`,
+              : live.fetch_error === "auth_failed"
+                ? "Ключ сохранён, но OpenAI его не принял — проверьте sk-... ключ, не пароль от входа."
+                : `Ключ сохранён, но OpenAI не ответил${live.fetch_error ? `: ${formatFetchError(live.fetch_error)}` : ""}`,
           );
         } catch {
           /* initial payload already applied */
@@ -161,14 +218,14 @@ export default function SettingsPage() {
         <small>Platform</small>
         <h1>Секреты сервера</h1>
         <p>
-          Ключи и модели пишутся в <code>{envPath || "/opt/delno/.env"}</code>. Списки моделей подгружаются из
-          OpenAI после сохранения API key.
+          Ключи и модели пишутся в <code>{envPath || "/opt/delno/secrets/platform.env"}</code>. Перед сохранением можно
+          проверить ключ кнопкой «Тест ключа».
         </p>
       </div>
 
-      {!writable && (
+        {!writable && (
         <p className="status-error" style={{ marginBottom: 16 }}>
-          Файл недоступен для записи из API. Проверьте mount <code>./.env:/opt/delno/.env</code> в docker-compose.
+          Файл недоступен для записи из API. Проверьте mount <code>./secrets:/opt/delno/secrets</code> в docker-compose.
         </p>
       )}
 
@@ -177,9 +234,9 @@ export default function SettingsPage() {
           {refreshing ? "Обновляю…" : "Обновить списки из OpenAI"}
         </button>
         {options && (
-          <small style={{ alignSelf: "center", color: "#888" }}>
+          <small style={{ alignSelf: "center", color: options.fetch_error ? "#c44" : "#888" }}>
             источник: {options.source === "openai" ? "OpenAI API" : "резервный список"}
-            {options.fetch_error ? ` (${options.fetch_error})` : ""}
+            {options.fetch_error ? ` — ${formatFetchError(options.fetch_error)}` : ""}
           </small>
         )}
       </div>
@@ -226,12 +283,38 @@ export default function SettingsPage() {
                         <option value={currentSelect}>{currentSelect} (текущее)</option>
                       )}
                     </select>
+                  ) : item.key === "OPENAI_API_KEY" ? (
+                    <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+                      <input
+                        type="password"
+                        name={item.key}
+                        autoComplete="off"
+                        placeholder={
+                          item.configured ? "Пусто = не менять (sk-...)" : "sk-proj-... с platform.openai.com"
+                        }
+                        value={draft[item.key] || ""}
+                        onChange={(e) => onChange(item.key, e.target.value)}
+                        disabled={!writable || saving}
+                        style={{ flex: 1, minWidth: 0 }}
+                      />
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        disabled={!token || testingKey || saving}
+                        onClick={() => void testOpenAiKey(item.configured)}
+                        style={{ whiteSpace: "nowrap", alignSelf: "stretch" }}
+                      >
+                        {testingKey ? "Проверяю…" : "Тест ключа"}
+                      </button>
+                    </div>
                   ) : (
                     <input
                       type={item.control === "password" || item.sensitive ? "password" : "text"}
                       name={item.key}
                       autoComplete="off"
-                      placeholder={item.configured ? "Пусто = не менять" : "Введите значение"}
+                      placeholder={
+                        item.configured ? "Пусто = не менять" : "Введите значение"
+                      }
                       value={draft[item.key] || ""}
                       onChange={(e) => onChange(item.key, e.target.value)}
                       disabled={!writable || saving}
