@@ -13,6 +13,7 @@ from app.core.config import get_settings
 from app.core.tenant import TenantContext
 from app.operator.agent import _kb_context_from_result, build_widget_realtime_instructions
 from app.operator.tools.registry import ToolResult, registry
+from app.services.platform_env import get_openai_runtime
 
 WIDGET_KB_SEED_QUERY = "DELNO тарифы подключение услуги возможности"
 
@@ -25,10 +26,10 @@ def load_widget_kb_context(db: Session, ctx: TenantContext) -> str:
 
 
 def _realtime_session_config(instructions: str) -> dict[str, Any]:
-    settings = get_settings()
+    runtime = get_openai_runtime()
     return {
         "type": "realtime",
-        "model": settings.openai_realtime_model,
+        "model": runtime["realtime_model"],
         "instructions": instructions,
         "audio": {
             "input": {
@@ -41,7 +42,7 @@ def _realtime_session_config(instructions: str) -> dict[str, Any]:
                     "interrupt_response": True,
                 },
             },
-            "output": {"voice": settings.openai_realtime_voice},
+            "output": {"voice": runtime["realtime_voice"]},
         },
     }
 
@@ -61,8 +62,8 @@ def exchange_widget_realtime_sdp(
     visitor_id: str | None = None,
 ) -> tuple[str | None, str | None]:
     """Return (sdp_answer, error_code). Uses OpenAI unified Realtime calls endpoint."""
-    settings = get_settings()
-    api_key = (settings.openai_api_key or "").strip()
+    runtime = get_openai_runtime()
+    api_key = runtime["api_key"]
     if not api_key:
         return None, "VOICE_NOT_CONFIGURED"
 

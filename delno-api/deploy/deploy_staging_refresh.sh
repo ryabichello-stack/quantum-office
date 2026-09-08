@@ -93,7 +93,11 @@ echo "==> build delno-site-root (https://dlno.ru) :18022"
 docker build --build-arg NEXT_PUBLIC_BASE_PATH= -t delno-site-root:latest "\$SITE"
 docker rm -f delno-site-root 2>/dev/null || true
 ENV_FILE=()
-[ -f "${STACK_DIR}/.env" ] && ENV_FILE=(--env-file "${STACK_DIR}/.env")
+if [ -f "${STACK_DIR}/secrets/platform.env" ]; then
+  ENV_FILE=(--env-file "${STACK_DIR}/secrets/platform.env")
+elif [ -f "${STACK_DIR}/.env" ]; then
+  ENV_FILE=(--env-file "${STACK_DIR}/.env")
+fi
 docker run -d --name delno-site-root --restart unless-stopped \\
   "\${ENV_FILE[@]}" \\
   --network delno-internal \\

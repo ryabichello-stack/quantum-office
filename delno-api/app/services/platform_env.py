@@ -292,8 +292,24 @@ def update_env_values(updates: dict[str, str]) -> tuple[list[str], str | None]:
 
 
 def apply_runtime_env() -> None:
-    """Load current .env values into process environment (after external edit)."""
+    """Load current platform.env values into process environment (after external edit)."""
     for key, value in read_env_values().items():
         if value:
             os.environ[key] = value
     get_settings.cache_clear()
+
+
+def get_openai_runtime() -> dict[str, str]:
+    """OpenAI keys/models: platform.env wins over docker env / defaults."""
+    settings = get_settings()
+    values = read_env_values()
+    return {
+        "api_key": (values.get("OPENAI_API_KEY") or settings.openai_api_key or "").strip(),
+        "model": (values.get("OPENAI_MODEL") or settings.openai_model or "").strip(),
+        "realtime_model": (
+            values.get("OPENAI_REALTIME_MODEL") or settings.openai_realtime_model or ""
+        ).strip(),
+        "realtime_voice": (
+            values.get("OPENAI_REALTIME_VOICE") or settings.openai_realtime_voice or ""
+        ).strip(),
+    }

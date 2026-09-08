@@ -267,8 +267,8 @@ export default function SettingsPage() {
         <small>Platform</small>
         <h1>Секреты сервера</h1>
         <p>
-          Ключи и модели пишутся в <code>{envPath || "/opt/delno/secrets/platform.env"}</code>. Перед сохранением можно
-          проверить ключ кнопкой «Тест ключа».
+          Ключи и модели пишутся в <code>{envPath || "/opt/delno/secrets/platform.env"}</code> на сервере.
+          Голосовой орб на <a href="https://dlno.ru/#demo">dlno.ru</a> берёт их через delno-api → OpenAI Realtime.
         </p>
       </div>
 

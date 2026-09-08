@@ -88,6 +88,19 @@ def test_platform_env_path_uses_setting(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
-def test_allowed_keys_cover_openai():
+def test_get_openai_runtime_prefers_platform_env(env_file: Path):
+    env_file.write_text(
+        "OPENAI_API_KEY=sk-from-platform-env-file\nOPENAI_REALTIME_MODEL=gpt-realtime-2.1\n",
+        encoding="utf-8",
+    )
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    from app.services.platform_env import get_openai_runtime
+
+    runtime = get_openai_runtime()
+    assert runtime["api_key"] == "sk-from-platform-env-file"
+    assert runtime["realtime_model"] == "gpt-realtime-2.1"
+    get_settings.cache_clear()
     assert "OPENAI_API_KEY" in ALLOWED_KEYS
     assert "JWT_SECRET" in ALLOWED_KEYS

@@ -31,8 +31,7 @@ def test_load_widget_kb_context_from_tool():
 def test_exchange_widget_realtime_sdp_no_api_key():
     db = MagicMock()
     ctx = TenantContext(tenant_id=uuid.uuid4(), tenant_slug="delno-demo", role="public")
-    with patch("app.services.realtime_widget.get_settings") as mock_settings:
-        mock_settings.return_value.openai_api_key = ""
+    with patch("app.services.realtime_widget.get_openai_runtime", return_value={"api_key": "", "realtime_model": "gpt-realtime-2.1-mini", "realtime_voice": "cedar", "model": "gpt-4.1-mini"}):
         answer, error = exchange_widget_realtime_sdp(db, ctx, sdp_offer="v=0", visitor_id="v1")
     assert answer is None
     assert error == "VOICE_NOT_CONFIGURED"

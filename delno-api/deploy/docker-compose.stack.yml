@@ -33,6 +33,7 @@ services:
       - delno-internal
     env_file:
       - .env
+      - ./secrets/platform.env
     environment:
       DATABASE_URL: postgresql+psycopg://${DELNO_PG_USER:-delno}:${DELNO_PG_PASSWORD}@postgres:5432/${DELNO_PG_DB:-delno}
       KNOWLEDGE_BASE_URL: http://knowledge:8021
