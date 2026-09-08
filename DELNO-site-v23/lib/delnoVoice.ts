@@ -183,6 +183,8 @@ function sanitizeRealtimeAnswerSdp(raw: string): string {
   }
   return `${fixed.join("\r\n")}\r\n`;
 }
+
+function canUseRealtime() {
   return (
     typeof window !== "undefined" &&
     typeof RTCPeerConnection !== "undefined" &&
