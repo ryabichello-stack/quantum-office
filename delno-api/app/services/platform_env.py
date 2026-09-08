@@ -292,8 +292,14 @@ def update_env_values(updates: dict[str, str]) -> tuple[list[str], str | None]:
 
 
 def apply_runtime_env() -> None:
-    """Load current platform.env values into process environment (after external edit)."""
+    """Load platform.env secrets into process env (OpenAI, Telegram, etc.).
+
+    Infrastructure URLs (KNOWLEDGE_BASE_URL, DATABASE_URL) come from docker-compose
+    and must not be overridden by stale values in platform.env.
+    """
     for key, value in read_env_values().items():
+        if key not in ALLOWED_KEYS:
+            continue
         if value:
             os.environ[key] = value
     get_settings.cache_clear()
