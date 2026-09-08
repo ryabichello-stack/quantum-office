@@ -16,6 +16,10 @@
 
 Staging: https://a.47z.ru/delno/ · https://a.47z.ru/delno-api/ · prod path `/opt/delno/`
 
+**Marketing prod:** https://dlno.ru/ (`delno-site-root` :18022) · **API prod:** https://api.dlno.ru/
+
+**Deploy rule:** любой деплoy site/api/knowledge для DELNO — **сразу на оба фронта**: staging `a.47z.ru/delno` **и** prod `dlno.ru`. Скрипт: `delno-api/deploy/deploy_staging_refresh.sh`.
+
 Second Brain (KB foundation): `/opt/ava-knowledge/brain_platform/` → port as `delno-knowledge`
 
 ## Прод (справочно)

@@ -1,0 +1,148 @@
+/* P1.5 — mobile pass (375–390px, safe-area, no horizontal overflow) */
+
+.v4-refined,
+.v2 {
+  overflow-x: clip;
+  max-width: 100%;
+}
+
+@media (max-width: 740px) {
+  .v4-refined .v2-actions,
+  .v2 .v2-actions {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .v4-refined .v2-actions .v2-btn,
+  .v2 .v2-actions .v2-btn {
+    width: 100%;
+    min-height: 48px;
+    justify-content: center;
+  }
+
+  .v2-header {
+    padding-top: max(8px, env(safe-area-inset-top));
+  }
+
+  .v2-faq summary {
+    gap: 14px;
+    font-size: 15px;
+    line-height: 1.35;
+    padding: 18px 0;
+  }
+
+  .v2-faq details p {
+    margin-right: 0;
+    font-size: 14px;
+    line-height: 1.65;
+  }
+
+  .v4-refined .unifier-channels {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .v4-refined .unifier-channels b {
+    font-size: 8px;
+    line-height: 1.2;
+    text-align: center;
+  }
+
+  .v4-refined .v2-final {
+    padding-inline: 20px;
+    padding-bottom: max(40px, env(safe-area-inset-bottom));
+  }
+
+  .v4-refined .contact-options {
+    width: 100%;
+    max-width: none;
+  }
+
+  .v4-refined .contact-options > a {
+    min-height: 52px;
+  }
+}
+
+@media (max-width: 390px) {
+  .v2 .v2-hero,
+  .v4-refined .v2-hero {
+    padding-inline: 16px;
+  }
+
+  .v2 .v2-hero h1 {
+    font-size: clamp(34px, 10.5vw, 47px);
+    line-height: 0.96;
+  }
+
+  .v4-refined .v2-hero h1 {
+    font-size: clamp(34px, 10.5vw, 42px);
+    line-height: 0.96;
+  }
+
+  .v2 .v2-hero-copy > p,
+  .v4-refined .v2-hero-copy > p {
+    font-size: 15px;
+  }
+
+  .v2-final {
+    padding-inline: 20px;
+    padding-bottom: max(40px, env(safe-area-inset-bottom));
+  }
+
+  .v2 .contact-options,
+  .v4-refined .contact-options {
+    width: 100%;
+    max-width: none;
+  }
+
+  .v2 .contact-options > a,
+  .v4-refined .contact-options > a {
+    min-height: 52px;
+  }
+
+  .v4-product-stage {
+    height: 500px;
+  }
+
+  /* Reduce hero stage clutter on narrow phones */
+  .v4-thinking,
+  .v4-incoming {
+    display: none;
+  }
+
+  .v4-action {
+    left: 12px;
+    right: 12px;
+    bottom: 16px;
+  }
+
+  .stage-channel span {
+    max-width: 4.5em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .lead-dialog[open] {
+    width: calc(100vw - 24px);
+    max-width: none;
+    padding: 24px 16px;
+    border-radius: 20px;
+  }
+
+  .lead-dialog h2,
+  .lead-success h2 {
+    font-size: 30px;
+  }
+
+  .lead-party-suggest {
+    max-height: 160px;
+  }
+
+  .v2-faq h2 {
+    font-size: 40px !important;
+  }
+
+  .scenario-tabs {
+    grid-template-columns: 1fr;
+  }
+}

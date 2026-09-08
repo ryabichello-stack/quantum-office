@@ -1,0 +1,95 @@
+# DELNO isolated stack — copy to /opt/delno/docker-compose.yml on prod
+
+name: delno
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: delno-postgres
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    environment:
+      POSTGRES_USER: ${DELNO_PG_USER:-delno}
+      POSTGRES_PASSWORD: ${DELNO_PG_PASSWORD:?set DELNO_PG_PASSWORD in .env}
+      POSTGRES_DB: ${DELNO_PG_DB:-delno}
+    volumes:
+      - delno-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DELNO_PG_USER:-delno}"]
+      interval: 5s
+      timeout: 5s
+      retries: 8
+    # no host ports — DB only inside delno-internal
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    image: delno-api:latest
+    container_name: delno-api
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${DELNO_PG_USER:-delno}:${DELNO_PG_PASSWORD}@postgres:5432/${DELNO_PG_DB:-delno}
+      KNOWLEDGE_BASE_URL: http://knowledge:8021
+    ports:
+      - "127.0.0.1:18020:8020"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      knowledge:
+        condition: service_started
+
+  knowledge:
+    build:
+      context: ./knowledge
+      dockerfile: Dockerfile
+    image: delno-knowledge:latest
+    container_name: delno-knowledge
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    environment:
+      BRAIN_ENABLED: "true"
+      BRAIN_DATA_DIR: /data
+      BRAIN_DB_PATH: /data/brain.db
+    volumes:
+      - delno-brain-data:/data
+    ports:
+      - "127.0.0.1:18021:8021"
+
+  site:
+    build:
+      context: ./site
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-/delno}
+    image: delno-site:latest
+    container_name: delno-site
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    env_file:
+      - .env
+    environment:
+      DELNO_API_URL: http://api:8020
+      DELNO_TENANT_SLUG: ${DEFAULT_TENANT_SLUG:-delno-demo}
+    ports:
+      - "127.0.0.1:18019:3000"
+    depends_on:
+      - api
+
+networks:
+  delno-internal:
+    name: delno-internal
+    driver: bridge
+
+volumes:
+  delno-pg-data:
+    name: delno-pg-data
+  delno-brain-data:
+    name: delno-brain-data
