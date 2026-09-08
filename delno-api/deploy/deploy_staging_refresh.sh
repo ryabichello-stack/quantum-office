@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Refresh DELNO staging stack on a.47z.ru (/opt/delno): api + knowledge + site widget overlay.
+# Refresh DELNO on server: api + knowledge + site (staging AND dlno.ru prod root).
+# Targets: https://a.47z.ru/delno/ (delno-site :18019) + https://dlno.ru/ (delno-site-root :18022)
 set -euo pipefail
 
 STACK_DIR="${STACK_DIR:-/opt/delno}"
@@ -49,6 +50,18 @@ docker rm -f delno-site 2>/dev/null || true
 cd ${STACK_DIR}
 docker compose build knowledge api site
 docker compose up -d knowledge api site
+echo "==> build delno-site-root (https://dlno.ru) :18022"
+docker build --build-arg NEXT_PUBLIC_BASE_PATH= -t delno-site-root:latest "\$SITE"
+docker rm -f delno-site-root 2>/dev/null || true
+ENV_FILE=()
+[ -f "${STACK_DIR}/.env" ] && ENV_FILE=(--env-file "${STACK_DIR}/.env")
+docker run -d --name delno-site-root --restart unless-stopped \\
+  "\${ENV_FILE[@]}" \\
+  --network delno-internal \\
+  -e DELNO_API_URL=http://api:8020 \\
+  -e DELNO_TENANT_SLUG=delno-demo \\
+  -p 127.0.0.1:18022:3000 \\
+  delno-site-root:latest
 for i in \$(seq 1 40); do
   curl -sf http://127.0.0.1:18020/v1/health >/dev/null && curl -sf http://127.0.0.1:18021/health >/dev/null && break
   sleep 3
@@ -61,6 +74,7 @@ curl -sf -X POST http://127.0.0.1:18020/v1/public/widget/message \\
   -H 'X-Tenant-Slug: delno-demo' \\
   -d '{"site_key":"demo_dlno","message":"Сколько стоит DELNO?","visitor_id":"deploy-smoke"}' \\
   | head -c 400 && echo
+curl -sf http://127.0.0.1:18022/ | head -c 60 && echo
 REMOTE
 
-echo "==> done: https://a.47z.ru/delno/ · https://a.47z.ru/delno-api/"
+echo "==> done: https://dlno.ru/ · https://a.47z.ru/delno/ · https://api.dlno.ru/"
