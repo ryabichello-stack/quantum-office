@@ -72,8 +72,9 @@ def exchange_widget_realtime_sdp(
     instructions = build_widget_realtime_instructions(ctx, kb_context)
     session_config = _realtime_session_config(instructions)
 
+    # OpenAI expects multipart field "sdp" (plain form part), not a file attachment.
     files = {
-        "sdp": ("offer.sdp", offer.encode("utf-8"), "application/sdp"),
+        "sdp": (None, offer, "application/sdp"),
         "session": ("session.json", json.dumps(session_config).encode("utf-8"), "application/json"),
     }
 
