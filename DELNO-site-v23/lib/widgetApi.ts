@@ -27,6 +27,20 @@ export function widgetVoicePath() {
   return `${getBasePath()}/api/widget/voice`;
 }
 
+export function widgetRealtimePath() {
+  const params = new URLSearchParams({
+    site_key: SITE_KEY,
+    visitor_id: getVisitorId(),
+  });
+  const sessionId = getSessionId();
+  if (sessionId) params.set("session_id", sessionId);
+  return `${getBasePath()}/api/widget/voice/realtime?${params}`;
+}
+
+export function widgetKnowledgePath() {
+  return `${getBasePath()}/api/widget/knowledge`;
+}
+
 function cryptoSafeId() {
   try {
     if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
@@ -56,14 +70,35 @@ function persistSession(id: string) {
   localStorage.setItem("delno_widget_session", id);
 }
 
-const WIDGET_FETCH_MS = 25000;
+/** Widget message round-trip — allow slow LLM + KB on cold starts. */
+export const WIDGET_FETCH_MS = 90000;
 
-export async function askDelnoWidget(message: string): Promise<{ answer: string; error?: string }> {
+export type WidgetMessagePayload = {
+  message?: string;
+  conversation_id?: string;
+  next_step?: string;
+  sources?: unknown[];
+  lead?: { id?: string; name?: string; phone?: string } | null;
+};
+
+function widgetFetchError(err: unknown): string {
+  if (err instanceof Error && err.name === "AbortError") {
+    return "Превышено время ожидания ответа. Попробуйте ещё раз.";
+  }
+  return err instanceof Error ? err.message : "fetch failed";
+}
+
+export async function postWidgetMessage(
+  message: string,
+  options?: { sessionId?: string | null; signal?: AbortSignal },
+): Promise<{ payload: WidgetMessagePayload | null; error?: string }> {
   const value = message.trim();
-  if (!value) return { answer: "", error: "empty" };
+  if (!value) return { payload: null, error: "empty" };
 
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), WIDGET_FETCH_MS);
+  const onParentAbort = () => controller.abort();
+  options?.signal?.addEventListener("abort", onParentAbort, { once: true });
 
   try {
     const res = await fetch(widgetMessagePath(), {
@@ -72,7 +107,7 @@ export async function askDelnoWidget(message: string): Promise<{ answer: string;
       signal: controller.signal,
       body: JSON.stringify({
         site_key: SITE_KEY,
-        session_id: getSessionId(),
+        session_id: options?.sessionId ?? getSessionId(),
         visitor_id: getVisitorId(),
         message: value,
         visitor: {
@@ -93,23 +128,23 @@ export async function askDelnoWidget(message: string): Promise<{ answer: string;
       } catch {
         /* ignore */
       }
-      return { answer: "", error: detail || `HTTP ${res.status}` };
+      return { payload: null, error: detail || `HTTP ${res.status}` };
     }
 
-    const payload = JSON.parse(raw) as { message?: string; conversation_id?: string };
+    const payload = JSON.parse(raw) as WidgetMessagePayload;
     if (payload.conversation_id) persistSession(payload.conversation_id);
-    return { answer: payload.message || "" };
+    return { payload };
   } catch (err) {
-    const msg =
-      err instanceof Error && err.name === "AbortError"
-        ? "Превышено время ожидания ответа"
-        : err instanceof Error
-          ? err.message
-          : "fetch failed";
-    return { answer: "", error: msg };
+    return { payload: null, error: widgetFetchError(err) };
   } finally {
     window.clearTimeout(timer);
+    options?.signal?.removeEventListener("abort", onParentAbort);
   }
+}
+
+export async function askDelnoWidget(message: string): Promise<{ answer: string; error?: string }> {
+  const { payload, error } = await postWidgetMessage(message);
+  return { answer: payload?.message || "", error };
 }
 
 export async function askDelnoVoice(audio: Blob, mime: string): Promise<{

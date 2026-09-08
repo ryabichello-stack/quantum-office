@@ -4,9 +4,9 @@
 set -euo pipefail
 
 API="${DELNO_API_URL:-http://127.0.0.1:18020}"
-ADMIN_EMAIL="${DELNO_ADMIN_EMAIL:-admin@delno.one}"
+ADMIN_EMAIL="${DELNO_ADMIN_EMAIL:-admin@dlno.ru}"
 ADMIN_PASSWORD="${DELNO_ADMIN_PASSWORD:-admin123456}"
-OWNER_EMAIL="${DELNO_OWNER_EMAIL:-owner@delno.one}"
+OWNER_EMAIL="${DELNO_OWNER_EMAIL:-owner@dlno.ru}"
 OWNER_PASSWORD="${DELNO_OWNER_PASSWORD:-demo123456}"
 
 echo "==> E0.14/E1.11 formal exit smoke → ${API}"

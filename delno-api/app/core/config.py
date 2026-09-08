@@ -25,6 +25,8 @@ class Settings(BaseSettings):
 
     openai_api_key: str | None = None
     openai_model: str = "gpt-4.1-mini"
+    openai_realtime_model: str = "gpt-realtime-2.1"
+    openai_realtime_voice: str = "cedar"
     model_provider: str = "openai"
 
     dadata_api_key: str | None = None
@@ -40,6 +42,9 @@ class Settings(BaseSettings):
     # Onboarding file uploads (O3)
     onboarding_upload_dir: str = "/data/onboarding"
     onboarding_upload_max_bytes: int = 20 * 1024 * 1024
+
+    # Platform secrets file (admin panel writes here). Prod: /opt/delno/.env
+    platform_env_file: str = ""
 
 
 @lru_cache

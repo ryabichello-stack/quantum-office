@@ -1,36 +1,36 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import { AdminFrame } from "@/components/AdminFrame";
+import { useRequirePlatformAdmin } from "@/lib/auth";
 import { apiGetCmsPages, apiGetTenants } from "@/lib/api";
 
 export default function TenantsPage() {
+  const { token } = useRequirePlatformAdmin();
   const [tenants, setTenants] = useState<Array<{ id: string; slug: string; name: string }>>([]);
   const [pages, setPages] = useState<Array<{ slug: string; title: string; status: string }>>([]);
 
   useEffect(() => {
-    const token = localStorage.getItem("delno_token");
-    if (!token) {
-      window.location.href = "/login";
-      return;
-    }
-    apiGetTenants(token).then(setTenants).catch(() => (window.location.href = "/login"));
+    if (!token) return;
+    apiGetTenants(token).then(setTenants).catch(() => undefined);
     apiGetCmsPages(token).then(setPages).catch(() => undefined);
-  }, []);
+  }, [token]);
 
   return (
-    <main style={{ maxWidth: 960, margin: "40px auto", padding: 24 }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1>Tenants</h1>
-        <Link href="/login" style={{ color: "#93c5fd" }}>Logout</Link>
-      </header>
-      <section style={{ marginTop: 32 }}>
-        <h2>Клиенты</h2>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+    <AdminFrame>
+      <div className="page-head">
+        <small>Platform</small>
+        <h1>Клиенты и CMS</h1>
+        <p>Tenants платформы и опубликованные CMS-страницы.</p>
+      </div>
+
+      <section className="settings-section panel-card">
+        <h2>Tenants</h2>
+        <table className="leads-table">
           <thead>
             <tr>
-              <th align="left">Slug</th>
-              <th align="left">Name</th>
+              <th>Slug</th>
+              <th>Name</th>
             </tr>
           </thead>
           <tbody>
@@ -43,14 +43,17 @@ export default function TenantsPage() {
           </tbody>
         </table>
       </section>
-      <section style={{ marginTop: 32 }}>
-        <h2>CMS pages (platform)</h2>
-        <ul>
+
+      <section className="settings-section panel-card" style={{ marginTop: 16 }}>
+        <h2>CMS pages</h2>
+        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.7 }}>
           {pages.map((p) => (
-            <li key={p.slug}>{p.slug} — {p.title} [{p.status}]</li>
+            <li key={p.slug}>
+              {p.slug} — {p.title} [{p.status}]
+            </li>
           ))}
         </ul>
       </section>
-    </main>
+    </AdminFrame>
   );
 }

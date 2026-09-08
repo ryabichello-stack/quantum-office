@@ -3,7 +3,7 @@
 # (OpenAI from ava-mailer, Telegram from ava-text-bot, DaData from ava-outreach).
 set -euo pipefail
 
-DELNO_ENV="${DELNO_ENV:-/opt/delno/.env}"
+DELNO_ENV="${DELNO_ENV:-/opt/delno/secrets/platform.env}"
 FORCE="${FORCE:-0}"
 
 MAILER_ENV="${MAILER_ENV:-/opt/ava-mailer/.env}"
@@ -47,10 +47,12 @@ maybe_set() {
   fi
 }
 
-if [ ! -f "$DELNO_ENV" ]; then
+  if [ ! -f "$DELNO_ENV" ]; then
   echo "ERROR: ${DELNO_ENV} not found — run install_isolated_prod.sh first"
   exit 1
 fi
+
+mkdir -p "$(dirname "$DELNO_ENV")"
 
 echo "==> sync Quantum Office secrets → ${DELNO_ENV}"
 

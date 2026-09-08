@@ -155,6 +155,18 @@ def _kb_context_from_result(result: ToolResult) -> str:
     return "\n\n".join(snippets)[:4000]
 
 
+def build_widget_realtime_instructions(ctx: TenantContext, kb_context: str) -> str:
+    """System prompt for OpenAI Realtime widget — same KB rules as text widget + get_knowledge tool."""
+    base = _system_prompt(ctx, kb_context, widget=True)
+    return (
+        f"{base}\n\n"
+        "Голосовой режим на сайте (как телефонный звонок): говори на русском, 2–4 предложения. "
+        "Перед ответом на вопрос о продукте, ценах, компании или подключении всегда вызывай get_knowledge "
+        "с query = сформулированный вопрос клиента. Отвечай только по результатам get_knowledge и базе знаний выше. "
+        "Если клиент перебивает — остановись и слушай."
+    )
+
+
 def _system_prompt(
     ctx: TenantContext,
     kb_context: str,
@@ -192,7 +204,11 @@ def _system_prompt(
         base += (
             " Ты на публичном сайте DELNO в демо-режиме для посетителей. "
             "Отвечай коротко (2–4 предложения), только по фактам из базы знаний ниже. "
-            "По ценам: «Диалоги» 2 990 ₽/мес, «Диалоги + звонки» 5 990 ₽/мес. "
+            "На общие вопросы «что такое DELNO», «чем занимаетесь», «для кого» — отвечай по базе знаний о продукте и компании. "
+            "Если в базе нет только части фактов (точная история, названия клиентов, внутренние цифры) — расскажи то, что есть, "
+            "и предложи уточнить детали через office@dlno.ru или заявку на сайте; не отказывайся от всего ответа. "
+            "По ценам: «Диалоги» 2 990 ₽/мес (300 обращений, 30 мин голоса на сайте), "
+            "«Диалоги + звонки» 5 990 ₽/мес (+ 100 мин телефонии). "
             "Не обещай подключение, запись или звонок без менеджера. "
             "Если данных нет — предложи оставить контакт или написать на office@dlno.ru."
         )
@@ -369,6 +385,46 @@ def _try_cabinet_setup(
     return _execute_cabinet_tool(db, ctx, tool_name, params)
 
 
+def _widget_kb_reply(kb_context: str, message: str) -> str:
+    """Short KB-based answer when LLM is slow or unavailable."""
+    text = kb_context.strip()
+    if not text:
+        return _fallback_reply("")
+    lower = message.lower()
+    if any(w in lower for w in ("сколько", "стоит", "цена", "тариф", "₽", "руб")):
+        if "2 990" in text or "2990" in text:
+            return (
+                "Тариф «Диалоги» (базовый пакет) — 2 990 ₽ в месяц: до 300 ИИ-диалогов, "
+                "30 минут голоса на сайте, чат и мессенджеры. Без телефонных звонков. "
+                "«Диалоги + звонки» — 5 990 ₽: всё из базового + 100 минут телефонии."
+            )
+    if any(
+        w in lower
+        for w in (
+            "обращен",
+            "диалог",
+            "сообщен",
+            "лимит",
+            "входит",
+            "пакет",
+            "базов",
+            "стандарт",
+            "сколько",
+            "минут",
+            "звон",
+        )
+    ):
+        return (
+            "Базовый пакет «Диалоги» (2 990 ₽): до 300 ИИ-диалогов (обращений) в месяц, "
+            "30 минут голоса на сайте, чат и мессенджеры — без телефонных звонков. "
+            "«Диалоги + звонки» (5 990 ₽): всё из базового + 100 минут телефонии."
+        )
+    excerpt = text[:900].strip()
+    if len(text) > 900:
+        excerpt += "…"
+    return excerpt
+
+
 def _fallback_reply(kb_context: str) -> str:
     if kb_context:
         return kb_context[:2000]
@@ -461,6 +517,10 @@ def _generate_reply(
                 tool_calls.append({"tool": "llm", "ok": False, "provider": provider_name, "error": "stub_echo"})
         except (KeyError, IndexError, TypeError):
             tool_calls.append({"tool": "llm", "ok": False, "error": "invalid_completion_shape"})
+
+    if widget and kb_context:
+        tool_calls.append({"tool": "llm", "ok": False, "fallback": "kb_direct"})
+        return _widget_kb_reply(kb_context, message), tool_calls, sources, None
 
     if any(word in message.lower() for word in ("заявк", "оставить", "позвон", "связ")):
         return (

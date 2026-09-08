@@ -8,6 +8,7 @@ from app.core.config import get_settings
 from app.core.db import Base, engine
 from app.operator.tools import register_builtin_tools
 from app.scripts.seed import seed_demo_tenant
+from app.services.platform_env import apply_runtime_env
 
 
 def _cors_kwargs() -> dict:
@@ -39,6 +40,7 @@ async def lifespan(_app: FastAPI):
     import app.models  # noqa: F401 — register ORM tables for create_all
 
     Base.metadata.create_all(bind=engine)
+    apply_runtime_env()
     seed_demo_tenant()
     register_builtin_tools()
     yield
