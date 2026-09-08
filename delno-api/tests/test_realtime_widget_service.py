@@ -80,8 +80,12 @@ def test_exchange_widget_realtime_sdp_full_duplex_session():
 def test_search_widget_knowledge():
     db = MagicMock()
     ctx = TenantContext(tenant_id=uuid.uuid4(), tenant_slug="delno-demo", role="public")
-    with patch("app.services.realtime_widget.registry.run") as mock_run:
-        mock_run.return_value = ToolResult(ok=True, data={"text": "2990 руб"})
+    with patch("app.services.realtime_widget.KnowledgeAdapter") as mock_cls:
+        mock_cls.return_value.search.return_value = {
+            "ok": True,
+            "text": "2990 руб",
+            "matches": [],
+        }
         from app.services.realtime_widget import search_widget_knowledge
 
         text = search_widget_knowledge(db, ctx, "тарифы")

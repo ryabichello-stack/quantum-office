@@ -178,10 +178,18 @@ def exchange_widget_realtime_sdp(
 
 def search_widget_knowledge(db: Session, ctx: TenantContext, query: str) -> str:
     """KB search for Realtime get_knowledge tool (browser executes tool, server provides data)."""
+    from app.adapters.knowledge import KnowledgeAdapter
+    from app.core.principals import principal_for_public_channel
+
     q = (query or "").strip()
     if not q:
         return ""
-    knowledge = registry.run(db, ctx, "get_knowledge", query=q)
-    if isinstance(knowledge, ToolResult) and knowledge.ok:
-        return _kb_context_from_result(knowledge)
-    return ""
+    adapter = KnowledgeAdapter()
+    data = adapter.search(
+        q,
+        tenant_slug=ctx.tenant_slug,
+        principal_id=principal_for_public_channel("widget"),
+    )
+    if not data.get("ok", True):
+        return ""
+    return _kb_context_from_result(ToolResult(ok=True, data=data))
