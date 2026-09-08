@@ -25,15 +25,25 @@ export default function VoiceDemo() {
   }, []);
 
   const handleExchange = useCallback((userText: string, assistantText: string) => {
-    setQuestion(userText);
+    if (userText) setQuestion(userText);
     setAnswer(assistantText);
     setPromptBusy(false);
+  }, []);
+
+  const handlePartial = useCallback((text: string) => {
+    if (text) {
+      setQuestion(text);
+    } else {
+      setQuestion("Говорите…");
+      setAnswer("DELNO слушает ваш вопрос.");
+    }
   }, []);
 
   const { voicePhase, voiceActive, toggleVoice, stopVoice, askText, audioRef } = useDelnoVoice({
     mountRef,
     onTranscript: handleTranscript,
     onExchange: handleExchange,
+    onPartial: handlePartial,
   });
   useCrystalContrast(mountRef, { fixed: "dark" });
 
@@ -89,8 +99,16 @@ export default function VoiceDemo() {
         </div>
       </div>
 
-      <div className="voice-orb-stage">
-        <div className="delno-crystal-mount delno-crystal-demo" ref={mountRef} data-contrast="dark">
+      <div
+        className={`voice-orb-stage${voiceActive ? ` voice-live voice-${voicePhase}` : ""}`}
+      >
+        <div
+          className="delno-crystal-mount delno-crystal-demo"
+          ref={mountRef}
+          data-contrast="dark"
+          data-voice-active={voiceActive ? "true" : undefined}
+          data-voice-phase={voicePhase !== "idle" ? voicePhase : undefined}
+        >
           <CrystalOrb
             variant="demo"
             voiceActive={voiceActive}

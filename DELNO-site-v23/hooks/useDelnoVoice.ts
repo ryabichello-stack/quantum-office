@@ -8,14 +8,16 @@ export function useDelnoVoice(options: {
   mountRef: React.RefObject<HTMLElement | null>;
   onTranscript: (text: string) => Promise<string>;
   onExchange?: (userText: string, assistantText: string) => void;
+  onPartial?: (text: string) => void;
 }) {
-  const { mountRef, onTranscript, onExchange } = options;
+  const { mountRef, onTranscript, onExchange, onPartial } = options;
   const [voicePhase, setVoicePhase] = useState<VoicePhase>("idle");
   const [voiceActive, setVoiceActive] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const controllerRef = useRef<ReturnType<typeof createVoiceController> | null>(null);
   const onTranscriptRef = useRef(onTranscript);
   const onExchangeRef = useRef(onExchange);
+  const onPartialRef = useRef(onPartial);
 
   useEffect(() => {
     onTranscriptRef.current = onTranscript;
@@ -24,6 +26,10 @@ export function useDelnoVoice(options: {
   useEffect(() => {
     onExchangeRef.current = onExchange;
   }, [onExchange]);
+
+  useEffect(() => {
+    onPartialRef.current = onPartial;
+  }, [onPartial]);
 
   const setPhase = useCallback((phase: VoicePhase) => {
     const apply = () => {
@@ -48,6 +54,7 @@ export function useDelnoVoice(options: {
     const controller = createVoiceController({
       onTranscript: (text) => onTranscriptRef.current(text),
       onExchange: (user, assistant) => onExchangeRef.current?.(user, assistant),
+      onPartial: (text) => onPartialRef.current?.(text),
       setPhase,
       audioRef,
     });

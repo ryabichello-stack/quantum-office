@@ -63,7 +63,7 @@ export function CrystalOrb({
   );
 
   return (
-    <div className={`widget widget-${variant}`}>
+    <div className={`widget widget-${variant}${voiceActive ? " is-voice-active" : ""}`} data-voice-phase={voicePhase}>
       <div className="state">
         <span className="listen">Слушаю…</span>
         <span className="think">Думаю…</span>

@@ -165,16 +165,27 @@ export function getSpeechRecognition() {
 export type VoiceSessionOptions = {
   onTranscript: (text: string) => Promise<string>;
   onExchange?: (userText: string, assistantText: string) => void;
+  onPartial?: (text: string) => void;
   setPhase: (phase: VoicePhase) => void;
   audioRef: RefObject<HTMLAudioElement | null>;
   listenSilenceMs?: number;
 };
 
+function isMobileTouchDevice() {
+  if (typeof window === "undefined") return false;
+  return (
+    "ontouchstart" in window ||
+    navigator.maxTouchPoints > 0 ||
+    /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+  );
+}
+
 const DEFAULT_LISTEN_SILENCE_MS = 8000;
 
 export function createVoiceController(options: VoiceSessionOptions) {
-  const { onTranscript, onExchange, setPhase, audioRef } = options;
+  const { onTranscript, onExchange, onPartial, setPhase, audioRef } = options;
   const listenSilenceMs = options.listenSilenceMs ?? DEFAULT_LISTEN_SILENCE_MS;
+  const mobileVoice = isMobileTouchDevice();
 
   let engaged = false;
   let recognition: SpeechRecognitionInstance | null = null;
@@ -261,6 +272,13 @@ export function createVoiceController(options: VoiceSessionOptions) {
 
   function scheduleMicRetry() {
     if (!engaged || processing || speaking) return;
+    if (mobileVoice) {
+      showError(
+        "Голосовой режим",
+        "Не расслышал вопрос. Нажмите на шар ещё раз и говорите сразу после «Слушаю…».",
+      );
+      return;
+    }
     clearMicRetryTimer();
     micRetryTimer = window.setTimeout(() => {
       micRetryTimer = null;
@@ -296,14 +314,16 @@ export function createVoiceController(options: VoiceSessionOptions) {
     clearMicRetryTimer();
     heard = false;
     pendingTranscript = "";
+    micStarts += 1;
     enterListenVisual();
+    onPartial?.("");
     resetListenTimer();
 
     recognition?.abort();
     recognition = new SpeechRecognition();
     recognition.lang = "ru-RU";
     recognition.interimResults = true;
-    recognition.continuous = true;
+    recognition.continuous = !mobileVoice;
 
     recognition.onstart = () => {
       if (engaged) enterListenVisual();
@@ -314,12 +334,19 @@ export function createVoiceController(options: VoiceSessionOptions) {
       heard = true;
       resetListenTimer();
 
+      let interim = "";
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
         const result = event.results[i];
+        const chunk = result[0]?.transcript || "";
         if (result.isFinal) {
-          pendingTranscript = `${pendingTranscript} ${result[0].transcript}`.trim();
+          pendingTranscript = `${pendingTranscript} ${chunk}`.trim();
+        } else {
+          interim = `${interim} ${chunk}`.trim();
         }
       }
+
+      const live = pendingTranscript || interim.trim();
+      if (live) onPartial?.(live);
     };
 
     recognition.onerror = (event) => {
@@ -335,9 +362,18 @@ export function createVoiceController(options: VoiceSessionOptions) {
         return;
       }
 
-      if (code === "no-speech" && pendingTranscript.trim()) {
-        finalizeTranscript(pendingTranscript);
-        return;
+      if (code === "no-speech") {
+        if (pendingTranscript.trim()) {
+          finalizeTranscript(pendingTranscript);
+          return;
+        }
+        if (mobileVoice) {
+          showError(
+            "Голосовой режим",
+            "Не расслышал речь. Разрешите микрофон для dlno.ru и говорите сразу после нажатия.",
+          );
+          return;
+        }
       }
 
       if (code !== "aborted") scheduleMicRetry();
@@ -355,6 +391,13 @@ export function createVoiceController(options: VoiceSessionOptions) {
     try {
       recognition.start();
     } catch {
+      if (mobileVoice) {
+        showError(
+          "Голосовой режим",
+          "Не удалось включить микрофон. Разрешите доступ в Safari и нажмите на шар ещё раз.",
+        );
+        return;
+      }
       scheduleMicRetry();
     }
   }
@@ -363,6 +406,11 @@ export function createVoiceController(options: VoiceSessionOptions) {
     if (!engaged) return;
     speaking = false;
     processing = false;
+    if (mobileVoice) {
+      onExchange?.("", "Нажмите на шар ещё раз, чтобы задать следующий вопрос.");
+      stop();
+      return;
+    }
     enterListenVisual();
     resetListenTimer();
     window.setTimeout(() => {
@@ -457,6 +505,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
     }
 
     engaged = true;
+    micStarts = 0;
     claimVoiceSession(stop);
     clearErrorTimer();
 

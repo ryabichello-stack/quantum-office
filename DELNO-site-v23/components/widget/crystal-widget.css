@@ -798,10 +798,70 @@
 .delno-crystal-demo .state {
   bottom: auto;
   top: 24px;
-  opacity: 1;
+  opacity: 0;
   width: auto;
   min-width: 58px;
   padding: 0 8px;
+}
+
+.delno-crystal-demo[data-voice-active="true"] .state {
+  opacity: 1;
+}
+
+.delno-crystal-demo[data-voice-active="true"] .widget .fire-idle {
+  animation-play-state: paused !important;
+  opacity: 0 !important;
+}
+
+.delno-crystal-demo[data-voice-active="true"] .widget .fire-active {
+  opacity: 1 !important;
+  transform: translate3d(0, 0, 0) scale(1.06) !important;
+}
+
+.delno-crystal-demo[data-voice-phase="listen"][data-voice-active="true"] .breath {
+  animation: demoListenPulse 1.15s ease-in-out infinite !important;
+}
+
+.delno-crystal-demo[data-voice-phase="think"][data-voice-active="true"] .breath {
+  animation: demoThinkPulse 1.6s ease-in-out infinite !important;
+}
+
+.delno-crystal-demo[data-voice-phase="speak"][data-voice-active="true"] .breath {
+  animation: demoSpeakPulse 0.85s ease-in-out infinite !important;
+}
+
+.delno-crystal-demo[data-voice-active="true"] .widget .mic {
+  opacity: 0;
+}
+
+@keyframes demoListenPulse {
+  0%,
+  100% {
+    transform: translate3d(-50%, -50%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-50%, -50%, 0) scale(1.09);
+  }
+}
+
+@keyframes demoThinkPulse {
+  0%,
+  100% {
+    transform: translate3d(-50%, -50%, 0) scale(1.02);
+  }
+  50% {
+    transform: translate3d(-50%, -50%, 0) scale(1.05);
+  }
+}
+
+@keyframes demoSpeakPulse {
+  0%,
+  100% {
+    transform: translate3d(-50%, -50%, 0) scale(1.04);
+  }
+  50% {
+    transform: translate3d(-50%, -50%, 0) scale(1.1);
+  }
 }
 
 .delno-crystal-demo .ground {
