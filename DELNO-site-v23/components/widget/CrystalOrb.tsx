@@ -31,9 +31,9 @@ export function CrystalOrb({
     onOrbClick();
   }, [onOrbClick]);
 
-  const handleClick = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
-      if (event.detail === 0) return;
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      if (event.pointerType === "mouse" && event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
       handleOrbActivate();
@@ -41,14 +41,25 @@ export function CrystalOrb({
     [handleOrbActivate],
   );
 
-  const handlePointerUp = useCallback(
-    (event: React.PointerEvent<HTMLButtonElement>) => {
-      if (event.pointerType !== "touch") return;
+  const handleClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      if (event.detail !== 0) return;
       event.preventDefault();
       event.stopPropagation();
       handleOrbActivate();
     },
     [handleOrbActivate],
+  );
+
+  const orbButton = (
+    <button
+      type="button"
+      className="orb-hit"
+      aria-label={voiceActive ? "Остановить голосовой режим" : "Говорить с DELNO"}
+      aria-pressed={voiceActive}
+      onPointerDown={handlePointerDown}
+      onClick={handleClick}
+    />
   );
 
   return (
@@ -73,15 +84,6 @@ export function CrystalOrb({
       ) : null}
 
       <div className="orb-anchor">
-        <button
-          type="button"
-          className="orb-hit"
-          aria-label={voiceActive ? "Остановить голосовой режим" : "Говорить с DELNO"}
-          aria-pressed={voiceActive}
-          onClick={handleClick}
-          onPointerUp={handlePointerUp}
-        />
-
         <div className={`motion${voicePhase !== "idle" && voicePhase !== "error" ? " is-live" : ""}`}>
           <span className="ground" />
 
@@ -132,6 +134,8 @@ export function CrystalOrb({
             <i />
           </span>
         </div>
+
+        {orbButton}
       </div>
     </div>
   );

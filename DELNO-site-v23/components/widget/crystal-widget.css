@@ -130,7 +130,8 @@
   pointer-events:none
 }
 
-.orb-hit:active ~ .motion{
+.orb-hit:active ~ .motion,
+.orb-anchor:has(.orb-hit:active) .motion{
   transform:translate3d(0,1px,0) scale3d(1.008,.992,1)
 }
 
@@ -753,6 +754,7 @@
   height: 420px;
   transform: translate(-50%, -50%);
   overflow: visible;
+  pointer-events: auto;
 }
 
 .delno-crystal-demo .orb-hit {
