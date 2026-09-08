@@ -126,7 +126,8 @@
   transform-origin:50% 74%;
   will-change:transform;
   backface-visibility:hidden;
-  transform:translate3d(0,0,0)
+  transform:translate3d(0,0,0);
+  pointer-events:none
 }
 
 .orb-hit:active ~ .motion{
@@ -763,6 +764,25 @@
   transform: translate(-50%, -50%);
   inset: auto;
   pointer-events: auto;
+  z-index: 30;
+}
+
+@media (max-width: 740px) {
+  .delno-crystal-mount.delno-crystal-demo {
+    width: min(420px, calc(100vw - 40px));
+    height: min(420px, calc(100vw - 40px));
+  }
+
+  .delno-crystal-demo .widget.widget-demo,
+  .delno-crystal-demo .orb-anchor {
+    width: min(420px, calc(100vw - 40px));
+    height: min(420px, calc(100vw - 40px));
+  }
+
+  .delno-crystal-demo .orb-hit {
+    width: min(176px, 42vw);
+    height: min(176px, 42vw);
+  }
 }
 
 .delno-crystal-demo .motion {
