@@ -1,4 +1,5 @@
 import type { RefObject } from "react";
+import { prepareTtsText } from "./ttsText";
 import { askDelnoVoice, getBasePath, widgetSttPath, widgetTtsPath } from "./widgetApi";
 
 export type VoicePhase = "idle" | "listen" | "think" | "speak" | "error";
@@ -154,6 +155,27 @@ export async function playDelnoTts(
   } finally {
     callbacks.signal?.removeEventListener("abort", onAbort);
   }
+}
+
+function speakWithBrowser(text: string): Promise<boolean> {
+  if (typeof window === "undefined" || !window.speechSynthesis) return Promise.resolve(false);
+
+  return new Promise((resolve) => {
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(prepareTtsText(text).slice(0, 500));
+    utter.lang = "ru-RU";
+    utter.rate = 1.02;
+    let settled = false;
+    const done = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(ok);
+    };
+    utter.onend = () => done(true);
+    utter.onerror = () => done(false);
+    window.speechSynthesis.speak(utter);
+    window.setTimeout(() => done(false), 12000);
+  });
 }
 
 export function getSpeechRecognition() {
@@ -704,26 +726,40 @@ export function createVoiceController(options: VoiceSessionOptions) {
 
     const audio = audioRef.current;
     if (!audio) {
-      finishSpeak();
+      void speakWithBrowser(reply).finally(finishSpeak);
       return;
     }
 
+    void unlockAudioElement(audio);
+
     const speakCap = window.setTimeout(finishSpeak, 20000);
 
-    await playDelnoTts(reply, audio, {
-      onStart: () => {
-        if (id === turnId) setPhase("speak");
-      },
-      onEnd: () => {
-        window.clearTimeout(speakCap);
-        finishSpeak();
-      },
-      onError: () => {
-        window.clearTimeout(speakCap);
-        finishSpeak();
-      },
-      signal: abortTts.signal,
-    });
+    let played = false;
+    try {
+      played = (await playDelnoTts(reply, audio, {
+        onStart: () => {
+          if (id === turnId) setPhase("speak");
+        },
+        onEnd: () => {
+          window.clearTimeout(speakCap);
+          finishSpeak();
+        },
+        onError: () => {
+          window.clearTimeout(speakCap);
+        },
+        signal: abortTts.signal,
+      })) as boolean;
+    } catch {
+      played = false;
+    }
+
+    if (!played && id === turnId && !speakDone) {
+      const spoke = await speakWithBrowser(reply);
+      window.clearTimeout(speakCap);
+      if (spoke) finishSpeak();
+      else finishSpeak();
+      return;
+    }
 
     if (id !== turnId || speakDone) return;
     if (!abortTts.signal.aborted) {
