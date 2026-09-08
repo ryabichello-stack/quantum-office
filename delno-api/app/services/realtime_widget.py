@@ -14,7 +14,12 @@ from app.operator.agent import _kb_context_from_result, build_widget_realtime_in
 from app.operator.tools.registry import ToolResult, registry
 from app.services.platform_env import get_openai_runtime
 
-WIDGET_KB_SEED_QUERY = "DELNO тарифы подключение услуги возможности"
+# Preload public KB slices for Realtime session instructions (guest ACL).
+WIDGET_KB_SEED_QUERIES = (
+    "DELNO компания продукт для кого чем занимается",
+    "DELNO тарифы цены подключение услуги",
+    "DELNO возможности каналы контакты",
+)
 
 
 def sanitize_realtime_answer_sdp(raw: str) -> str:
@@ -36,10 +41,16 @@ def sanitize_realtime_answer_sdp(raw: str) -> str:
 
 
 def load_widget_kb_context(db: Session, ctx: TenantContext) -> str:
-    knowledge = registry.run(db, ctx, "get_knowledge", query=WIDGET_KB_SEED_QUERY)
-    if isinstance(knowledge, ToolResult) and knowledge.ok:
-        return _kb_context_from_result(knowledge)
-    return ""
+    snippets: list[str] = []
+    seen: set[str] = set()
+    for query in WIDGET_KB_SEED_QUERIES:
+        knowledge = registry.run(db, ctx, "get_knowledge", query=query)
+        if isinstance(knowledge, ToolResult) and knowledge.ok:
+            chunk = _kb_context_from_result(knowledge)
+            if chunk and chunk not in seen:
+                seen.add(chunk)
+                snippets.append(chunk)
+    return "\n\n".join(snippets)[:4000]
 
 
 def _realtime_session_config(instructions: str) -> dict[str, Any]:

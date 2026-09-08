@@ -40,6 +40,7 @@ def test_load_widget_kb_context_from_tool():
         mock_run.return_value = ToolResult(ok=True, data={"text": "Тариф 2990"})
         text = load_widget_kb_context(db, ctx)
     assert "2990" in text
+    assert mock_run.call_count == 3
 
 
 def test_exchange_widget_realtime_sdp_no_api_key():
