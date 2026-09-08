@@ -9,7 +9,7 @@ import { DelnoMark } from "@/components/DelnoMark";
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [email, setEmail] = useState("owner@delno.one");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [company, setCompany] = useState("");
   const [inn, setInn] = useState("");
@@ -79,7 +79,14 @@ export default function LoginPage() {
           )}
           <label>
             Email
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="owner@dlno.ru"
+              required
+              autoComplete="email"
+            />
           </label>
           <label>
             Пароль

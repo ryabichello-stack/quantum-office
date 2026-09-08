@@ -2,15 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Building2, FileText, KeyRound, LogOut } from "lucide-react";
+import { DelnoMark } from "@/components/DelnoMark";
 import { ADMIN_TOKEN_KEY } from "@/lib/api";
 
-export function AdminShell({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+const nav = [
+  { href: "/tenants", label: "Клиенты", Icon: Building2 },
+  { href: "/settings", label: "Секреты", Icon: KeyRound },
+];
+
+export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   function logout() {
@@ -18,47 +19,49 @@ export function AdminShell({
     window.location.href = "/login";
   }
 
-  const link = (href: string, label: string) => {
-    const active = pathname === href || pathname.startsWith(`${href}/`);
-    return (
-      <Link
-        href={href}
-        style={{
-          color: active ? "#fff" : "#93c5fd",
-          textDecoration: active ? "underline" : "none",
-          fontWeight: active ? 600 : 400,
-        }}
-      >
-        {label}
-      </Link>
-    );
-  };
-
   return (
-    <main style={{ maxWidth: 960, margin: "40px auto", padding: 24 }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
-        <div>
-          <p style={{ margin: 0, opacity: 0.6, fontSize: 13 }}>DELNO Platform</p>
-          <h1 style={{ margin: "4px 0 0" }}>{title}</h1>
+    <div className="cabinet-app">
+      <div className="v2-console">
+        <div className="console-bar">
+          <div className="traffic">
+            <i />
+            <i />
+            <i />
+          </div>
+          <span>admin.dlno.ru</span>
+          <div className="console-avatar">A</div>
         </div>
-        <nav style={{ display: "flex", gap: 16, alignItems: "center", fontSize: 14 }}>
-          {link("/tenants", "Клиенты")}
-          {link("/settings", "Секреты")}
-          <button type="button" onClick={logout} style={ghostBtn}>
-            Выйти
-          </button>
-        </nav>
-      </header>
-      <div style={{ marginTop: 32 }}>{children}</div>
-    </main>
+        <div className="console-shell cabinet-shell">
+          <aside>
+            <Link href="/tenants" className="side-logo" aria-label="DELNO Admin">
+              <DelnoMark small />
+            </Link>
+            {nav.map(({ href, label, Icon }) => {
+              const active = pathname === href || pathname.startsWith(`${href}/`);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={active ? "selected" : undefined}
+                  aria-label={label}
+                  title={label}
+                >
+                  <Icon />
+                </Link>
+              );
+            })}
+            <div className="side-bottom">
+              <Link href="/tenants" className={pathname.includes("cms") ? "selected" : undefined} aria-label="CMS" title="CMS">
+                <FileText />
+              </Link>
+              <button type="button" aria-label="Выйти" title="Выйти" onClick={logout}>
+                <LogOut />
+              </button>
+            </div>
+          </aside>
+          <section className="conversation cabinet-main">{children}</section>
+        </div>
+      </div>
+    </div>
   );
 }
-
-const ghostBtn: React.CSSProperties = {
-  padding: "8px 12px",
-  borderRadius: 8,
-  border: "1px solid #334155",
-  background: "transparent",
-  color: "#93c5fd",
-  cursor: "pointer",
-};

@@ -2,19 +2,22 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { AdminLoginPreview } from "@/components/AdminLoginPreview";
 import { ADMIN_TOKEN_KEY, apiLogin, apiMe } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("admin@dlno.ru");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setBusy(true);
     setError("");
     try {
-      const { access_token } = await apiLogin(email, password);
+      const { access_token } = await apiLogin(email.trim(), password);
       const me = await apiMe(access_token);
       if (me.role !== "platform_admin") {
         setError("Нужен аккаунт platform_admin");
@@ -24,51 +27,55 @@ export default function LoginPage() {
       router.push("/settings");
     } catch {
       setError("Неверный email или пароль");
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
-    <main style={{ maxWidth: 420, margin: "80px auto", padding: 24 }}>
-      <h1>DELNO Admin</h1>
-      <p style={{ opacity: 0.7 }}>Platform admin — клиенты, CMS, секреты сервера</p>
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 12, marginTop: 24 }}>
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email"
-          required
-          style={inputStyle}
-        />
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
-          required
-          style={inputStyle}
-        />
-        {error && <p style={{ color: "#f87171" }}>{error}</p>}
-        <button type="submit" style={buttonStyle}>
-          Войти
-        </button>
-      </form>
+    <main className="login-page">
+      <div className="login-copy">
+        <div className="login-status">
+          <i /> Platform admin · admin.dlno.ru
+        </div>
+        <h1>
+          Клиенты,
+          <br />
+          <span>CMS и секреты</span>
+        </h1>
+        <p>Управление платформой DELNO: tenants, CMS и ключи сервера без SSH.</p>
+        <form className="login-form" onSubmit={onSubmit}>
+          <label>
+            Email
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="admin@dlno.ru"
+              autoComplete="username"
+              required
+            />
+          </label>
+          <label>
+            Пароль
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
+              required
+            />
+          </label>
+          {error && <p className="form-error">{error}</p>}
+          <button type="submit" className="btn-primary" disabled={busy}>
+            {busy ? "Вход…" : "Войти"}
+          </button>
+        </form>
+      </div>
+      <div className="login-preview">
+        <AdminLoginPreview />
+      </div>
     </main>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  padding: 12,
-  borderRadius: 8,
-  border: "1px solid #334155",
-  background: "#111827",
-  color: "#fff",
-};
-const buttonStyle: React.CSSProperties = {
-  padding: 12,
-  borderRadius: 8,
-  border: "none",
-  background: "#2563eb",
-  color: "#fff",
-  cursor: "pointer",
-};
