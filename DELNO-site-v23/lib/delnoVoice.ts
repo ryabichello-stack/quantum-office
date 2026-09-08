@@ -1,8 +1,36 @@
 import type { RefObject } from "react";
 import { prepareTtsText } from "./ttsText";
-import { getBasePath, widgetRealtimePath, widgetTtsPath } from "./widgetApi";
+import { askDelnoVoice, getBasePath, widgetSttPath, widgetTtsPath } from "./widgetApi";
 
 export type VoicePhase = "idle" | "listen" | "think" | "speak" | "error";
+
+type SpeechRecognitionResultEvent = {
+  results: {
+    length: number;
+    [index: number]: { isFinal: boolean; 0: { transcript: string }; length: number };
+  };
+  resultIndex: number;
+};
+
+type SpeechRecognitionInstance = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onstart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
+type SpeechWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
 
 let activeAudio: HTMLAudioElement | null = null;
 let activeVoiceStop: (() => void) | null = null;
@@ -150,9 +178,10 @@ function speakWithBrowser(text: string): Promise<boolean> {
   });
 }
 
-/** @deprecated Realtime path handles mic directly; kept for compatibility. */
 export function getSpeechRecognition() {
-  return null;
+  if (typeof window === "undefined") return null;
+  const speechWindow = window as SpeechWindow;
+  return speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition || null;
 }
 
 export type VoiceSessionOptions = {
@@ -164,47 +193,65 @@ export type VoiceSessionOptions = {
   listenSilenceMs?: number;
 };
 
-type RealtimeEvent = {
-  type: string;
-  transcript?: string;
-  error?: { message?: string };
-};
-
-function sanitizeRealtimeAnswerSdp(raw: string): string {
-  const lines = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-  const fixed: string[] = [];
-  for (const line of lines) {
-    if (!line) continue;
-    if (line.startsWith("a=candidate:") && line.includes(" ufrag ")) {
-      fixed.push(line.split(" ufrag ")[0]);
-    } else {
-      fixed.push(line);
-    }
-  }
-  return `${fixed.join("\r\n")}\r\n`;
+function isMobileTouchDevice() {
+  if (typeof window === "undefined") return false;
+  return (
+    "ontouchstart" in window ||
+    navigator.maxTouchPoints > 0 ||
+    /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+  );
 }
 
-function canUseRealtime() {
+const DEFAULT_LISTEN_SILENCE_MS = 8000;
+const MOBILE_RECORD_MAX_MS = 5500;
+const MOBILE_SILENCE_STOP_MS = 850;
+const MOBILE_SPEECH_THRESHOLD = 14;
+
+function pickRecorderMime() {
+  if (typeof MediaRecorder === "undefined") return "";
+  const candidates = ["audio/mp4", "audio/aac", "audio/webm;codecs=opus", "audio/webm"];
+  for (const type of candidates) {
+    if (MediaRecorder.isTypeSupported(type)) return type;
+  }
+  return "";
+}
+
+function canUseMobileRecorder() {
   return (
     typeof window !== "undefined" &&
-    typeof RTCPeerConnection !== "undefined" &&
-    !!navigator.mediaDevices?.getUserMedia
+    typeof MediaRecorder !== "undefined" &&
+    !!navigator.mediaDevices?.getUserMedia &&
+    !!pickRecorderMime()
   );
 }
 
 export function createVoiceController(options: VoiceSessionOptions) {
   const { onTranscript, onExchange, onPartial, setPhase, audioRef } = options;
+  const listenSilenceMs = options.listenSilenceMs ?? DEFAULT_LISTEN_SILENCE_MS;
+  const mobileVoice = isMobileTouchDevice();
+  const useMobileRecorder = mobileVoice && canUseMobileRecorder();
 
   let engaged = false;
-  let pc: RTCPeerConnection | null = null;
-  let micStream: MediaStream | null = null;
-  let dataChannel: RTCDataChannel | null = null;
-  let lastUserText = "";
-  let errorTimer: number | null = null;
+  let recognition: SpeechRecognitionInstance | null = null;
+  let mediaStream: MediaStream | null = null;
+  let mediaRecorder: MediaRecorder | null = null;
+  let recordChunks: Blob[] = [];
+  let recordMime = "";
+  let recording = false;
+  let heard = false;
+  let speaking = false;
+  let processing = false;
   let turnId = 0;
   let abortTts: AbortController | null = null;
-  let processing = false;
-  let speaking = false;
+  let errorTimer: number | null = null;
+  let listenTimer: number | null = null;
+  let micRetryTimer: number | null = null;
+  let sessionResolve: (() => void) | null = null;
+  let pendingTranscript = "";
+  let processingRecording = false;
+  let silenceStopTimer: number | null = null;
+  let silenceCheckTimer: number | null = null;
+  let audioContextRef: AudioContext | null = null;
 
   function clearErrorTimer() {
     if (errorTimer !== null) {
@@ -213,190 +260,454 @@ export function createVoiceController(options: VoiceSessionOptions) {
     }
   }
 
-  function showError(userText: string, assistantText: string) {
-    clearErrorTimer();
-    setPhase("error");
-    onExchange?.(userText, assistantText);
-    errorTimer = window.setTimeout(() => stop(), 5000);
+  function clearMicRetryTimer() {
+    if (micRetryTimer !== null) {
+      window.clearTimeout(micRetryTimer);
+      micRetryTimer = null;
+    }
   }
 
-  function teardownRealtime() {
+  function clearListenTimer() {
+    if (listenTimer !== null) {
+      window.clearTimeout(listenTimer);
+      listenTimer = null;
+    }
+  }
+
+  function resetListenTimer() {
+    clearListenTimer();
+    const timeoutMs = recording ? MOBILE_RECORD_MAX_MS : listenSilenceMs;
+    listenTimer = window.setTimeout(() => {
+      if (!engaged || processing || speaking) return;
+      if (recording) finishMobileRecording();
+      else stop();
+    }, timeoutMs);
+  }
+
+  function clearSilenceWatch() {
+    if (silenceStopTimer !== null) {
+      window.clearTimeout(silenceStopTimer);
+      silenceStopTimer = null;
+    }
+    if (silenceCheckTimer !== null) {
+      window.clearTimeout(silenceCheckTimer);
+      silenceCheckTimer = null;
+    }
+    void audioContextRef?.close();
+    audioContextRef = null;
+  }
+
+  function watchSilence(stream: MediaStream) {
+    clearSilenceWatch();
     try {
-      dataChannel?.close();
-    } catch {
-      /* ignore */
-    }
-    try {
-      pc?.close();
-    } catch {
-      /* ignore */
-    }
-    micStream?.getTracks().forEach((track) => track.stop());
-    dataChannel = null;
-    pc = null;
-    micStream = null;
-    const audio = audioRef.current;
-    if (audio) {
-      audio.pause();
-      audio.srcObject = null;
-      audio.removeAttribute("src");
-      if (activeAudio === audio) activeAudio = null;
-    }
-  }
+      const AudioCtx =
+        window.AudioContext ||
+        (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
 
-  function handleRealtimeEvent(event: RealtimeEvent) {
-    if (!engaged) return;
+      const audioContext = new AudioCtx();
+      audioContextRef = audioContext;
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
 
-    switch (event.type) {
-      case "session.created":
-        setPhase("listen");
-        onPartial?.("Говорите…");
-        break;
-      case "input_audio_buffer.speech_started":
-        setPhase("listen");
-        onPartial?.("Слушаю…");
-        break;
-      case "conversation.item.input_audio_transcription.completed":
-        lastUserText = (event.transcript || "").trim();
-        if (lastUserText) onPartial?.(lastUserText);
-        break;
-      case "response.created":
-        setPhase("speak");
-        break;
-      case "response.output_audio_transcript.done": {
-        const reply = (event.transcript || "").trim();
-        if (reply) onExchange?.(lastUserText, reply);
-        break;
-      }
-      case "response.done":
-        setPhase("listen");
-        lastUserText = "";
-        onPartial?.("Говорите…");
-        break;
-      case "error":
-        showError(
-          lastUserText || "Голосовой режим",
-          event.error?.message || "Ошибка голосового соединения. Попробуйте ещё раз.",
-        );
-        break;
-      default:
-        break;
-    }
-  }
+      let silentForMs = 0;
+      let heardSpeech = false;
+      const startedAt = Date.now();
 
-  async function connectRealtime() {
-    if (!canUseRealtime()) {
-      throw new Error("webrtc unavailable");
-    }
+      const tick = () => {
+        if (!recording) {
+          clearSilenceWatch();
+          return;
+        }
 
-    setPhase("listen");
-    onPartial?.("Подключаюсь…");
+        const buf = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i += 1) sum += buf[i];
+        const level = sum / buf.length;
 
-    const audio = audioRef.current;
-    if (audio) await unlockAudioElement(audio);
+        if (level >= MOBILE_SPEECH_THRESHOLD) {
+          heardSpeech = true;
+          silentForMs = 0;
+        } else if (heardSpeech && Date.now() - startedAt > 700) {
+          silentForMs += 120;
+          if (silentForMs >= MOBILE_SILENCE_STOP_MS) {
+            finishMobileRecording();
+            return;
+          }
+        }
 
-    const connection = new RTCPeerConnection();
-    pc = connection;
-
-    if (audio) {
-      audio.autoplay = true;
-      audio.setAttribute("playsinline", "true");
-      connection.ontrack = (trackEvent) => {
-        audio.srcObject = trackEvent.streams[0];
-        void audio.play().catch(() => undefined);
+        silenceCheckTimer = window.setTimeout(tick, 120);
       };
-    }
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true },
-    });
-    if (!engaged) {
-      stream.getTracks().forEach((track) => track.stop());
-      throw new Error("cancelled");
+      silenceCheckTimer = window.setTimeout(tick, 300);
+    } catch {
+      /* ignore — max timer still stops recording */
     }
-    micStream = stream;
-    stream.getTracks().forEach((track) => connection.addTrack(track, stream));
+  }
 
-    const channel = connection.createDataChannel("oai-events");
-    dataChannel = channel;
-    channel.onmessage = (messageEvent) => {
+  function stopMediaCapture() {
+    recording = false;
+    clearSilenceWatch();
+    if (mediaRecorder && mediaRecorder.state !== "inactive") {
       try {
-        handleRealtimeEvent(JSON.parse(String(messageEvent.data)) as RealtimeEvent);
+        mediaRecorder.stop();
       } catch {
-        /* ignore malformed events */
+        /* ignore */
       }
-    };
+    }
+    mediaStream?.getTracks().forEach((track) => track.stop());
+    mediaStream = null;
+    mediaRecorder = null;
+    recordChunks = [];
+    recordMime = "";
+  }
 
-    const offer = await connection.createOffer();
-    await connection.setLocalDescription(offer);
+  async function transcribeBlob(blob: Blob, mime: string) {
+    const form = new FormData();
+    const ext = mime.includes("mp4") || mime.includes("aac") ? "m4a" : "webm";
+    form.append("file", blob, `voice.${ext}`);
+    const response = await fetch(widgetSttPath(), { method: "POST", body: form });
+    if (!response.ok) throw new Error("stt failed");
+    const payload = (await response.json()) as { text?: string };
+    return (payload.text || "").trim();
+  }
 
-    const response = await fetch(widgetRealtimePath(), {
-      method: "POST",
-      headers: { "Content-Type": "application/sdp" },
-      body: offer.sdp || "",
-      signal: AbortSignal.timeout(65000),
-    });
+  async function processMobileRecording() {
+    if (processingRecording) return;
+    processingRecording = true;
+    recording = false;
+    clearListenTimer();
 
-    if (!response.ok) {
-      const detail = (await response.text()).slice(0, 200);
-      throw new Error(detail || `HTTP ${response.status}`);
+    const mime = recordMime || "audio/webm";
+    const blob = new Blob(recordChunks, { type: mime });
+    recordChunks = [];
+    stopMediaCapture();
+
+    try {
+      if (!engaged || processing || speaking) return;
+
+      if (blob.size < 600) {
+        showError(
+          "Голосовой режим",
+          "Не расслышал вопрос. Нажмите на шар, говорите громче и нажмите ещё раз.",
+        );
+        return;
+      }
+
+      setPhase("think");
+      onPartial?.("Секунду…");
+
+      let transcript = "";
+      let reply = "";
+
+      if (useMobileRecorder) {
+        const result = await askDelnoVoice(blob, mime);
+        if (result.error || !result.answer) {
+          showError(
+            "Голосовой режим",
+            result.error || "Не удалось получить ответ. Попробуйте «Сколько стоит?» ниже.",
+          );
+          return;
+        }
+        transcript = result.transcript;
+        reply = result.answer;
+      } else {
+        try {
+          transcript = await transcribeBlob(blob, mime);
+        } catch {
+          showError(
+            "Голосовой режим",
+            "Не удалось распознать речь. Попробуйте ещё раз или нажмите «Сколько стоит?».",
+          );
+          return;
+        }
+        if (!transcript) {
+          showError(
+            "Голосовой режим",
+            "Не расслышал вопрос. Говорите ближе к телефону и попробуйте снова.",
+          );
+          return;
+        }
+        try {
+          reply = await onTranscript(transcript);
+        } catch {
+          showError(transcript, "Сейчас не удалось получить ответ. Попробуйте ещё раз.");
+          return;
+        }
+      }
+
+      if (!reply.trim()) {
+        showError(transcript, "Не удалось получить ответ. Попробуйте переформулировать вопрос.");
+        return;
+      }
+
+      onPartial?.(transcript);
+      await speakReply(transcript, reply, { fromMic: true, resumeListen: false });
+    } finally {
+      processingRecording = false;
+    }
+  }
+
+  function finishMobileRecording() {
+    if (mediaRecorder?.state === "recording") {
+      try {
+        mediaRecorder.stop();
+      } catch {
+        void processMobileRecording();
+      }
+      return;
+    }
+    void processMobileRecording();
+  }
+
+  function startMobileMic() {
+    if (!engaged || processing || speaking || recording) return;
+
+    clearErrorTimer();
+    clearMicRetryTimer();
+    heard = false;
+    recordMime = pickRecorderMime();
+    if (!recordMime) {
+      startDesktopMic();
+      return;
     }
 
-    const answerSdp = sanitizeRealtimeAnswerSdp(await response.text());
-    await connection.setRemoteDescription({ type: "answer", sdp: answerSdp });
-
-    setPhase("listen");
+    enterListenVisual();
     onPartial?.("Говорите…");
+    resetListenTimer();
+
+    navigator.mediaDevices
+      .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+      .then((stream) => {
+        if (!engaged) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        mediaStream = stream;
+        recordChunks = [];
+        recording = true;
+        heard = true;
+
+        try {
+          mediaRecorder = new MediaRecorder(stream, { mimeType: recordMime });
+        } catch {
+          showError(
+            "Голосовой режим",
+            "Не удалось включить запись. Разрешите микрофон для dlno.ru в Safari.",
+          );
+          stopMediaCapture();
+          return;
+        }
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) recordChunks.push(event.data);
+        };
+        mediaRecorder.onstop = () => {
+          void processMobileRecording();
+        };
+        mediaRecorder.onerror = () => {
+          showError(
+            "Голосовой режим",
+            "Ошибка записи. Разрешите микрофон и попробуйте снова.",
+          );
+        };
+
+        mediaRecorder.start(250);
+        watchSilence(stream);
+        enterListenVisual();
+      })
+      .catch(() => {
+        showError(
+          "Голосовой режим",
+          "Разрешите микрофон для dlno.ru: Настройки → Safari → Микрофон.",
+        );
+      });
+  }
+
+  function interruptTurn() {
+    turnId += 1;
+    pendingTranscript = "";
+    clearListenTimer();
+    clearMicRetryTimer();
+    recognition?.abort();
+    recognition = null;
+    stopMediaCapture();
+    abortTts?.abort();
+    abortTts = null;
+    processing = false;
+    speaking = false;
+    heard = false;
   }
 
   function stop() {
     engaged = false;
-    turnId += 1;
-    processing = false;
-    speaking = false;
-    abortTts?.abort();
-    abortTts = null;
+    interruptTurn();
     clearErrorTimer();
-    teardownRealtime();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.removeAttribute("src");
+      if (activeAudio === audioRef.current) activeAudio = null;
+    }
     window.speechSynthesis?.cancel();
     releaseVoiceSession(stop);
     setPhase("idle");
+    sessionResolve?.();
+    sessionResolve = null;
   }
 
-  async function beginSession() {
-    if (engaged) {
-      stop();
+  function showError(userText: string, assistantText: string) {
+    clearErrorTimer();
+    setPhase("error");
+    onExchange?.(userText, assistantText);
+    errorTimer = window.setTimeout(() => stop(), 4000);
+  }
+
+  function enterListenVisual() {
+    if (!engaged) return;
+    setPhase("listen");
+  }
+
+  function scheduleMicRetry() {
+    if (!engaged || processing || speaking) return;
+    clearMicRetryTimer();
+    micRetryTimer = window.setTimeout(() => {
+      micRetryTimer = null;
+      if (engaged && !processing && !speaking) startDesktopMic();
+    }, 250);
+  }
+
+  function finalizeTranscript(raw: string) {
+    const text = raw.trim();
+    if (!text || !engaged || processing || speaking) return;
+    pendingTranscript = "";
+    heard = true;
+    clearListenTimer();
+    clearMicRetryTimer();
+    recognition?.stop();
+    recognition = null;
+    void answer(text, { fromMic: true, resumeListen: !mobileVoice });
+  }
+
+  function startMic() {
+    if (!engaged || processing || speaking) return;
+    if (useMobileRecorder) {
+      startMobileMic();
+      return;
+    }
+    startDesktopMic();
+  }
+
+  function startDesktopMic() {
+    if (!engaged || processing || speaking) return;
+
+    const SpeechRecognition = getSpeechRecognition();
+    if (!SpeechRecognition) {
+      showError(
+        "Голосовой режим",
+        "Браузер не поддерживает распознавание речи. Используйте Safari на iPhone.",
+      );
       return;
     }
 
-    engaged = true;
-    claimVoiceSession(stop);
     clearErrorTimer();
-    lastUserText = "";
+    clearMicRetryTimer();
+    heard = false;
+    pendingTranscript = "";
+    enterListenVisual();
+    onPartial?.("");
+    resetListenTimer();
+
+    recognition?.abort();
+    recognition = new SpeechRecognition();
+    recognition.lang = "ru-RU";
+    recognition.interimResults = true;
+    recognition.continuous = true;
+
+    recognition.onstart = () => {
+      if (engaged) enterListenVisual();
+    };
+
+    recognition.onresult = (event) => {
+      if (!engaged || processing || speaking) return;
+      heard = true;
+      resetListenTimer();
+
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const result = event.results[i];
+        const chunk = result[0]?.transcript || "";
+        if (result.isFinal) {
+          pendingTranscript = `${pendingTranscript} ${chunk}`.trim();
+        } else {
+          interim = `${interim} ${chunk}`.trim();
+        }
+      }
+
+      const live = pendingTranscript || interim.trim();
+      if (live) onPartial?.(live);
+    };
+
+    recognition.onerror = (event) => {
+      recognition = null;
+      if (!engaged || processing || speaking) return;
+      const code = event?.error || "";
+
+      if (code === "not-allowed" || code === "service-not-allowed" || code === "audio-capture") {
+        showError(
+          "Голосовой режим",
+          "Не удалось получить доступ к микрофону. Разрешите микрофон и нажмите на шар ещё раз.",
+        );
+        return;
+      }
+
+      if (code === "no-speech" && pendingTranscript.trim()) {
+        finalizeTranscript(pendingTranscript);
+        return;
+      }
+
+      if (code !== "aborted") scheduleMicRetry();
+    };
+
+    recognition.onend = () => {
+      recognition = null;
+      if (pendingTranscript.trim() && engaged && !processing && !speaking) {
+        finalizeTranscript(pendingTranscript);
+        return;
+      }
+      if (!heard && engaged && !processing && !speaking) scheduleMicRetry();
+    };
 
     try {
-      await connectRealtime();
-    } catch (err) {
-      engaged = false;
-      teardownRealtime();
-      releaseVoiceSession(stop);
-      setPhase("error");
-      const detail =
-        err instanceof Error && err.message.includes("Permission")
-          ? "Разрешите микрофон для сайта и нажмите на кристалл ещё раз."
-          : err instanceof Error && err.message.trim()
-            ? `Не удалось подключить голос Realtime: ${err.message.trim().slice(0, 180)}`
-            : "Не удалось подключить голос Realtime. Используйте кнопки с вопросами ниже.";
-      onExchange?.("Голосовой режим", detail);
-      clearErrorTimer();
-      errorTimer = window.setTimeout(() => setPhase("idle"), 5000);
+      recognition.start();
+    } catch {
+      scheduleMicRetry();
     }
+  }
+
+  function resumeListenAfterAnswer() {
+    if (!engaged) return;
+    speaking = false;
+    processing = false;
+    if (mobileVoice) {
+      onExchange?.("", "Нажмите на шар ещё раз, чтобы задать следующий вопрос.");
+      stop();
+      return;
+    }
+    enterListenVisual();
+    resetListenTimer();
+    window.setTimeout(() => {
+      if (engaged && !processing && !speaking) startMic();
+    }, 200);
   }
 
   async function speakReply(
     userText: string,
     reply: string,
-    opts?: { resumeListen?: boolean },
+    options?: { fromMic?: boolean; resumeListen?: boolean },
   ) {
     const id = turnId;
     processing = false;
@@ -405,16 +716,12 @@ export function createVoiceController(options: VoiceSessionOptions) {
     setPhase("speak");
     abortTts = new AbortController();
 
-    let finished = false;
+    let speakDone = false;
     const finishSpeak = () => {
-      if (id !== turnId || finished) return;
-      finished = true;
-      speaking = false;
-      if (opts?.resumeListen !== false && engaged) {
-        setPhase("listen");
-      } else {
-        stop();
-      }
+      if (id !== turnId || speakDone) return;
+      speakDone = true;
+      if (engaged && options?.resumeListen !== false) resumeListenAfterAnswer();
+      else stop();
     };
 
     const audio = audioRef.current;
@@ -424,7 +731,8 @@ export function createVoiceController(options: VoiceSessionOptions) {
     }
 
     void unlockAudioElement(audio);
-    const cap = window.setTimeout(finishSpeak, 20000);
+
+    const speakCap = window.setTimeout(finishSpeak, 20000);
 
     let played = false;
     try {
@@ -433,55 +741,109 @@ export function createVoiceController(options: VoiceSessionOptions) {
           if (id === turnId) setPhase("speak");
         },
         onEnd: () => {
-          window.clearTimeout(cap);
+          window.clearTimeout(speakCap);
           finishSpeak();
         },
-        onError: () => window.clearTimeout(cap),
+        onError: () => {
+          window.clearTimeout(speakCap);
+        },
         signal: abortTts.signal,
       })) as boolean;
     } catch {
       played = false;
     }
 
-    if (!played && id === turnId && !finished) {
-      await speakWithBrowser(reply);
-      window.clearTimeout(cap);
+    if (!played && id === turnId && !speakDone) {
+      const spoke = await speakWithBrowser(reply);
+      window.clearTimeout(speakCap);
+      if (spoke) finishSpeak();
+      else finishSpeak();
+      return;
+    }
+
+    if (id !== turnId || speakDone) return;
+    if (!abortTts.signal.aborted) {
+      window.clearTimeout(speakCap);
       finishSpeak();
     }
   }
 
-  async function askText(text: string, opts?: { resumeListen?: boolean }) {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-
-    stop();
-    engaged = true;
-    claimVoiceSession(stop);
-    clearErrorTimer();
+  async function answer(
+    text: string,
+    options?: { fromMic?: boolean; resumeListen?: boolean },
+  ) {
+    const id = ++turnId;
     processing = true;
+    clearListenTimer();
+    clearMicRetryTimer();
+    recognition?.abort();
+    recognition = null;
+    stopMediaCapture();
+    pendingTranscript = "";
     setPhase("think");
 
-    const id = ++turnId;
     let reply = "";
     try {
-      reply = await onTranscript(trimmed);
+      reply = await onTranscript(text);
     } catch {
+      processing = false;
       if (id !== turnId) return;
-      showError(trimmed, "Сейчас не удалось получить ответ. Попробуйте ещё раз.");
+      showError(text, "Сейчас не удалось получить ответ. Попробуйте ещё раз.");
       return;
     }
 
     if (id !== turnId) return;
     if (!reply.trim()) {
-      showError(trimmed, "Не удалось получить ответ. Попробуйте переформулировать вопрос.");
+      processing = false;
+      showError(text, "Не удалось получить ответ. Попробуйте переформулировать вопрос.");
       return;
     }
 
-    await speakReply(trimmed, reply, { resumeListen: opts?.resumeListen ?? false });
+    await speakReply(text, reply, options);
+  }
+
+  function beginSession() {
+    if (engaged && recording) {
+      clearErrorTimer();
+      finishMobileRecording();
+      return;
+    }
+
+    if (engaged) {
+      clearErrorTimer();
+      stop();
+      return;
+    }
+
+    engaged = true;
+    claimVoiceSession(stop);
+    clearErrorTimer();
+
+    const audio = audioRef.current;
+    if (audio) void unlockAudioElement(audio);
+
+    startMic();
+  }
+
+  function toggle() {
+    beginSession();
+  }
+
+  async function askText(text: string, options?: { resumeListen?: boolean }) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    interruptTurn();
+    engaged = true;
+    claimVoiceSession(stop);
+    clearErrorTimer();
+    setPhase("think");
+
+    await answer(trimmed, { fromMic: false, resumeListen: options?.resumeListen });
   }
 
   return {
-    toggle: () => void beginSession(),
+    toggle,
     stop,
     askText,
     isActive: () => engaged,

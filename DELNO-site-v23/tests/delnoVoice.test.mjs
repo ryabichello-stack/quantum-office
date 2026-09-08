@@ -29,10 +29,10 @@ function installDomStubs() {
   };
 
   globalThis.fetch = mock.fn(async (url) => {
-    if (String(url).includes("/voice/realtime")) {
+    if (String(url).includes("/api/tts")) {
       return {
         ok: true,
-        text: async () => "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\n",
+        blob: async () => new Blob(["audio"], { type: "audio/mpeg" }),
       };
     }
     return {
@@ -44,40 +44,9 @@ function installDomStubs() {
   globalThis.URL.createObjectURL = () => "blob:test";
   globalThis.URL.revokeObjectURL = () => {};
 
-  class DataChannelMock {
-    onmessage = null;
-    close() {}
-    send() {}
-  }
-
-  class RTCPeerConnectionMock {
-    ontrack = null;
-    localDescription = { sdp: "offer-sdp" };
-    constructor() {
-      this._channel = new DataChannelMock();
-    }
-    createDataChannel() {
-      return this._channel;
-    }
-    addTrack() {}
-    async createOffer() {
-      return { type: "offer", sdp: "offer-sdp" };
-    }
-    async setLocalDescription() {}
-    async setRemoteDescription() {
-      queueMicrotask(() => {
-        this.ontrack?.({ streams: [{ id: "remote" }] });
-        this._channel.onmessage?.({
-          data: JSON.stringify({ type: "session.created" }),
-        });
-      });
-    }
-    close() {}
-  }
-
-  globalThis.RTCPeerConnection = RTCPeerConnectionMock;
-
   globalThis.navigator = {
+    maxTouchPoints: 0,
+    userAgent: "Desktop",
     mediaDevices: {
       getUserMedia: async () => ({
         getTracks: () => [{ stop: () => {} }],
@@ -127,13 +96,11 @@ describe("createVoiceController", () => {
     assert.equal(phases.at(-1), "idle");
   });
 
-  it("toggle starts Realtime listen and stops on second toggle", async () => {
-    const { controller } = makeController();
-    controller.toggle();
-    await new Promise((r) => setTimeout(r, 30));
-    assert.ok(phases.includes("listen"));
-    controller.toggle();
-    assert.equal(phases.at(-1), "idle");
+  it("askText calls onTranscript with user message", async () => {
+    const { controller, onTranscript } = makeController();
+    await controller.askText("Сколько стоит?");
+    assert.equal(onTranscript.mock.calls.length, 1);
+    assert.equal(onTranscript.mock.calls[0].arguments[0], "Сколько стоит?");
   });
 
   it("starting one controller stops another via mutex", async () => {
@@ -149,10 +116,9 @@ describe("createVoiceController", () => {
       setPhase: (p) => phasesB.push(p),
       audioRef: { current: audioEl },
     });
-    a.toggle();
-    await new Promise((r) => setTimeout(r, 30));
-    b.toggle();
+    await a.askText("test a");
+    await b.askText("test b");
     assert.equal(phasesA.at(-1), "idle");
-    assert.ok(phasesB.includes("listen"));
+    assert.ok(phasesB.includes("think"));
   });
 });
