@@ -20,6 +20,8 @@ class SecretFieldDef:
     group_title: str
     sensitive: bool = True
     hint: str = ""
+    control: str = "text"  # text | password | select
+    options_key: str | None = None  # chat_models | realtime_models | realtime_voices
 
 
 SECRET_FIELDS: tuple[SecretFieldDef, ...] = (
@@ -30,6 +32,8 @@ SECRET_FIELDS: tuple[SecretFieldDef, ...] = (
         "OpenAI / голос",
         True,
         "Realtime WebRTC, TTS и оператор. Тот же ключ, что в телефонии AVA.",
+        "password",
+        None,
     ),
     SecretFieldDef(
         "OPENAI_MODEL",
@@ -37,7 +41,9 @@ SECRET_FIELDS: tuple[SecretFieldDef, ...] = (
         "openai",
         "OpenAI / голос",
         False,
-        "Например gpt-4.1-mini",
+        "Модель для текстового оператора и виджета",
+        "select",
+        "chat_models",
     ),
     SecretFieldDef(
         "OPENAI_REALTIME_MODEL",
@@ -45,7 +51,9 @@ SECRET_FIELDS: tuple[SecretFieldDef, ...] = (
         "openai",
         "OpenAI / голос",
         False,
-        "Например gpt-realtime-2.1",
+        "Модель для голосового орба (WebRTC)",
+        "select",
+        "realtime_models",
     ),
     SecretFieldDef(
         "OPENAI_REALTIME_VOICE",
@@ -53,7 +61,9 @@ SECRET_FIELDS: tuple[SecretFieldDef, ...] = (
         "openai",
         "OpenAI / голос",
         False,
-        "cedar — как в телефонии",
+        "Голос Realtime — cedar как в телефонии AVA",
+        "select",
+        "realtime_voices",
     ),
     SecretFieldDef(
         "JWT_SECRET",
@@ -175,12 +185,17 @@ def list_secret_fields() -> list[dict[str, object]]:
             "label": field.label,
             "hint": field.hint,
             "sensitive": field.sensitive,
+            "control": field.control,
+            "options_key": field.options_key,
             "configured": bool(current.strip()),
         }
         if field.sensitive and current.strip():
             item["preview"] = mask_secret(current)
         elif current.strip():
             item["preview"] = current
+            item["value"] = current
+        elif field.control == "select":
+            item["value"] = ""
         group["items"].append(item)
     order = ["openai", "security", "integrations"]
     return [groups[g] for g in order if g in groups]

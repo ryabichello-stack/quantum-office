@@ -18,6 +18,7 @@ from app.services.platform_env import (
     list_secret_fields,
     update_env_values,
 )
+from app.services.openai_catalog import fetch_openai_options
 
 router = APIRouter(prefix="/admin/platform-secrets", tags=["admin-settings"])
 
@@ -32,10 +33,35 @@ def get_platform_secrets(
 ) -> dict:
     """Masked list of platform env keys (never returns full secret values)."""
     status = env_file_status()
+    options = fetch_openai_options()
     return {
         "env_file": status,
         "groups": list_secret_fields(),
+        "options": {
+            "source": options["source"],
+            "fetched_at": options["fetched_at"],
+            "fetch_error": options.get("fetch_error"),
+            "chat_models": options["chat_models"],
+            "realtime_models": options["realtime_models"],
+            "realtime_voices": options["realtime_voices"],
+        },
         "updated_by": str(admin.id),
+    }
+
+
+@router.post("/options/refresh")
+def refresh_platform_secret_options(
+    admin: User = Depends(require_platform_admin),
+) -> dict:
+    """Re-fetch OpenAI model lists (cached 5 min otherwise)."""
+    options = fetch_openai_options(force_refresh=True)
+    return {
+        "source": options["source"],
+        "fetched_at": options["fetched_at"],
+        "fetch_error": options.get("fetch_error"),
+        "chat_models": options["chat_models"],
+        "realtime_models": options["realtime_models"],
+        "realtime_voices": options["realtime_voices"],
     }
 
 

@@ -15,12 +15,24 @@ export type SecretItem = {
   sensitive: boolean;
   configured: boolean;
   preview?: string;
+  value?: string;
+  control?: "text" | "password" | "select";
+  options_key?: "chat_models" | "realtime_models" | "realtime_voices" | null;
 };
 
 export type SecretGroup = {
   id: string;
   title: string;
   items: SecretItem[];
+};
+
+export type OpenAiOptions = {
+  source: string;
+  fetched_at: number;
+  fetch_error?: string | null;
+  chat_models: string[];
+  realtime_models: string[];
+  realtime_voices: string[];
 };
 
 function authHeaders(token: string) {
@@ -61,7 +73,17 @@ export async function apiGetPlatformSecrets(token: string) {
   return res.json() as Promise<{
     env_file: { path: string; exists: boolean; writable: boolean };
     groups: SecretGroup[];
+    options: OpenAiOptions;
   }>;
+}
+
+export async function apiRefreshPlatformOptions(token: string) {
+  const res = await fetch(`${API_URL}/v1/admin/platform-secrets/options/refresh`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error("Failed to refresh options");
+  return res.json() as Promise<OpenAiOptions>;
 }
 
 export async function apiPatchPlatformSecrets(token: string, values: Record<string, string>) {
