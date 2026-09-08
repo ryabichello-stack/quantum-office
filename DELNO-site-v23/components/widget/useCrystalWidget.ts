@@ -46,7 +46,10 @@ function personalizedGreeting(name: string) {
 
 export function useCrystalWidgetChat(apiPath: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: "assistant", text: "Здравствуйте. Чем могу помочь?" },
+    {
+      role: "assistant",
+      text: "Здравствуйте! Спросите о тарифах, каналах или запуске DELNO — отвечу по базе знаний.",
+    },
   ]);
   const [busy, setBusy] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);

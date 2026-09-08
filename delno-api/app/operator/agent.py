@@ -161,6 +161,7 @@ def _system_prompt(
     *,
     cabinet: bool = False,
     onboarding: bool = False,
+    widget: bool = False,
 ) -> str:
     if onboarding:
         base = (
@@ -186,6 +187,14 @@ def _system_prompt(
         base += (
             " Ты в кабинете владельца: помогай настраивать DELNO на лету "
             "(база знаний, часы работы, флаги каналов). Изменения применяются только после подтверждения."
+        )
+    if widget:
+        base += (
+            " Ты на публичном сайте DELNO в демо-режиме для посетителей. "
+            "Отвечай коротко (2–4 предложения), только по фактам из базы знаний ниже. "
+            "По ценам: «Диалоги» 2 990 ₽/мес, «Диалоги + звонки» 5 990 ₽/мес. "
+            "Не обещай подключение, запись или звонок без менеджера. "
+            "Если данных нет — предложи оставить контакт или написать на office@dlno.ru."
         )
     if kb_context:
         return f"{base}\n\n--- База знаний ---\n{kb_context}"
@@ -382,6 +391,7 @@ def _generate_reply(
     sources: list[dict[str, Any]] = []
     onboarding = channel == "onboarding"
     cabinet = channel in ("cabinet", "operator")
+    widget = channel == "widget"
 
     if onboarding:
         from app.services.onboarding_website import try_onboarding_url_ingest
@@ -430,6 +440,7 @@ def _generate_reply(
                     kb_context,
                     cabinet=cabinet,
                     onboarding=onboarding,
+                    widget=widget,
                 ),
             },
             {"role": "user", "content": message},

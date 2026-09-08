@@ -12,6 +12,12 @@ import {
 } from "./useCrystalWidget";
 import "./crystal-widget.css";
 
+const QUICK_PROMPTS = [
+  "Сколько стоит?",
+  "Чем отличаетесь от чат-бота?",
+  "Как подключить телефон?",
+];
+
 export function CrystalWidget() {
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
   const apiPath = `${basePath}/api/widget/message`;
@@ -52,6 +58,9 @@ export function CrystalWidget() {
     });
   }, [messages, textOpen]);
 
+  const showQuickPrompts =
+    textOpen && messages.length === 1 && messages[0]?.role === "assistant" && !busy;
+
   return (
     <div className="delno-crystal-mount delno-crystal-floating" ref={mountRef}>
       <input type="checkbox" id="delno-crystal-text" ref={textRef} defaultChecked={false} hidden aria-hidden />
@@ -89,6 +98,20 @@ export function CrystalWidget() {
               </div>
             </div>
           ))}
+          {showQuickPrompts && (
+            <div className="widget-quick-prompts" aria-label="Примеры вопросов">
+              {QUICK_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => sendMessage(prompt)}
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <form

@@ -81,17 +81,10 @@ def seed_demo_vault(
         (tenant_id, DOC_COMPANY_ID),
     ).fetchone()
 
-    if existing and not force:
-        stats = repo.stats(tenant_id)
-        return {
-            "ok": True,
-            "skipped": True,
-            "tenant_id": tenant_id,
-            "stats": stats,
-        }
-
-    _upsert_company_doc(repo, tenant_id=tenant_id)
-    _upsert_public_faq(repo, tenant_id=tenant_id)
+    skipped = bool(existing and not force)
+    if not skipped:
+        _upsert_company_doc(repo, tenant_id=tenant_id)
+        _upsert_public_faq(repo, tenant_id=tenant_id)
 
     vault_result: dict[str, Any] | None = None
     if ingest_vault_files:
@@ -104,11 +97,14 @@ def seed_demo_vault(
     stats = repo.stats(tenant_id)
     out: dict[str, Any] = {
         "ok": True,
-        "seeded": True,
         "tenant_id": tenant_id,
         "markers": {"company": MARKER_COMPANY, "public": MARKER_PUBLIC},
         "stats": stats,
     }
+    if skipped:
+        out["skipped"] = True
+    else:
+        out["seeded"] = True
     if vault_result:
         out["vault_ingest"] = vault_result
     if own_conn:
