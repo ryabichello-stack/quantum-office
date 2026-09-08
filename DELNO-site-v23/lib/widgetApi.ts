@@ -19,6 +19,10 @@ export function widgetTtsPath(text: string) {
   return `${getBasePath()}/api/tts?text=${q}`;
 }
 
+export function widgetSttPath() {
+  return `${getBasePath()}/api/stt`;
+}
+
 function cryptoSafeId() {
   try {
     if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();

@@ -2,7 +2,6 @@
 
 import { orbAssetPath } from "@/lib/delnoVoice";
 import type { VoicePhase } from "@/lib/delnoVoice";
-import { useCallback, useRef } from "react";
 
 type CrystalOrbProps = {
   variant?: "widget" | "demo";
@@ -22,45 +21,6 @@ export function CrystalOrb({
   onChatClick,
 }: CrystalOrbProps) {
   const orbSrc = orbAssetPath();
-  const lastActivateRef = useRef(0);
-
-  const handleOrbActivate = useCallback(() => {
-    const now = Date.now();
-    if (now - lastActivateRef.current < 400) return;
-    lastActivateRef.current = now;
-    onOrbClick();
-  }, [onOrbClick]);
-
-  const handlePointerDown = useCallback(
-    (event: React.PointerEvent<HTMLButtonElement>) => {
-      if (event.pointerType === "mouse" && event.button !== 0) return;
-      event.preventDefault();
-      event.stopPropagation();
-      handleOrbActivate();
-    },
-    [handleOrbActivate],
-  );
-
-  const handleClick = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
-      if (event.detail !== 0) return;
-      event.preventDefault();
-      event.stopPropagation();
-      handleOrbActivate();
-    },
-    [handleOrbActivate],
-  );
-
-  const orbButton = (
-    <button
-      type="button"
-      className="orb-hit"
-      aria-label={voiceActive ? "Остановить голосовой режим" : "Говорить с DELNO"}
-      aria-pressed={voiceActive}
-      onPointerDown={handlePointerDown}
-      onClick={handleClick}
-    />
-  );
 
   return (
     <div className={`widget widget-${variant}${voiceActive ? " is-voice-active" : ""}`} data-voice-phase={voicePhase}>
@@ -135,7 +95,13 @@ export function CrystalOrb({
           </span>
         </div>
 
-        {orbButton}
+        <button
+          type="button"
+          className="orb-hit"
+          aria-label={voiceActive ? "Остановить и отправить вопрос" : "Говорить с DELNO"}
+          aria-pressed={voiceActive}
+          onClick={onOrbClick}
+        />
       </div>
     </div>
   );

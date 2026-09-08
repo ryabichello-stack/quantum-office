@@ -119,7 +119,11 @@ export default function VoiceDemo() {
         <b className="voice-demo-status" aria-live="polite" data-phase={voicePhase}>
           {label}
         </b>
-        <small>Нажмите на кристалл, чтобы говорить. После ответа DELNO снова слушает. Ещё раз — чтобы остановить.</small>
+        <small>
+          {voiceActive && voicePhase === "listen"
+            ? "Говорите вопрос и нажмите на шар ещё раз, чтобы отправить."
+            : "Нажмите на кристалл, чтобы записать вопрос. На телефоне — нажмите ещё раз после вопроса."}
+        </small>
       </div>
 
       <div className="voice-demo-dialog">

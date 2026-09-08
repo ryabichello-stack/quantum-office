@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import { getBasePath, widgetTtsPath } from "./widgetApi";
+import { getBasePath, widgetSttPath, widgetTtsPath } from "./widgetApi";
 
 export type VoicePhase = "idle" | "listen" | "think" | "speak" | "error";
 
@@ -181,14 +181,39 @@ function isMobileTouchDevice() {
 }
 
 const DEFAULT_LISTEN_SILENCE_MS = 8000;
+const MOBILE_RECORD_MAX_MS = 9000;
+
+function pickRecorderMime() {
+  if (typeof MediaRecorder === "undefined") return "";
+  const candidates = ["audio/mp4", "audio/aac", "audio/webm;codecs=opus", "audio/webm"];
+  for (const type of candidates) {
+    if (MediaRecorder.isTypeSupported(type)) return type;
+  }
+  return "";
+}
+
+function canUseMobileRecorder() {
+  return (
+    typeof window !== "undefined" &&
+    typeof MediaRecorder !== "undefined" &&
+    !!navigator.mediaDevices?.getUserMedia &&
+    !!pickRecorderMime()
+  );
+}
 
 export function createVoiceController(options: VoiceSessionOptions) {
   const { onTranscript, onExchange, onPartial, setPhase, audioRef } = options;
   const listenSilenceMs = options.listenSilenceMs ?? DEFAULT_LISTEN_SILENCE_MS;
   const mobileVoice = isMobileTouchDevice();
+  const useMobileRecorder = mobileVoice && canUseMobileRecorder();
 
   let engaged = false;
   let recognition: SpeechRecognitionInstance | null = null;
+  let mediaStream: MediaStream | null = null;
+  let mediaRecorder: MediaRecorder | null = null;
+  let recordChunks: Blob[] = [];
+  let recordMime = "";
+  let recording = false;
   let heard = false;
   let speaking = false;
   let processing = false;
@@ -199,6 +224,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
   let micRetryTimer: number | null = null;
   let sessionResolve: (() => void) | null = null;
   let pendingTranscript = "";
+  let processingRecording = false;
 
   function clearErrorTimer() {
     if (errorTimer !== null) {
@@ -223,9 +249,165 @@ export function createVoiceController(options: VoiceSessionOptions) {
 
   function resetListenTimer() {
     clearListenTimer();
+    const timeoutMs = recording ? MOBILE_RECORD_MAX_MS : listenSilenceMs;
     listenTimer = window.setTimeout(() => {
-      if (engaged && !processing && !speaking) stop();
-    }, listenSilenceMs);
+      if (!engaged || processing || speaking) return;
+      if (recording) finishMobileRecording();
+      else stop();
+    }, timeoutMs);
+  }
+
+  function stopMediaCapture() {
+    recording = false;
+    if (mediaRecorder && mediaRecorder.state !== "inactive") {
+      try {
+        mediaRecorder.stop();
+      } catch {
+        /* ignore */
+      }
+    }
+    mediaStream?.getTracks().forEach((track) => track.stop());
+    mediaStream = null;
+    mediaRecorder = null;
+    recordChunks = [];
+    recordMime = "";
+  }
+
+  async function transcribeBlob(blob: Blob, mime: string) {
+    const form = new FormData();
+    const ext = mime.includes("mp4") || mime.includes("aac") ? "m4a" : "webm";
+    form.append("file", blob, `voice.${ext}`);
+    const response = await fetch(widgetSttPath(), { method: "POST", body: form });
+    if (!response.ok) throw new Error("stt failed");
+    const payload = (await response.json()) as { text?: string };
+    return (payload.text || "").trim();
+  }
+
+  async function processMobileRecording() {
+    if (processingRecording) return;
+    processingRecording = true;
+    recording = false;
+    clearListenTimer();
+
+    const mime = recordMime || "audio/webm";
+    const blob = new Blob(recordChunks, { type: mime });
+    recordChunks = [];
+    stopMediaCapture();
+
+    try {
+      if (!engaged || processing || speaking) return;
+
+      if (blob.size < 600) {
+        showError(
+          "Голосовой режим",
+          "Не расслышал вопрос. Нажмите на шар, говорите громче и нажмите ещё раз.",
+        );
+        return;
+      }
+
+      setPhase("think");
+      onPartial?.("Распознаю речь…");
+
+      let text = "";
+      try {
+        text = await transcribeBlob(blob, mime);
+      } catch {
+        showError(
+          "Голосовой режим",
+          "Не удалось распознать речь. Попробуйте ещё раз или нажмите «Сколько стоит?».",
+        );
+        return;
+      }
+
+      if (!text) {
+        showError(
+          "Голосовой режим",
+          "Не расслышал вопрос. Нажмите на шар, говорите и нажмите ещё раз для отправки.",
+        );
+        return;
+      }
+
+      onPartial?.(text);
+      await answer(text, { fromMic: true, resumeListen: false });
+    } finally {
+      processingRecording = false;
+    }
+  }
+
+  function finishMobileRecording() {
+    if (mediaRecorder?.state === "recording") {
+      try {
+        mediaRecorder.stop();
+      } catch {
+        void processMobileRecording();
+      }
+      return;
+    }
+    void processMobileRecording();
+  }
+
+  function startMobileMic() {
+    if (!engaged || processing || speaking || recording) return;
+
+    clearErrorTimer();
+    clearMicRetryTimer();
+    heard = false;
+    recordMime = pickRecorderMime();
+    if (!recordMime) {
+      startDesktopMic();
+      return;
+    }
+
+    enterListenVisual();
+    onPartial?.("Говорите… нажмите на шар ещё раз, когда закончите.");
+    resetListenTimer();
+
+    navigator.mediaDevices
+      .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+      .then((stream) => {
+        if (!engaged) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        mediaStream = stream;
+        recordChunks = [];
+        recording = true;
+        heard = true;
+
+        try {
+          mediaRecorder = new MediaRecorder(stream, { mimeType: recordMime });
+        } catch {
+          showError(
+            "Голосовой режим",
+            "Не удалось включить запись. Разрешите микрофон для dlno.ru в Safari.",
+          );
+          stopMediaCapture();
+          return;
+        }
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) recordChunks.push(event.data);
+        };
+        mediaRecorder.onstop = () => {
+          void processMobileRecording();
+        };
+        mediaRecorder.onerror = () => {
+          showError(
+            "Голосовой режим",
+            "Ошибка записи. Разрешите микрофон и попробуйте снова.",
+          );
+        };
+
+        mediaRecorder.start(400);
+        enterListenVisual();
+      })
+      .catch(() => {
+        showError(
+          "Голосовой режим",
+          "Разрешите микрофон для dlno.ru: Настройки → Safari → Микрофон.",
+        );
+      });
   }
 
   function interruptTurn() {
@@ -235,6 +417,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
     clearMicRetryTimer();
     recognition?.abort();
     recognition = null;
+    stopMediaCapture();
     abortTts?.abort();
     abortTts = null;
     processing = false;
@@ -243,8 +426,8 @@ export function createVoiceController(options: VoiceSessionOptions) {
   }
 
   function stop() {
-    interruptTurn();
     engaged = false;
+    interruptTurn();
     clearErrorTimer();
     if (audioRef.current) {
       audioRef.current.pause();
@@ -262,7 +445,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
     clearErrorTimer();
     setPhase("error");
     onExchange?.(userText, assistantText);
-    errorTimer = window.setTimeout(() => stop(), 3000);
+    errorTimer = window.setTimeout(() => stop(), 4000);
   }
 
   function enterListenVisual() {
@@ -272,17 +455,10 @@ export function createVoiceController(options: VoiceSessionOptions) {
 
   function scheduleMicRetry() {
     if (!engaged || processing || speaking) return;
-    if (mobileVoice) {
-      showError(
-        "Голосовой режим",
-        "Не расслышал вопрос. Нажмите на шар ещё раз и говорите сразу после «Слушаю…».",
-      );
-      return;
-    }
     clearMicRetryTimer();
     micRetryTimer = window.setTimeout(() => {
       micRetryTimer = null;
-      if (engaged && !processing && !speaking) startMic();
+      if (engaged && !processing && !speaking) startDesktopMic();
     }, 250);
   }
 
@@ -295,17 +471,26 @@ export function createVoiceController(options: VoiceSessionOptions) {
     clearMicRetryTimer();
     recognition?.stop();
     recognition = null;
-    void answer(text, { fromMic: true });
+    void answer(text, { fromMic: true, resumeListen: !mobileVoice });
   }
 
   function startMic() {
+    if (!engaged || processing || speaking) return;
+    if (useMobileRecorder) {
+      startMobileMic();
+      return;
+    }
+    startDesktopMic();
+  }
+
+  function startDesktopMic() {
     if (!engaged || processing || speaking) return;
 
     const SpeechRecognition = getSpeechRecognition();
     if (!SpeechRecognition) {
       showError(
         "Голосовой режим",
-        "Браузер не поддерживает распознавание речи. Используйте Chrome, Edge или Safari.",
+        "Браузер не поддерживает распознавание речи. Используйте Safari на iPhone.",
       );
       return;
     }
@@ -314,7 +499,6 @@ export function createVoiceController(options: VoiceSessionOptions) {
     clearMicRetryTimer();
     heard = false;
     pendingTranscript = "";
-    micStarts += 1;
     enterListenVisual();
     onPartial?.("");
     resetListenTimer();
@@ -323,7 +507,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
     recognition = new SpeechRecognition();
     recognition.lang = "ru-RU";
     recognition.interimResults = true;
-    recognition.continuous = !mobileVoice;
+    recognition.continuous = true;
 
     recognition.onstart = () => {
       if (engaged) enterListenVisual();
@@ -357,23 +541,14 @@ export function createVoiceController(options: VoiceSessionOptions) {
       if (code === "not-allowed" || code === "service-not-allowed" || code === "audio-capture") {
         showError(
           "Голосовой режим",
-          "Не удалось получить доступ к микрофону. Разрешите микрофон в браузере и нажмите на шар ещё раз.",
+          "Не удалось получить доступ к микрофону. Разрешите микрофон и нажмите на шар ещё раз.",
         );
         return;
       }
 
-      if (code === "no-speech") {
-        if (pendingTranscript.trim()) {
-          finalizeTranscript(pendingTranscript);
-          return;
-        }
-        if (mobileVoice) {
-          showError(
-            "Голосовой режим",
-            "Не расслышал речь. Разрешите микрофон для dlno.ru и говорите сразу после нажатия.",
-          );
-          return;
-        }
+      if (code === "no-speech" && pendingTranscript.trim()) {
+        finalizeTranscript(pendingTranscript);
+        return;
       }
 
       if (code !== "aborted") scheduleMicRetry();
@@ -391,13 +566,6 @@ export function createVoiceController(options: VoiceSessionOptions) {
     try {
       recognition.start();
     } catch {
-      if (mobileVoice) {
-        showError(
-          "Голосовой режим",
-          "Не удалось включить микрофон. Разрешите доступ в Safari и нажмите на шар ещё раз.",
-        );
-        return;
-      }
       scheduleMicRetry();
     }
   }
@@ -428,6 +596,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
     clearMicRetryTimer();
     recognition?.abort();
     recognition = null;
+    stopMediaCapture();
     pendingTranscript = "";
     setPhase("think");
 
@@ -467,7 +636,6 @@ export function createVoiceController(options: VoiceSessionOptions) {
       return;
     }
 
-    // Brief gap only after mic capture — not for text prompts (keeps user-gesture chain).
     if (options?.fromMic) {
       await new Promise<void>((resolve) => window.setTimeout(resolve, 80));
       if (id !== turnId) return;
@@ -498,6 +666,12 @@ export function createVoiceController(options: VoiceSessionOptions) {
   }
 
   function beginSession() {
+    if (engaged && recording) {
+      clearErrorTimer();
+      finishMobileRecording();
+      return;
+    }
+
     if (engaged) {
       clearErrorTimer();
       stop();
@@ -505,23 +679,16 @@ export function createVoiceController(options: VoiceSessionOptions) {
     }
 
     engaged = true;
-    micStarts = 0;
     claimVoiceSession(stop);
     clearErrorTimer();
 
     const audio = audioRef.current;
     if (audio) void unlockAudioElement(audio);
 
-    resetListenTimer();
     startMic();
   }
 
   function toggle() {
-    if (engaged) {
-      clearErrorTimer();
-      stop();
-      return;
-    }
     beginSession();
   }
 
