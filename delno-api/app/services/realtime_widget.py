@@ -21,8 +21,9 @@ logger = logging.getLogger(__name__)
 # Preload public KB slices for Realtime session instructions (guest ACL).
 WIDGET_KB_SEED_QUERIES = (
     "DELNO компания продукт для кого чем занимается",
-    "DELNO тарифы цены подключение услуги",
-    "DELNO возможности каналы контакты",
+    "DELNO тарифы цены подключение услуги лимиты пакет",
+    "DELNO сколько обращений диалогов сообщений звонков минут входит в тариф 2990 5990",
+    "DELNO возможности каналы контакты воронка заявка",
 )
 
 _KB_CONTEXT_CACHE: dict[str, tuple[float, str]] = {}
