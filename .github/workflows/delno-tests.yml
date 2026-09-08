@@ -25,7 +25,8 @@ jobs:
       - name: Install delno-api deps
         run: pip install -r delno-api/requirements.txt
       - name: pytest delno-api
-        run: pytest delno-api/tests -q
+        working-directory: delno-api
+        run: PYTHONPATH=. pytest tests -q
 
   delno-knowledge:
     runs-on: ubuntu-latest
