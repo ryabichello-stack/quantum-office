@@ -39,11 +39,24 @@ rsync -az -e "${RSYNC_SSH[*]}" \
 rsync -az -e "${RSYNC_SSH[*]}" \
   "${REPO_ROOT}/DELNO-site-v23/lib/delnoVoice.ts" "${SSH_HOST}:${STACK_DIR}/site/lib/delnoVoice.ts" 2>/dev/null || true
 rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/lib/ttsText.ts" "${SSH_HOST}:${STACK_DIR}/site/lib/ttsText.ts" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
   "${REPO_ROOT}/DELNO-site-v23/app/v2/VoiceDemo.tsx" "${SSH_HOST}:${STACK_DIR}/site/app/v2/VoiceDemo.tsx" 2>/dev/null || true
 rsync -az -e "${RSYNC_SSH[*]}" \
   "${REPO_ROOT}/DELNO-site-v23/app/v2/v2.css" "${SSH_HOST}:${STACK_DIR}/site/app/v2/v2.css" 2>/dev/null || true
 rsync -az -e "${RSYNC_SSH[*]}" \
   "${REPO_ROOT}/DELNO-site-v23/hooks/useDelnoVoice.ts" "${SSH_HOST}:${STACK_DIR}/site/hooks/useDelnoVoice.ts" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/app/api/widget/voice/realtime/" "${SSH_HOST}:${STACK_DIR}/site/app/api/widget/voice/realtime/" 2>/dev/null || true
+
+echo "==> sync delno-admin → ${SSH_HOST}:${STACK_DIR}/delno-admin"
+rsync -az --delete -e "${RSYNC_SSH[*]}" \
+  --exclude node_modules --exclude .next \
+  "${REPO_ROOT}/delno-admin/" "${SSH_HOST}:${STACK_DIR}/delno-admin/"
+
+echo "==> sync docker-compose stack (env mount for admin secrets)"
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/delno-api/deploy/docker-compose.stack.yml" "${SSH_HOST}:${STACK_DIR}/docker-compose.yml"
 
 echo "==> rebuild + restart containers"
 ssh "${SSH_OPTS[@]}" "$SSH_HOST" bash -s <<REMOTE
@@ -83,6 +96,15 @@ curl -sf -X POST http://127.0.0.1:18020/v1/public/widget/message \\
   -d '{"site_key":"demo_dlno","message":"Сколько стоит DELNO?","visitor_id":"deploy-smoke"}' \\
   | head -c 400 && echo
 curl -sf http://127.0.0.1:18022/ | head -c 60 && echo
+echo "==> build delno-admin (https://admin.dlno.ru) :18024"
+docker build --build-arg NEXT_PUBLIC_DELNO_API_URL=https://api.dlno.ru -t delno-admin:latest "${STACK_DIR}/delno-admin"
+docker rm -f delno-admin 2>/dev/null || true
+docker run -d --name delno-admin --restart unless-stopped \\
+  --network delno-internal \\
+  -e NEXT_PUBLIC_DELNO_API_URL=https://api.dlno.ru \\
+  -p 127.0.0.1:18024:3000 \\
+  delno-admin:latest
+curl -sf http://127.0.0.1:18024/login -o /dev/null -w "admin_login:%{http_code}\n" || true
 REMOTE
 
 echo "==> done: https://dlno.ru/ · https://a.47z.ru/delno/ · https://api.dlno.ru/"

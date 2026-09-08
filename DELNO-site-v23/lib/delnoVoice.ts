@@ -286,7 +286,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
 
     if (audio) {
       audio.autoplay = true;
-      audio.playsInline = true;
+      audio.setAttribute("playsinline", "true");
       connection.ontrack = (trackEvent) => {
         audio.srcObject = trackEvent.streams[0];
         void audio.play().catch(() => undefined);
