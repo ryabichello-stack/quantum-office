@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   const upstream = new FormData();
   const name = file.type.includes("mp4") || file.type.includes("aac") ? "voice.m4a" : "voice.webm";
   upstream.append("file", file, name);
-  upstream.append("model", "whisper-1");
+  upstream.append("model", "gpt-4o-mini-transcribe");
   upstream.append("language", "ru");
 
   const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {

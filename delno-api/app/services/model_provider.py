@@ -18,6 +18,7 @@ class ModelProvider(ABC):
         messages: list[dict[str, str]],
         model: str | None = None,
         tools: list[dict[str, Any]] | None = None,
+        max_tokens: int | None = None,
     ) -> dict[str, Any]:
         raise NotImplementedError
 
@@ -31,6 +32,7 @@ class OpenAIProvider(ModelProvider):
         messages: list[dict[str, str]],
         model: str | None = None,
         tools: list[dict[str, Any]] | None = None,
+        max_tokens: int | None = None,
     ) -> dict[str, Any]:
         settings = get_settings()
         if not settings.openai_api_key:
@@ -42,6 +44,8 @@ class OpenAIProvider(ModelProvider):
                 "model": model or settings.openai_model,
                 "messages": messages,
             }
+            if max_tokens is not None:
+                payload["max_tokens"] = max_tokens
             if tools:
                 payload["tools"] = tools
                 payload["tool_choice"] = "auto"
@@ -50,7 +54,7 @@ class OpenAIProvider(ModelProvider):
                 "https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {settings.openai_api_key}"},
                 json=payload,
-                timeout=60.0,
+                timeout=30.0,
             )
             if response.status_code == 200:
                 return {"ok": True, "data": response.json(), "provider": self.name}
@@ -68,6 +72,7 @@ class StubProvider(ModelProvider):
         messages: list[dict[str, str]],
         model: str | None = None,
         tools: list[dict[str, Any]] | None = None,
+        max_tokens: int | None = None,
     ) -> dict[str, Any]:
         last = messages[-1]["content"] if messages else ""
         return {

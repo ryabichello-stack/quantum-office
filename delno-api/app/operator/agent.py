@@ -140,6 +140,26 @@ def _get_or_create_conversation(
     return row
 
 
+def _widget_fast_reply(knowledge: ToolResult) -> str | None:
+    """Skip LLM for public widget when KB already has a direct answer."""
+    if not knowledge.ok:
+        return None
+    data = knowledge.data or {}
+    aggregated = str(data.get("text") or "").strip()
+    if aggregated:
+        return aggregated[:900]
+    matches = data.get("matches") or data.get("results") or []
+    snippets: list[str] = []
+    for item in matches[:2]:
+        if isinstance(item, dict):
+            snippet = str(item.get("snippet") or item.get("text") or "").strip()
+            if snippet:
+                snippets.append(snippet)
+    if not snippets:
+        return None
+    return "\n".join(snippets)[:900]
+
+
 def _kb_context_from_result(result: ToolResult) -> str:
     data = result.data or {}
     text = str(data.get("text") or "").strip()
@@ -429,6 +449,11 @@ def _generate_reply(
         if knowledge.ok:
             kb_context = _kb_context_from_result(knowledge)
             sources = extract_sources_from_knowledge(knowledge.data)
+            if widget:
+                fast = _widget_fast_reply(knowledge)
+                if fast:
+                    tool_calls.append({"tool": "widget_kb_fast", "ok": True})
+                    return fast, tool_calls, sources, None
 
     provider = get_model_provider()
     completion = provider.chat_completion(
@@ -444,7 +469,9 @@ def _generate_reply(
                 ),
             },
             {"role": "user", "content": message},
-        ]
+        ],
+        model="gpt-4o-mini" if widget else None,
+        max_tokens=180 if widget else None,
     )
 
     if completion.get("ok"):

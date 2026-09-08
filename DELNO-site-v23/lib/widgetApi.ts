@@ -23,6 +23,10 @@ export function widgetSttPath() {
   return `${getBasePath()}/api/stt`;
 }
 
+export function widgetVoicePath() {
+  return `${getBasePath()}/api/widget/voice`;
+}
+
 function cryptoSafeId() {
   try {
     if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
@@ -103,6 +107,48 @@ export async function askDelnoWidget(message: string): Promise<{ answer: string;
           ? err.message
           : "fetch failed";
     return { answer: "", error: msg };
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+export async function askDelnoVoice(audio: Blob, mime: string): Promise<{
+  transcript: string;
+  answer: string;
+  error?: string;
+}> {
+  const form = new FormData();
+  const ext = mime.includes("mp4") || mime.includes("aac") ? "m4a" : "webm";
+  form.append("file", audio, `voice.${ext}`);
+  form.append("site_key", SITE_KEY);
+  form.append("visitor_id", getVisitorId());
+  const sessionId = getSessionId();
+  if (sessionId) form.append("session_id", sessionId);
+  if (typeof window !== "undefined") form.append("page_url", window.location.href);
+
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), WIDGET_FETCH_MS);
+
+  try {
+    const res = await fetch(widgetVoicePath(), { method: "POST", body: form, signal: controller.signal });
+    const raw = await res.text();
+    if (!res.ok) {
+      return { transcript: "", answer: "", error: raw.slice(0, 200) || `HTTP ${res.status}` };
+    }
+    const payload = JSON.parse(raw) as { transcript?: string; message?: string; conversation_id?: string };
+    if (payload.conversation_id) persistSession(payload.conversation_id);
+    return {
+      transcript: (payload.transcript || "").trim(),
+      answer: (payload.message || "").trim(),
+    };
+  } catch (err) {
+    const msg =
+      err instanceof Error && err.name === "AbortError"
+        ? "Превышено время ожидания ответа"
+        : err instanceof Error
+          ? err.message
+          : "fetch failed";
+    return { transcript: "", answer: "", error: msg };
   } finally {
     window.clearTimeout(timer);
   }
