@@ -320,6 +320,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
       method: "POST",
       headers: { "Content-Type": "application/sdp" },
       body: offer.sdp || "",
+      signal: AbortSignal.timeout(65000),
     });
 
     if (!response.ok) {
@@ -366,11 +367,13 @@ export function createVoiceController(options: VoiceSessionOptions) {
       teardownRealtime();
       releaseVoiceSession(stop);
       setPhase("error");
-      const message =
+      const detail =
         err instanceof Error && err.message.includes("Permission")
           ? "Разрешите микрофон для сайта и нажмите на кристалл ещё раз."
-          : "Не удалось подключить голос Realtime. Используйте кнопки с вопросами ниже.";
-      onExchange?.("Голосовой режим", message);
+          : err instanceof Error && err.message.trim()
+            ? `Не удалось подключить голос Realtime: ${err.message.trim().slice(0, 180)}`
+            : "Не удалось подключить голос Realtime. Используйте кнопки с вопросами ниже.";
+      onExchange?.("Голосовой режим", detail);
       clearErrorTimer();
       errorTimer = window.setTimeout(() => setPhase("idle"), 5000);
     }
