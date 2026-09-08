@@ -21,6 +21,22 @@ WIDGET_KB_SEED_QUERIES = (
     "DELNO возможности каналы контакты",
 )
 
+WIDGET_REALTIME_KB_TOOL: dict[str, Any] = {
+    "type": "function",
+    "name": "get_knowledge",
+    "description": (
+        "Поиск в базе знаний DELNO по вопросу клиента: тарифы, продукт, компания, подключение, каналы. "
+        "Вызывай перед каждым ответом на фактический вопрос."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Вопрос или тема на русском"},
+        },
+        "required": ["query"],
+    },
+}
+
 
 def sanitize_realtime_answer_sdp(raw: str) -> str:
     """Normalize OpenAI SDP answer for browser RTCPeerConnection.
@@ -54,12 +70,14 @@ def load_widget_kb_context(db: Session, ctx: TenantContext) -> str:
 
 
 def _realtime_session_config(instructions: str) -> dict[str, Any]:
-    """Realtime session for widget: transcribe speech only; answers via delno-api KB agent + TTS."""
+    """Full-duplex Realtime like telephony: cedar voice, barge-in, KB tool + transcription."""
     runtime = get_openai_runtime()
     return {
         "type": "realtime",
         "model": runtime["realtime_model"],
         "instructions": instructions,
+        "tools": [WIDGET_REALTIME_KB_TOOL],
+        "tool_choice": "auto",
         "audio": {
             "output": {"voice": runtime["realtime_voice"]},
             "input": {
@@ -71,9 +89,9 @@ def _realtime_session_config(instructions: str) -> dict[str, Any]:
                     "type": "server_vad",
                     "threshold": 0.5,
                     "prefix_padding_ms": 300,
-                    "silence_duration_ms": 700,
-                    "create_response": False,
-                    "interrupt_response": False,
+                    "silence_duration_ms": 500,
+                    "create_response": True,
+                    "interrupt_response": True,
                 },
             },
         },
@@ -156,3 +174,14 @@ def exchange_widget_realtime_sdp(
         logging.getLogger(__name__).warning("openai_realtime_empty_answer status=%s", response.status_code)
         return None, "REALTIME_CONNECTION_FAILED"
     return answer, None
+
+
+def search_widget_knowledge(db: Session, ctx: TenantContext, query: str) -> str:
+    """KB search for Realtime get_knowledge tool (browser executes tool, server provides data)."""
+    q = (query or "").strip()
+    if not q:
+        return ""
+    knowledge = registry.run(db, ctx, "get_knowledge", query=q)
+    if isinstance(knowledge, ToolResult) and knowledge.ok:
+        return _kb_context_from_result(knowledge)
+    return ""

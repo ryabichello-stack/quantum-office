@@ -156,11 +156,14 @@ def _kb_context_from_result(result: ToolResult) -> str:
 
 
 def build_widget_realtime_instructions(ctx: TenantContext, kb_context: str) -> str:
-    """Minimal Realtime prompt — transcription-only; answers come from delno-api KB agent."""
-    _ = kb_context
+    """System prompt for OpenAI Realtime widget — same KB rules as text widget + get_knowledge tool."""
+    base = _system_prompt(ctx, kb_context, widget=True)
     return (
-        f"Сессия распознавания речи для виджета DELNO (tenant: {ctx.tenant_slug}). "
-        "Не генерируй ответы — только слушай русскую речь посетителя сайта."
+        f"{base}\n\n"
+        "Голосовой режим на сайте (как телефонный звонок): говори на русском, 2–4 предложения. "
+        "Перед ответом на вопрос о продукте, ценах, компании или подключении всегда вызывай get_knowledge "
+        "с query = сформулированный вопрос клиента. Отвечай только по результатам get_knowledge и базе знаний выше. "
+        "Если клиент перебивает — остановись и слушай."
     )
 
 

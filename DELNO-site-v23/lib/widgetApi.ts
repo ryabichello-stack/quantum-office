@@ -37,6 +37,10 @@ export function widgetRealtimePath() {
   return `${getBasePath()}/api/widget/voice/realtime?${params}`;
 }
 
+export function widgetKnowledgePath() {
+  return `${getBasePath()}/api/widget/knowledge`;
+}
+
 function cryptoSafeId() {
   try {
     if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();

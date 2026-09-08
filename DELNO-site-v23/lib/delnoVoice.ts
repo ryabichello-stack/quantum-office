@@ -1,8 +1,10 @@
 import type { RefObject } from "react";
 import { prepareTtsText } from "./ttsText";
-import { getBasePath, widgetRealtimePath, widgetTtsPath } from "./widgetApi";
+import { getBasePath, widgetKnowledgePath, widgetRealtimePath, widgetTtsPath } from "./widgetApi";
 
 export type VoicePhase = "idle" | "listen" | "think" | "speak" | "error";
+
+const SITE_KEY = process.env.NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY || "demo_dlno";
 
 let activeAudio: HTMLAudioElement | null = null;
 let activeVoiceStop: (() => void) | null = null;
@@ -168,6 +170,9 @@ type RealtimeEvent = {
   type: string;
   transcript?: string;
   delta?: string;
+  name?: string;
+  call_id?: string;
+  arguments?: string;
   error?: { message?: string };
 };
 
@@ -204,8 +209,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
   let errorTimer: number | null = null;
   let turnId = 0;
   let abortTts: AbortController | null = null;
-  let processing = false;
-  let speaking = false;
+  let toolBusy = false;
 
   function clearErrorTimer() {
     if (errorTimer !== null) {
@@ -219,6 +223,12 @@ export function createVoiceController(options: VoiceSessionOptions) {
     setPhase("error");
     onExchange?.(userText, assistantText);
     errorTimer = window.setTimeout(() => stop(), 5000);
+  }
+
+  function sendRealtimeEvent(payload: object) {
+    if (dataChannel?.readyState === "open") {
+      dataChannel.send(JSON.stringify(payload));
+    }
   }
 
   function teardownRealtime() {
@@ -245,41 +255,62 @@ export function createVoiceController(options: VoiceSessionOptions) {
     }
   }
 
-  async function processVoiceTurn(userText: string) {
-    if (!engaged || processing || speaking || !userText.trim()) return;
-
-    processing = true;
-    const id = turnId;
-    setPhase("think");
-    onPartial?.(userText);
-
-    let reply = "";
+  async function fetchKnowledge(query: string): Promise<string> {
+    const q = query.trim();
+    if (!q) return "";
+    const response = await fetch(widgetKnowledgePath(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ site_key: SITE_KEY, query: q }),
+      signal: AbortSignal.timeout(20000),
+    });
+    const raw = await response.text();
+    if (!response.ok) return "";
     try {
-      reply = await onTranscript(userText);
+      const payload = JSON.parse(raw) as { text?: string };
+      return (payload.text || "").trim();
     } catch {
-      if (id !== turnId || !engaged) {
-        processing = false;
-        return;
+      return "";
+    }
+  }
+
+  async function handleFunctionCall(event: RealtimeEvent) {
+    const name = event.name;
+    const callId = event.call_id;
+    if (!engaged || !name || !callId || toolBusy) return;
+
+    toolBusy = true;
+    setPhase("think");
+
+    let output = "";
+    try {
+      if (name === "get_knowledge") {
+        let query = lastUserText;
+        try {
+          const args = JSON.parse(event.arguments || "{}") as { query?: string };
+          if (args.query?.trim()) query = args.query.trim();
+        } catch {
+          /* use lastUserText */
+        }
+        output = (await fetchKnowledge(query)) || "В базе знаний нет данных по этому вопросу.";
+      } else {
+        output = JSON.stringify({ error: `unknown tool: ${name}` });
       }
-      processing = false;
-      showError(userText, "Сейчас не удалось получить ответ. Попробуйте ещё раз.");
-      return;
+    } catch {
+      output = JSON.stringify({ error: "knowledge search failed" });
+    } finally {
+      toolBusy = false;
     }
 
-    if (id !== turnId || !engaged) {
-      processing = false;
-      return;
-    }
-    if (!reply.trim()) {
-      processing = false;
-      showError(userText, "Не удалось получить ответ. Попробуйте переформулировать вопрос.");
-      return;
-    }
-
-    await speakReply(userText, reply, { resumeListen: true });
-    processing = false;
-    lastUserText = "";
-    if (engaged) onPartial?.("Говорите…");
+    sendRealtimeEvent({
+      type: "conversation.item.create",
+      item: {
+        type: "function_call_output",
+        call_id: callId,
+        output: output.slice(0, 4000),
+      },
+    });
+    sendRealtimeEvent({ type: "response.create" });
   }
 
   function handleRealtimeEvent(event: RealtimeEvent) {
@@ -291,23 +322,35 @@ export function createVoiceController(options: VoiceSessionOptions) {
         onPartial?.("Говорите…");
         break;
       case "input_audio_buffer.speech_started":
-        if (!processing && !speaking) {
-          setPhase("listen");
-          onPartial?.("Слушаю…");
-        }
+        setPhase("listen");
+        onPartial?.("Слушаю…");
         break;
       case "conversation.item.input_audio_transcription.delta": {
         const partial = (event.delta || event.transcript || "").trim();
-        if (partial && !processing && !speaking) onPartial?.(partial);
+        if (partial) onPartial?.(partial);
         break;
       }
       case "conversation.item.input_audio_transcription.completed": {
-        const userText = (event.transcript || "").trim();
-        if (!userText || processing || speaking) break;
-        lastUserText = userText;
-        void processVoiceTurn(userText);
+        lastUserText = (event.transcript || "").trim();
+        if (lastUserText) onPartial?.(lastUserText);
         break;
       }
+      case "response.function_call_arguments.done":
+        void handleFunctionCall(event);
+        break;
+      case "response.created":
+        setPhase("speak");
+        break;
+      case "response.output_audio_transcript.done": {
+        const reply = (event.transcript || "").trim();
+        if (reply) onExchange?.(lastUserText, reply);
+        break;
+      }
+      case "response.done":
+        setPhase("listen");
+        lastUserText = "";
+        onPartial?.("Говорите…");
+        break;
       case "error":
         showError(
           lastUserText || "Голосовой режим",
@@ -333,10 +376,14 @@ export function createVoiceController(options: VoiceSessionOptions) {
     const connection = new RTCPeerConnection();
     pc = connection;
 
-    // Transcription-only Realtime: answers play via site TTS + delno-api KB agent.
-    connection.ontrack = (trackEvent) => {
-      trackEvent.receiver.track.enabled = false;
-    };
+    if (audio) {
+      audio.autoplay = true;
+      audio.setAttribute("playsinline", "true");
+      connection.ontrack = (trackEvent) => {
+        audio.srcObject = trackEvent.streams[0];
+        void audio.play().catch(() => undefined);
+      };
+    }
 
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true },
@@ -383,8 +430,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
   function stop() {
     engaged = false;
     turnId += 1;
-    processing = false;
-    speaking = false;
+    toolBusy = false;
     abortTts?.abort();
     abortTts = null;
     clearErrorTimer();
@@ -431,7 +477,6 @@ export function createVoiceController(options: VoiceSessionOptions) {
   ) {
     const id = turnId;
     onExchange?.(userText, reply);
-    speaking = true;
     setPhase("speak");
     abortTts = new AbortController();
 
@@ -439,7 +484,6 @@ export function createVoiceController(options: VoiceSessionOptions) {
     const finishSpeak = () => {
       if (id !== turnId || finished) return;
       finished = true;
-      speaking = false;
       if (opts?.resumeListen !== false && engaged) {
         setPhase("listen");
       } else {
@@ -488,7 +532,6 @@ export function createVoiceController(options: VoiceSessionOptions) {
     engaged = true;
     claimVoiceSession(stop);
     clearErrorTimer();
-    processing = true;
     setPhase("think");
 
     const id = ++turnId;
@@ -507,7 +550,6 @@ export function createVoiceController(options: VoiceSessionOptions) {
       return;
     }
 
-    processing = false;
     await speakReply(trimmed, reply, { resumeListen: opts?.resumeListen ?? false });
   }
 

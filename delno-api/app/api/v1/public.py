@@ -29,7 +29,7 @@ from app.services.widget_flow import (
 )
 from app.services.widget_security import enforce_widget_rate_limit
 from app.services.tts import synthesize_speech
-from app.services.realtime_widget import exchange_widget_realtime_sdp
+from app.services.realtime_widget import exchange_widget_realtime_sdp, search_widget_knowledge
 from app.services.instant_demo import preview_website
 
 router = APIRouter(prefix="/public", tags=["public"])
@@ -175,6 +175,11 @@ class PublicWidgetMessage(BaseModel):
     visitor: WidgetVisitor | None = None
     channel: str = Field(default="web", max_length=32)
     input_modality: str = Field(default="text", pattern="^(text|voice)$")
+
+
+class PublicWidgetKnowledge(BaseModel):
+    site_key: str = Field(min_length=2, max_length=64)
+    query: str = Field(min_length=1, max_length=500)
 
 
 class PublicWidgetHistory(BaseModel):
@@ -582,6 +587,27 @@ async def public_widget_voice_realtime(
         media_type="application/sdp",
         headers={"Cache-Control": "no-store"},
     )
+
+
+@router.post("/widget/knowledge")
+def public_widget_knowledge(
+    request: Request,
+    body: PublicWidgetKnowledge,
+    db: Session = Depends(get_db),
+) -> dict:
+    """KB lookup for Realtime get_knowledge tool (browser-side function execution)."""
+    enforce_widget_rate_limit(request, site_key=body.site_key, action="knowledge")
+    channel = _resolve_widget_context(db, body.site_key)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Unknown site_key")
+
+    ctx = TenantContext(
+        tenant_id=channel.tenant_id,
+        tenant_slug=channel.tenant_slug,
+        role="public",
+    )
+    text = search_widget_knowledge(db, ctx, body.query)
+    return {"text": text, "query": body.query.strip()}
 
 
 @router.post("/instant-demo/preview")
