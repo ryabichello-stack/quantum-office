@@ -29,10 +29,10 @@ function installDomStubs() {
   };
 
   globalThis.fetch = mock.fn(async (url) => {
-    if (String(url).includes("/api/tts")) {
+    if (String(url).includes("/voice/realtime")) {
       return {
         ok: true,
-        blob: async () => new Blob(["audio"], { type: "audio/mpeg" }),
+        text: async () => "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\n",
       };
     }
     return {
@@ -44,9 +44,39 @@ function installDomStubs() {
   globalThis.URL.createObjectURL = () => "blob:test";
   globalThis.URL.revokeObjectURL = () => {};
 
+  class DataChannelMock {
+    onmessage = null;
+    close() {}
+    send() {}
+  }
+
+  class RTCPeerConnectionMock {
+    ontrack = null;
+    localDescription = { sdp: "offer-sdp" };
+    constructor() {
+      this._channel = new DataChannelMock();
+    }
+    createDataChannel() {
+      return this._channel;
+    }
+    addTrack() {}
+    async createOffer() {
+      return { type: "offer", sdp: "offer-sdp" };
+    }
+    async setLocalDescription() {}
+    async setRemoteDescription() {
+      queueMicrotask(() => {
+        this._channel.onmessage?.({
+          data: JSON.stringify({ type: "session.created" }),
+        });
+      });
+    }
+    close() {}
+  }
+
+  globalThis.RTCPeerConnection = RTCPeerConnectionMock;
+
   globalThis.navigator = {
-    maxTouchPoints: 0,
-    userAgent: "Desktop",
     mediaDevices: {
       getUserMedia: async () => ({
         getTracks: () => [{ stop: () => {} }],
@@ -57,10 +87,12 @@ function installDomStubs() {
 
 describe("createVoiceController", () => {
   let phases = [];
+  let exchanges = [];
   let audioEl;
 
   beforeEach(() => {
     phases = [];
+    exchanges = [];
     installDomStubs();
     audioEl = {
       muted: false,
@@ -82,6 +114,7 @@ describe("createVoiceController", () => {
     const onTranscript = mock.fn(async (text) => `reply:${text}`);
     const controller = createVoiceController({
       onTranscript,
+      onExchange: (user, assistant) => exchanges.push({ user, assistant }),
       setPhase: (phase) => phases.push(phase),
       audioRef: { current: audioEl },
     });
@@ -96,29 +129,12 @@ describe("createVoiceController", () => {
     assert.equal(phases.at(-1), "idle");
   });
 
-  it("askText calls onTranscript with user message", async () => {
-    const { controller, onTranscript } = makeController();
-    await controller.askText("Сколько стоит?");
-    assert.equal(onTranscript.mock.calls.length, 1);
-    assert.equal(onTranscript.mock.calls[0].arguments[0], "Сколько стоит?");
-  });
-
-  it("starting one controller stops another via mutex", async () => {
-    const phasesA = [];
-    const phasesB = [];
-    const a = createVoiceController({
-      onTranscript: async () => "a",
-      setPhase: (p) => phasesA.push(p),
-      audioRef: { current: audioEl },
-    });
-    const b = createVoiceController({
-      onTranscript: async () => "b",
-      setPhase: (p) => phasesB.push(p),
-      audioRef: { current: audioEl },
-    });
-    await a.askText("test a");
-    await b.askText("test b");
-    assert.equal(phasesA.at(-1), "idle");
-    assert.ok(phasesB.includes("think"));
+  it("toggle starts Realtime listen and stops on second toggle", async () => {
+    const { controller } = makeController();
+    controller.toggle();
+    await new Promise((r) => setTimeout(r, 30));
+    assert.ok(phases.includes("listen"));
+    controller.toggle();
+    assert.equal(phases.at(-1), "idle");
   });
 });

@@ -52,6 +52,29 @@ def test_exchange_widget_realtime_sdp_no_api_key():
     assert error == "VOICE_NOT_CONFIGURED"
 
 
+def test_exchange_widget_realtime_sdp_sends_transcription_only_session():
+    db = MagicMock()
+    ctx = TenantContext(tenant_id=uuid.uuid4(), tenant_slug="delno-demo", role="public")
+    offer = "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\n"
+    answer_sdp = "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\n"
+
+    class FakeResponse:
+        status_code = 201
+        text = answer_sdp
+
+    with patch("app.services.realtime_widget.get_openai_runtime", return_value={"api_key": "sk-test", "realtime_model": "gpt-realtime-2.1-mini", "realtime_voice": "cedar", "model": "gpt-4.1-mini"}):
+        with patch("app.services.realtime_widget.load_widget_kb_context", return_value=""):
+            with patch("app.services.realtime_widget.build_widget_realtime_instructions", return_value="hi"):
+                with patch("app.services.realtime_widget.httpx.post", return_value=FakeResponse()) as mock_post:
+                    answer, error = exchange_widget_realtime_sdp(db, ctx, sdp_offer=offer, visitor_id="v1")
+
+    assert error is None
+    session = json.loads(mock_post.call_args.kwargs["files"]["session"][1])
+    assert session["audio"]["input"]["turn_detection"]["create_response"] is False
+    assert session["audio"]["input"]["transcription"]["model"] == "gpt-4o-mini-transcribe"
+    assert session["audio"]["input"]["transcription"]["language"] == "ru"
+
+
 def test_exchange_widget_realtime_sdp_sends_sdp_as_form_field():
     db = MagicMock()
     ctx = TenantContext(tenant_id=uuid.uuid4(), tenant_slug="delno-demo", role="public")

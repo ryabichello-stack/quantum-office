@@ -284,18 +284,66 @@ export function useCrystalWidgetChat(apiPath: string) {
     ]);
   }, []);
 
-  return { messages, busy, sendMessage, sendVoiceQuery, appendExchange, sessionId };
+  const onVoicePartial = useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (
+      !trimmed ||
+      trimmed === "Говорите…" ||
+      trimmed === "Слушаю…" ||
+      trimmed.startsWith("Подключаюсь")
+    ) {
+      return;
+    }
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last?.role === "user" && last.typing) {
+        return [...prev.slice(0, -1), { role: "user", text: trimmed, typing: true }];
+      }
+      return [...prev, { role: "user", text: trimmed, typing: true }];
+    });
+  }, []);
+
+  const appendVoiceExchange = useCallback(
+    (userText: string, assistantText: string) => {
+      if (userText.trim()) {
+        setMessages((prev) => {
+          const withoutPartial = prev.filter((m) => !(m.role === "user" && m.typing));
+          return [
+            ...withoutPartial,
+            { role: "user", text: userText.trim() },
+            { role: "assistant", text: assistantText },
+          ];
+        });
+      } else {
+        appendExchange(userText, assistantText);
+      }
+    },
+    [appendExchange],
+  );
+
+  return {
+    messages,
+    busy,
+    sendMessage,
+    sendVoiceQuery,
+    appendExchange,
+    appendVoiceExchange,
+    onVoicePartial,
+    sessionId,
+  };
 }
 
 export function useCrystalWidgetVoice(options: {
   mountRef: React.RefObject<HTMLElement | null>;
   sendVoiceQuery: (text: string) => Promise<string>;
-  appendExchange: (userText: string, assistantText: string) => void;
+  appendVoiceExchange: (userText: string, assistantText: string) => void;
+  onVoicePartial: (text: string) => void;
 }) {
   return useDelnoVoice({
     mountRef: options.mountRef,
     onTranscript: options.sendVoiceQuery,
-    onExchange: options.appendExchange,
+    onExchange: options.appendVoiceExchange,
+    onPartial: options.onVoicePartial,
   });
 }
 

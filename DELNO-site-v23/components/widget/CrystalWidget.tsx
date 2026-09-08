@@ -29,11 +29,13 @@ export function CrystalWidget() {
   const [textOpen, setTextOpen] = useState(false);
   const [input, setInput] = useState("");
 
-  const { messages, busy, sendMessage, sendVoiceQuery, appendExchange } = useCrystalWidgetChat(apiPath);
+  const { messages, busy, sendMessage, sendVoiceQuery, appendVoiceExchange, onVoicePartial } =
+    useCrystalWidgetChat(apiPath);
   const { voiceActive, voicePhase, toggleVoice, audioRef } = useCrystalWidgetVoice({
     mountRef,
     sendVoiceQuery,
-    appendExchange,
+    appendVoiceExchange,
+    onVoicePartial,
   });
   useCrystalContrast(mountRef);
   useAutoResizeTextarea(textareaRef, input);
