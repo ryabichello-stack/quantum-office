@@ -17,6 +17,24 @@ from app.services.platform_env import get_openai_runtime
 WIDGET_KB_SEED_QUERY = "DELNO тарифы подключение услуги возможности"
 
 
+def sanitize_realtime_answer_sdp(raw: str) -> str:
+    """Normalize OpenAI SDP answer for browser RTCPeerConnection.
+
+    OpenAI appends non-standard `` ufrag <token>`` to ``a=candidate`` lines.
+    Chrome's SDP parser rejects those lines; strip the suffix and use CRLF.
+    """
+    if not raw or not raw.strip():
+        return ""
+    lines: list[str] = []
+    for line in raw.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        if not line:
+            continue
+        if line.startswith("a=candidate:") and " ufrag " in line:
+            line = line.split(" ufrag ", 1)[0]
+        lines.append(line)
+    return "\r\n".join(lines) + "\r\n"
+
+
 def load_widget_kb_context(db: Session, ctx: TenantContext) -> str:
     knowledge = registry.run(db, ctx, "get_knowledge", query=WIDGET_KB_SEED_QUERY)
     if isinstance(knowledge, ToolResult) and knowledge.ok:
@@ -115,7 +133,7 @@ def exchange_widget_realtime_sdp(
         )
         return None, "REALTIME_CONNECTION_FAILED"
 
-    answer = (response.text or "").strip()
+    answer = sanitize_realtime_answer_sdp(response.text or "")
     if not answer.startswith("v="):
         import logging
 

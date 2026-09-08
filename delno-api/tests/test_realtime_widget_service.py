@@ -12,12 +12,25 @@ from app.services.realtime_widget import (
     exchange_widget_realtime_sdp,
     load_widget_kb_context,
     safety_identifier,
+    sanitize_realtime_answer_sdp,
 )
 
 
 def test_safety_identifier_hashes_visitor():
     assert safety_identifier("visitor-1") != "visitor-1"
     assert len(safety_identifier("visitor-1") or "") == 32
+
+
+def test_sanitize_realtime_answer_sdp_strips_candidate_ufrag_suffix():
+    raw = (
+        "v=0\r\n"
+        "m=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"
+        "a=candidate:1 1 udp 2130706431 1.2.3.4 3478 typ host ufrag abc/u1/3oXYZ\r\n"
+    )
+    out = sanitize_realtime_answer_sdp(raw)
+    assert " ufrag " not in out
+    assert out.endswith("\r\n")
+    assert "a=candidate:1 1 udp 2130706431 1.2.3.4 3478 typ host\r\n" in out
 
 
 def test_load_widget_kb_context_from_tool():

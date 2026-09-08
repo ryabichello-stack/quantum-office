@@ -170,7 +170,19 @@ type RealtimeEvent = {
   error?: { message?: string };
 };
 
-function canUseRealtime() {
+function sanitizeRealtimeAnswerSdp(raw: string): string {
+  const lines = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const fixed: string[] = [];
+  for (const line of lines) {
+    if (!line) continue;
+    if (line.startsWith("a=candidate:") && line.includes(" ufrag ")) {
+      fixed.push(line.split(" ufrag ")[0]);
+    } else {
+      fixed.push(line);
+    }
+  }
+  return `${fixed.join("\r\n")}\r\n`;
+}
   return (
     typeof window !== "undefined" &&
     typeof RTCPeerConnection !== "undefined" &&
@@ -328,7 +340,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
       throw new Error(detail || `HTTP ${response.status}`);
     }
 
-    const answerSdp = await response.text();
+    const answerSdp = sanitizeRealtimeAnswerSdp(await response.text());
     await connection.setRemoteDescription({ type: "answer", sdp: answerSdp });
 
     setPhase("listen");
