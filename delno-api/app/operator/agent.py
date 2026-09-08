@@ -155,6 +155,11 @@ def _kb_context_from_result(result: ToolResult) -> str:
     return "\n\n".join(snippets)[:4000]
 
 
+def build_widget_realtime_instructions(ctx: TenantContext, kb_context: str) -> str:
+    """System prompt for OpenAI Realtime widget sessions (same KB rules as text widget)."""
+    return _system_prompt(ctx, kb_context, widget=True)
+
+
 def _system_prompt(
     ctx: TenantContext,
     kb_context: str,

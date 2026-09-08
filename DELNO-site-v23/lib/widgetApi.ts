@@ -27,6 +27,16 @@ export function widgetVoicePath() {
   return `${getBasePath()}/api/widget/voice`;
 }
 
+export function widgetRealtimePath() {
+  const params = new URLSearchParams({
+    site_key: SITE_KEY,
+    visitor_id: getVisitorId(),
+  });
+  const sessionId = getSessionId();
+  if (sessionId) params.set("session_id", sessionId);
+  return `${getBasePath()}/api/widget/voice/realtime?${params}`;
+}
+
 function cryptoSafeId() {
   try {
     if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();

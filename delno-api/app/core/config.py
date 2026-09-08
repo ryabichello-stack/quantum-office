@@ -25,6 +25,8 @@ class Settings(BaseSettings):
 
     openai_api_key: str | None = None
     openai_model: str = "gpt-4.1-mini"
+    openai_realtime_model: str = "gpt-realtime-2.1"
+    openai_realtime_voice: str = "cedar"
     model_provider: str = "openai"
 
     dadata_api_key: str | None = None
