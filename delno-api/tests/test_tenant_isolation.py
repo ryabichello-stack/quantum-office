@@ -52,14 +52,17 @@ def test_knowledge_tool_uses_context_tenant_slug_only():
 def test_operator_owner_vs_guest_principal():
     owner_ctx = TenantContext(tenant_id=uuid.uuid4(), tenant_slug="demo", role="tenant_owner")
     guest_ctx = TenantContext(tenant_id=uuid.uuid4(), tenant_slug="demo", role="viewer")
+    public_ctx = TenantContext(tenant_id=uuid.uuid4(), tenant_slug="demo", role="public")
 
     adapter = RecordingAdapter()
     tool = GetKnowledgeTool(adapter)
     tool.run(MagicMock(), owner_ctx, query="policy")
     tool.run(MagicMock(), guest_ctx, query="policy")
+    tool.run(MagicMock(), public_ctx, query="policy")
 
     assert adapter.calls[0]["principal_id"] == PRINCIPAL_TEXT_OWNER
     assert adapter.calls[1]["principal_id"] == PRINCIPAL_TEXT_GUEST
+    assert adapter.calls[2]["principal_id"] == PRINCIPAL_WIDGET_GUEST
 
 
 def test_widget_guest_maps_to_brain_text_guest_legacy():

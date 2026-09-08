@@ -4,7 +4,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.adapters.knowledge import KnowledgeAdapter
-from app.core.principals import principal_for_operator
+from app.core.principals import principal_for_operator, principal_for_public_channel
 from app.core.tenant import TenantContext
 from app.models.feature_flag import FeatureFlag
 from app.models.tenant import Tenant
@@ -38,7 +38,10 @@ class GetKnowledgeTool:
             return ToolResult(ok=False, message="query is required")
         role = ctx.role or "tenant_owner"
         owner_roles = {"platform_admin", "tenant_owner", "tenant_admin"}
-        pid = principal_for_operator(role=role, is_owner_context=role in owner_roles)
+        if role == "public":
+            pid = principal_for_public_channel("widget")
+        else:
+            pid = principal_for_operator(role=role, is_owner_context=role in owner_roles)
         data = self._adapter.search(
             query,
             tenant_slug=ctx.tenant_slug,

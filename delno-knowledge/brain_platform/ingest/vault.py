@@ -95,6 +95,14 @@ def ingest_vault(
         publication = meta.get("publication") or {}
         ai_processing = meta.get("ai_processing") or {}
         tenant = str(meta.get("tenant_id") or tenant_id)
+        approved_public = bool(
+            publication.get("approved")
+            or publication.get("public_approved")
+            or publication.get("manual_approve")
+        )
+        index_zone = (
+            "public" if visibility == "public" and approved_public else "private"
+        )
         acl = {
             "allow_users": [],
             "allow_groups": ["group:management", "group:sales", "group:ops"],
@@ -118,7 +126,7 @@ def ingest_vault(
             classification=classification if isinstance(classification, dict) else {"level": "internal"},
             channels=list(channels) if isinstance(channels, list) else ["office-assistant"],
             source=f"vault:{rel}",
-            index_zone="private",
+            index_zone=index_zone,
             publication=publication if isinstance(publication, dict) else {},
             ai_processing=ai_processing if isinstance(ai_processing, dict) else {},
         )
