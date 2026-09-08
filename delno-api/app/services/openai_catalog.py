@@ -49,7 +49,7 @@ def _api_key() -> str:
 
 def _fetch_model_ids(api_key: str) -> tuple[list[str], str | None]:
     try:
-        with httpx.Client(timeout=20.0) as client:
+        with httpx.Client(timeout=15.0) as client:
             response = client.get(
                 "https://api.openai.com/v1/models",
                 headers={"Authorization": f"Bearer {api_key}"},
@@ -123,6 +123,8 @@ def verify_openai_api_key(api_key: str) -> dict[str, Any]:
 
     model_ids, fetch_error = _fetch_model_ids(trimmed)
     if not model_ids:
+        if fetch_error and fetch_error.startswith("network:"):
+            return {"ok": False, "error": "openai_network_unreachable"}
         return {"ok": False, "error": fetch_error or "openai_unreachable"}
 
     chat_models = [mid for mid in model_ids if _is_chat_model(mid)]

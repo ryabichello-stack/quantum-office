@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AdminLoginPreview } from "@/components/AdminLoginPreview";
 import { ADMIN_TOKEN_KEY, apiLogin, apiMe } from "@/lib/api";
 
@@ -11,6 +11,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const reason = new URLSearchParams(window.location.search).get("reason");
+    if (reason === "session_expired") {
+      setError("Сессия истекла или был изменён JWT Secret. Войдите снова — после входа всё заработает.");
+    }
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

@@ -134,6 +134,7 @@ def patch_platform_secrets(
     return {
         "ok": True,
         "changed": changed,
+        "relogin_required": "JWT_SECRET" in changed,
         "env_file": env_file_status(),
         "groups": list_secret_fields(),
     }

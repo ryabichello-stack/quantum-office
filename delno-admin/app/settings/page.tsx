@@ -8,6 +8,7 @@ import {
   apiPatchPlatformSecrets,
   apiRefreshPlatformOptions,
   apiTestOpenAiKey,
+  clearAdminSession,
   type OpenAiOptions,
   type SecretGroup,
   type SecretItem,
@@ -39,6 +40,15 @@ function formatFetchError(code: string | null | undefined): string {
   }
   if (code === "openai_key_too_short") {
     return "Ключ слишком короткий — скопируйте Secret key целиком (обычно 50+ символов).";
+  }
+  if (code === "openai_network_unreachable" || code.startsWith("network:")) {
+    return "Сервер не достучался до OpenAI (сеть). Подождите и повторите тест.";
+  }
+  if (code === "request_timeout" || code === "session_expired") {
+    return "Запрос прерван. Если видите это часто — перезайдите в админку.";
+  }
+  if (code === "Invalid token") {
+    return "Сессия недействительна — перезайдите (admin@dlno.ru).";
   }
   return code;
 }
@@ -111,7 +121,12 @@ export default function SettingsPage() {
           }
         }
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "load failed"));
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : "load failed";
+        if (message !== "session_expired") {
+          setError(formatFetchError(message) || "Не удалось загрузить настройки");
+        }
+      });
   }, [token, applyPayload]);
 
   function onChange(key: string, value: string) {
@@ -215,6 +230,11 @@ export default function SettingsPage() {
     setStatus("");
     try {
       const result = await apiPatchPlatformSecrets(token, payload);
+      if (result.relogin_required) {
+        setStatus("JWT Secret изменён — нужен повторный вход…");
+        setTimeout(() => clearAdminSession("session_expired"), 1200);
+        return;
+      }
       setStatus(`Сохранено: ${result.changed.join(", ")}`);
       setDraft({});
       const refreshed = await apiGetPlatformSecrets(token);
