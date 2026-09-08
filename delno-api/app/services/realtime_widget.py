@@ -32,14 +32,16 @@ def _realtime_session_config(instructions: str) -> dict[str, Any]:
         "instructions": instructions,
         "audio": {
             "output": {"voice": runtime["realtime_voice"]},
-        },
-        "turn_detection": {
-            "type": "server_vad",
-            "threshold": 0.5,
-            "prefix_padding_ms": 300,
-            "silence_duration_ms": 500,
-            "create_response": True,
-            "interrupt_response": True,
+            "input": {
+                "turn_detection": {
+                    "type": "server_vad",
+                    "threshold": 0.5,
+                    "prefix_padding_ms": 300,
+                    "silence_duration_ms": 500,
+                    "create_response": True,
+                    "interrupt_response": True,
+                },
+            },
         },
     }
 
