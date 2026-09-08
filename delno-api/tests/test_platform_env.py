@@ -10,6 +10,7 @@ import pytest
 from app.services.platform_env import (
     ALLOWED_KEYS,
     mask_secret,
+    normalize_openai_api_key,
     platform_env_path,
     read_env_values,
     update_env_values,
@@ -56,10 +57,21 @@ def test_rejects_unknown_keys(env_file: Path):
     assert error and "unknown_keys" in error
 
 
+def test_normalize_openai_api_key():
+    assert normalize_openai_api_key("  sk-test-key-with-enough-length  ") == "sk-test-key-with-enough-length"
+    assert normalize_openai_api_key("Bearer sk-test-key-with-enough-length") == "sk-test-key-with-enough-length"
+    assert normalize_openai_api_key('"sk-test-key-with-enough-length"') == "sk-test-key-with-enough-length"
+    assert normalize_openai_api_key("sk-proj-\nabc\n") == "sk-proj-abc"
+
+
 def test_rejects_invalid_openai_key_format(env_file: Path):
     changed, error = update_env_values({"OPENAI_API_KEY": "admin123456"})
     assert changed == []
     assert error == "openai_key_invalid_format"
+
+    changed, error = update_env_values({"OPENAI_API_KEY": "sk-short"})
+    assert changed == []
+    assert error == "openai_key_too_short"
 
     changed, error = update_env_values({"OPENAI_API_KEY": "sk-valid-looking-test-key-xx"})
     assert error is None

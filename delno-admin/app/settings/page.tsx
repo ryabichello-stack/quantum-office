@@ -13,16 +13,32 @@ import {
   type SecretItem,
 } from "@/lib/api";
 
+function normalizeOpenAiKey(raw: string): string {
+  let value = raw.trim();
+  if (value.toLowerCase().startsWith("bearer ")) value = value.slice(7).trim();
+  if (value.length >= 2 && (value.startsWith('"') || value.startsWith("'"))) {
+    value = value.slice(1, -1).trim();
+  }
+  return value.replace(/\s+/g, "");
+}
+
 function formatFetchError(code: string | null | undefined): string {
   if (!code) return "";
+  if (code.startsWith("auth_failed:")) {
+    const detail = code.slice("auth_failed:".length);
+    return `OpenAI отклонил ключ (401): ${detail || "неверный или отозванный ключ"}. Скопируйте ключ целиком с platform.openai.com/account/api-keys — латинские sk-, не пароль от входа.`;
+  }
   if (code === "auth_failed") {
-    return "OpenAI отклонил ключ (401). Проверьте, что вставлен ключ sk-... с platform.openai.com, а не пароль от админки.";
+    return "OpenAI отклонил ключ (401). Скопируйте новый Secret key целиком с platform.openai.com/account/api-keys. Если поле пустое — тестируется уже сохранённый ключ.";
   }
   if (code === "openai_key_missing") {
-    return "Сначала сохраните OpenAI API Key.";
+    return "Сначала введите ключ в поле или сохраните его на сервер.";
   }
   if (code === "openai_key_invalid_format") {
-    return "Ключ OpenAI должен начинаться с sk- (скопируйте с platform.openai.com/account/api-keys).";
+    return "Ключ должен начинаться с латинских sk- (не кириллица «ск»). Без пробелов и кавычек.";
+  }
+  if (code === "openai_key_too_short") {
+    return "Ключ слишком короткий — скопируйте Secret key целиком (обычно 50+ символов).";
   }
   return code;
 }
@@ -127,9 +143,14 @@ export default function SettingsPage() {
 
   async function testOpenAiKey(configured: boolean) {
     if (!token) return;
-    const draftKey = draft["OPENAI_API_KEY"]?.trim() || "";
+    const draftKey = normalizeOpenAiKey(draft["OPENAI_API_KEY"] || "");
     if (draftKey && !draftKey.startsWith("sk-")) {
       setError(formatFetchError("openai_key_invalid_format"));
+      setStatus("");
+      return;
+    }
+    if (draftKey && draftKey.length < 20) {
+      setError(formatFetchError("openai_key_too_short"));
       setStatus("");
       return;
     }
@@ -141,18 +162,20 @@ export default function SettingsPage() {
 
     setTestingKey(true);
     setError("");
-    setStatus("");
+    setStatus(draftKey ? `Проверяю ключ из поля (${draftKey.length} символов)…` : "Проверяю сохранённый на сервере ключ…");
     try {
       const result = await apiTestOpenAiKey(token, draftKey || undefined);
       if (result.ok) {
         setStatus(
-          `Ключ работает (${result.key_preview}): ${result.realtime_models_count} realtime, ${result.chat_models_count} chat моделей в OpenAI`,
+          `Ключ работает (${result.key_preview}, ${result.key_length ?? draftKey.length} симв.): ${result.realtime_models_count} realtime, ${result.chat_models_count} chat моделей`,
         );
       } else {
         setError(formatFetchError(result.error));
+        setStatus("");
       }
     } catch (err) {
       setError(formatFetchError(err instanceof Error ? err.message : "test failed"));
+      setStatus("");
     } finally {
       setTestingKey(false);
     }
@@ -167,12 +190,18 @@ export default function SettingsPage() {
       if (value.trim()) payload[key] = value.trim();
     }
     for (const [key, value] of Object.entries(draft)) {
-      if (value.trim()) payload[key] = value.trim();
+      if (value.trim()) {
+        payload[key] = key === "OPENAI_API_KEY" ? normalizeOpenAiKey(value) : value.trim();
+      }
     }
 
-    const draftOpenAi = draft["OPENAI_API_KEY"]?.trim();
+    const draftOpenAi = payload["OPENAI_API_KEY"];
     if (draftOpenAi && !draftOpenAi.startsWith("sk-")) {
       setError(formatFetchError("openai_key_invalid_format"));
+      return;
+    }
+    if (draftOpenAi && draftOpenAi.length < 20) {
+      setError(formatFetchError("openai_key_too_short"));
       return;
     }
 
@@ -286,16 +315,21 @@ export default function SettingsPage() {
                   ) : item.key === "OPENAI_API_KEY" ? (
                     <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
                       <input
-                        type="password"
-                        name={item.key}
-                        autoComplete="off"
+                        type="text"
+                        name="openai_api_key_draft"
+                        autoComplete="new-password"
+                        data-lpignore="true"
+                        data-1p-ignore="true"
+                        spellCheck={false}
                         placeholder={
-                          item.configured ? "Пусто = не менять (sk-...)" : "sk-proj-... с platform.openai.com"
+                          item.configured
+                            ? "Новый sk-proj-... (пусто = не менять)"
+                            : "sk-proj-... целиком с platform.openai.com"
                         }
                         value={draft[item.key] || ""}
                         onChange={(e) => onChange(item.key, e.target.value)}
                         disabled={!writable || saving}
-                        style={{ flex: 1, minWidth: 0 }}
+                        style={{ flex: 1, minWidth: 0, fontFamily: "monospace", fontSize: 13 }}
                       />
                       <button
                         type="button"
@@ -321,6 +355,11 @@ export default function SettingsPage() {
                     />
                   )}
                   <code style={{ fontSize: 10, color: "#aaa" }}>{item.key}</code>
+                  {item.key === "OPENAI_API_KEY" && item.configured && !draft[item.key] && (
+                    <small style={{ color: "#888" }}>
+                      Поле пустое — «Тест ключа» проверит уже сохранённый ключ ({item.preview}).
+                    </small>
+                  )}
                 </label>
               );
             })}

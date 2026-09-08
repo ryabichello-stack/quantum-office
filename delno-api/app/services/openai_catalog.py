@@ -58,6 +58,14 @@ def _fetch_model_ids(api_key: str) -> tuple[list[str], str | None]:
         return [], f"network:{exc.__class__.__name__}"
 
     if response.status_code in (401, 403):
+        detail = ""
+        try:
+            payload = response.json()
+            detail = str(payload.get("error", {}).get("message", "")).strip()
+        except ValueError:
+            detail = ""
+        if detail:
+            return [], f"auth_failed:{detail[:160]}"
         return [], "auth_failed"
     if response.status_code != 200:
         return [], f"http_{response.status_code}"
@@ -103,9 +111,9 @@ def invalidate_openai_catalog_cache() -> None:
 
 def verify_openai_api_key(api_key: str) -> dict[str, Any]:
     """Verify key format and OpenAI /v1/models access. Never returns full key."""
-    from app.services.platform_env import mask_secret, validate_secret_value
+    from app.services.platform_env import mask_secret, normalize_openai_api_key, validate_secret_value
 
-    trimmed = (api_key or "").strip()
+    trimmed = normalize_openai_api_key(api_key)
     if not trimmed:
         return {"ok": False, "error": "openai_key_missing"}
 
@@ -122,6 +130,7 @@ def verify_openai_api_key(api_key: str) -> dict[str, Any]:
     return {
         "ok": True,
         "key_preview": mask_secret(trimmed),
+        "key_length": len(trimmed),
         "models_total": len(model_ids),
         "chat_models_count": len(chat_models),
         "realtime_models_count": len(realtime_models),

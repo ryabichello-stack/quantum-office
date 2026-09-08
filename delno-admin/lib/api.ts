@@ -90,6 +90,7 @@ export type OpenAiKeyTestResult = {
   ok: boolean;
   error?: string;
   key_preview?: string;
+  key_length?: number;
   models_total?: number;
   chat_models_count?: number;
   realtime_models_count?: number;
@@ -99,7 +100,7 @@ export async function apiTestOpenAiKey(token: string, apiKey?: string) {
   const res = await fetch(`${API_URL}/v1/admin/platform-secrets/openai/test`, {
     method: "POST",
     headers: authHeaders(token),
-    body: JSON.stringify({ api_key: apiKey?.trim() || null }),
+    body: JSON.stringify({ api_key: apiKey ? apiKey.replace(/\s+/g, "") : null }),
   });
   const text = await res.text();
   if (!res.ok) {

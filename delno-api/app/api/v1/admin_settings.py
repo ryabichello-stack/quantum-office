@@ -16,6 +16,7 @@ from app.services.events import emit_event
 from app.services.platform_env import (
     env_file_status,
     list_secret_fields,
+    normalize_openai_api_key,
     read_env_values,
     update_env_values,
     validate_secret_value,
@@ -61,9 +62,9 @@ def verify_platform_openai_key(
     admin: User = Depends(require_platform_admin),
 ) -> dict:
     """Test OpenAI API key from draft input or saved platform.env."""
-    candidate = (body.api_key or "").strip()
+    candidate = normalize_openai_api_key(body.api_key or "")
     if not candidate:
-        candidate = (read_env_values().get("OPENAI_API_KEY") or "").strip()
+        candidate = normalize_openai_api_key(read_env_values().get("OPENAI_API_KEY") or "")
     if not candidate:
         raise HTTPException(status_code=400, detail="openai_key_missing")
     if body.api_key and validate_secret_value("OPENAI_API_KEY", candidate):

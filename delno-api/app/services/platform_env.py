@@ -107,14 +107,30 @@ SECRET_FIELDS: tuple[SecretFieldDef, ...] = (
 ALLOWED_KEYS = frozenset(field.key for field in SECRET_FIELDS)
 
 
+def normalize_openai_api_key(raw: str) -> str:
+    """Strip wrappers users paste by mistake (Bearer, quotes, whitespace)."""
+    value = (raw or "").strip()
+    if value.lower().startswith("bearer "):
+        value = value[7:].strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        value = value[1:-1].strip()
+    # Remove accidental line breaks from multi-line paste
+    value = re.sub(r"\s+", "", value)
+    return value
+
+
 def validate_secret_value(key: str, value: str) -> str | None:
     """Return error code or None if value is acceptable."""
     if key == "OPENAI_API_KEY" and value:
-        trimmed = value.strip()
+        trimmed = normalize_openai_api_key(value)
+        if not trimmed:
+            return "openai_key_missing"
+        if not trimmed.isascii():
+            return "openai_key_invalid_format"
         if not trimmed.startswith("sk-"):
             return "openai_key_invalid_format"
         if len(trimmed) < 20:
-            return "openai_key_invalid_format"
+            return "openai_key_too_short"
     return None
 
 
@@ -224,6 +240,9 @@ def update_env_values(updates: dict[str, str]) -> tuple[list[str], str | None]:
     for key, value in updates.items():
         if value == "":
             continue
+        if key == "OPENAI_API_KEY":
+            value = normalize_openai_api_key(value)
+            updates[key] = value
         validation_error = validate_secret_value(key, value)
         if validation_error:
             return [], validation_error
