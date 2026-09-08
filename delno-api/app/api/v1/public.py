@@ -29,6 +29,7 @@ from app.services.widget_flow import (
 )
 from app.services.widget_security import enforce_widget_rate_limit
 from app.services.tts import synthesize_speech
+from app.services.realtime_widget import exchange_widget_realtime_sdp, search_widget_knowledge
 from app.services.instant_demo import preview_website
 
 router = APIRouter(prefix="/public", tags=["public"])
@@ -174,6 +175,11 @@ class PublicWidgetMessage(BaseModel):
     visitor: WidgetVisitor | None = None
     channel: str = Field(default="web", max_length=32)
     input_modality: str = Field(default="text", pattern="^(text|voice)$")
+
+
+class PublicWidgetKnowledge(BaseModel):
+    site_key: str = Field(min_length=2, max_length=64)
+    query: str = Field(min_length=1, max_length=500)
 
 
 class PublicWidgetHistory(BaseModel):
@@ -523,6 +529,85 @@ def public_widget_tts(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@router.post("/widget/voice/realtime")
+async def public_widget_voice_realtime(
+    request: Request,
+    site_key: str = Query(..., min_length=2, max_length=64),
+    session_id: str | None = Query(default=None, min_length=8, max_length=64),
+    visitor_id: str | None = Query(default=None, max_length=64),
+    db: Session = Depends(get_db),
+    x_tenant_slug: str | None = Header(default=None, alias="X-Tenant-Slug"),
+) -> Response:
+    """E3.5 / E4.3 — OpenAI Realtime WebRTC SDP exchange (unified interface, KB in session)."""
+    enforce_widget_rate_limit(request, site_key=site_key, action="voice_realtime")
+    channel = _resolve_widget_context(db, site_key)
+    if not channel and x_tenant_slug:
+        channel = resolve_public_lead(db, x_tenant_slug)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Unknown site_key")
+
+    ctx = TenantContext(
+        tenant_id=channel.tenant_id,
+        tenant_slug=channel.tenant_slug,
+        role="public",
+    )
+
+    if session_id:
+        conversation_id = _parse_conversation_id(session_id)
+        if not conversation_id:
+            raise HTTPException(status_code=400, detail="Invalid session_id")
+        conversation = get_conversation_for_widget(db, ctx, conversation_id, create=False)
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Session not found")
+        try:
+            validate_widget_visitor(conversation, visitor_id)
+        except WidgetVisitorMismatchError:
+            raise HTTPException(status_code=403, detail="visitor_mismatch") from None
+
+    raw = await request.body()
+    sdp_offer = raw.decode("utf-8", errors="replace")
+    if not sdp_offer.strip():
+        raise HTTPException(status_code=400, detail="SDP_REQUIRED")
+
+    answer, error = exchange_widget_realtime_sdp(
+        db,
+        ctx,
+        sdp_offer=sdp_offer,
+        visitor_id=visitor_id,
+    )
+    if error or not answer:
+        code = error or "REALTIME_CONNECTION_FAILED"
+        status = 503 if code == "VOICE_NOT_CONFIGURED" else 502
+        raise HTTPException(status_code=status, detail=code)
+
+    return Response(
+        content=answer,
+        media_type="application/sdp",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post("/widget/knowledge")
+def public_widget_knowledge(
+    request: Request,
+    body: PublicWidgetKnowledge,
+    db: Session = Depends(get_db),
+) -> dict:
+    """KB lookup for Realtime get_knowledge tool (browser-side function execution)."""
+    enforce_widget_rate_limit(request, site_key=body.site_key, action="knowledge")
+    channel = _resolve_widget_context(db, body.site_key)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Unknown site_key")
+
+    ctx = TenantContext(
+        tenant_id=channel.tenant_id,
+        tenant_slug=channel.tenant_slug,
+        role="public",
+    )
+    text = search_widget_knowledge(db, ctx, body.query)
+    return {"text": text, "query": body.query.strip()}
 
 
 @router.post("/instant-demo/preview")

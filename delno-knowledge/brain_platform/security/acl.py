@@ -26,6 +26,11 @@ SERVICE_PRINCIPALS = (
     "service:text-owner",
     "service:text-secretary",
     "service:text-guest",
+    "service:delno-widget-guest",
+    "service:delno-voice-public",
+    "service:delno-voice-office",
+    "service:delno-text-guest",
+    "service:delno-text-owner",
     "service:outreach",
     "service:cursor-admin",
 )
@@ -126,7 +131,7 @@ def resolve_principal_policy(principal: Principal) -> ACLFilter:
         )
 
     # External / non-owner text-bot dialogues — published FAQ only.
-    if pid == "service:text-guest":
+    if pid in ("service:text-guest", "service:delno-widget-guest", "service:delno-text-guest"):
         return ACLFilter(
             tenant_id=principal.tenant_id,
             principal_id=pid,

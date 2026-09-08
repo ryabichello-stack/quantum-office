@@ -43,23 +43,27 @@ def seed_demo_tenant() -> None:
 
         _ensure_flags(db, tenant.id)
 
-        owner = db.query(User).filter(User.email == "owner@delno.one").one_or_none()
+        owner = db.query(User).filter(User.email == "owner@dlno.ru").one_or_none()
+        if not owner:
+            owner = db.query(User).filter(User.email == "owner@delno.one").one_or_none()
         if not owner:
             db.add(
                 User(
                     tenant_id=tenant.id,
-                    email="owner@delno.one",
+                    email="owner@dlno.ru",
                     role="tenant_owner",
                     password_hash=hash_password("demo123456"),
                 )
             )
 
-        admin = db.query(User).filter(User.email == "admin@delno.one").one_or_none()
+        admin = db.query(User).filter(User.email == "admin@dlno.ru").one_or_none()
+        if not admin:
+            admin = db.query(User).filter(User.email == "admin@delno.one").one_or_none()
         if not admin:
             db.add(
                 User(
                     tenant_id=tenant.id,
-                    email="admin@delno.one",
+                    email="admin@dlno.ru",
                     role="platform_admin",
                     password_hash=hash_password("admin123456"),
                 )
