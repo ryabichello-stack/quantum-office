@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """Partner-channel sender — ONLY from rdv@quantumlabs.ru.
 
+ISOLATION FROM AVA-OUTREACH (office@):
+  - Does NOT use /opt/ava-outreach, outbox.db, Bitrix outreach queue,
+    OUTREACH_ENABLED, or OUTREACH_DAILY_LIMIT.
+  - Sends via its own SMTP login (rdv@) and partner-channel CRM only.
+  - office@quantumlabs.ru is hard-refused so pawnshop/outreach caps are untouched.
+
 Safety:
   - Default: dry-run (no SMTP).
   - PARTNER_SEND_ENABLED must be true to send.
-  - MAIL_USERNAME must be rdv@quantumlabs.ru (office@ is refused).
+  - MAIL_USERNAME must be rdv@quantumlabs.ru.
 """
 
 from __future__ import annotations
@@ -32,6 +38,11 @@ CRM_CSV = ROOT / "crm" / "partners.csv"
 LOG_DIR = ROOT / "logs"
 ALLOWED_FROM = "rdv@quantumlabs.ru"
 BLOCKED_FROM = {"office@quantumlabs.ru"}
+# Never load outreach/mailer env from prod paths — partner channel is a separate mailbox/budget.
+FORBIDDEN_ENV_PATHS = (
+    Path("/opt/ava-outreach/.env"),
+    Path("/opt/ava-mailer/.env"),
+)
 ENV_CANDIDATES = (
     ROOT / "smtp.local.env",  # visible in IDE (preferred)
     ROOT / ".env",
@@ -43,6 +54,13 @@ def load_local_env() -> Path | None:
     for path in ENV_CANDIDATES:
         if not path.is_file():
             continue
+        resolved = path.resolve()
+        for bad in FORBIDDEN_ENV_PATHS:
+            try:
+                if resolved == bad.resolve():
+                    raise SystemExit(f"Refusing to load outreach/mailer env: {bad}")
+            except FileNotFoundError:
+                pass
         for raw in path.read_text(encoding="utf-8").splitlines():
             line = raw.strip()
             if not line or line.startswith("#") or "=" not in line:
@@ -54,6 +72,37 @@ def load_local_env() -> Path | None:
                 os.environ[key] = val
         return path
     return None
+
+
+def smtp_creds() -> tuple[str, int, str, str, str, str]:
+    """Resolve SMTP settings; prefer PARTNER_MAIL_* so outreach MAIL_* never leaks in."""
+    host = (
+        os.getenv("PARTNER_MAIL_SMTP_HOST")
+        or os.getenv("MAIL_SMTP_HOST")
+        or ""
+    ).strip()
+    port = int(
+        os.getenv("PARTNER_MAIL_SMTP_PORT")
+        or os.getenv("MAIL_SMTP_PORT")
+        or "465"
+    )
+    user = (
+        os.getenv("PARTNER_MAIL_USERNAME")
+        or os.getenv("MAIL_USERNAME")
+        or ""
+    ).strip()
+    password = os.getenv("PARTNER_MAIL_PASSWORD") or os.getenv("MAIL_PASSWORD") or ""
+    from_name = (
+        os.getenv("PARTNER_MAIL_FROM_NAME")
+        or os.getenv("MAIL_FROM_NAME")
+        or "Денис Рябов · Quantum Payouts"
+    ).strip()
+    reply = (
+        os.getenv("PARTNER_MAIL_REPLY_TO")
+        or os.getenv("MAIL_REPLY_TO")
+        or user
+    ).strip() or user
+    return host, port, user, password, from_name, reply
 
 
 def _business_days_ahead(start: date, n: int) -> date:
@@ -163,13 +212,10 @@ def assert_from_ok(username: str) -> None:
 
 
 def send_one(*, to: str, subject: str, plain: str, html: str | None = None) -> str:
-    host = os.environ["MAIL_SMTP_HOST"].strip()
-    port = int(os.getenv("MAIL_SMTP_PORT", "465"))
-    user = os.environ["MAIL_USERNAME"].strip()
-    password = os.environ["MAIL_PASSWORD"]
-    from_name = os.getenv("MAIL_FROM_NAME", "Денис Рябов · Quantum Payouts").strip()
-    reply = os.getenv("MAIL_REPLY_TO", user).strip() or user
+    host, port, user, password, from_name, reply = smtp_creds()
     assert_from_ok(user)
+    if not host or not password:
+        raise SystemExit("Missing SMTP host/password for rdv@ (partner channel only).")
 
     mid = make_msgid(domain=user.split("@")[-1])
     msg = MIMEMultipart("alternative")
@@ -180,11 +226,17 @@ def send_one(*, to: str, subject: str, plain: str, html: str | None = None) -> s
     msg["Message-ID"] = mid
     msg["List-Unsubscribe"] = f"<mailto:{user}?subject=unsubscribe>"
     msg["X-Campaign"] = "quantum-payouts-partner-channel"
+    msg["X-Partner-Channel"] = "isolated-from-ava-outreach"
     html_body = html or plain_to_fallback_html(plain)
     msg.attach(MIMEText(plain, "plain", "utf-8"))
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-    with smtplib.SMTP_SSL(host, port, timeout=float(os.getenv("MAIL_SMTP_TIMEOUT_SECONDS", "20"))) as s:
+    timeout = float(
+        os.getenv("PARTNER_MAIL_SMTP_TIMEOUT_SECONDS")
+        or os.getenv("MAIL_SMTP_TIMEOUT_SECONDS")
+        or "20"
+    )
+    with smtplib.SMTP_SSL(host, port, timeout=timeout) as s:
         s.login(user, password)
         s.send_message(msg)
     return mid.strip().strip("<>")
@@ -205,18 +257,22 @@ def main() -> int:
     else:
         print("no local env file found (smtp.local.env / .env); using process env only")
 
-    enabled = os.getenv("PARTNER_SEND_ENABLED", "false").lower() in ("1", "true", "yes", "on")    dry = args.dry_run or not enabled
+    enabled = os.getenv("PARTNER_SEND_ENABLED", "false").lower() in ("1", "true", "yes", "on")
+    dry = args.dry_run or not enabled
     if not enabled and not args.dry_run:
         print(
             "PARTNER_SEND_ENABLED is false — forcing dry-run. "
             f"Configure SMTP for {ALLOWED_FROM}, then set PARTNER_SEND_ENABLED=true."
         )
     if not dry:
-        assert_from_ok(os.environ.get("MAIL_USERNAME", ""))
-        for key in ("MAIL_SMTP_HOST", "MAIL_PASSWORD"):
-            if not os.environ.get(key):
-                raise SystemExit(f"Missing required env: {key}")
-
+        host, _, user, password, _, _ = smtp_creds()
+        assert_from_ok(user)
+        if not host or not password:
+            raise SystemExit(
+                "Missing PARTNER/MAIL SMTP host or password for rdv@. "
+                "Fill partner-channel/smtp.local.env — do not use ava-outreach/.env."
+            )
+        print(f"SMTP account: {user} (isolated from office@ outreach limits)")
     data = load_campaign()
     ids = {x.strip() for x in args.ids.split(",") if x.strip()}
     selected = []
@@ -251,12 +307,13 @@ def main() -> int:
             "dry_run": dry,
             "from": ALLOWED_FROM,
             "has_html": bool(html),
+            "isolated_from_outreach": True,
         }
         if dry:
             print(f"[dry-run] would send → {to} ({p['company']}) html={bool(html)}")
             p["status"] = "предложение подготовлено"
             p["comment"] = (
-                f"Dry-run OK. Waiting for {ALLOWED_FROM} mailbox. Do not send from office@."
+                f"Dry-run OK. Separate rdv@ channel — does not use office@ outreach limits."
             )
         else:
             mid = send_one(to=to, subject=subject, plain=body, html=html)
@@ -267,7 +324,7 @@ def main() -> int:
             p["followup1_date"] = _business_days_ahead(today, 3).isoformat()
             p["followup2_date"] = _business_days_ahead(today, 7).isoformat()
             p["next_contact"] = p["followup1_date"]
-            p["comment"] = f"Sent Message-ID={mid}"
+            p["comment"] = f"Sent via rdv@ (isolated). Message-ID={mid}"
             entry["message_id"] = mid
             print(f"[sent] {to} mid={mid}")
             if i < len(selected) - 1 and args.delay > 0:

@@ -1,9 +1,10 @@
 # Статус кампании — Partner Channel Quantum Payouts
 
 **Дата подготовки:** 2026-09-09  
-**From для рассылки:** `rdv@quantumlabs.ru` (**не** `office@quantumlabs.ru`)  
-**Отправка:** заблокирована до подключения ящика `rdv@` и `PARTNER_SEND_ENABLED=true`  
-**ICP в письмах:** регулярные выплаты, ориентир от ~5–10 млн ₽/мес (не «от 100 млн»)
+**From для рассылки:** `rdv@quantumlabs.ru` — **отдельный ящик** от outreach  
+**Изоляция:** скрипт `partner-channel/scripts/send_campaign.py` не ходит в ava-outreach / Bitrix outbox / `OUTREACH_DAILY_LIMIT`. Лимиты `office@` не расходуются.  
+**Отправка:** через SMTP `rdv@` + локальный CRM; `PARTNER_SEND_ENABLED=true`  
+**ICP в письмах:** регулярные выплаты, ориентир от ~5–10 млн ₽/мес
 
 ## Что готово
 
