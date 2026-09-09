@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import argparse
 import csv
+import imaplib
 import json
 import os
+import random
 import smtplib
 import sys
 import time
@@ -239,7 +241,77 @@ def send_one(*, to: str, subject: str, plain: str, html: str | None = None) -> s
     with smtplib.SMTP_SSL(host, port, timeout=timeout) as s:
         s.login(user, password)
         s.send_message(msg)
+
+    # Keep a copy in the mailbox Sent folder (Mail.ru does not always auto-save SMTP).
+    try:
+        save_to_sent(msg)
+    except Exception as exc:  # noqa: BLE001
+        print(f"WARNING: SMTP ok but Sent copy failed for {to}: {exc}")
+
     return mid.strip().strip("<>")
+
+
+def save_to_sent(msg: MIMEMultipart) -> str:
+    """APPEND the exact outbound message into IMAP Sent for rdv@."""
+    user = (os.getenv("PARTNER_MAIL_USERNAME") or os.getenv("MAIL_USERNAME") or "").strip()
+    password = os.getenv("PARTNER_MAIL_PASSWORD") or os.getenv("MAIL_PASSWORD") or ""
+    assert_from_ok(user)
+    host = (os.getenv("IMAP_HOST") or os.getenv("MAIL_IMAP_HOST") or "imap.mail.ru").strip()
+    port = int(os.getenv("IMAP_PORT") or os.getenv("MAIL_IMAP_PORT") or "993")
+    preferred = (
+        os.getenv("IMAP_SENT_FOLDER")
+        or os.getenv("MAIL_IMAP_SENT_FOLDER")
+        or ""
+    ).strip()
+
+    raw = msg.as_bytes()
+    imap = imaplib.IMAP4_SSL(host, port)
+    try:
+        imap.login(user, password)
+        typ, data = imap.list()
+        folders: list[str] = []
+        if typ == "OK" and data:
+            for item in data:
+                if not item:
+                    continue
+                line = item.decode("utf-8", errors="replace") if isinstance(item, bytes) else str(item)
+                # LIST (... ) "." "Folder"
+                if '"' in line:
+                    folders.append(line.split('"')[-2])
+        candidates = []
+        if preferred:
+            candidates.append(preferred)
+        for name in (
+            "Отправленные",
+            "Sent",
+            "Sent Items",
+            "Sent Messages",
+            "INBOX.Sent",
+            "INBOX.Отправленные",
+        ):
+            if name not in candidates:
+                candidates.append(name)
+        for f in folders:
+            low = f.lower()
+            if "sent" in low or "отправ" in low:
+                if f not in candidates:
+                    candidates.append(f)
+
+        last_err = None
+        for folder in candidates:
+            try:
+                typ, _ = imap.append(folder, "\\Seen", imaplib.Time2Internaldate(time.time()), raw)
+                if typ == "OK":
+                    return folder
+            except Exception as exc:  # noqa: BLE001
+                last_err = exc
+                continue
+        raise RuntimeError(f"Could not APPEND to Sent; tried {candidates!r}; last={last_err}")
+    finally:
+        try:
+            imap.logout()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def main() -> int:
@@ -334,8 +406,16 @@ def main() -> int:
             p["comment"] = f"Sent via rdv@ (isolated). Message-ID={mid}"
             entry["message_id"] = mid
             print(f"[sent] {to} mid={mid}")
-            if i < len(selected) - 1 and args.delay > 0:
-                time.sleep(args.delay)
+            if i < len(selected) - 1:
+                if args.delay > 0:
+                    wait_s = args.delay
+                else:
+                    lo = max(0, min(args.delay_min, args.delay_max))
+                    hi = max(lo, max(args.delay_min, args.delay_max))
+                    wait_s = random.randint(lo, hi) if hi > 0 else 0
+                if wait_s > 0:
+                    print(f"waiting {wait_s}s (~{wait_s/60:.1f} min) before next send")
+                    time.sleep(wait_s)
         with log_path.open("a", encoding="utf-8") as lf:
             lf.write(json.dumps(entry, ensure_ascii=False) + "\n")
 

@@ -55,3 +55,13 @@ export PARTNER_SEND_ENABLED=true
 
 python partner-channel/scripts/send_campaign.py --priority A --limit 5
 ```
+
+## Расписание отправки
+
+- Старт: **10:00 Europe/Moscow** (сегодня 2026-09-10, если шедулер жив)
+- Объём: все 18 с email, priority ALL
+- Интервал: случайно 10–15 минут
+- From: `rdv@quantumlabs.ru`
+- Копии: APPEND в IMAP «Отправленные»
+- Лог: `partner-channel/logs/scheduled_send_YYYYMMDD.log`
+
