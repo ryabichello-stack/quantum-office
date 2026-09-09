@@ -47,7 +47,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Dry-run OK. Waiting for rdv@quantumlabs.ru mailbox. Do not send from office@.",
+      "comment": "Dry-run OK. Separate rdv@ channel — does not use office@ outreach limits.",
       "call_priority": true
     },
     {
@@ -76,7 +76,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Dry-run OK. Waiting for rdv@quantumlabs.ru mailbox. Do not send from office@.",
+      "comment": "Dry-run OK. Separate rdv@ channel — does not use office@ outreach limits.",
       "call_priority": true
     },
     {
