@@ -145,7 +145,7 @@ def send_one(*, to: str, subject: str, plain: str, html: str | None = None) -> s
     port = int(os.getenv("MAIL_SMTP_PORT", "465"))
     user = os.environ["MAIL_USERNAME"].strip()
     password = os.environ["MAIL_PASSWORD"]
-    from_name = os.getenv("MAIL_FROM_NAME", "Quantum Payouts · Partner Channel").strip()
+    from_name = os.getenv("MAIL_FROM_NAME", "Денис Рябов · Quantum Payouts").strip()
     reply = os.getenv("MAIL_REPLY_TO", user).strip() or user
     assert_from_ok(user)
 
