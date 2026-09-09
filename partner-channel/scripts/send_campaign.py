@@ -96,9 +96,40 @@ def parse_email_file(path: Path) -> tuple[str, str, str]:
     return to, subject, body
 
 
+def load_html_for(plain_path: Path) -> str | None:
+    """Prefer companion .html with clickable Quantum Payouts → quantumpayouts.ru."""
+    html_path = plain_path.with_suffix(".html")
+    if html_path.exists():
+        return html_path.read_text(encoding="utf-8")
+    return None
+
+
+def plain_to_fallback_html(plain: str) -> str:
+    from html import escape
+
+    site = "https://quantumpayouts.ru"
+    link = f'<a href="{site}" style="color:#0b57d0;text-decoration:underline;">'
+    escaped_lines = []
+    for line in plain.splitlines():
+        if not line.strip():
+            escaped_lines.append("<br>")
+            continue
+        e = escape(line)
+        e = e.replace("Quantum Payouts", f"{link}Quantum Payouts</a>")
+        e = e.replace(escape(site), f'{link}{escape(site.replace("https://", ""))}</a>')
+        e = e.replace("quantumpayouts.ru", f"{link}quantumpayouts.ru</a>")
+        escaped_lines.append(f"<p>{e}</p>")
+    return (
+        '<!DOCTYPE html><html lang="ru"><body style="font-family:Georgia,serif;'
+        'line-height:1.55;color:#1a1a1a;max-width:640px;">'
+        + "".join(escaped_lines)
+        + "</body></html>"
+    )
+
+
 def assert_from_ok(username: str) -> None:
     u = (username or "").strip().lower()
-    if u in BLOCKED_FROM or u.endswith("@") and "office@" in u:
+    if u in BLOCKED_FROM:
         raise SystemExit(
             f"Refusing send: MAIL_USERNAME={username!r}. "
             f"Partner channel must use {ALLOWED_FROM} only."
@@ -109,7 +140,7 @@ def assert_from_ok(username: str) -> None:
         )
 
 
-def send_one(*, to: str, subject: str, plain: str) -> str:
+def send_one(*, to: str, subject: str, plain: str, html: str | None = None) -> str:
     host = os.environ["MAIL_SMTP_HOST"].strip()
     port = int(os.getenv("MAIL_SMTP_PORT", "465"))
     user = os.environ["MAIL_USERNAME"].strip()
@@ -127,13 +158,9 @@ def send_one(*, to: str, subject: str, plain: str) -> str:
     msg["Message-ID"] = mid
     msg["List-Unsubscribe"] = f"<mailto:{user}?subject=unsubscribe>"
     msg["X-Campaign"] = "quantum-payouts-partner-channel"
-    html = (
-        "<html><body style=\"font-family: Georgia, serif; line-height:1.5; color:#1a1a1a;\">"
-        + "".join(f"<p>{line}</p>" if line.strip() else "<br>" for line in plain.splitlines())
-        + "</body></html>"
-    )
+    html_body = html or plain_to_fallback_html(plain)
     msg.attach(MIMEText(plain, "plain", "utf-8"))
-    msg.attach(MIMEText(html, "html", "utf-8"))
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     with smtplib.SMTP_SSL(host, port, timeout=float(os.getenv("MAIL_SMTP_TIMEOUT_SECONDS", "20"))) as s:
         s.login(user, password)
@@ -187,6 +214,7 @@ def main() -> int:
     for i, p in enumerate(selected):
         email_path = ROOT / p["email_file"]
         to, subject, body = parse_email_file(email_path)
+        html = load_html_for(email_path)
         assert to.lower() == p["email"].lower()
         entry = {
             "ts": _utc_now().isoformat().replace("+00:00", "Z"),
@@ -195,15 +223,16 @@ def main() -> int:
             "subject": subject,
             "dry_run": dry,
             "from": ALLOWED_FROM,
+            "has_html": bool(html),
         }
         if dry:
-            print(f"[dry-run] would send → {to} ({p['company']})")
+            print(f"[dry-run] would send → {to} ({p['company']}) html={bool(html)}")
             p["status"] = "предложение подготовлено"
             p["comment"] = (
                 f"Dry-run OK. Waiting for {ALLOWED_FROM} mailbox. Do not send from office@."
             )
         else:
-            mid = send_one(to=to, subject=subject, plain=body)
+            mid = send_one(to=to, subject=subject, plain=body, html=html)
             now = _utc_now().strftime("%Y-%m-%d %H:%M:%S UTC")
             p["sent_at"] = now
             p["from_address"] = ALLOWED_FROM
