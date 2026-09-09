@@ -147,7 +147,7 @@ def cta_block_html(
     mail = (reply_mailto or "").strip() or "office@quantumlabs.ru"
     mailto = (
         f"mailto:{mail}"
-        f"?subject=%D0%9F%D0%B5%D1%80%D0%B5%D0%B7%D0%B2%D0%BE%D0%BD%D0%B8%D1%82%D0%B5%20%D0%BC%D0%BD%D0%B5"
+        f"?subject=%D0%A5%D0%BE%D1%87%D1%83%20%D1%83%D0%B7%D0%BD%D0%B0%D1%82%D1%8C%20%D1%83%D1%81%D0%BB%D0%BE%D0%B2%D0%B8%D1%8F"
     )
     return (
         f'<p style="margin:24px 0 8px;font-size:17px;line-height:25px;font-weight:700;'
@@ -161,12 +161,12 @@ def cta_block_html(
         f'border-radius:9px;font-family:{FONT};">{button_s}</a>'
         "</td></tr></table>"
         f'<p style="margin:12px 0 0;font-size:13px;line-height:19px;color:{INK_SOFT};'
-        f'font-family:{FONT};">Откроется короткая форма: ФИО и телефон. '
-        "Перезвоним в ближайшие минуты.</p>"
+        f'font-family:{FONT};">Откроется короткая форма: имя и телефон. '
+        "Уточним несколько параметров и предложим условия под ваш объём.</p>"
         f'<p style="margin:24px 0 0;font-size:16px;line-height:24px;color:{INK_BODY};'
-        f'font-family:{FONT};">Если удобнее, просто '
+        f'font-family:{FONT};">Или просто '
         f'<a href="{escape(mailto, quote=True)}" style="color:{INK_LINK};text-decoration:underline;">'
-        "ответьте на это письмо</a> с ФИО и телефоном.</p>"
+        "ответьте на это письмо</a> — точный объём не нужен, достаточно примерного.</p>"
     )
 
 
