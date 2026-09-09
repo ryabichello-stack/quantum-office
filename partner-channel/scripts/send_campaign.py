@@ -248,7 +248,14 @@ def main() -> int:
     ap.add_argument("--priority", default="A", help="A, B, C, or ALL")
     ap.add_argument("--limit", type=int, default=20)
     ap.add_argument("--ids", default="", help="Comma-separated partner ids")
-    ap.add_argument("--delay", type=int, default=90, help="Seconds between sends")
+    ap.add_argument(
+        "--delay",
+        type=int,
+        default=0,
+        help="Fixed seconds between sends (0 = random 10–15 min jitter)",
+    )
+    ap.add_argument("--delay-min", type=int, default=600, help="Min jitter seconds (default 10 min)")
+    ap.add_argument("--delay-max", type=int, default=900, help="Max jitter seconds (default 15 min)")
     args = ap.parse_args()
 
     env_path = load_local_env()

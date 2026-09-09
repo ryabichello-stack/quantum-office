@@ -4,6 +4,8 @@
 **From для рассылки:** `rdv@quantumlabs.ru` — **отдельный ящик** от outreach  
 **Изоляция:** скрипт `partner-channel/scripts/send_campaign.py` не ходит в ava-outreach / Bitrix outbox / `OUTREACH_DAILY_LIMIT`. Лимиты `office@` не расходуются.  
 **Отправка:** через SMTP `rdv@` + локальный CRM; `PARTNER_SEND_ENABLED=true`  
+**Интервал:** случайный разброс **10–15 мин** между письмами (антиспам)  
+**Объём списка:** 19 компаний / 18 email (короткий целевой shortlist + доп. fintech-агенты; это не массовый cold DB)  
 **ICP в письмах:** регулярные выплаты, ориентир от ~5–10 млн ₽/мес
 
 ## Что готово
