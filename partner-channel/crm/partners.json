@@ -47,7 +47,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Dry-run OK. Separate rdv@ channel — does not use office@ outreach limits.",
+      "comment": "Final copy v9.5 — personalize opener only. Ready for rdv@ send.",
       "call_priority": true
     },
     {
@@ -66,7 +66,7 @@
       "contact_source": "https://prodagi.pro/kontakty/ (sales@ / mail@)",
       "channel": "email",
       "email_cc_note": "mail@prodagi.pro также опубликован",
-      "subject": "Revenue Share с оборота клиентов — партнёрство с Quantum Payouts",
+      "subject": "Prodagi.PRO × Quantum Payouts — Revenue Share с оборота клиентов",
       "email_file": "emails/personalized/prodagi-pro.txt",
       "sent_at": "",
       "from_address": "rdv@quantumlabs.ru",
@@ -76,7 +76,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Dry-run OK. Separate rdv@ channel — does not use office@ outreach limits.",
+      "comment": "Final copy v9.5 — personalize opener only. Ready for rdv@ send.",
       "call_priority": true
     },
     {
@@ -94,7 +94,7 @@
       "hook": "fintech",
       "contact_source": "https://rko-group.ru/ (support@, aa@, t.me/rkogroup)",
       "channel": "email",
-      "subject": "RKO Group × Quantum Payouts — Revenue Share с оборота",
+      "subject": "RKO Group × Quantum Payouts — агентский Revenue Share с оборота",
       "email_file": "emails/personalized/rko-group.txt",
       "sent_at": "",
       "from_address": "rdv@quantumlabs.ru",
@@ -104,7 +104,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Dry-run OK. Waiting for rdv@quantumlabs.ru mailbox. Do not send from office@.",
+      "comment": "Final copy v9.5 — personalize opener only. Ready for rdv@ send.",
       "call_priority": true
     },
     {
@@ -122,7 +122,7 @@
       "hook": "fintech",
       "contact_source": "https://e-rko.ru/ (телефон + support@ из публичных материалов сети)",
       "channel": "email",
-      "subject": "E-RKO × Quantum Payouts — Revenue Share с оборота",
+      "subject": "E-RKO × Quantum Payouts — агентский Revenue Share с оборота",
       "email_file": "emails/personalized/e-rko.txt",
       "sent_at": "",
       "from_address": "rdv@quantumlabs.ru",
@@ -132,7 +132,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Dry-run OK. Waiting for rdv@quantumlabs.ru mailbox. Do not send from office@.",
+      "comment": "Final copy v9.5 — personalize opener only. Ready for rdv@ send.",
       "call_priority": true
     },
     {
@@ -150,7 +150,7 @@
       "hook": "fintech",
       "contact_source": "https://finleo.ru/contacts/ + marketplace.finleo.ru",
       "channel": "email",
-      "subject": "FINLEO × Quantum Payouts — Revenue Share с оборота",
+      "subject": "FINLEO × Quantum Payouts — агентский Revenue Share с оборота",
       "email_file": "emails/personalized/finleo.txt",
       "sent_at": "",
       "from_address": "rdv@quantumlabs.ru",
@@ -160,7 +160,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Dry-run OK. Waiting for rdv@quantumlabs.ru mailbox. Do not send from office@.",
+      "comment": "Final copy v9.5 — personalize opener only. Ready for rdv@ send.",
       "call_priority": true
     },
     {
@@ -178,7 +178,7 @@
       "hook": "b2b_sales",
       "contact_source": "https://calltell.ru/ footer",
       "channel": "email",
-      "subject": "Revenue Share с оборота клиентов — партнёрство с Quantum Payouts",
+      "subject": "CallTell × Quantum Payouts — партнёрский Revenue Share",
       "email_file": "emails/personalized/calltell.txt",
       "sent_at": "",
       "from_address": "rdv@quantumlabs.ru",
@@ -188,7 +188,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Готово к отправке с rdv@; ждём подключения ящика.",
+      "comment": "Final copy v9.5 — personalize opener only. Ready for rdv@ send.",
       "call_priority": false
     },
     {
@@ -206,7 +206,7 @@
       "hook": "b2b_sales",
       "contact_source": "https://telecontact.ru/contacts",
       "channel": "email",
-      "subject": "Revenue Share с оборота клиентов — партнёрство с Quantum Payouts",
+      "subject": "TeleContact × Quantum Payouts — партнёрский Revenue Share",
       "email_file": "emails/personalized/telecontact.txt",
       "sent_at": "",
       "from_address": "rdv@quantumlabs.ru",
@@ -216,7 +216,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Готово к отправке с rdv@; ждём подключения ящика.",
+      "comment": "Final copy v9.5 — personalize opener only. Ready for rdv@ send.",
       "call_priority": false
     },
     {
@@ -234,7 +234,7 @@
       "hook": "b2b_sales",
       "contact_source": "https://occ-group.ru/contacts",
       "channel": "email",
-      "subject": "Revenue Share с оборота клиентов — партнёрство с Quantum Payouts",
+      "subject": "OCC Group × Quantum Payouts — партнёрский Revenue Share",
       "email_file": "emails/personalized/occ-group.txt",
       "sent_at": "",
       "from_address": "rdv@quantumlabs.ru",
@@ -244,7 +244,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Готово к отправке с rdv@; ждём подключения ящика.",
+      "comment": "Final copy v9.5 — personalize opener only. Ready for rdv@ send.",
       "call_priority": false
     },
     {
@@ -262,7 +262,7 @@
       "hook": "b2b_sales",
       "contact_source": "https://easycalls.ru/",
       "channel": "email",
-      "subject": "Revenue Share с оборота клиентов — партнёрство с Quantum Payouts",
+      "subject": "EasyCalls × Quantum Payouts — партнёрский Revenue Share",
       "email_file": "emails/personalized/easycalls.txt",
       "sent_at": "",
       "from_address": "rdv@quantumlabs.ru",
@@ -272,7 +272,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Готово к отправке с rdv@; ждём подключения ящика.",
+      "comment": "Final copy v9.5 — personalize opener only. Ready for rdv@ send.",
       "call_priority": false
     },
     {
@@ -290,7 +290,7 @@
       "hook": "b2b_sales",
       "contact_source": "https://office2b.ru/",
       "channel": "email",
-      "subject": "Revenue Share с оборота клиентов — партнёрство с Quantum Payouts",
+      "subject": "Office2B × Quantum Payouts — партнёрский Revenue Share",
       "email_file": "emails/personalized/office2b.txt",
       "sent_at": "",
       "from_address": "rdv@quantumlabs.ru",
@@ -300,7 +300,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Готово к отправке с rdv@; ждём подключения ящика.",
+      "comment": "Final copy v9.5 — personalize opener only. Ready for rdv@ send.",
       "call_priority": false
     },
     {
@@ -318,7 +318,7 @@
       "hook": "result",
       "contact_source": "https://salesoutsourcing.ru/",
       "channel": "email",
-      "subject": "Revenue Share с оборота клиентов — партнёрство с Quantum Payouts",
+      "subject": "SalesOutsourcing × Quantum Payouts — Revenue Share с оборота клиентов",
       "email_file": "emails/personalized/salesoutsourcing.txt",
       "sent_at": "",
       "from_address": "rdv@quantumlabs.ru",
@@ -328,7 +328,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Готово к отправке с rdv@; ждём подключения ящика.",
+      "comment": "Final copy v9.5 — personalize opener only. Ready for rdv@ send.",
       "call_priority": false
     },
     {
@@ -346,7 +346,7 @@
       "hook": "result",
       "contact_source": "https://neuron-group.ru/",
       "channel": "email",
-      "subject": "Revenue Share с оборота клиентов — партнёрство с Quantum Payouts",
+      "subject": "Neuron Group × Quantum Payouts — партнёрский Revenue Share",
       "email_file": "emails/personalized/neuron-group.txt",
       "sent_at": "",
       "from_address": "rdv@quantumlabs.ru",
@@ -356,7 +356,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Готово к отправке с rdv@; ждём подключения ящика.",
+      "comment": "Final copy v9.5 — personalize opener only. Ready for rdv@ send.",
       "call_priority": false
     },
     {
@@ -374,7 +374,7 @@
       "hook": "result",
       "contact_source": "https://leadmachine.ru/",
       "channel": "email",
-      "subject": "Revenue Share с оборота клиентов — партнёрство с Quantum Payouts",
+      "subject": "LeadMachine × Quantum Payouts — партнёрский Revenue Share",
       "email_file": "emails/personalized/leadmachine.txt",
       "sent_at": "",
       "from_address": "rdv@quantumlabs.ru",
@@ -384,7 +384,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Готово к отправке с rdv@; ждём подключения ящика.",
+      "comment": "Final copy v9.5 — personalize opener only. Ready for rdv@ send.",
       "call_priority": false
     },
     {
@@ -402,7 +402,7 @@
       "hook": "b2b_sales",
       "contact_source": "https://callplex.ru/",
       "channel": "email",
-      "subject": "Revenue Share с оборота клиентов — партнёрство с Quantum Payouts",
+      "subject": "CallPlex × Quantum Payouts — партнёрский Revenue Share",
       "email_file": "emails/personalized/callplex.txt",
       "sent_at": "",
       "from_address": "rdv@quantumlabs.ru",
@@ -412,7 +412,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Готово к отправке с rdv@; ждём подключения ящика.",
+      "comment": "Final copy v9.5 — personalize opener only. Ready for rdv@ send.",
       "call_priority": false
     },
     {
@@ -430,7 +430,7 @@
       "hook": "result",
       "contact_source": "https://rocketcall.ru/",
       "channel": "email",
-      "subject": "Revenue Share с оборота клиентов — партнёрство с Quantum Payouts",
+      "subject": "RocketCall × Quantum Payouts — партнёрский Revenue Share",
       "email_file": "emails/personalized/rocketcall.txt",
       "sent_at": "",
       "from_address": "rdv@quantumlabs.ru",
@@ -440,7 +440,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Готово к отправке с rdv@; ждём подключения ящика.",
+      "comment": "Final copy v9.5 — personalize opener only. Ready for rdv@ send.",
       "call_priority": false
     },
     {
@@ -458,7 +458,7 @@
       "hook": "b2b_sales",
       "contact_source": "https://groupds.ru/",
       "channel": "email",
-      "subject": "Revenue Share с оборота клиентов — партнёрство с Quantum Payouts",
+      "subject": "Group DS × Quantum Payouts — партнёрский Revenue Share",
       "email_file": "emails/personalized/groupds.txt",
       "sent_at": "",
       "from_address": "rdv@quantumlabs.ru",
@@ -468,7 +468,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Готово к отправке с rdv@; ждём подключения ящика.",
+      "comment": "Final copy v9.5 — personalize opener only. Ready for rdv@ send.",
       "call_priority": false
     },
     {
@@ -486,7 +486,7 @@
       "hook": "b2b_sales",
       "contact_source": "https://www.komus-contact.ru/",
       "channel": "email",
-      "subject": "Revenue Share с оборота клиентов — партнёрство с Quantum Payouts",
+      "subject": "Komus Contact × Quantum Payouts — партнёрский Revenue Share",
       "email_file": "emails/personalized/komus-contact.txt",
       "sent_at": "",
       "from_address": "rdv@quantumlabs.ru",
@@ -496,7 +496,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Готово к отправке с rdv@; ждём подключения ящика.",
+      "comment": "Final copy v9.5 — personalize opener only. Ready for rdv@ send.",
       "call_priority": false
     },
     {
@@ -542,7 +542,7 @@
       "hook": "b2b_sales",
       "contact_source": "https://salesap.ru/",
       "channel": "email",
-      "subject": "Revenue Share с оборота клиентов — партнёрство с Quantum Payouts",
+      "subject": "SalesAP × Quantum Payouts — партнёрский Revenue Share",
       "email_file": "emails/personalized/salesap.txt",
       "sent_at": "",
       "from_address": "rdv@quantumlabs.ru",
@@ -552,7 +552,7 @@
       "followup1_date": "",
       "followup2_date": "",
       "status": "предложение подготовлено",
-      "comment": "Готово к отправке с rdv@; ждём подключения ящика.",
+      "comment": "Final copy v9.5 — personalize opener only. Ready for rdv@ send.",
       "call_priority": false
     }
   ],
