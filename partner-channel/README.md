@@ -53,4 +53,4 @@ python partner-channel/scripts/send_campaign.py --dry-run --priority A
 
 ## KPI
 
-Не число писем, а число компаний, готовых обсуждать CPA / Success Fee / RevShare / Profit Share.
+Не число писем, а число компаний, готовых обсуждать CPA / Success Fee / CPA / Revenue Share.
