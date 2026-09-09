@@ -32,6 +32,28 @@ CRM_CSV = ROOT / "crm" / "partners.csv"
 LOG_DIR = ROOT / "logs"
 ALLOWED_FROM = "rdv@quantumlabs.ru"
 BLOCKED_FROM = {"office@quantumlabs.ru"}
+ENV_CANDIDATES = (
+    ROOT / "smtp.local.env",  # visible in IDE (preferred)
+    ROOT / ".env",
+)
+
+
+def load_local_env() -> Path | None:
+    """Load KEY=VALUE from smtp.local.env / .env into os.environ (do not override existing)."""
+    for path in ENV_CANDIDATES:
+        if not path.is_file():
+            continue
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip("'").strip('"')
+            if key and key not in os.environ:
+                os.environ[key] = val
+        return path
+    return None
 
 
 def _business_days_ahead(start: date, n: int) -> date:
@@ -177,8 +199,13 @@ def main() -> int:
     ap.add_argument("--delay", type=int, default=90, help="Seconds between sends")
     args = ap.parse_args()
 
-    enabled = os.getenv("PARTNER_SEND_ENABLED", "false").lower() in ("1", "true", "yes", "on")
-    dry = args.dry_run or not enabled
+    env_path = load_local_env()
+    if env_path:
+        print(f"loaded env from {env_path}")
+    else:
+        print("no local env file found (smtp.local.env / .env); using process env only")
+
+    enabled = os.getenv("PARTNER_SEND_ENABLED", "false").lower() in ("1", "true", "yes", "on")    dry = args.dry_run or not enabled
     if not enabled and not args.dry_run:
         print(
             "PARTNER_SEND_ENABLED is false — forcing dry-run. "
