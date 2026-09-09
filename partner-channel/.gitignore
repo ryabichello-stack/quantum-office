@@ -1,0 +1,3 @@
+# Partner channel send logs (may contain message ids / emails)
+partner-channel/logs/
+partner-channel/.env
