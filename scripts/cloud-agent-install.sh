@@ -48,6 +48,7 @@ else
 fi
 touch /opt/ava-mailer/webhook.log
 
+# Always refresh OPENAI_API_KEY into mailer .env when Cloud Agent provides it.
 if [[ ! -f /opt/ava-mailer/.env ]]; then
   cat > /opt/ava-mailer/.env <<EOF
 WEBHOOK_TOKEN=${WEBHOOK_TOKEN:-dev-webhook-token}
@@ -60,6 +61,25 @@ OPENAI_API_KEY=${OPENAI_API_KEY:-sk-dev-placeholder-not-real}
 TELEMOST_ENABLED=false
 EOF
   chmod 600 /opt/ava-mailer/.env
+elif [[ -n "${OPENAI_API_KEY:-}" ]]; then
+  ROOT="${ROOT}" OPENAI_API_KEY="${OPENAI_API_KEY}" python3 - <<'PY'
+import os
+from pathlib import Path
+path = Path("/opt/ava-mailer/.env")
+key = os.environ["OPENAI_API_KEY"]
+lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+out, found = [], False
+for line in lines:
+    if line.startswith("OPENAI_API_KEY="):
+        out.append(f"OPENAI_API_KEY={key}")
+        found = True
+    else:
+        out.append(line)
+if not found:
+    out.append(f"OPENAI_API_KEY={key}")
+path.write_text("\n".join(out) + "\n", encoding="utf-8")
+path.chmod(0o600)
+PY
 fi
 
 if [[ ! -f "${ROOT}/outreach/.env" ]]; then
@@ -119,6 +139,31 @@ DATA_DIR=${ROOT}/text-bot/data
 TELEGRAM_POLL_INTERVAL_SECONDS=1
 EOF
   chmod 600 "${ROOT}/text-bot/.env"
+elif [[ -n "${OPENAI_API_KEY:-}" || -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
+  ROOT="${ROOT}" OPENAI_API_KEY="${OPENAI_API_KEY:-}" TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}" python3 - <<'PY'
+import os
+from pathlib import Path
+path = Path(os.environ["ROOT"]) / "text-bot" / ".env"
+lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+updates = {}
+if os.environ.get("OPENAI_API_KEY"):
+    updates["OPENAI_API_KEY"] = os.environ["OPENAI_API_KEY"]
+if os.environ.get("TELEGRAM_BOT_TOKEN"):
+    updates["TELEGRAM_BOT_TOKEN"] = os.environ["TELEGRAM_BOT_TOKEN"]
+out, seen = [], set()
+for line in lines:
+    key = line.split("=", 1)[0] if "=" in line else ""
+    if key in updates:
+        out.append(f"{key}={updates[key]}")
+        seen.add(key)
+    else:
+        out.append(line)
+for key, val in updates.items():
+    if key not in seen:
+        out.append(f"{key}={val}")
+path.write_text("\n".join(out) + "\n", encoding="utf-8")
+path.chmod(0o600)
+PY
 fi
 
 echo "cloud-agent-install: ok"

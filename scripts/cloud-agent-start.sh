@@ -36,7 +36,13 @@ start_one() {
 
   (
     cd "${dir}"
-    nohup .venv/bin/uvicorn main:app --host 127.0.0.1 --port "${port}" \
+    # Propagate Cloud Agent secrets into the process when present.
+    # Mailer still loads /opt/ava-mailer/.env; text-bot/outreach use dotenv + env.
+    nohup env \
+      OPENAI_API_KEY="${OPENAI_API_KEY:-}" \
+      TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}" \
+      BITRIX_WEBHOOK_URL="${BITRIX_WEBHOOK_URL:-}" \
+      .venv/bin/uvicorn main:app --host 127.0.0.1 --port "${port}" \
       >"${logfile}" 2>&1 &
     echo $! >"${pidfile}"
   )
