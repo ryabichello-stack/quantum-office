@@ -14,6 +14,7 @@
 
 - Outreach / lombards: холодная цепочка (шаги 1–5) — опциональность карты/СБП рядом с наличными, без «массовых выплат» и «замены кассы»; social proof топ-5 банков; CTA «Узнать условия»
 - Callback CTA: дефолты title/lead/button и тексты формы/кнопки под intent «узнать условия», не «перезвонить»
+- Outreach: восстановлен `strip_duplicate_legal_html` в packs (нужен templates.py на проде; без него follow-up’ы падали ImportError)
 
 ### Added
 
