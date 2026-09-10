@@ -153,17 +153,28 @@ def save_campaign(data: dict) -> None:
 
 
 def parse_email_file(path: Path) -> tuple[str, str, str]:
+    """Parse optional To:/Subject: headers; otherwise return full file as body."""
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
     to = subject = ""
     body_start = 0
+    saw_header = False
     for i, line in enumerate(lines):
-        if line.lower().startswith("to:"):
+        low = line.lower()
+        if low.startswith("to:"):
             to = line.split(":", 1)[1].strip()
-        elif line.lower().startswith("subject:"):
+            saw_header = True
+            continue
+        if low.startswith("subject:"):
             subject = line.split(":", 1)[1].strip()
-        elif line.strip() == "":
+            saw_header = True
+            continue
+        if saw_header and line.strip() == "":
             body_start = i + 1
+            break
+        if not saw_header:
+            # No mail headers — entire file is the body (CRM supplies to/subject).
+            body_start = 0
             break
     body = "\n".join(lines[body_start:]).strip() + "\n"
     return to, subject, body
@@ -270,30 +281,36 @@ def save_to_sent(msg: MIMEMultipart) -> str:
         imap.login(user, password)
         typ, data = imap.list()
         folders: list[str] = []
+        sent_flagged: list[str] = []
         if typ == "OK" and data:
             for item in data:
                 if not item:
                     continue
                 line = item.decode("utf-8", errors="replace") if isinstance(item, bytes) else str(item)
-                # LIST (... ) "." "Folder"
-                if '"' in line:
-                    folders.append(line.split('"')[-2])
-        candidates = []
+                # LIST (\Sent) "/" "&BB4EQgQ,..."  — use wire names as-is (modified UTF-7 OK)
+                name = line.split('"')[-2] if '"' in line else ""
+                if not name:
+                    continue
+                folders.append(name)
+                if "\\Sent" in line or "\\sent" in line:
+                    sent_flagged.append(name)
+        candidates: list[str] = []
         if preferred:
             candidates.append(preferred)
+        candidates.extend(sent_flagged)
         for name in (
-            "Отправленные",
             "Sent",
             "Sent Items",
             "Sent Messages",
             "INBOX.Sent",
-            "INBOX.Отправленные",
+            # Mail.ru modified UTF-7 for «Отправленные»
+            "&BB4EQgQ,BEAEMAQyBDsENQQ9BD0ESwQ1-",
         ):
             if name not in candidates:
                 candidates.append(name)
         for f in folders:
             low = f.lower()
-            if "sent" in low or "отправ" in low:
+            if "sent" in low or f.startswith("&BB4"):
                 if f not in candidates:
                     candidates.append(f)
 
@@ -375,9 +392,18 @@ def main() -> int:
     today = date.today()
     for i, p in enumerate(selected):
         email_path = ROOT / p["email_file"]
-        to, subject, body = parse_email_file(email_path)
+        to_hdr, subject_hdr, body = parse_email_file(email_path)
+        to = (to_hdr or p.get("email") or "").strip()
+        subject = (subject_hdr or p.get("subject") or "").strip()
+        if not to:
+            raise SystemExit(f"Missing To for partner {p.get('id')}")
+        if not subject:
+            raise SystemExit(f"Missing Subject for partner {p.get('id')} — set CRM subject")
+        if to_hdr and to_hdr.lower() != p["email"].lower():
+            raise SystemExit(
+                f"To: header {to_hdr!r} != CRM email {p['email']!r} for {p.get('id')}"
+            )
         html = load_html_for(email_path)
-        assert to.lower() == p["email"].lower()
         entry = {
             "ts": _utc_now().isoformat().replace("+00:00", "Z"),
             "id": p["id"],
@@ -403,24 +429,26 @@ def main() -> int:
             p["followup1_date"] = _business_days_ahead(today, 3).isoformat()
             p["followup2_date"] = _business_days_ahead(today, 7).isoformat()
             p["next_contact"] = p["followup1_date"]
-            p["comment"] = f"Sent via rdv@ (isolated). Message-ID={mid}"
+            p["comment"] = f"Sent via rdv@ on prod (/opt/partner-channel). Message-ID={mid}"
             entry["message_id"] = mid
-            print(f"[sent] {to} mid={mid}")
-            if i < len(selected) - 1:
-                if args.delay > 0:
-                    wait_s = args.delay
-                else:
-                    lo = max(0, min(args.delay_min, args.delay_max))
-                    hi = max(lo, max(args.delay_min, args.delay_max))
-                    wait_s = random.randint(lo, hi) if hi > 0 else 0
-                if wait_s > 0:
-                    print(f"waiting {wait_s}s (~{wait_s/60:.1f} min) before next send")
-                    time.sleep(wait_s)
+            print(f"[sent] {to} mid={mid}", flush=True)
         with log_path.open("a", encoding="utf-8") as lf:
             lf.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        # Persist after every message so a long jitter sleep cannot lose progress.
+        save_campaign(data)
+        print(f"CRM checkpoint ({i+1}/{len(selected)})", flush=True)
+        if not dry and i < len(selected) - 1:
+            if args.delay > 0:
+                wait_s = args.delay
+            else:
+                lo = max(0, min(args.delay_min, args.delay_max))
+                hi = max(lo, max(args.delay_min, args.delay_max))
+                wait_s = random.randint(lo, hi) if hi > 0 else 0
+            if wait_s > 0:
+                print(f"waiting {wait_s}s (~{wait_s/60:.1f} min) before next send", flush=True)
+                time.sleep(wait_s)
 
-    save_campaign(data)
-    print("CRM updated.")
+    print("CRM updated.", flush=True)
     return 0
 
 
