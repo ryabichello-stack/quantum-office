@@ -374,7 +374,8 @@ class TrackingStore:
     ) -> int:
         mid = message_id.strip().strip("<>").lower()
         now = _utc_now()
-        with self.connect() as conn:
+
+        def _insert(conn: sqlite3.Connection, token: str | None) -> int:
             cur = conn.execute(
                 """
                 INSERT INTO send_events
@@ -404,10 +405,32 @@ class TrackingStore:
                     subject,
                     now,
                     open_token,
-                    unsub_token,
+                    token,
                 ),
             )
             return int(cur.lastrowid)
+
+        with self.connect() as conn:
+            try:
+                return _insert(conn, unsub_token)
+            except sqlite3.IntegrityError as exc:
+                # Follow-ups reuse the same outbox_id → same unsub_token as step 1.
+                # Email already carries that token (unsubscribe still works via first event).
+                # Record this send without colliding on the unique token index.
+                msg = str(exc).lower()
+                if "unsub_token" not in msg and "open_token" not in msg:
+                    raise
+                logger.warning(
+                    "send_events token collision for outbox=%s email=%s (%s); retrying",
+                    outbox_id,
+                    email,
+                    exc,
+                )
+                conn.rollback()
+                token = None if "unsub_token" in msg else unsub_token
+                if "open_token" in msg:
+                    open_token = None
+                return _insert(conn, token)
 
     def by_unsub_token(self, token: str) -> SendEvent | None:
         t = (token or "").strip()
