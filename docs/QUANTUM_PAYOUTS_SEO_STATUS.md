@@ -1,36 +1,45 @@
 # Quantum Payouts SEO — Live Status
 
-Updated: 2026-09-11 11:28 UTC
+Updated: 2026-09-11 UTC
 
-## Verified live (Title + H1, no «массовые»)
+## Verified live (Title + H1 + hero, no «массовые»)
 
-| URL | Title / H1 |
-|-----|------------|
-| `/` | Выплаты физическим лицам на карты и по СБП |
-| `/lombardy` | Выплаты для ломбардов и сетей скупки |
-| `/vtorsyre` | Выплаты при приёме вторсырья и металла |
-| `/trade-in` | Выплаты при трейд-ин и выкупе авто |
-| `/mfo` | Выплаты МФО физическим лицам |
-| `/strahovye` | Страховые выплаты физическим лицам |
-| `/selhoz` | Выплаты при выкупе сельхозпродукции |
-| `/samozanyatye` | Выплаты самозанятым на карты и по СБП |
-| `/gph` | Выплаты по ГПХ и исполнителям |
-| `/kuriery-taxi` | Выплаты курьерам и водителям такси |
-| `/sbp` | Выплаты физическим лицам по СБП (H1) / Title: Выплаты по СБП… |
-| `/api-1c` | Выплаты через API и 1С |
+Domain: https://quantumpayouts.ru · Tilda projectid `14431186`
 
-Domain: https://quantumpayouts.ru  
-Tilda projectid: `14431186`
+| URL | Status |
+|-----|--------|
+| `/` | OK — Выплаты физическим лицам на карты и по СБП |
+| `/lombardy` | OK |
+| `/vtorsyre` | OK |
+| `/trade-in` | OK |
+| `/mfo` | OK — keywords fixed |
+| `/strahovye` | OK |
+| `/selhoz` | OK |
+| `/samozanyatye` | OK — hero_sub set |
+| `/gph` | OK — hero_sub set |
+| `/kuriery-taxi` | OK — hero_sub set |
+| `/sbp` | OK — hero_sub set |
+| `/api-1c` | OK — hero_sub set |
+
+Live check: **12/12 OK** (Title/H1/hero_sub, без «массовые» в title/H1).
+
+## Internal linking + sitemap
+
+- Homepage industry Zero cards linked to landings (`/lombardy`, `/vtorsyre`, `/trade-in`, `/strahovye`, `/selhoz`, `/samozanyatye`, `/gph`, `/kuriery-taxi`).
+- T123 HTML nav on homepage covers all 11 landings including `/mfo`, `/sbp`, `/api-1c`.
+- `sitemap.xml` includes all 11 landings + home (17 locs total; also offer/privacy/drafts).
+- Site republished via «Опубликовать все страницы».
 
 ## Done this session
-- Fixed SEO meta on `/strahovye` and `/selhoz` (were stuck on lombardy meta_title)
-- Restored homepage Title/H1 (had been overwritten by vtorsyre)
-- Created/published missing landings: samozanyatye, gph, kuriery-taxi, sbp, api-1c
-- Recreated clean `/vtorsyre` from lombardy duplicate after alias conflict
-- Live curl verify: **12/12 OK**, no «массовые» in Title/H1/Description
 
-## Backlog
-- Internal links from homepage industries block → landings
-- Sitemap includes all new URLs
+- Fixed `/mfo` meta keywords
+- Set/restored Zero Block H1 + hero_sub on new landings (shared cover elem IDs)
+- Homepage internal links + product HTML nav
+- Sitemap refreshed after full publish
+- Removed accidental SoundCloud (T115) block from homepage
+
+## Remaining backlog (non-blocking)
+
 - Image alts / Metrika goals / PSI
-- Remove leftover draft copies (`old-vtb-copy`, `old-alpha-copy`) if not needed
+- Remove draft aliases `old-vtb-copy`, `old-alpha-copy` if unused
+- Optional Schema / GSC access
