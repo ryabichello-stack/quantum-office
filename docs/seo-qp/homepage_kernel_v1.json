@@ -1,0 +1,168 @@
+{
+  "wordstat": {
+    "выплаты физическим лицам": {
+      "freq": 8525,
+      "exact_quoted": 0
+    },
+    "выплаты физлицам": {
+      "freq": 2385
+    },
+    "выплаты самозанятым": {
+      "freq": 19483
+    },
+    "выплаты ГПХ": {
+      "freq": 12028
+    },
+    "выплаты курьерам": {
+      "freq": 6545
+    },
+    "выплаты по СБП": {
+      "freq": 428
+    },
+    "API выплат": {
+      "freq": 78
+    },
+    "выплаты физлицам на карту": {
+      "freq": 27
+    },
+    "сервис выплат для бизнеса": {
+      "freq": 13
+    },
+    "сервис выплат физическим лицам": {
+      "freq": 0
+    },
+    "сервис выплат физлицам": {
+      "freq": 0
+    },
+    "выплаты физическим лицам на карту": {
+      "freq": 0
+    },
+    "выплаты через СБП": {
+      "freq": 0
+    },
+    "выплаты через API": {
+      "freq": 0
+    },
+    "автоматизация выплат": {
+      "freq": 0
+    },
+    "массовые выплаты физическим лицам": {
+      "freq": 0,
+      "research_only": true
+    },
+    "массовые выплаты физлицам": {
+      "freq": 0,
+      "research_only": true
+    },
+    "сервис массовых выплат": {
+      "freq": 0,
+      "research_only": true
+    },
+    "выплаты из 1С": {
+      "freq": 1604,
+      "conflict_second_read": 0,
+      "status": "NEEDS_RECHECK"
+    },
+    "выплаты исполнителям": {
+      "freq": 1238
+    }
+  },
+  "homepage_kernel": {
+    "primary": [
+      {
+        "q": "выплаты физическим лицам",
+        "freq": 8525,
+        "intent": "mixed_likely_needs_serp",
+        "use": "Title/H1 core",
+        "priority": "P1"
+      },
+      {
+        "q": "выплаты физлицам",
+        "freq": 2385,
+        "intent": "mixed_likely",
+        "use": "Title/H1 synonym",
+        "priority": "P1"
+      }
+    ],
+    "secondary": [
+      {
+        "q": "выплаты самозанятым",
+        "freq": 19483,
+        "intent": "likely_mixed_high_info_risk",
+        "use": "supporting section / not sole Title",
+        "priority": "P2",
+        "note": "high freq but may be employee-side; keep as scenario not primary positioning"
+      },
+      {
+        "q": "выплаты ГПХ",
+        "freq": 12028,
+        "intent": "likely_mixed",
+        "use": "supporting / FAQ-ish scenario",
+        "priority": "P2"
+      },
+      {
+        "q": "выплаты курьерам",
+        "freq": 6545,
+        "intent": "commercial_niche",
+        "use": "industries block",
+        "priority": "P2"
+      },
+      {
+        "q": "выплаты по СБП",
+        "freq": 428,
+        "intent": "commercial",
+        "use": "H2/features",
+        "priority": "P2"
+      },
+      {
+        "q": "выплаты из 1С",
+        "freq": 1604,
+        "intent": "commercial_tech",
+        "use": "integrations",
+        "priority": "P2",
+        "note": "recheck freq"
+      },
+      {
+        "q": "выплаты исполнителям",
+        "freq": 1238,
+        "intent": "commercial",
+        "use": "scenarios",
+        "priority": "P2"
+      },
+      {
+        "q": "API выплат",
+        "freq": 78,
+        "intent": "commercial_tech",
+        "use": "integrations",
+        "priority": "P2"
+      },
+      {
+        "q": "выплаты физлицам на карту",
+        "freq": 27,
+        "intent": "commercial",
+        "use": "cards mention",
+        "priority": "P3"
+      },
+      {
+        "q": "сервис выплат для бизнеса",
+        "freq": 13,
+        "intent": "commercial",
+        "use": "supporting wording",
+        "priority": "P3"
+      }
+    ],
+    "do_not_target_massovye": true,
+    "webmaster_traffic_note": "Current organic clicks mostly from massovye-formulations; retitling away from massovye may temporarily affect those queries — per owner brief still required.",
+    "title_candidates": [
+      "Выплаты физическим лицам на карты и по СБП | Quantum Payouts",
+      "Выплаты физлицам для бизнеса: карты и СБП | Quantum Payouts",
+      "Сервис выплат физическим лицам для бизнеса | Quantum Payouts"
+    ],
+    "h1_candidates": [
+      "Выплаты физическим лицам для бизнеса",
+      "Безопасные выплаты физическим лицам на карты и по СБП"
+    ],
+    "description_draft": "Сервис выплат физическим лицам для бизнеса: на карты банков РФ и по СБП. Личный кабинет, API и 1С, зачисление от 1 минуты, комиссия от 0,4%."
+  },
+  "period": "Wordstat UI Aug-Sep 2026"
+}
