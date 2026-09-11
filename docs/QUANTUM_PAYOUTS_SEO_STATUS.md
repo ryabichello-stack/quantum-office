@@ -70,3 +70,29 @@ SEO form fields drop letters on paste/type. Working approach for legal pages: cl
 - Promote Zero Block section titles to real `<h2>` (now 0 H2 in HTML)
 - FAQ visible block already exists → add FAQPage JSON-LD
 - Image alts currently empty
+
+
+## On-page update (2026-09-11, verified curl)
+
+### Headings
+- **H1:** `Выплаты физическим лицам на карты и по СБП` ✅
+- **H2 (6):**
+  1. `работе с нами` ⚠️ truncated — target `Важно о работе с нами` (Tilda Zero Block save failed; backlog)
+  2. `Цифры, которые говорят за себя` ✅
+  3. `Почему выбирают нас` ✅
+  4. `Как работает сервис выплат` ✅
+  5. `Отрасли, которые мы обслуживаем` ✅
+  6. `Популярные вопросы` ✅
+
+### Structured data
+- FAQPage JSON-LD (5 Q&A from page FAQ) ✅ live
+- Organization JSON-LD (name + url only) ✅ live
+
+### Remaining backlog
+- Fix truncated H2 #1 in Zero Block
+- Image alts
+- Metrika goals
+- PSI/mobile pass
+- Recheck Wordstat «выплаты из 1С»
+- Landing clusters later (no mass page creation now)
+- Optional: rephrase body «Массовые выплаты» product line (not in Title/H1/Description)
