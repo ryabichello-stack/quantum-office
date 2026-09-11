@@ -50,3 +50,23 @@
 ## Артефакты
 - `/opt/cursor/artifacts/seo-qp/` — baseline, wordstat, webmaster, screens, live-check
 - `/tmp/seo-paste/set_via_unicode.js`, `privacy_head_entities.html`, `offer_head_entities.html`
+
+
+## Live meta verification (curl, 2026-09-11)
+
+All three pages: Title / Description / OG / keywords OK; no «массовые» in meta; LENS&LORE removed from offer.
+
+| URL | Title OK | Desc OK | OG OK |
+|-----|----------|---------|-------|
+| `/` | yes | yes | yes |
+| `/privacy` | yes | yes (entity HEAD) | yes |
+| `/offer` | yes | yes (entity HEAD) | yes |
+
+### Tilda Cyrillic workaround
+SEO form fields drop letters on paste/type. Working approach for legal pages: clear Description/Keywords/OG in SEO tab; inject `<!-- qp-seo-meta-begin -->` block with numeric HTML entities into «HTML для HEAD».
+
+### Homepage heading backlog (next)
+- Align visible hero H1 with primary query «выплаты физическим лицам…»
+- Promote Zero Block section titles to real `<h2>` (now 0 H2 in HTML)
+- FAQ visible block already exists → add FAQPage JSON-LD
+- Image alts currently empty
