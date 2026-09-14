@@ -30,7 +30,7 @@ def main() -> int:
         print("ERROR: no TELEGRAM_BOT_TOKEN / MINIAPP_BOT_TOKEN", file=sys.stderr)
         return 1
     url = telegram_webapp.miniapp_public_url()
-    text = os.getenv("MINIAPP_MENU_TEXT", "Каналы сегодня").strip() or "Каналы сегодня"
+    text = os.getenv("MINIAPP_MENU_TEXT", "Пульт").strip() or "Пульт"
     payload = {
         "menu_button": {
             "type": "web_app",

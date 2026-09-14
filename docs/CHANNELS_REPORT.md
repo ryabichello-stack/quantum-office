@@ -7,24 +7,36 @@
 1. **Webhook Tilda** — заявки пишутся в БД и уходят владельцу в **Telegram + Max**.
 2. **Метрика** — счётчик `104241036` (с сайта quantumpayouts.ru). Нужен один раз OAuth-токен.
 
-## Telegram Mini App · сегодня
+## Telegram Mini App · Пульт
 
-Откройте бота [@Quantum_office_bot](https://t.me/Quantum_office_bot) → кнопка меню **«Каналы сегодня»**.
+Откройте бота [@Quantum_office_bot](https://t.me/Quantum_office_bot) → кнопка меню **«Пульт»**.
 
-Показывает за **сегодня (МСК)**:
-- Яндекс.Метрика: визиты, пользователи, просмотры, отказы, среднее время
-- Webhook Tilda: число заявок + список (имя / телефон / время)
+Три вкладки:
+
+1. **Каналы** — сегодня (МСК): Яндекс.Метрика (визиты / пользователи / просмотры / отказы) + webhook Tilda (заявки).
+2. **Outreach** — статус рассылки, лимит, очередь, follow-up due, заявки «перезвонить».
+3. **Звонки** — как заказать исходящий через чат (скрипт → «да, звони» → отчёт) + список недавних исходящих.
 
 URL: `https://a.47z.ru/_quantum_console/miniapp/`
 
-Доступ только владельцам из `MINIAPP_ALLOWED_IDS` / `SECRETARY_OWNER_IDS` (сейчас `963782`). Авторизация — Telegram `initData`.
+Доступ только владельцам из `MINIAPP_ALLOWED_IDS` / `SECRETARY_OWNER_IDS`. Авторизация — Telegram `initData`.
+
+API (initData или сессия консоли):
+
+| Метод | Назначение |
+|-------|------------|
+| `GET /api/miniapp/today` | каналы за сегодня |
+| `GET /api/miniapp/outreach` | сводка outreach |
+| `GET /api/miniapp/calls` | недавние исходящие |
+| `GET /api/miniapp/me` | кто открыл Mini App |
 
 Зарегистрировать кнопку меню:
 
 ```bash
 cd /opt/quantum-console && ./venv/bin/python scripts/set_miniapp_menu.py
-# или: python3 scripts/set_miniapp_menu.py
+# MINIAPP_MENU_TEXT=Пульт по умолчанию
 ```
+
 
 ## Tilda: куда вставить webhook
 

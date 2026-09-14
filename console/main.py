@@ -137,6 +137,8 @@ _PUBLIC_API_PATHS = {
     "/api/channels/tilda/lead",
     "/api/miniapp/today",
     "/api/miniapp/me",
+    "/api/miniapp/outreach",
+    "/api/miniapp/calls",
 }
 
 
@@ -875,6 +877,160 @@ def api_miniapp_today(request: Request) -> dict[str, Any]:
     """Today (MSK): Yandex Metrika + Tilda webhook leads for Telegram Mini App."""
     _require_miniapp(request)
     return channels_report.build_today_snapshot()
+
+
+_RUN_STATE_RU = {
+    "playing": "Идёт",
+    "paused": "Пауза",
+    "stopped": "Стоп",
+}
+
+
+def _miniapp_outreach_snapshot() -> dict[str, Any]:
+    """Compact outreach stats for office-bot Mini App."""
+    tok = _load_outreach_ui_token()
+    if not tok or not OUTREACH_BASE:
+        return {"ok": False, "error": "outreach not configured"}
+    data = _http_json(
+        f"{OUTREACH_BASE}/api/dashboard",
+        headers={"X-Outreach-Token": tok},
+        timeout=5.0,
+    )
+    if not data:
+        return {"ok": False, "error": "outreach unreachable"}
+
+    settings_payload = _http_json(
+        f"{OUTREACH_BASE}/api/settings",
+        headers={"X-Outreach-Token": tok},
+        timeout=5.0,
+    ) or {}
+    settings = (
+        settings_payload.get("settings")
+        if isinstance(settings_payload.get("settings"), dict)
+        else settings_payload
+    )
+    if not isinstance(settings, dict):
+        settings = {}
+
+    outbox_raw = data.get("outbox") if isinstance(data.get("outbox"), dict) else {}
+    counts = outbox_raw.get("counts") if isinstance(outbox_raw.get("counts"), dict) else {}
+    queue = data.get("queue") if isinstance(data.get("queue"), dict) else {}
+    engagement = data.get("engagement") if isinstance(data.get("engagement"), dict) else {}
+
+    sent_today = outbox_raw.get("sent_today")
+    if sent_today is None:
+        daily = data.get("daily") if isinstance(data.get("daily"), list) else []
+        if daily and isinstance(daily[0], dict):
+            sent_today = daily[0].get("sent")
+    try:
+        sent_today_i = int(sent_today or 0)
+    except (TypeError, ValueError):
+        sent_today_i = 0
+
+    daily_limit = data.get("effective_daily_limit")
+    if daily_limit is None:
+        daily_limit = data.get("daily_limit")
+    try:
+        daily_limit_i = int(daily_limit) if daily_limit is not None else None
+    except (TypeError, ValueError):
+        daily_limit_i = None
+
+    remaining = None
+    if daily_limit_i is not None:
+        remaining = max(0, daily_limit_i - sent_today_i)
+
+    run_state = str(data.get("run_state") or "stopped").lower()
+    delay_min_s = settings.get("OUTREACH_DELAY_MIN_SECONDS")
+    delay_max_s = settings.get("OUTREACH_DELAY_MAX_SECONDS")
+    try:
+        delay_min_min = round(int(delay_min_s) / 60) if delay_min_s not in (None, "") else None
+    except (TypeError, ValueError):
+        delay_min_min = None
+    try:
+        delay_max_min = round(int(delay_max_s) / 60) if delay_max_s not in (None, "") else None
+    except (TypeError, ValueError):
+        delay_max_min = None
+
+    return {
+        "ok": True,
+        "run_state": run_state,
+        "run_state_ru": _RUN_STATE_RU.get(run_state, run_state),
+        "outreach_enabled": bool(data.get("outreach_enabled")),
+        "sent_today": sent_today_i,
+        "daily_limit": daily_limit_i,
+        "remaining_today": remaining,
+        "pending": counts.get("pending"),
+        "sent_total": counts.get("sent"),
+        "followups_due": queue.get("due"),
+        "callback_requests": engagement.get("callbacks"),
+        "delay_min_min": delay_min_min,
+        "delay_max_min": delay_max_min,
+        "schedule_window": data.get("schedule_window")
+        if isinstance(data.get("schedule_window"), dict)
+        else {},
+        "engagement": {
+            "opened": engagement.get("opened"),
+            "replied": engagement.get("replied"),
+            "calls": engagement.get("calls"),
+            "callbacks": engagement.get("callbacks"),
+        },
+    }
+
+
+def _miniapp_calls_snapshot(limit: int = 8) -> dict[str, Any]:
+    """Recent outbound calls for Mini App (no full transcripts)."""
+    limit = max(1, min(int(limit or 8), 20))
+    if not CALL_HISTORY_DB.is_file():
+        return {"ok": True, "total": 0, "calls": []}
+    conn = sqlite3.connect(str(CALL_HISTORY_DB))
+    conn.row_factory = sqlite3.Row
+    try:
+        total = int(
+            conn.execute(
+                "SELECT COUNT(*) AS c FROM call_records WHERE context_name = ?",
+                ("outbound",),
+            ).fetchone()["c"]
+        )
+        rows = conn.execute(
+            """
+            SELECT call_id, caller_number, caller_name, start_time, end_time,
+                   duration_seconds, context_name, outcome
+            FROM call_records
+            WHERE context_name = ?
+            ORDER BY start_time DESC
+            LIMIT ?
+            """,
+            ("outbound", limit),
+        ).fetchall()
+        calls = []
+        for r in rows:
+            calls.append(
+                {
+                    "call_id": r["call_id"],
+                    "phone": r["caller_number"] or "",
+                    "name": r["caller_name"] or "",
+                    "start_time": r["start_time"] or "",
+                    "duration_seconds": r["duration_seconds"],
+                    "outcome": r["outcome"] or "",
+                }
+            )
+        return {"ok": True, "total": total, "calls": calls}
+    finally:
+        conn.close()
+
+
+@app.get("/api/miniapp/outreach")
+def api_miniapp_outreach(request: Request) -> dict[str, Any]:
+    """Outreach glance for Telegram Mini App (office bot)."""
+    _require_miniapp(request)
+    return _miniapp_outreach_snapshot()
+
+
+@app.get("/api/miniapp/calls")
+def api_miniapp_calls(request: Request, limit: int = 8) -> dict[str, Any]:
+    """Recent outbound calls for Telegram Mini App."""
+    _require_miniapp(request)
+    return _miniapp_calls_snapshot(limit=limit)
 
 
 @app.get("/api/channels/report")

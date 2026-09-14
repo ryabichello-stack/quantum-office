@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Console — Telegram Mini App «Пульт»
+- Mini App tabs: **Каналы** (Metrika + Tilda today), **Outreach** (send queue/limits), **Звонки** (chat dial flow + recent outbound).
+- New APIs: `GET /api/miniapp/outreach`, `GET /api/miniapp/calls` (Telegram initData).
+- Menu button default text: **Пульт** (`scripts/set_miniapp_menu.py`).
+
+
 ### Console — Telegram Mini App (today)
 - Mini App at `/miniapp/`: today's Yandex Metrika + Tilda webhook leads (MSK).
 - Auth via Telegram `initData` (owner allowlist) or console session.

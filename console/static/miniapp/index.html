@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Каналы · сегодня</title>
+  <title>Пульт · Quantum</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -13,51 +13,115 @@
       ? "/_quantum_console"
       : "";
     window.__MINI_ASSETS__ = window.__QC_BASE__ + "/assets/miniapp";
-    document.write('<link rel="stylesheet" href="' + window.__MINI_ASSETS__ + '/miniapp.css?v=1" />');
+    document.write('<link rel="stylesheet" href="' + window.__MINI_ASSETS__ + '/miniapp.css?v=5" />');
   </script>
 </head>
 <body>
   <div class="app">
     <header class="hero">
       <p class="brand">Quantum Labs</p>
-      <h1>Каналы · сегодня</h1>
+      <h1>Пульт</h1>
       <p class="sub" id="dayLine">Загрузка…</p>
     </header>
 
-    <section class="kpi-grid" id="kpiGrid" aria-live="polite">
-      <div class="kpi"><span class="k">Визиты</span><strong class="v" id="kVisits">—</strong></div>
-      <div class="kpi"><span class="k">Пользователи</span><strong class="v" id="kUsers">—</strong></div>
-      <div class="kpi"><span class="k">Просмотры</span><strong class="v" id="kViews">—</strong></div>
-      <div class="kpi accent"><span class="k">Заявки</span><strong class="v" id="kLeads">—</strong></div>
+    <nav class="tabs" role="tablist" aria-label="Разделы пульта">
+      <button type="button" class="tab on" data-tab="channels" role="tab" aria-selected="true">Каналы</button>
+      <button type="button" class="tab" data-tab="outreach" role="tab" aria-selected="false">Outreach</button>
+      <button type="button" class="tab" data-tab="calls" role="tab" aria-selected="false">Звонки</button>
+    </nav>
+
+    <section class="panel" data-panel="channels">
+      <section class="kpi-grid" aria-live="polite">
+        <div class="kpi"><span class="k">Визиты</span><strong class="v" id="kVisits">—</strong></div>
+        <div class="kpi"><span class="k">Пользователи</span><strong class="v" id="kUsers">—</strong></div>
+        <div class="kpi"><span class="k">Просмотры</span><strong class="v" id="kViews">—</strong></div>
+        <div class="kpi accent"><span class="k">Заявки</span><strong class="v" id="kLeads">—</strong></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Яндекс.Метрика</h2>
+          <span class="pill" id="metrikaPill">…</span>
+        </div>
+        <dl class="stats">
+          <div><dt>Отказы</dt><dd id="mBounce">—</dd></div>
+          <div><dt>Среднее время</dt><dd id="mDur">—</dd></div>
+          <div><dt>Конверсия</dt><dd id="mConv">—</dd></div>
+        </dl>
+        <p class="muted" id="metrikaErr" hidden></p>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Webhook · заявки</h2>
+          <span class="pill" id="leadsPill">0</span>
+        </div>
+        <div id="leadsBox" class="leads">
+          <p class="muted">Загрузка…</p>
+        </div>
+      </section>
     </section>
 
-    <section class="card">
-      <div class="card-head">
-        <h2>Яндекс.Метрика</h2>
-        <span class="pill" id="metrikaPill">…</span>
-      </div>
-      <dl class="stats" id="metrikaStats">
-        <div><dt>Отказы</dt><dd id="mBounce">—</dd></div>
-        <div><dt>Среднее время</dt><dd id="mDur">—</dd></div>
-        <div><dt>Конверсия</dt><dd id="mConv">—</dd></div>
-      </dl>
-      <p class="muted" id="metrikaErr" hidden></p>
+    <section class="panel" data-panel="outreach" hidden>
+      <section class="kpi-grid">
+        <div class="kpi accent"><span class="k">Сегодня</span><strong class="v" id="oSent">—</strong></div>
+        <div class="kpi"><span class="k">Лимит</span><strong class="v" id="oLimit">—</strong></div>
+        <div class="kpi"><span class="k">Осталось</span><strong class="v" id="oLeft">—</strong></div>
+        <div class="kpi"><span class="k">В очереди</span><strong class="v" id="oPending">—</strong></div>
+      </section>
+      <section class="card">
+        <div class="card-head">
+          <h2>Рассылка</h2>
+          <span class="pill" id="oStatePill">…</span>
+        </div>
+        <dl class="stats">
+          <div><dt>Follow-up due</dt><dd id="oDue">—</dd></div>
+          <div><dt>Всего отправлено</dt><dd id="oTotal">—</dd></div>
+          <div><dt>Пауза между письмами</dt><dd id="oDelay">—</dd></div>
+          <div><dt>Заявки «перезвонить»</dt><dd id="oCb">—</dd></div>
+        </dl>
+        <p class="muted" id="oErr" hidden></p>
+        <p class="hint">Детали по дням и письмам — в чате боту: «статистика outreach».</p>
+      </section>
     </section>
 
-    <section class="card">
-      <div class="card-head">
-        <h2>Webhook · заявки</h2>
-        <span class="pill" id="leadsPill">0</span>
-      </div>
-      <div id="leadsBox" class="leads">
-        <p class="muted">Загрузка…</p>
-      </div>
+    <section class="panel" data-panel="calls" hidden>
+      <section class="card">
+        <div class="card-head"><h2>Исходящий звонок</h2></div>
+        <p class="lead-text">
+          Заказ звонка — в чате с ботом: номер и задача → скрипт на подтверждение →
+          «да, звони» → отчёт о договорённостях.
+        </p>
+        <button type="button" class="primary-btn" id="closeToChat">Закрыть и написать боту</button>
+        <div class="examples">
+          <p class="ex-title">Скопировать в чат</p>
+          <button type="button" class="chip" data-copy="Позвони +7 и уточни интерес к выплатам на карту/СБП">Позвони +7…</button>
+          <button type="button" class="chip" data-copy="Собери скрипт звонка ломбарду про карту и СБП, без замены наличных">Скрипт ломбарду</button>
+          <button type="button" class="chip" data-copy="Сформируй ТЗ на обзвон: цель, возражения, CTA">ТЗ на обзвон</button>
+          <button type="button" class="chip" data-copy="Статус последнего исходящего звонка">Статус звонка</button>
+        </div>
+        <ol class="steps">
+          <li>Номер и задача в чат</li>
+          <li>Проверьте скрипт</li>
+          <li>«да, звони»</li>
+          <li>Отчёт после разговора</li>
+        </ol>
+      </section>
+      <section class="card">
+        <div class="card-head">
+          <h2>Недавние исходящие</h2>
+          <span class="pill" id="callsPill">…</span>
+        </div>
+        <div id="callsBox" class="leads">
+          <p class="muted">Загрузка…</p>
+        </div>
+      </section>
     </section>
 
     <p class="foot muted" id="footLine"></p>
   </div>
   <script>
-    document.write('<script src="' + window.__MINI_ASSETS__ + '/miniapp.js?v=1"><\/script>');
+    document.write('<script src="' + window.__MINI_ASSETS__ + '/miniapp.js?v=5"><\/script>');
   </script>
 </body>
 </html>

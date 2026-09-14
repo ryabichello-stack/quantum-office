@@ -60,14 +60,9 @@
     }
   }
 
-  function initDataHeader() {
-    if (tg && tg.initData) return tg.initData;
-    return "";
-  }
-
   async function api(path) {
     const headers = {};
-    const initData = initDataHeader();
+    const initData = tg && tg.initData ? tg.initData : "";
     if (initData) headers["X-Telegram-Init-Data"] = initData;
     const res = await fetch(BASE + path, {
       credentials: "include",
@@ -87,12 +82,23 @@
     return data;
   }
 
-  function paint(data) {
+  function switchTab(name) {
+    document.querySelectorAll(".tab").forEach((btn) => {
+      const on = btn.getAttribute("data-tab") === name;
+      btn.classList.toggle("on", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    document.querySelectorAll(".panel").forEach((panel) => {
+      panel.hidden = panel.getAttribute("data-panel") !== name;
+    });
+    if (name === "outreach") loadOutreach(false);
+    if (name === "calls") loadCalls(false);
+  }
+
+  function paintChannels(data) {
     const m = (data && data.metrika) || {};
     const w = (data && data.webhook) || {};
-    const day = (data && data.day) || "—";
-
-    $("dayLine").textContent = "Данные за " + day + " (МСК)";
+    $("dayLine").textContent = "Данные за " + ((data && data.day) || "—") + " (МСК)";
     $("kVisits").textContent = fmtNum(m.visits);
     $("kUsers").textContent = fmtNum(m.users);
     $("kViews").textContent = fmtNum(m.pageviews);
@@ -152,16 +158,149 @@
       " МСК";
   }
 
-  async function load() {
+  function paintOutreach(data) {
+    const err = $("oErr");
+    if (!data || data.error) {
+      err.hidden = false;
+      err.textContent = (data && data.error) || "Не удалось загрузить outreach";
+      return;
+    }
+    err.hidden = true;
+    $("oSent").textContent = fmtNum(data.sent_today);
+    $("oLimit").textContent = fmtNum(data.daily_limit);
+    $("oLeft").textContent = fmtNum(data.remaining_today);
+    $("oPending").textContent = fmtNum(data.pending);
+    $("oDue").textContent = fmtNum(data.followups_due);
+    $("oTotal").textContent = fmtNum(data.sent_total);
+    const dmin = data.delay_min_min;
+    const dmax = data.delay_max_min;
+    $("oDelay").textContent =
+      dmin != null && dmax != null ? dmin + "–" + dmax + " мин" : "—";
+    $("oCb").textContent = fmtNum(data.callback_requests);
+    const pill = $("oStatePill");
+    pill.textContent = String(data.run_state_ru || data.run_state || "—");
+    const raw = String(data.run_state || "").toLowerCase();
+    pill.className =
+      "pill " +
+      (raw === "playing" || raw === "running"
+        ? "ok"
+        : raw === "paused"
+          ? ""
+          : "bad");
+  }
+
+  function paintCalls(data) {
+    const box = $("callsBox");
+    const pill = $("callsPill");
+    if (!data || data.error) {
+      pill.textContent = "!";
+      pill.className = "pill bad";
+      box.innerHTML =
+        '<p class="muted">' +
+        esc((data && data.error) || "Не удалось загрузить звонки") +
+        "</p>";
+      return;
+    }
+    const calls = data.calls || [];
+    pill.textContent = String(data.total != null ? data.total : calls.length);
+    pill.className = "pill";
+    if (!calls.length) {
+      box.innerHTML = '<p class="muted">Исходящих пока нет</p>';
+      return;
+    }
+    box.innerHTML = calls
+      .map((c) => {
+        const dur =
+          c.duration_seconds != null
+            ? Math.round(Number(c.duration_seconds)) + " с"
+            : "—";
+        return `<article class="lead">
+            <span class="name">${esc(c.phone || "—")}</span>
+            <span class="phone">${esc(c.outcome || "—")}</span>
+            <span class="when">${esc(fmtTime(c.start_time))} · ${esc(dur)}${
+          c.name ? " · " + esc(c.name) : ""
+        }</span>
+          </article>`;
+      })
+      .join("");
+  }
+
+  let outreachLoaded = false;
+  let callsLoaded = false;
+
+  async function loadOutreach(force) {
+    if (outreachLoaded && !force) return;
+    try {
+      $("oStatePill").textContent = "…";
+      const data = await api("/api/miniapp/outreach");
+      paintOutreach(data);
+      outreachLoaded = true;
+    } catch (e) {
+      paintOutreach({ error: e.message || String(e) });
+    }
+  }
+
+  async function loadCalls(force) {
+    if (callsLoaded && !force) return;
+    try {
+      $("callsPill").textContent = "…";
+      const data = await api("/api/miniapp/calls?limit=8");
+      paintCalls(data);
+      callsLoaded = true;
+    } catch (e) {
+      paintCalls({ error: e.message || String(e) });
+    }
+  }
+
+  async function loadChannels() {
     try {
       $("dayLine").textContent = "Загрузка…";
       const data = await api("/api/miniapp/today");
-      paint(data);
+      paintChannels(data);
     } catch (e) {
       $("dayLine").textContent = e.message || String(e);
       $("leadsBox").innerHTML =
         '<p class="muted">Не удалось загрузить. Откройте Mini App из бота @Quantum_office_bot.</p>';
     }
+  }
+
+  document.querySelectorAll(".tab").forEach((btn) => {
+    btn.addEventListener("click", () => switchTab(btn.getAttribute("data-tab")));
+  });
+
+  document.querySelectorAll(".chip[data-copy]").forEach((btn) => {
+    btn.setAttribute("data-label", btn.textContent || "");
+    btn.addEventListener("click", async () => {
+      const text = btn.getAttribute("data-copy") || "";
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+        }
+        if (tg && tg.showPopup) {
+          tg.showPopup({
+            title: "Скопировано",
+            message: "Вставьте фразу в чат с ботом и отправьте.",
+            buttons: [{ type: "close" }],
+          });
+        } else {
+          btn.textContent = "Скопировано";
+          setTimeout(() => {
+            btn.textContent = btn.getAttribute("data-label") || "Ок";
+          }, 1200);
+        }
+      } catch (_) {
+        if (tg && tg.showAlert) tg.showAlert(text);
+      }
+    });
+  });
+
+  const closeBtn = $("closeToChat");
+  if (closeBtn) {
+    closeBtn.addEventListener("click", () => {
+      try {
+        if (tg && tg.close) tg.close();
+      } catch (_) {}
+    });
   }
 
   if (tg && tg.MainButton) {
@@ -170,7 +309,12 @@
       tg.MainButton.show();
       tg.MainButton.onClick(() => {
         tg.MainButton.showProgress();
-        load().finally(() => {
+        const active = document.querySelector(".tab.on");
+        const tab = active ? active.getAttribute("data-tab") : "channels";
+        const jobs = [loadChannels()];
+        if (tab === "outreach") jobs.push(loadOutreach(true));
+        if (tab === "calls") jobs.push(loadCalls(true));
+        Promise.all(jobs).finally(() => {
           try {
             tg.MainButton.hideProgress();
           } catch (_) {}
@@ -179,5 +323,5 @@
     } catch (_) {}
   }
 
-  load();
+  loadChannels();
 })();

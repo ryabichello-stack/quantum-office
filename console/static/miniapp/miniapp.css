@@ -5,7 +5,6 @@
   --muted: var(--tg-theme-hint-color, #6b7785);
   --line: color-mix(in srgb, var(--ink) 12%, transparent);
   --accent: #e85a1a;
-  --accent-ink: #fff8f4;
   --ok: #0f7a5a;
   --bad: #b42318;
   --font: "Manrope", system-ui, sans-serif;
@@ -26,9 +25,7 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
-body {
-  padding: 0 0 env(safe-area-inset-bottom);
-}
+body { padding: 0 0 env(safe-area-inset-bottom); }
 
 .app {
   max-width: 480px;
@@ -36,9 +33,7 @@ body {
   padding: 1rem 1rem 2.5rem;
 }
 
-.hero {
-  margin-bottom: 1rem;
-}
+.hero { margin-bottom: 0.85rem; }
 
 .brand {
   margin: 0;
@@ -62,6 +57,36 @@ body {
   color: var(--muted);
   font-size: 0.88rem;
 }
+
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.35rem;
+  margin-bottom: 0.85rem;
+  padding: 0.3rem;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+
+.tab {
+  border: 0;
+  border-radius: 11px;
+  padding: 0.55rem 0.35rem;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.tab.on {
+  color: var(--ink);
+  background: var(--card);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.panel[hidden] { display: none !important; }
 
 .kpi-grid {
   display: grid;
@@ -94,7 +119,7 @@ body {
 .kpi .v {
   display: block;
   margin-top: 0.2rem;
-  font-size: 1.55rem;
+  font-size: 1.45rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1.15;
@@ -167,6 +192,69 @@ body {
   grid-column: 1 / -1;
   color: var(--muted);
   font-size: 0.75rem;
+}
+
+.lead-text {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.hint {
+  margin: 0.75rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.examples { margin-top: 0.85rem; }
+
+.ex-title {
+  margin: 0 0 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.primary-btn {
+  display: block;
+  width: 100%;
+  margin: 0.75rem 0 0.25rem;
+  border: 0;
+  border-radius: 12px;
+  padding: 0.7rem 1rem;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: #fff;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.primary-btn:active { filter: brightness(0.95); }
+
+.chip {
+  display: inline-block;
+  margin: 0 0.35rem 0.35rem 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.4rem 0.7rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.steps {
+  margin: 0.9rem 0 0;
+  padding-left: 1.15rem;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--muted);
 }
 
 .muted { color: var(--muted); font-size: 0.82rem; margin: 0; }
