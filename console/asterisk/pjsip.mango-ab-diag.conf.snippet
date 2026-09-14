@@ -1,0 +1,43 @@
+; DIAGNOSTIC ONLY — append to /etc/asterisk/pjsip.conf for IP A/B retests.
+; Do NOT commit real passwords. Copy password from [mango-auth] on the server.
+; transport-udp-b binds the host's second public IP (Beget); for real A/B use
+; scripts/mango_sip_probe_vps.sh on a non-Beget RU VPS.
+
+[mango-ab-auth]
+type=auth
+auth_type=userpass
+username=garik
+password=__COPY_FROM_MANGO_AUTH__
+
+[mango-ab-aor]
+type=aor
+contact=sip:vpbx400348777.mangosip.ru:5060
+qualify_frequency=60
+
+[mango-ab-endpoint]
+type=endpoint
+context=from-mango
+disallow=all
+allow=alaw,ulaw
+outbound_auth=mango-ab-auth
+aors=mango-ab-aor
+transport=transport-udp
+from_user=garik
+from_domain=vpbx400348777.mangosip.ru
+contact_user=garik
+send_pai=no
+send_rpid=no
+trust_id_outbound=no
+direct_media=no
+rewrite_contact=yes
+force_rport=yes
+rtp_symmetric=yes
+timers=yes
+
+; Optional — only if host has a second public IPv4 (still same ASN on polyhub):
+; [transport-udp-b]
+; type=transport
+; protocol=udp
+; bind=__SECOND_PUBLIC_IP__:5062
+; external_media_address=__SECOND_PUBLIC_IP__
+; external_signaling_address=__SECOND_PUBLIC_IP__

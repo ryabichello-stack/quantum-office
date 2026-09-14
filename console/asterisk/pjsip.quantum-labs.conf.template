@@ -1,0 +1,86 @@
+; Quantum Labs Mango PJSIP — external SIP Trunk mode
+; Mango LK: external SIP Trunk -> client PBX IP 45.147.178.172:5060, UDP, G.711A/PCMA, RFC2833
+; Reload requires Asterisk restart if transport changes.
+
+[global]
+type=global
+user_agent=Quantum-AI
+
+[transport-udp]
+type=transport
+protocol=udp
+bind=0.0.0.0:5060
+external_media_address=45.147.178.172
+external_signaling_address=45.147.178.172
+
+; External SIP Trunk to Mango. No employee SIP registration, no outbound_auth.
+[mango-trunk-aor]
+type=aor
+contact=sip:81.88.86.55:5060
+qualify_frequency=60
+
+[mango-trunk]
+type=endpoint
+transport=transport-udp
+context=from-mango
+disallow=all
+allow=alaw
+aors=mango-trunk-aor
+identify_by=ip
+direct_media=no
+rtp_symmetric=yes
+force_rport=yes
+rewrite_contact=yes
+dtmf_mode=rfc4733
+callerid=Quantum Labs <79699665899>
+from_user=79699665899
+from_domain=81.88.86.55
+trust_id_outbound=yes
+send_pai=yes
+send_rpid=yes
+trust_id_inbound=yes
+allow_unauthenticated_options=yes
+
+[mango-trunk-identify]
+type=identify
+endpoint=mango-trunk
+match=81.88.86.0/24,81.88.87.0/24,137.74.16.0/24
+
+[ava-test-aor]
+type=aor
+max_contacts=1
+remove_existing=yes
+
+[ava-test]
+type=endpoint
+context=from-mango
+disallow=all
+allow=ulaw
+transport=transport-udp
+direct_media=no
+aors=ava-test-aor
+
+[ava-test-identify]
+type=identify
+endpoint=ava-test
+match=127.0.0.1/32
+
+; Employee garik — inbound AVA (Mango FAQ: must be registered)
+
+
+; Employee garik — inbound AVA (Mango FAQ #1/#2: must stay Registered)
+[mango-auth]
+type=auth
+auth_type=userpass
+username=garik
+password=__MANGO_SIP_PASSWORD__
+
+[mango-registration]
+type=registration
+outbound_auth=mango-auth
+server_uri=sip:vpbx400348777.mangosip.ru:5060
+client_uri=sip:garik@vpbx400348777.mangosip.ru
+contact_user=garik
+expiration=300
+transport=transport-udp
+outbound_proxy=sip:81.88.86.37:5060\;lr

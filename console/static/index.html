@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quantum Labs — Центр управления</title>
+  <link rel="icon" type="image/png" href="" id="qcFavicon" />
+  <link rel="apple-touch-icon" href="" id="qcAppleIcon" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script>
+    window.__QC_BASE__ = location.pathname.startsWith("/_quantum_console")
+      ? "/_quantum_console"
+      : "";
+    document.write(
+      '<link rel="stylesheet" href="' + window.__QC_BASE__ + '/assets/console.css" />'
+    );
+    (function () {
+      var mark = window.__QC_BASE__ + "/assets/brand/logo-mark.png";
+      var icon = window.__QC_BASE__ + "/assets/brand/favicon-180.png";
+      document.getElementById("qcFavicon").href = icon;
+      document.getElementById("qcAppleIcon").href = icon;
+      window.__QC_LOGO_MARK__ = mark;
+    })();
+  </script>
+</head>
+<body>
+  <div id="loginGate" class="login-gate" hidden>
+    <div class="login-atmosphere" aria-hidden="true"></div>
+    <form id="loginForm" class="login-panel" autocomplete="on">
+      <script>document.write('<img class="login-logo" id="loginLogo" alt="Quantum Labs" width="88" height="88" src="' + (window.__QC_LOGO_MARK__ || "") + '" />');</script>
+      <p class="login-brand">Quantum Labs</p>
+      <h1 class="login-title">Центр управления</h1>
+      <p class="login-sub">Телефония, outreach, знания и сервисы</p>
+      <label class="field">
+        <span>Логин</span>
+        <input id="loginUser" name="username" type="text" autocomplete="username" required />
+      </label>
+      <label class="field">
+        <span>Пароль</span>
+        <input id="loginPass" name="password" type="password" autocomplete="current-password" required />
+      </label>
+      <button type="submit" class="primary wide" id="btnLogin">Войти</button>
+      <p id="loginErr" class="login-err" hidden></p>
+    </form>
+  </div>
+
+  <div id="appShell" class="app" hidden>
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <script>document.write('<img class="brand-logo" id="sideLogo" alt="Quantum Labs" width="44" height="44" src="' + (window.__QC_LOGO_MARK__ || "") + '" />');</script>
+        <div class="brand-copy">
+          <p class="brand-mark">Quantum Labs</p>
+          <p class="brand-sub">Центр управления</p>
+        </div>
+      </div>
+      <nav class="side-nav" id="tabs" aria-label="Разделы">
+        <button type="button" data-tab="status" class="active">Пульт</button>
+        <button type="button" data-tab="channels">Каналы</button>
+        <button type="button" data-tab="outreach">Outreach</button>
+        <button type="button" data-tab="scenario">Сценарий</button>
+        <button type="button" data-tab="knowledge">База знаний</button>
+        <button type="button" data-tab="calls">Звонки</button>
+        <button type="button" data-tab="campaign">Обзвон Sheets</button>
+        <button type="button" data-tab="outbound">Задание на звонок</button>
+        <button type="button" data-tab="pack">Пакет / бэкап</button>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="user-chip">
+          <span class="user-dot" aria-hidden="true"></span>
+          <span id="userLabel">—</span>
+        </div>
+        <button type="button" id="btnLogout" class="ghost">Выйти</button>
+      </div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <div>
+          <h1 id="pageTitle">Пульт</h1>
+          <p class="top-hint" id="pageHint">Линия, робот, outreach, звонки и сервисы</p>
+        </div>
+        <div class="top-actions">
+          <button type="button" id="btnSettings" class="btn-quiet icon-btn" title="Настройки" aria-label="Настройки" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+              <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke-linejoin="round" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <button type="button" id="btnRefresh" class="primary">Обновить</button>
+        </div>
+      </header>
+
+      <main>
+        <section id="tab-status" class="panel active">
+          <div id="statusBox" class="surface">Загрузка…</div>
+        </section>
+
+        <section id="tab-channels" class="panel">
+          <div class="surface channels-toolbar">
+            <label class="field">С
+              <input type="date" id="chFrom" />
+            </label>
+            <label class="field">По
+              <input type="date" id="chTo" />
+            </label>
+            <div class="channels-toolbar-actions">
+              <button type="button" class="btn-quiet" data-ch-preset="7">7 дней</button>
+              <button type="button" class="btn-quiet" data-ch-preset="30">30 дней</button>
+              <button type="button" class="primary" id="btnChannelsLoad">Показать</button>
+            </div>
+          </div>
+          <div id="channelsBox" class="channels-box">Выберите период и нажмите «Показать».</div>
+          <div id="channelsSetup" class="surface channels-setup" hidden>
+            <h2 class="section-title" style="margin-top:0">Подключение Tilda / Метрики</h2>
+            <div id="channelsSetupBody" class="muted">Загрузка…</div>
+          </div>
+          <p class="muted tight" id="channelsHint" style="margin-top:0.75rem">
+            Заявки с сайта → webhook Tilda → отчёт + уведомление владельцу в Telegram/Max.
+          </p>
+        </section>
+
+        <section id="tab-outreach" class="panel panel-flush">
+          <p id="outreachLoadStatus" class="muted" hidden>Загрузка Outreach…</p>
+          <div class="outreach-frame-wrap">
+            <iframe
+              id="outreachFrame"
+              class="outreach-frame"
+              title="Outreach"
+              loading="lazy"
+              scrolling="yes"
+            ></iframe>
+          </div>
+        </section>
+
+        <section id="tab-scenario" class="panel">
+          <div class="seg" id="scenarioSubTabs" role="tablist" aria-label="Разделы сценария" style="margin-bottom:0.85rem">
+            <button type="button" data-sc-sub="profile" class="seg-on" id="scSubTabProfile">Сценарий звонков</button>
+            <button type="button" data-sc-sub="email-cb" id="scSubTabEmailCb">Заявка из письма</button>
+          </div>
+
+          <div id="scSubProfile">
+          <div class="surface grid2">
+            <div class="full row">
+              <label class="field grow">Профиль
+                <select id="scContext">
+                  <option value="default">Входящие звонки</option>
+                  <option value="outbound">Исходящие звонки</option>
+                </select>
+              </label>
+              <button type="button" id="btnLoadScenario">Загрузить</button>
+            </div>
+            <label class="field">Приветствие (greeting)<textarea id="scGreeting" rows="3"></textarea></label>
+            <div class="stack">
+              <label class="field">Модель <input id="scModel" /></label>
+              <label class="field">Голос <input id="scVoice" /></label>
+              <label class="field">Temperature <input id="scTemp" type="number" step="0.1" min="0" max="2" /></label>
+              <label class="field">Провайдер <input id="scProvider" readonly /></label>
+              <p class="muted" id="scIsolate">Профили изолированы: входящие ≠ исходящие.</p>
+            </div>
+            <label class="field full">Скрипт разговора (prompt)<textarea id="scPrompt" rows="14"></textarea></label>
+            <div class="full tools-block" id="scToolsBlock">
+              <div class="tools-head">
+                <h2 class="section-title" style="margin-top:0">Инструменты профиля</h2>
+                <p class="muted tight">Включите нужные · клик по строке — детали</p>
+              </div>
+              <div id="scToolsPanel" class="tools-panel">Загрузка…</div>
+              <p class="muted" id="scToolsHint"></p>
+            </div>
+            <div class="full actions">
+              <button type="button" id="btnSaveScenario" class="primary">Сохранить профиль</button>
+              <button type="button" id="btnRestartEngine">Перезапустить AI engine</button>
+              <span id="scMsg" class="msg"></span>
+            </div>
+            <p class="full muted">Сохранение одного профиля не меняет greeting / prompt / tools другого.</p>
+          </div>
+          </div>
+
+          <div id="scSubEmailCb" hidden>
+          <div class="surface" id="emailCallbackBox">
+            <h2 class="section-title" style="margin-top:0">Заявка на звонок из письма</h2>
+            <p class="muted tight">В конце каждого outreach-письма — кнопка «Перезвонить». Открывается наша страница с ФИО и телефоном; уведомление на почту; при включении — робот перезванивает.</p>
+            <div class="grid2">
+              <label class="check"><input type="checkbox" id="cbCtaEnabled" checked /> Блок в каждом письме</label>
+              <label class="check"><input type="checkbox" id="cbNotifyEnabled" checked /> Уведомление на почту</label>
+              <label class="check"><input type="checkbox" id="cbDialEnabled" checked /> Сразу звонить ботом</label>
+              <label class="field">Режим звонка
+                <select id="cbDialMode">
+                  <option value="dial">ARI dial + сценарий (рекомендуется)</option>
+                  <option value="mango_callback">Mango callback API</option>
+                  <option value="notify_only">Только уведомление</option>
+                </select>
+              </label>
+              <label class="field">Куда слать уведомление
+                <input id="cbNotifyEmail" type="email" placeholder="office@quantumlabs.ru" />
+              </label>
+              <label class="field">Текст кнопки
+                <input id="cbButton" type="text" placeholder="Перезвонить" />
+              </label>
+              <label class="field full">Заголовок блока
+                <input id="cbTitle" type="text" placeholder="Если интересно — можем перезвонить" />
+              </label>
+              <label class="field full">Текст под заголовком
+                <textarea id="cbLead" rows="2" placeholder="Одна короткая страница — и мы наберём ваш номер."></textarea>
+              </label>
+              <label class="field full">Первая фраза (для ARI dial)
+                <input id="cbGreeting" type="text" />
+              </label>
+              <label class="field full">Сценарий автозвонка (для ARI dial)
+                <textarea id="cbScript" rows="8" placeholder="Что говорит робот, когда перезванивает по заявке из письма…"></textarea>
+              </label>
+            </div>
+            <div class="actions" style="margin-top:0.65rem">
+              <button type="button" id="btnSaveEmailCallback" class="primary">Сохранить автоматизацию</button>
+              <button type="button" id="btnReloadEmailCallback" class="btn-quiet">Обновить</button>
+              <span id="cbMsg" class="msg"></span>
+            </div>
+            <p class="muted tight" id="cbMeta"></p>
+            <div id="cbRequests" class="muted tight" style="margin-top:0.5rem"></div>
+          </div>
+          </div>
+        </section>
+
+        <section id="tab-knowledge" class="panel">
+          <div class="surface">
+            <p class="muted" id="knPath"></p>
+            <textarea id="knText" rows="24"></textarea>
+            <div class="actions">
+              <button type="button" id="btnSaveKnowledge" class="primary">Сохранить + reload Second Brain</button>
+              <span id="knMsg" class="msg"></span>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-calls" class="panel">
+          <div class="surface">
+            <p class="muted">Клик по строке — полная расшифровка ниже (AVA и Клиент). Время показано по Москве (МСК). Короткие/молчащие звонки могут содержать только приветствие AVA.</p>
+            <div class="row">
+              <label class="field">Фильтр
+                <select id="callsFilter">
+                  <option value="outbound" selected>исходящие (outbound)</option>
+                  <option value="default">входящие (default)</option>
+                  <option value="">все</option>
+                </select>
+              </label>
+              <button type="button" id="btnReloadCalls">Обновить список</button>
+            </div>
+            <div id="callsBox">Загрузка…</div>
+            <h2 class="section-title">Расшифровка</h2>
+            <div id="callDetail" class="call-detail">Выберите звонок в таблице</div>
+          </div>
+        </section>
+
+        <section id="tab-campaign" class="panel">
+          <div class="surface">
+            <div class="status-head">
+              <div>
+                <h2 class="section-title" style="margin:0">База на обзвон</h2>
+                <p class="muted tight" id="campLeadsMeta">Загрузка очереди из Google Sheet…</p>
+              </div>
+              <a id="campSheetLink" class="muted" href="#" target="_blank" rel="noopener">Открыть Sheet ↗</a>
+            </div>
+            <div class="status-grid" id="campStats"></div>
+            <div id="campRunBanner" class="camp-run-banner">Загрузка статуса…</div>
+            <div class="row" style="margin:0.75rem 0">
+              <label class="field">Показать
+                <select id="campLimit">
+                  <option value="30">30</option>
+                  <option value="50" selected>50</option>
+                  <option value="100">100</option>
+                  <option value="200">200</option>
+                </select>
+              </label>
+              <label class="field">Сколько звонков
+                <input id="campMax" type="number" value="20" min="1" max="200" />
+              </label>
+              <label class="check"><input type="checkbox" id="campDry" /> только тест (dry_run)</label>
+              <button type="button" id="btnCampPreview">Обновить базу</button>
+              <button type="button" id="btnCampStart" class="primary">▶ Старт обзвона</button>
+              <button type="button" id="btnCampStop">■ Стоп</button>
+              <button type="button" id="btnCampFlush">Дописать пометки в Sheet</button>
+            </div>
+            <p id="campActionMsg" class="msg"></p>
+            <div id="campWriteBanner" class="camp-run-banner idle">Проверка записи в Sheet…</div>
+            <div id="campLeadsBox" class="table-wrap">Загрузка…</div>
+            <h2 class="section-title">Результаты в нашей БД</h2>
+            <p class="muted tight">
+              После каждого звонка пишем пометку и статус в <code>campaign.db</code> (очередь двигается по ней).
+              Google Sheet — опционально, если подключён ключ.
+            </p>
+            <div id="campResultsBox">—</div>
+
+            <hr class="sep" />
+            <h2 class="section-title">Запись пометок в Google Sheet</h2>
+            <p class="muted">
+              Чтобы пометки попадали в колонку «Пометки Клиента», нужен Google Service Account (JSON-ключ)
+              с правом <b>Редактор</b> на таблицу. Вставьте JSON ниже один раз.
+            </p>
+            <label class="field full">Service Account JSON
+              <textarea id="campSaJson" rows="6" placeholder='{"type":"service_account","project_id":"...","private_key":"...","client_email":"...@....iam.gserviceaccount.com",...}'></textarea>
+            </label>
+            <div class="row actions">
+              <button type="button" id="btnCampSaSave" class="primary">Сохранить ключ и включить writeback</button>
+              <span id="campSaMsg" class="msg"></span>
+            </div>
+
+            <hr class="sep" />
+            <h2 class="section-title">Скрипт обзвона</h2>
+            <p class="muted">
+              Playbook для Google Sheet — не вкладка «Сценарий» (там YAML outbound).
+              При каждом звонке greeting+script уходит per-call в AVA.
+            </p>
+            <p class="muted" id="campMeta">Загрузка…</p>
+            <label class="field full">Greeting
+              <textarea id="campGreeting" rows="3"></textarea>
+            </label>
+            <label class="field full">Script / playbook
+              <textarea id="campScript" rows="14"></textarea>
+            </label>
+            <p class="muted" id="campTools"></p>
+            <div class="row actions">
+              <button type="button" id="btnCampLoad">Загрузить скрипт</button>
+              <button type="button" id="btnCampSave" class="primary">Сохранить скрипт</button>
+              <button type="button" id="btnCampReset">Сбросить к встроенному</button>
+              <span id="campMsg" class="msg"></span>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-outbound" class="panel">
+          <div class="surface task-form">
+            <div class="task-intro">
+              <h2 class="section-title">Задание на звонок</h2>
+              <p class="muted tight">Робот позвонит по номеру и выполнит ваше задание. Один звонок — одна задача.</p>
+            </div>
+
+            <div class="task-grid">
+              <label class="field">Телефон *
+                <input id="dialPhone" inputmode="tel" autocomplete="tel" placeholder="79001234567" />
+              </label>
+              <label class="field">Имя собеседника
+                <input id="dialContact" placeholder="Светлана" />
+              </label>
+              <label class="field">От чьего имени
+                <input id="dialBehalf" placeholder="Денис / Quantum Labs" />
+              </label>
+              <label class="field">Компания собеседника
+                <input id="dialCompany" placeholder="необязательно" />
+              </label>
+            </div>
+
+            <fieldset class="task-mode">
+              <legend>Откуда брать факты</legend>
+              <label class="mode-card">
+                <input type="radio" name="dialMode" value="custom" checked />
+                <span>
+                  <strong>Своя тема</strong>
+                  <small>Только ваше задание ниже. База знаний компании не используется.</small>
+                </span>
+              </label>
+              <label class="mode-card">
+                <input type="radio" name="dialMode" value="knowledge" />
+                <span>
+                  <strong>База знаний компании</strong>
+                  <small>Робот может подтянуть факты о продукте Quantum (тарифы, СБП, FAQ…).</small>
+                </span>
+              </label>
+            </fieldset>
+
+            <div id="dialKnowledgeBlock" class="task-kb" hidden>
+              <label class="field full">Тема из базы знаний
+                <select id="dialKbTopic">
+                  <option value="">— выберите или оставьте «любая по заданию» —</option>
+                </select>
+              </label>
+            </div>
+
+            <label class="field full">Тема разговора
+              <input id="dialTopic" placeholder="Например: уточнить здоровье / презентация выплат / напоминание о встрече" />
+            </label>
+
+            <label class="field full">Чёткое задание *
+              <textarea id="dialGoal" rows="4" placeholder="Что именно должен сделать робот: спросить, передать, договориться, зафиксировать ответ…"></textarea>
+            </label>
+
+            <label class="field full">Доп. указания
+              <textarea id="dialNotes" rows="2" placeholder="Тон, ограничения, что нельзя говорить…"></textarea>
+            </label>
+
+            <label class="field full">Первая фраза
+              <input id="dialGreeting" placeholder="Соберится автоматически — можно поправить" />
+            </label>
+
+            <details class="task-advanced" id="dialScriptDetails">
+              <summary>Сценарий для робота (можно править)</summary>
+              <p class="muted tight">Соберётся из полей выше. При необходимости отредактируйте перед звонком.</p>
+              <textarea id="dialScript" rows="10" placeholder="Нажмите «Собрать сценарий» или просто «Позвонить» — соберём сами."></textarea>
+              <div class="actions">
+                <button type="button" class="btn-quiet" id="btnComposeTask">Собрать сценарий</button>
+              </div>
+            </details>
+
+            <div class="task-tools">
+              <h3 class="task-tools-title">Возможности на звонке</h3>
+              <p class="muted tight">Включите только то, что нужно для этого задания.</p>
+              <div id="dialTools" class="tool-groups">Загрузка…</div>
+            </div>
+
+            <div class="task-actions">
+              <button type="button" id="btnDial" class="primary">Позвонить</button>
+              <button type="button" id="btnCallback" class="btn-quiet">Через Mango callback</button>
+              <span class="muted tight">Результат и расшифровка — во вкладке «Звонки»</span>
+            </div>
+            <pre id="dialMsg" class="msg codeblock" hidden></pre>
+          </div>
+        </section>
+
+        <section id="tab-pack" class="panel">
+          <div class="surface">
+            <h2 class="section-title">Канонический пакет</h2>
+            <div id="packBox"></div>
+            <h2 class="section-title">Секреты</h2>
+            <div id="secretsBox"></div>
+            <div class="actions">
+              <button type="button" id="btnBackup" class="primary">Снять бэкап</button>
+              <button type="button" id="btnReloadDp">Reload dialplan</button>
+              <pre id="packMsg" class="msg codeblock"></pre>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    document.write(
+      '<script src="' + (window.__QC_BASE__ || "") + '/assets/console.js"><\/script>'
+    );
+  </script>
+</body>
+</html>
