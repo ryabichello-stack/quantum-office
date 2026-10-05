@@ -12,6 +12,7 @@
 
 ### Changed
 
+- Outreach / lombards: **темы писем** (A/B тест) — короче, без МФО-языка «займы»; H1 шага 1 выровнен под «карта/СБП рядом с наличными». Макет/CTA «Узнать условия» без изменений. Снимок прежних тем: `outreach/content/playbooks/lombards_snapshot_2026-10-05.md`
 - Outreach / lombards: холодная цепочка (шаги 1–5) — опциональность карты/СБП рядом с наличными, без «массовых выплат» и «замены кассы»; social proof топ-5 банков; CTA «Узнать условия»
 - Callback CTA: дефолты title/lead/button и тексты формы/кнопки под intent «узнать условия», не «перезвонить»
 - Outreach: восстановлен `strip_duplicate_legal_html` в packs (нужен templates.py на проде; без него follow-up’ы падали ImportError)
