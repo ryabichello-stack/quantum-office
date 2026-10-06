@@ -1,8 +1,8 @@
 {
-  "hub": "286640109",
-  "blog-fizlicam": "286652709",
-  "blog-samozanyatye": "286652909",
-  "blog-sbp": "286653109",
-  "blog-1c-api": "286653209",
-  "blog-lombardy": "286653309"
+  "hub": {"pageid": "286640109", "recid": "4526317601"},
+  "blog-fizlicam": {"pageid": "286652709", "recid": "4526493601"},
+  "blog-samozanyatye": {"pageid": "286652909", "recid": "4526494101"},
+  "blog-sbp": {"pageid": "286653109", "recid": "4526494601"},
+  "blog-1c-api": {"pageid": "286653209", "recid": "4526495001"},
+  "blog-lombardy": {"pageid": "286653309", "recid": "4526495401"}
 }

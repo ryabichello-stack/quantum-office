@@ -1,21 +1,31 @@
-<div style="max-width:760px;margin:0 auto;padding:32px 20px 72px;font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;line-height:1.75;font-size:18px;">
-<p style="color:#888;font-size:14px;margin:0 0 12px;"><a href="/blog" style="color:#888;">Блог</a> · Quantum Payouts</p>
-<h1 style="font-size:32px;line-height:1.25;margin:0 0 18px;">Выплаты физическим лицам: карты, СБП, API и 1С</h1>
+<style>#allrecords,.t-body,body{background:#1c1c1c!important}.t-rec{background:#1c1c1c!important;padding:0!important}.t-rec .t-container{max-width:none!important;width:100%!important;padding:0!important}.t-rec .t-col{max-width:none!important;width:100%!important;padding:0!important;margin:0!important;left:0!important}.qp-blog{min-height:100vh;background:#1c1c1c;color:#fff;font-family:TildaSans,Arial,Helvetica,sans-serif;font-size:18px;line-height:1.7}.qp-blog a{color:#ff6400;text-decoration:none}.qp-blog a:hover{text-decoration:underline}.qp-top{max-width:1120px;margin:0 auto;padding:18px 20px 0}.qp-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:#2c2c2c;border-radius:20px;padding:12px 18px}.qp-logo{display:flex;align-items:center;gap:10px;color:#fff!important;text-decoration:none!important;font-weight:700;letter-spacing:.03em;font-size:14px}.qp-logo img{height:36px;width:36px;border-radius:8px}.qp-meta{color:#c8c4c0;font-size:13px;line-height:1.35}.qp-meta a{color:#c8c4c0}.qp-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.qp-nav a{color:#fff!important;font-size:15px;text-decoration:none!important;padding:8px 10px}.qp-nav a.qp-on{color:#ff6400!important}.qp-nav a.qp-cta{background:#ff6400;border-radius:12px;padding:10px 16px;font-weight:600}.qp-nav a.qp-cta:hover{text-decoration:none!important;opacity:.92}.qp-wrap{max-width:820px;margin:0 auto;padding:32px 20px 72px}.qp-wrap h1{font-size:34px;line-height:1.2;margin:0 0 16px;font-weight:700;color:#fff}.qp-wrap h2{font-size:22px;margin:36px 0 12px;color:#fff;font-weight:700}.qp-wrap p,.qp-wrap li{color:#d8d4d0}.qp-wrap ul,.qp-wrap ol{padding-left:22px}.qp-wrap li{margin:8px 0}.qp-crumb{color:#9a9692;font-size:14px;margin:0 0 16px}.qp-crumb a{color:#9a9692}.qp-btn{display:inline-block;background:#ff6400;color:#fff!important;text-decoration:none!important;padding:12px 20px;border-radius:12px;font-weight:600}.qp-btn:hover{text-decoration:none!important;opacity:.92}.qp-foot{max-width:1120px;margin:0 auto;padding:0 20px 40px;color:#9a9692;font-size:14px}.qp-foot a{color:#9a9692}@media(max-width:720px){.qp-wrap h1{font-size:28px}.qp-meta{display:none}}</style>
+<div class="qp-blog">
+<div class="qp-top">
+  <div class="qp-bar">
+    <a class="qp-logo" href="/"><img src="https://static.tildacdn.com/tild6338-3831-4630-a463-383634616635/photo.png" alt="Quantum Payouts">QUANTUM PAYOUTS</a>
+    <div class="qp-meta">8 800 555 94 18<br><a href="mailto:office@quantumlabs.ru">office@quantumlabs.ru</a></div>
+    <nav class="qp-nav">
+      <a href="/">Главная</a>
+      <a href="/blog" class="qp-on">Блог</a>
+      <a class="qp-cta" href="/">Задать вопрос →</a>
+    </nav>
+  </div>
+</div>
+<div class="qp-wrap">
+<p class="qp-crumb"><a href="/blog">Блог</a> · Quantum Payouts</p>
+<h1>Выплаты физическим лицам: карты, СБП, API и 1С</h1>
 <p>Компании платят физлицам каждый день: клиентам ломбарда, исполнителям по договору, самозанятым, водителям, продавцам вторсырья. Вопрос не «нужно ли платить», а как сделать это законно, быстро и без ручной возни в банке.</p>
 <p>Ниже — практическая схема выплат физическим лицам на карты и по СБП, с кабинетом, API и 1С. Quantum Payouts рассчитан на бизнес с объёмом выплат <strong>от 5 млн ₽ в месяц</strong>.</p>
-
-<h2 style="font-size:24px;margin:36px 0 12px;">Что считается выплатой физическому лицу</h2>
+<h2>Что считается выплатой физическому лицу</h2>
 <p>Это перевод денег человеку, а не юрлицу: на карту российского банка или по СБП на номер телефона. Получатель может быть клиентом, подрядчиком, самозанятым или сотрудником вне штатной зарплаты.</p>
 <p>Для бухгалтерии важны реестр, статусы, идентификация получателя и понятный канал: карта или СБП. Для операционки важны скорость и то, что реестр не нужно вручную загружать в клиент-банк.</p>
-
-<h2 style="font-size:24px;margin:36px 0 12px;">Карты или СБП: что выбрать</h2>
+<h2>Карты или СБП: что выбрать</h2>
 <ul>
 <li><strong>Карта.</strong> Привычный сценарий, если у вас уже есть номер карты или токен. Удобно для регулярных выплат одним и тем же людям.</li>
-<li><strong>СБП.</strong> Достаточно телефона. Часто быстрее для «выплатил и человек сразу видит деньги». Подробнее: <a href="/blog-sbp">выплаты по СБП</a> и лендинг <a href="/sbp">/sbp</a>.</li>
+<li><strong>СБП.</strong> Достаточно телефона. Часто быстрее для «выплатил и человек сразу видит деньги». Подробнее: <a href="/blog-sbp">выплаты по СБП</a> и страница сервиса <a href="/sbp">выплаты по СБП</a>.</li>
 </ul>
 <p>На практике компании держат оба канала: карта — для постоянных получателей, СБП — когда карты нет под рукой.</p>
-
-<h2 style="font-size:24px;margin:36px 0 12px;">Как выглядит рабочий процесс</h2>
+<h2>Как выглядит рабочий процесс</h2>
 <ol>
 <li>Собираете реестр получателей (сумма, ФИО, реквизиты, назначение).</li>
 <li>Отправляете его через <a href="/">личный кабинет</a>, <a href="/api-1c">API или 1С</a>.</li>
@@ -23,8 +33,7 @@
 <li>Получаете статусы: успешно, в обработке, ошибка реквизитов.</li>
 </ol>
 <p>Интеграция с учётом разобрана отдельно: <a href="/blog-1c-api">выплаты из 1С и по API</a>.</p>
-
-<h2 style="font-size:24px;margin:36px 0 12px;">Для каких отраслей это обычно нужно</h2>
+<h2>Для каких отраслей это обычно нужно</h2>
 <p>Типовые сценарии, которые уже вынесены в отдельные страницы:</p>
 <ul>
 <li><a href="/lombardy">ломбарды и сети скупки</a> — выплата клиенту при выкупе;</li>
@@ -33,13 +42,13 @@
 <li><a href="/kuriery-taxi">курьеры и такси</a>.</li>
 </ul>
 <p>Если ваш процесс похож, но отрасли нет в списке — логика та же: реестр → канал выплаты → статусы.</p>
-
-<h2 style="font-size:24px;margin:36px 0 12px;">Когда имеет смысл подключать сервис</h2>
+<h2>Когда имеет смысл подключать сервис</h2>
 <p>Имеет смысл, если выплаты физлицам — регулярный процесс, а не разовый платёж, и объём <strong>от 5 млн ₽ в месяц</strong>. Тогда окупаются кабинет, API, 1С и контроль статусов.</p>
 <p>Если платежей мало, проще пройти через банк вручную. Если платежей много — ручной клиент-банк начинает терять время и даёт ошибки в реквизитах.</p>
-
-<h2 style="font-size:24px;margin:36px 0 12px;">Коротко</h2>
+<h2>Коротко</h2>
 <p>Выплаты физическим лицам на карты и по СБП — это операционный контур: реестр, канал, статус. Quantum Payouts собирает его в кабинете, API и 1С для бизнеса с объёмом от 5 млн ₽ в месяц.</p>
-<p style="margin-top:28px;"><a href="/" style="display:inline-block;background:#e85d04;color:#fff;text-decoration:none;padding:12px 20px;border-radius:6px;">Перейти на сервис выплат →</a></p>
-<p style="font-size:14px;color:#888;margin-top:24px;"><a href="/blog">Все статьи</a></p>
+<p style="margin-top:28px;"><a class="qp-btn" href="/">Перейти на сервис выплат →</a></p>
+<p class="qp-crumb" style="margin-top:24px;"><a href="/blog">Все статьи</a></p>
+</div>
+<div class="qp-foot">8 800 555 94 18 · <a href="mailto:office@quantumlabs.ru">office@quantumlabs.ru</a> · <a href="/">Quantum Payouts</a></div>
 </div>
