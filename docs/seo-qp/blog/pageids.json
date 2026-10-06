@@ -4,5 +4,25 @@
   "blog-samozanyatye": {"pageid": "286652909", "recid": "4526494101"},
   "blog-sbp": {"pageid": "286653109", "recid": "4526494601"},
   "blog-1c-api": {"pageid": "286653209", "recid": "4526495001"},
-  "blog-lombardy": {"pageid": "286653309", "recid": "4526495401"}
+  "blog-lombardy": {"pageid": "286653309", "recid": "4526495401"},
+  "blog-mfo": {"pageid": "286912609", "recid": "4530435201"},
+  "blog-trade-in": {"pageid": "286913109", "recid": "4530442301"},
+  "blog-vtorsyre": {"pageid": "286913209", "recid": "4530446601"},
+  "blog-strahovye": {"pageid": "286913309", "recid": "4530454301"},
+  "blog-selhoz": {"pageid": "286913409", "recid": "4530465401"},
+  "blog-kuriery": {"pageid": "286913509", "recid": "4530476601"},
+  "landing_strips": {
+    "mfo": "4530764201",
+    "trade-in": "4530781301",
+    "vtorsyre": "4530785601",
+    "strahovye": "4530798501",
+    "selhoz": "4530810401",
+    "kuriery-taxi": "4530822801",
+    "lombardy": "4530827101",
+    "samozanyatye": "4530840401",
+    "gph": "4530845101",
+    "sbp": "4530853201",
+    "api-1c": "4530862401"
+  },
+  "home_blog_strip": "4530888601"
 }
