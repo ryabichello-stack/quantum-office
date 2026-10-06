@@ -27,3 +27,12 @@ Tilda projectid `14431186` · счётчик Метрики `104241036`
 ## Следующая очередь
 
 `/blog-mfo`, `/blog-trade-in`, `/blog-vtorsyre`, `/blog-strahovye`, `/blog-selhoz`, `/blog-kuriery`.
+
+## Главная: мусор `} } } }] }` в шапке (2026-10-06)
+
+Это **не меню и не Title**. В HEAD главной (`pageid 75572866`) стоял FAQ JSON-LD + Organization, а после закрывающих `</script>` остался хвост чужих скобок. Браузер закрывал скрипт и рисовал `} } } … }] }` текстом над меню.
+
+Править: Tilda → страница главной → Настройки → «HTML-код для вставки внутрь HEAD» → [Редактировать код](https://tilda.ru/projects/editheadcode/?projectid=14431186&pageid=75572866).  
+Сайт-wide «Вставка кода» в настройках проекта тут ни при чём (блог этот HEAD не наследует).
+
+После чистки оставлены два валидных `application/ld+json` (FAQPage, Organization), главная опубликована на `quantumpayouts.ru`.
