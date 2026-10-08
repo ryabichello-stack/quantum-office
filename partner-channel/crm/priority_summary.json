@@ -1,0 +1,29 @@
+{
+  "A": [
+    "InteractiveCenter / IC Premium",
+    "Prodagi.PRO",
+    "RKO Group",
+    "E-RKO",
+    "FINLEO",
+    "BARS (Barsltd)"
+  ],
+  "B": [
+    "CallTell",
+    "Телеконтакт",
+    "OCC Group",
+    "Easy Calls",
+    "Office2B",
+    "SalesOutsourcing",
+    "Neuron Group",
+    "LeadMachine",
+    "CallPlex"
+  ],
+  "C": [
+    "RocketCall",
+    "GroupDS (DS Group)",
+    "Комус Контакт",
+    "SalesAP"
+  ],
+  "with_email": 18,
+  "phone_or_form_only": 1
+}

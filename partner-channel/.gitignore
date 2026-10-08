@@ -1,0 +1,5 @@
+# Partner channel send logs / local secrets (may contain emails & passwords)
+logs/
+.env
+smtp.local.env
+*.local.env
