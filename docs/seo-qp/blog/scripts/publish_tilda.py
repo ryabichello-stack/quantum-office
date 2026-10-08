@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Login to Tilda, push blog HTML into T123, set SEO fields, publish, create new pages."""
+"""Publish Quantum Payouts blog HTML to Tilda T123 via Ace editor + FormData saverecord."""
 from __future__ import annotations
 
 import json
@@ -19,12 +19,11 @@ PROJECT_ID = "14431186"
 OUT = Path("/opt/cursor/artifacts/qp-seo-deep")
 OUT.mkdir(parents=True, exist_ok=True)
 CDP = "http://127.0.0.1:9222"
-
 EMAIL = os.environ["TILDA_EMAIL"]
 PASSWORD = os.environ["TILDA_PASSWORD"]
 
 
-def slug_meta(slug: str) -> dict:
+def meta_for(slug: str) -> dict:
     if slug == "blog":
         return MANIFEST["hub"]
     for a in MANIFEST["articles"]:
@@ -34,45 +33,24 @@ def slug_meta(slug: str) -> dict:
 
 
 def html_for(slug: str) -> str:
-    name = "blog.html" if slug == "blog" else f"{slug}.html"
-    return (HTML / name).read_text(encoding="utf-8")
+    return (HTML / ("blog.html" if slug == "blog" else f"{slug}.html")).read_text(encoding="utf-8")
 
 
-def ensure_login(page) -> None:
-    page.goto("https://tilda.ru/login/", wait_until="domcontentloaded", timeout=90000)
-    time.sleep(2)
-    if "projects" in page.url or "dashboard" in page.url:
-        return
-    # already logged?
-    page.goto("https://tilda.ru/projects/", wait_until="domcontentloaded", timeout=90000)
+def login(page) -> None:
+    page.goto("https://tilda.ru/projects/", wait_until="domcontentloaded", timeout=60000)
     time.sleep(2)
     if "login" not in page.url and "auth" not in page.url:
         return
-
-    page.goto("https://tilda.ru/login/", wait_until="domcontentloaded", timeout=90000)
-    time.sleep(2)
-    # fill form
-    email_sel = 'input[name="email"], input[type="email"], input#email'
-    pass_sel = 'input[name="password"], input[type="password"], input#password'
-    page.wait_for_selector(email_sel, timeout=30000)
-    page.fill(email_sel, EMAIL)
-    page.fill(pass_sel, PASSWORD)
-    page.screenshot(path=str(OUT / "login-filled.png"))
-    # submit
-    for sel in ['button[type="submit"]', 'input[type="submit"]', 'button:has-text("Войти")', 'a:has-text("Войти")']:
-        loc = page.locator(sel).first
-        if loc.count() and loc.is_visible():
-            loc.click()
-            break
-    else:
-        page.keyboard.press("Enter")
-    page.wait_for_timeout(5000)
-    page.screenshot(path=str(OUT / "login-after.png"))
-    # navigate projects
-    page.goto("https://tilda.ru/projects/", wait_until="domcontentloaded", timeout=90000)
+    page.goto("https://tilda.ru/login/", wait_until="domcontentloaded", timeout=60000)
+    time.sleep(1)
+    page.fill("#email", EMAIL)
+    page.fill("#password", PASSWORD)
+    page.click("button[type=submit]")
+    page.wait_for_timeout(6000)
+    page.goto("https://tilda.ru/projects/", wait_until="domcontentloaded", timeout=60000)
     time.sleep(2)
     if "login" in page.url:
-        raise RuntimeError(f"Tilda login failed: {page.url}")
+        raise RuntimeError("login failed")
 
 
 def open_editor(page, pageid: str) -> None:
@@ -81,336 +59,325 @@ def open_editor(page, pageid: str) -> None:
         wait_until="domcontentloaded",
         timeout=90000,
     )
-    page.wait_for_timeout(4000)
+    page.wait_for_timeout(5000)
 
 
-def save_record_html(page, recid: str, html: str) -> dict:
-    """Save T123 HTML via Tilda page API from within editor session."""
-    return page.evaluate(
-        """async ({recid, html}) => {
-          const tryUrls = [
-            '/page/submit/',
-            '/api/page/submit/',
-            '/zero/submit/',
-          ];
-          // Preferred: use td / page records API if present
-          const out = {attempts: []};
-          if (typeof window.td !== 'undefined' && window.td && window.td.records) {
-            out.td_records = Object.keys(window.td.records || {}).slice(0, 20);
-          }
-          // Classic savehtml endpoint used by HTML block editor
-          const body = new URLSearchParams();
-          body.set('comm', 'savehtml');
-          body.set('recordid', recid);
-          body.set('html', html);
-          body.set('pageid', String(window.pageid || (window.td && window.td.pageid) || ''));
-          body.set('projectid', String(window.projectid || (window.td && window.td.projectid) || ''));
-          try {
-            const r = await fetch('/page/submit/', {
-              method: 'POST',
-              headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
-              body: body.toString(),
-              credentials: 'same-origin',
-            });
-            const text = await r.text();
-            out.save = {status: r.status, text: text.slice(0, 500)};
-            try { out.save.json = JSON.parse(text); } catch(e) {}
-          } catch (e) {
-            out.save = {error: String(e)};
-          }
-          return out;
+def open_content_panel(page, recid: str) -> bool:
+    if page.evaluate("() => !!document.querySelector('.pe-content-form textarea[name=code]')"):
+        return True
+    page.evaluate(
+        """(recid) => {
+          const el = document.getElementById('record'+recid) || document.getElementById('rec'+recid);
+          if (el) el.scrollIntoView({block:'center'});
         }""",
-        {"recid": str(recid), "html": html},
+        recid,
+    )
+    page.wait_for_timeout(400)
+    try:
+        page.locator(f"#record{recid}").hover(force=True, timeout=5000)
+    except Exception:
+        page.locator(f"#rec{recid}").hover(force=True, timeout=5000)
+    page.wait_for_timeout(700)
+    infos = page.evaluate(
+        """() => [...document.querySelectorAll('button')].filter(b => /Контент/.test(b.innerText||'')).map(b => {
+          const r = b.getBoundingClientRect();
+          const parent = (b.closest('.tp-record-ui-container')||{}).innerText || '';
+          return {x:r.x,y:r.y,w:r.width,h:r.height,parent:parent.slice(0,50)};
+        }).filter(i => i.h>0 && i.w>0 && /T123/.test(i.parent))"""
+    )
+    if not infos:
+        return False
+    t = infos[0]
+    page.mouse.click(t["x"] + t["w"] / 2, t["y"] + t["h"] / 2)
+    for _ in range(20):
+        if page.evaluate("() => !!document.querySelector('.pe-content-form textarea[name=code]')"):
+            return True
+        page.wait_for_timeout(400)
+    return False
+
+
+def save_html(page, recid: str, pageid: str, html: str) -> dict:
+    if not open_content_panel(page, recid):
+        return {"ok": False, "error": "no_content_panel"}
+    return page.evaluate(
+        """async ({html, recid, pageid}) => {
+          const edEl = document.querySelector('.ace_editor');
+          if (!edEl || !window.ace) return {ok:false, error:'no_ace'};
+          const ed = ace.edit(edEl.id || edEl);
+          ed.setValue(html, -1);
+          const ta = document.querySelector('textarea[name=code]');
+          ta.value = html;
+
+          // Prefer Tilda path
+          try {
+            const p = edrec__sendForm('save', 'content');
+            if (p && typeof p.then === 'function') await p;
+            await new Promise(r => setTimeout(r, 2500));
+            const still = !!document.querySelector('.pe-content-form');
+            // If panel closed, likely saved
+            if (!still) return {ok:true, via:'edrec', closed:true};
+          } catch (e) {
+            /* fall through to raw */
+          }
+
+          // Raw multipart fallback
+          const fd = new FormData();
+          fd.append('comm', 'saverecord');
+          fd.append('recordid', recid);
+          fd.append('pageid', pageid);
+          fd.append('code', html);
+          const resp = await fetch('/page/submit/', {method:'POST', body:fd, credentials:'same-origin'});
+          const text = await resp.text();
+          const ok = resp.status === 200 && (text.trim() === 'OK' || text.trim() === '' || text.includes('"r":"OK"') || text.includes('OK'));
+          if (ok && typeof edrec__closeEditForm === 'function') {
+            try { edrec__closeEditForm(); } catch (e) {}
+          }
+          if (ok && typeof tp__updateRecord === 'function') {
+            try { tp__updateRecord(recid); } catch (e) {}
+          }
+          return {ok, via:'formdata', status: resp.status, text: text.slice(0, 300)};
+        }""",
+        {"html": html, "recid": str(recid), "pageid": str(pageid)},
     )
 
 
 def set_seo(page, pageid: str, meta: dict) -> dict:
-    """Update page SEO title/description/alias via settings if possible."""
-    page.goto(
-        f"https://tilda.ru/page/?pageid={pageid}&projectid={PROJECT_ID}",
-        wait_until="domcontentloaded",
-        timeout=90000,
-    )
-    page.wait_for_timeout(2000)
     return page.evaluate(
-        """async ({meta}) => {
-          const pageid = String(window.pageid || (window.td && window.td.pageid) || '');
-          const projectid = String(window.projectid || (window.td && window.td.projectid) || '');
-          const body = new URLSearchParams();
-          body.set('comm', 'savepage');
-          body.set('pageid', pageid);
-          body.set('projectid', projectid);
-          if (meta.title) body.set('title', meta.title);
-          if (meta.description) body.set('description', meta.description);
-          if (meta.keywords) body.set('keywords', meta.keywords);
-          // also common field names
-          if (meta.title) body.set('pagetitle', meta.title);
-          if (meta.description) body.set('pagedescr', meta.description);
+        """async ({pageid, meta}) => {
+          const fd = new FormData();
+          fd.append('comm', 'savepage');
+          fd.append('pageid', pageid);
+          fd.append('projectid', '14431186');
+          if (meta.title) { fd.append('title', meta.title); fd.append('pagetitle', meta.title); }
+          if (meta.description) { fd.append('description', meta.description); fd.append('pagedescr', meta.description); }
+          if (meta.keywords) fd.append('keywords', meta.keywords);
           try {
-            const r = await fetch('/page/submit/', {
-              method: 'POST',
-              headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
-              body: body.toString(),
-              credentials: 'same-origin',
-            });
-            const text = await r.text();
-            let json = null;
-            try { json = JSON.parse(text); } catch(e) {}
-            return {status: r.status, text: text.slice(0, 400), json};
+            const r = await fetch('/page/submit/', {method:'POST', body:fd, credentials:'same-origin'});
+            const t = await r.text();
+            return {status:r.status, text:t.slice(0,300)};
           } catch (e) {
-            return {error: String(e)};
+            return {error:String(e)};
           }
         }""",
-        {"meta": meta},
+        {"pageid": str(pageid), "meta": meta},
     )
 
 
-def publish_page(page) -> dict:
-    return page.evaluate(
-        """async () => {
-          const out = {fns: Object.keys(window).filter(k => /Publish/i.test(k)).slice(0, 30)};
-          if (typeof window.tp__pagePublish === 'function') {
-            try {
-              window.tp__pagePublish();
-              out.called = 'tp__pagePublish';
-            } catch (e) {
-              out.call_error = String(e);
-            }
-          }
-          // fallback submit
+def publish_page(page, pageid: str) -> dict:
+    # UI publish
+    try:
+        page.evaluate("() => { if (typeof tp__pagePublish==='function') tp__pagePublish(); }")
+        page.wait_for_timeout(4000)
+    except Exception as e:
+        pass
+    # API fallback
+    api = page.evaluate(
+        """async (pageid) => {
+          const fd = new FormData();
+          fd.append('comm', 'publish');
+          fd.append('pageid', pageid);
+          fd.append('projectid', '14431186');
           try {
-            const pageid = String(window.pageid || (window.td && window.td.pageid) || '');
-            const projectid = String(window.projectid || (window.td && window.td.projectid) || '');
-            const body = new URLSearchParams();
-            body.set('comm', 'publish');
-            body.set('pageid', pageid);
-            body.set('projectid', projectid);
-            const r = await fetch('/page/submit/', {
-              method: 'POST',
-              headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
-              body: body.toString(),
-              credentials: 'same-origin',
-            });
-            const text = await r.text();
-            out.publish = {status: r.status, text: text.slice(0, 400)};
-            try { out.publish.json = JSON.parse(text); } catch(e) {}
+            const r = await fetch('/page/submit/', {method:'POST', body:fd, credentials:'same-origin'});
+            const t = await r.text();
+            return {status:r.status, text:t.slice(0,300)};
           } catch (e) {
-            out.publish = {error: String(e)};
+            return {error:String(e)};
           }
-          return out;
+        }""",
+        str(pageid),
+    )
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(500)
+    return api
+
+
+def create_page(page, title: str, alias: str):
+    created = page.evaluate(
+        """async ({title, alias}) => {
+          const fd = new FormData();
+          fd.append('comm', 'addpage');
+          fd.append('projectid', '14431186');
+          fd.append('title', title);
+          fd.append('alias', alias);
+          fd.append('pagealias', alias);
+          const r = await fetch('/page/submit/', {method:'POST', body:fd, credentials:'same-origin'});
+          const t = await r.text();
+          let json=null; try{json=JSON.parse(t)}catch(e){}
+          return {status:r.status, text:t.slice(0,800), json};
+        }""",
+        {"title": title, "alias": alias},
+    )
+    pageid = None
+    j = created.get("json") or {}
+    pageid = j.get("pageid") or (j.get("data") or {}).get("pageid")
+    if not pageid:
+        m = re.search(r"pageid[\"'=\s:]+(\d{6,})", created.get("text") or "")
+        if m:
+            pageid = m.group(1)
+    return pageid, created
+
+
+def ensure_t123(page, pageid: str):
+    open_editor(page, pageid)
+    recid = page.evaluate(
+        """() => {
+          const rec = document.querySelector('div.record[data-record-type="131"]');
+          if (rec && rec.id) return rec.id.replace('record','');
+          const all=[...document.querySelectorAll('div.record[id^=record]')].map(r=>({
+            id:r.id.replace('record',''), typ:r.getAttribute('data-record-type')
+          }));
+          const hit=all.find(a=>a.typ==='131');
+          return hit?hit.id:null;
         }"""
     )
-
-
-def create_page(page, slug: str, title: str) -> dict:
-    """Create a new page in the project; return pageid if possible."""
-    page.goto(
-        f"https://tilda.ru/projects/settings/?projectid={PROJECT_ID}",
-        wait_until="domcontentloaded",
-        timeout=90000,
-    )
-    page.wait_for_timeout(2000)
-    # go to project pages list
-    page.goto(
-        f"https://tilda.ru/projects/?projectid={PROJECT_ID}",
-        wait_until="domcontentloaded",
-        timeout=90000,
-    )
-    page.wait_for_timeout(3000)
-    page.screenshot(path=str(OUT / f"project-{slug}.png"))
-
-    created = page.evaluate(
-        """async ({slug, title, projectid}) => {
-          const attempts = [];
-          // Tilda create page API variants
-          for (const comm of ['addpage', 'newpage', 'createpage']) {
-            const body = new URLSearchParams();
-            body.set('comm', comm);
-            body.set('projectid', projectid);
-            body.set('title', title);
-            body.set('alias', slug);
-            body.set('pagealias', slug);
-            try {
-              const r = await fetch('/page/submit/', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
-                body: body.toString(),
-                credentials: 'same-origin',
-              });
-              const text = await r.text();
-              let json = null;
-              try { json = JSON.parse(text); } catch(e) {}
-              attempts.push({comm, status: r.status, text: text.slice(0, 500), json});
-              if (json && (json.pageid || (json.data && json.data.pageid) || json.r === 'OK')) {
-                return {ok: true, attempts, json};
-              }
-            } catch (e) {
-              attempts.push({comm, error: String(e)});
-            }
-          }
-          // projects submit
-          for (const url of ['/projects/submit/', '/page/submit/']) {
-            const body = new URLSearchParams();
-            body.set('comm', 'addpage');
-            body.set('projectid', projectid);
-            body.set('title', title);
-            body.set('alias', slug);
-            try {
-              const r = await fetch(url, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
-                body: body.toString(),
-                credentials: 'same-origin',
-              });
-              const text = await r.text();
-              let json = null;
-              try { json = JSON.parse(text); } catch(e) {}
-              attempts.push({url, status: r.status, text: text.slice(0, 500), json});
-              if (json && (json.pageid || json.r === 'OK')) {
-                return {ok: true, attempts, json};
-              }
-            } catch (e) {
-              attempts.push({url, error: String(e)});
-            }
-          }
-          return {ok: false, attempts};
+    if recid:
+        return recid, {"existing": True}
+    added = page.evaluate(
+        """async (pageid) => {
+          const fd=new FormData();
+          fd.append('comm','addrecord');
+          fd.append('pageid', pageid);
+          fd.append('projectid','14431186');
+          fd.append('typeid','131');
+          fd.append('tplid','123');
+          const r=await fetch('/page/submit/',{method:'POST',body:fd,credentials:'same-origin'});
+          const t=await r.text();
+          let json=null; try{json=JSON.parse(t)}catch(e){}
+          return {status:r.status, text:t.slice(0,500), json};
         }""",
-        {"slug": slug, "title": title, "projectid": PROJECT_ID},
+        str(pageid),
     )
-    return created
-
-
-def add_html_block(page, pageid: str, html: str) -> dict:
-    """Add T123 HTML record to a page."""
+    page.wait_for_timeout(1500)
     open_editor(page, pageid)
-    return page.evaluate(
-        """async ({html, pageid}) => {
-          const projectid = String(window.projectid || (window.td && window.td.projectid) || '');
-          const body = new URLSearchParams();
-          body.set('comm', 'addrecord');
-          body.set('pageid', pageid);
-          body.set('projectid', projectid);
-          body.set('typeid', '131'); // HTML
-          body.set('html', html);
-          try {
-            const r = await fetch('/page/submit/', {
-              method: 'POST',
-              headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
-              body: body.toString(),
-              credentials: 'same-origin',
-            });
-            const text = await r.text();
-            let json = null;
-            try { json = JSON.parse(text); } catch(e) {}
-            return {status: r.status, text: text.slice(0, 600), json};
-          } catch (e) {
-            return {error: String(e)};
-          }
-        }""",
-        {"html": html, "pageid": str(pageid)},
+    recid = page.evaluate(
+        """() => {
+          const rec = document.querySelector('div.record[data-record-type="131"]');
+          if (rec && rec.id) return rec.id.replace('record','');
+          const all=[...document.querySelectorAll('div.record[id^=record]')];
+          return all.length?all[all.length-1].id.replace('record',''):null;
+        }"""
     )
+    return recid, added
+
+
+def verify_live(page, slug: str, needle: str) -> bool:
+    url = f"https://quantumpayouts.ru/{slug if slug!='blog' else 'blog'}?cb={int(time.time())}"
+    page.goto(url, wait_until="domcontentloaded", timeout=60000)
+    page.wait_for_timeout(1500)
+    text = page.evaluate("() => document.body.innerText")
+    return needle in text
 
 
 def main() -> None:
-    results = {"pages": {}, "created": {}}
+    results = {"updated": {}, "created": {}, "errors": [], "verified": {}}
+    needles = {
+        "blog": "База: контур выплат",
+        "blog-fizlicam": "выстроить контур для бизнеса",
+        "blog-reestr": "рабочий стандарт для компании",
+        "blog-nalogi": "Налоги и учёт при выплатах",
+        "blog-kontrol": "что должен видеть руководитель",
+        "blog-gph": "платить исполнителям без хаоса",
+        "blog-samozanyatye": "операционная модель для компании",
+        "blog-sbp": "Когда СБП сильнее карты",
+        "blog-1c-api": "Кому какая интеграция",
+        "blog-lombardy": "Операционная модель на точке",
+        "blog-mfo": "Контур выплаты займа",
+        "blog-trade-in": "Сценарий на сделке",
+        "blog-vtorsyre": "Процесс у весов",
+        "blog-strahovye": "Контур урегулирования",
+        "blog-selhoz": "Сезонная операционка",
+        "blog-kuriery": "Модель для платформы",
+    }
+
     with sync_playwright() as p:
         browser = p.chromium.connect_over_cdp(CDP)
         context = browser.contexts[0]
         page = context.new_page()
         page.set_default_timeout(90000)
+        login(page)
 
-        ensure_login(page)
-        page.screenshot(path=str(OUT / "projects.png"))
-        results["logged_in"] = page.url
-
-        # Probe save on existing page
-        open_editor(page, PAGEIDS["blog-fizlicam"]["pageid"])
-        probe = page.evaluate(
-            """() => ({
-              href: location.href,
-              pageid: window.pageid || (window.td && window.td.pageid) || null,
-              projectid: window.projectid || (window.td && window.td.projectid) || null,
-              hasPublish: typeof window.tp__pagePublish,
-              tdKeys: window.td ? Object.keys(window.td).slice(0, 40) : [],
-              recordTypes: window.td && window.td.records ? Object.values(window.td.records).map(r => ({id:r.id||r.recordid, type:r.type||r.typeid})).slice(0, 20) : [],
-            })"""
-        )
-        (OUT / "probe.json").write_text(json.dumps(probe, ensure_ascii=False, indent=2), encoding="utf-8")
-        results["probe"] = probe
-
-        # Update existing pages
-        existing = ["blog"] + [
-            k for k in PAGEIDS.keys()
-            if k.startswith("blog-") and isinstance(PAGEIDS[k], dict) and "pageid" in PAGEIDS[k]
-        ]
-        # hub key is 'hub'
-        existing_map = {"blog": PAGEIDS["hub"]}
+        existing = {"blog": PAGEIDS["hub"]}
         for k, v in PAGEIDS.items():
-            if k.startswith("blog-") and isinstance(v, dict) and "pageid" in v:
-                existing_map[k] = v
+            if k.startswith("blog-") and isinstance(v, dict) and v.get("pageid") and v.get("recid"):
+                existing[k] = v
 
-        for slug, ids in existing_map.items():
-            meta = slug_meta(slug if slug != "blog" else "blog")
-            html = html_for(slug if slug != "blog" else "blog")
-            open_editor(page, ids["pageid"])
-            save = save_record_html(page, ids["recid"], html)
-            seo = set_seo(page, ids["pageid"], meta)
-            open_editor(page, ids["pageid"])
-            pub = publish_page(page)
-            # close publish modal if any
-            page.wait_for_timeout(2000)
-            page.keyboard.press("Escape")
-            results["pages"][slug] = {"save": save, "seo": seo, "pub": pub}
-            print("UPDATED", slug, save.get("save", {}).get("status"), seo.get("status"))
+        for slug, ids in existing.items():
+            for attempt in range(1, 4):
+                try:
+                    open_editor(page, ids["pageid"])
+                    save = save_html(page, ids["recid"], ids["pageid"], html_for(slug if slug != "blog" else "blog"))
+                    seo = set_seo(page, ids["pageid"], meta_for(slug if slug != "blog" else "blog"))
+                    open_editor(page, ids["pageid"])
+                    pub = publish_page(page, ids["pageid"])
+                    results["updated"][slug] = {"save": save, "seo": seo, "pub": pub, "attempt": attempt}
+                    print("UPD", slug, save.get("ok"), save.get("via"), save.get("error"))
+                    if save.get("ok"):
+                        break
+                except Exception as e:
+                    results["errors"].append({"slug": slug, "attempt": attempt, "error": str(e)})
+                    print("ERR", slug, attempt, e)
+                    time.sleep(3)
+            (OUT / "publish-results.json").write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
 
-        # Create new gap pages
-        new_slugs = ["blog-reestr", "blog-nalogi", "blog-kontrol", "blog-gph"]
-        for slug in new_slugs:
-            if slug in PAGEIDS and isinstance(PAGEIDS[slug], dict) and PAGEIDS[slug].get("pageid"):
-                continue
-            meta = slug_meta(slug)
-            created = create_page(page, slug, meta["h1"])
-            results["created"][slug] = created
-            print("CREATE", slug, created.get("ok"), str(created)[:200])
-            pageid = None
-            json_ = created.get("json") or {}
-            pageid = (
-                json_.get("pageid")
-                or (json_.get("data") or {}).get("pageid")
-                or None
-            )
-            # parse from attempts
-            if not pageid:
-                for a in created.get("attempts") or []:
-                    j = a.get("json") or {}
-                    pageid = j.get("pageid") or (j.get("data") or {}).get("pageid")
-                    if pageid:
-                        break
-                    m = re.search(r"pageid[=\":]+(\d+)", a.get("text") or "")
-                    if m:
-                        pageid = m.group(1)
-                        break
-            if not pageid:
-                continue
-            add = add_html_block(page, str(pageid), html_for(slug))
-            recid = None
-            j2 = add.get("json") or {}
-            recid = j2.get("recordid") or j2.get("recid") or (j2.get("data") or {}).get("recordid")
-            seo = set_seo(page, str(pageid), meta)
-            open_editor(page, str(pageid))
-            pub = publish_page(page)
-            page.wait_for_timeout(2000)
-            page.keyboard.press("Escape")
-            PAGEIDS[slug] = {"pageid": str(pageid), "recid": str(recid) if recid else "", "t966": ""}
-            results["pages"][slug] = {"created": True, "add": add, "seo": seo, "pub": pub, "pageid": pageid, "recid": recid}
-            print("NEW", slug, pageid, recid)
+        for slug in ["blog-reestr", "blog-nalogi", "blog-kontrol", "blog-gph"]:
+            if isinstance(PAGEIDS.get(slug), dict) and PAGEIDS[slug].get("pageid") and PAGEIDS[slug].get("recid"):
+                # already have ids — update path above if in existing; else update now
+                if slug in existing:
+                    continue
+            try:
+                m = meta_for(slug)
+                pageid, created = create_page(page, m["h1"], slug)
+                results["created"][slug] = {"pageid": pageid, "raw": created}
+                if not pageid:
+                    print("NO_PAGE", slug, created)
+                    continue
+                # set alias via seo-ish
+                page.evaluate(
+                    """async ({pageid, alias}) => {
+                      const fd=new FormData();
+                      fd.append('comm','savepage');
+                      fd.append('pageid', pageid);
+                      fd.append('projectid','14431186');
+                      fd.append('alias', alias);
+                      fd.append('pagealias', alias);
+                      await fetch('/page/submit/',{method:'POST',body:fd,credentials:'same-origin'});
+                    }""",
+                    {"pageid": str(pageid), "alias": slug},
+                )
+                recid, added = ensure_t123(page, pageid)
+                results["created"][slug]["recid"] = recid
+                results["created"][slug]["added"] = added
+                if not recid:
+                    print("NO_REC", slug)
+                    continue
+                open_editor(page, pageid)
+                save = save_html(page, str(recid), str(pageid), html_for(slug))
+                seo = set_seo(page, pageid, m)
+                open_editor(page, pageid)
+                pub = publish_page(page, pageid)
+                PAGEIDS[slug] = {"pageid": str(pageid), "recid": str(recid), "t966": ""}
+                results["updated"][slug] = {"save": save, "seo": seo, "pub": pub, "new": True}
+                print("NEW", slug, pageid, recid, save.get("ok"))
+            except Exception as e:
+                results["errors"].append({"slug": slug, "error": str(e)})
+                print("ERR_NEW", slug, e)
+
+        # verify
+        vpage = context.new_page()
+        for slug, needle in needles.items():
+            try:
+                ok = verify_live(vpage, slug, needle)
+                results["verified"][slug] = ok
+                print("LIVE", slug, ok)
+            except Exception as e:
+                results["verified"][slug] = f"err:{e}"
+        vpage.close()
 
         PAGEIDS_PATH.write_text(json.dumps(PAGEIDS, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        (OUT / "publish-results.json").write_text(
-            json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        (OUT / "publish-results.json").write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
         page.close()
-        print("DONE")
+        print("DONE ok", sum(1 for v in results["verified"].values() if v is True), "/", len(results["verified"]))
 
 
 if __name__ == "__main__":
