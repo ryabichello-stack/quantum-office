@@ -54,6 +54,12 @@
 .qp-sitehead__name{font-size:12px}
 .qp-sitehead__menu{min-width:110px;font-size:15px}
 }
+
+.qp-wrap h3{font-size:18px;margin:28px 0 10px;color:#fff;font-weight:700}
+.qp-wrap .qp-note{background:#2c2c2c;border-radius:14px;padding:14px 16px;margin:18px 0;color:#d8d4d0}
+.qp-wrap table{width:100%;border-collapse:collapse;margin:16px 0;font-size:15px}
+.qp-wrap th,.qp-wrap td{border:1px solid #3a3a3a;padding:10px 12px;text-align:left;vertical-align:top;color:#d8d4d0}
+.qp-wrap th{background:#2c2c2c;color:#fff;font-weight:600}
 </style>
 <div class="qp-blog">
 <div class="qp-sitehead">
@@ -85,20 +91,34 @@
 <div class="qp-wrap">
 <p class="qp-crumb"><a href="/blog">Блог</a> · Quantum Payouts</p>
 <h1>Страховые выплаты физическим лицам</h1>
-<p>Страховая платит физлицу по убытку: карта или СБП, сумма, назначение, статус. На потоке это не «один платёж в банк», а реестр выплат с контролем и повторной обработкой отказов.</p>
-<p>Страница сервиса: <a href="/strahovye">страховые выплаты физическим лицам</a>. Сервис для объёма <strong>от 5 млн ₽ в месяц</strong>.</p>
-<h2>Что должно быть в реестре</h2>
+<p>Страховая выплата физлицу — обещание продукта клиенту. Срок и предсказуемость влияют на NPS и нагрузку на урегулирование. Операционно это реестр убытков → карта/СБП → статусы в системе.</p>
+<p>Продукт: <a href="/strahovye">страховые</a>. Порог: <strong>от 5 млн ₽ в месяц</strong>.</p>
+
+<div class="qp-note">В поиске «страховые выплаты физическим лицам» смешиваются страховые случаи и «страховые взносы с выплат». Здесь — выплата выгодоприобретателю/клиенту, не расчёт взносов работодателя.</div>
+
+<h2>Контур урегулирования → деньги</h2>
+<ol>
+<li>Убыток утверждён к выплате.</li>
+<li>Реквизиты получателя проверены.</li>
+<li>Реестр отправлен в сервис (API/кабинет/1С).</li>
+<li>Статус вернулся в систему урегулирования.</li>
+</ol>
+<p><a href="/blog-reestr">Реестр</a> · <a href="/blog-1c-api">API/1С</a> · <a href="/blog-kontrol">Контроль</a></p>
+
+<h2>Карта и СБП</h2>
+<p>Базовый канал — карта. СБП — когда так быстрее получить реквизиты от клиента. Оба в одном контуре: <a href="/blog-sbp">СБП</a>, обзор <a href="/blog-fizlicam">выплаты физлицам</a>.</p>
+
+<h2>Что важно CFO страховщика</h2>
 <ul>
-<li>Идентификатор выплаты в вашей системе, чтобы не задвоить.</li>
-<li>Получатель: ФИО, карта или телефон СБП.</li>
-<li>Сумма, назначение, связь с убытком.</li>
+<li>сверка выплат с реестром убытков;</li>
+<li>исключение двойных выплат;</li>
+<li>прозрачные статусы для отчётности периода.</li>
 </ul>
-<p>СБП удобен, когда у клиента нет карты под рукой: <a href="/blog-sbp">выплаты по СБП</a>. Общая схема: <a href="/blog-fizlicam">выплаты физическим лицам</a>.</p>
-<h2>Контроль и доступ</h2>
-<p>Кто видит реестр и кто может его провести — разные роли. Для страховой это часть процесса, не «настройка на потом». Статусы из сервиса должны возвращаться в учёт: <a href="/blog-1c-api">выплаты из 1С и по API</a>.</p>
-<p>Зачисление в Quantum Payouts — <strong>от 1 минуты</strong>, комиссия — <strong>от 0,4%</strong>.</p>
-<p style="margin-top:28px;"><a class="qp-btn" href="/strahovye">К страховым выплатам →</a></p>
-<p class="qp-crumb" style="margin-top:24px;"><a href="/blog">Все статьи</a> · <a href="/mfo">Выплаты МФО</a></p>
+
+<h2>Коротко</h2>
+<p>Страховым нужен промышленный контур выплат физлицам. Quantum Payouts — от <strong>5 млн ₽ в месяц</strong>, зачисление <strong>от 1 минуты</strong>, комиссия <strong>от 0,4%</strong>.</p>
+<p style="margin-top:28px;"><a class="qp-btn" href="/strahovye">К выплатам для страховых →</a></p>
+<p class="qp-crumb" style="margin-top:24px;"><a href="/blog">Все статьи</a></p>
 </div>
 <div class="qp-foot">8 800 555 94 18 · <a href="mailto:office@quantumlabs.ru">office@quantumlabs.ru</a> · <a href="/">Quantum Payouts</a></div>
 </div>

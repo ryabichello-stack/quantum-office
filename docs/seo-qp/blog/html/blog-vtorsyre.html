@@ -54,6 +54,12 @@
 .qp-sitehead__name{font-size:12px}
 .qp-sitehead__menu{min-width:110px;font-size:15px}
 }
+
+.qp-wrap h3{font-size:18px;margin:28px 0 10px;color:#fff;font-weight:700}
+.qp-wrap .qp-note{background:#2c2c2c;border-radius:14px;padding:14px 16px;margin:18px 0;color:#d8d4d0}
+.qp-wrap table{width:100%;border-collapse:collapse;margin:16px 0;font-size:15px}
+.qp-wrap th,.qp-wrap td{border:1px solid #3a3a3a;padding:10px 12px;text-align:left;vertical-align:top;color:#d8d4d0}
+.qp-wrap th{background:#2c2c2c;color:#fff;font-weight:600}
 </style>
 <div class="qp-blog">
 <div class="qp-sitehead">
@@ -85,19 +91,32 @@
 <div class="qp-wrap">
 <p class="qp-crumb"><a href="/blog">Блог</a> · Quantum Payouts</p>
 <h1>Выплаты при приёме вторсырья и металла</h1>
-<p>Пункт приёма платит физлицу за металл и вторсырьё в момент сдачи. Наличные на объёме неудобны, а задержка перевода отпугивает сдатчика. Нужен контур: реестр, карта или СБП, статус «деньги у человека».</p>
-<p>Страница сервиса: <a href="/vtorsyre">выплаты при приёме вторсырья и металла</a>. Quantum Payouts — для потока <strong>от 5 млн ₽ в месяц</strong>.</p>
-<h2>Почему здесь важна скорость</h2>
-<p>Сдатчик стоит у весов. Если выплата уходит «потом», он уедет к другому приёмщику. СБП закрывает случай «есть телефон, карты нет». Карта удобна постоянным сдатчикам. Оба канала: <a href="/blog-fizlicam">выплаты физическим лицам</a>, <a href="/blog-sbp">выплаты по СБП</a>.</p>
-<h2>Сеть точек</h2>
+<p>На пункте приёма выплата сдатчику — сразу после взвешивания. Очередь и доверие к точке зависят от того, уходят ли деньги за минуты. Сети нужен единый стандарт по площадкам: карта и СБП, реестр, статусы.</p>
+<p>Продукт: <a href="/vtorsyre">вторсырьё</a>. Порог: <strong>от 5 млн ₽ в месяц</strong>.</p>
+
+<h2>Процесс у весов</h2>
+<ol>
+<li>Приём и фиксация веса/цены.</li>
+<li>Реквизиты сдатчика (часто телефон → СБП).</li>
+<li>Строка реестра → выплата.</li>
+<li>Статус в систему точки/учёт.</li>
+</ol>
+<p><a href="/blog-sbp">СБП</a> здесь особенно частый канал. Контроль сети: <a href="/blog-kontrol">контроль</a>.</p>
+
+<h2>Риски владельца</h2>
 <ul>
-<li>Несколько площадок, один реестр выплат.</li>
-<li>Права: кто на точке может инициировать выплату.</li>
-<li>След для учёта: вес, сумма, получатель.</li>
-<li>Реестр из 1С, не из Excel в банк — <a href="/blog-1c-api">1С и API</a>.</li>
+<li>«серые» выплаты мимо учёта;</li>
+<li>ошибки реквизитов и повторные выплаты;</li>
+<li>нет сводки по площадкам за день.</li>
 </ul>
-<p>Зачисление — <strong>от 1 минуты</strong>, комиссия — <strong>от 0,4%</strong>. Близкий сценарий: <a href="/blog-lombardy">ломбарды</a>, <a href="/blog-selhoz">сельхозвыкуп</a>.</p>
-<p style="margin-top:28px;"><a class="qp-btn" href="/vtorsyre">К выплатам для вторсырья →</a></p>
+<p>Реестр: <a href="/blog-reestr">как вести реестр</a>. Интеграция: <a href="/blog-1c-api">1С и API</a>.</p>
+
+<h2>Сеть площадок</h2>
+<p>Если точек много, без единого сервиса каждая площадка изобретает свой способ. Центральный реестр даёт собственнику цифру дня и снижает риск «серых» схем. Похожий контур у <a href="/blog-lombardy">ломбардов</a> и <a href="/blog-selhoz">сельхоза</a>.</p>
+
+<h2>Коротко</h2>
+<p>Вторсырьё — поток выплат физлицам на точках. Quantum Payouts — от <strong>5 млн ₽ в месяц</strong>, комиссия <strong>от 0,4%</strong>, зачисление <strong>от 1 минуты</strong>.</p>
+<p style="margin-top:28px;"><a class="qp-btn" href="/vtorsyre">К выплатам для приёма →</a></p>
 <p class="qp-crumb" style="margin-top:24px;"><a href="/blog">Все статьи</a></p>
 </div>
 <div class="qp-foot">8 800 555 94 18 · <a href="mailto:office@quantumlabs.ru">office@quantumlabs.ru</a> · <a href="/">Quantum Payouts</a></div>

@@ -54,6 +54,12 @@
 .qp-sitehead__name{font-size:12px}
 .qp-sitehead__menu{min-width:110px;font-size:15px}
 }
+
+.qp-wrap h3{font-size:18px;margin:28px 0 10px;color:#fff;font-weight:700}
+.qp-wrap .qp-note{background:#2c2c2c;border-radius:14px;padding:14px 16px;margin:18px 0;color:#d8d4d0}
+.qp-wrap table{width:100%;border-collapse:collapse;margin:16px 0;font-size:15px}
+.qp-wrap th,.qp-wrap td{border:1px solid #3a3a3a;padding:10px 12px;text-align:left;vertical-align:top;color:#d8d4d0}
+.qp-wrap th{background:#2c2c2c;color:#fff;font-weight:600}
 </style>
 <div class="qp-blog">
 <div class="qp-sitehead">
@@ -85,19 +91,33 @@
 <div class="qp-wrap">
 <p class="qp-crumb"><a href="/blog">Блог</a> · Quantum Payouts</p>
 <h1>Выплаты при выкупе сельхозпродукции</h1>
-<p>Заготовитель платит физлицу за урожай, молоко, скот — часто сезонно и сразу на месте. На объёме это реестр выплат людям, а не разовые платежи через банк. Нужны карта, СБП, статусы и след для учёта.</p>
-<p>Страница сервиса: <a href="/selhoz">выплаты при выкупе сельхозпродукции</a>. Quantum Payouts — для потока <strong>от 5 млн ₽ в месяц</strong>.</p>
-<h2>Сезон и точки приёма</h2>
+<p>В сезон заготовки поток выплат физлицам скачет: точки приёма, фермеры, личные хозяйства. Кто платит медленно — теряет объём. Кто платит без реестра — теряет контроль.</p>
+<p>Продукт: <a href="/selhoz">сельхоз</a>. Порог: <strong>от 5 млн ₽ в месяц</strong>.</p>
+
+<h2>Сезонная операционка</h2>
 <ul>
-<li>Пик объёма в сезон: ручной банк не успевает.</li>
-<li>Часть поставщиков даёт телефон — нужен <a href="/sbp">СБП</a>.</li>
-<li>Несколько точек приёма, один контур выплат.</li>
-<li>Реестр из 1С: <a href="/blog-1c-api">выплаты из 1С и по API</a>.</li>
+<li>реестр на каждый день приёмки;</li>
+<li>карта и СБП — оба канала;</li>
+<li>статусы к закрытию смены;</li>
+<li>сводка для CFO по площадкам.</li>
 </ul>
-<p>Похожая логика у приёма сырья: <a href="/blog-vtorsyre">вторсырьё и металл</a>. Рамка выплат человеку: <a href="/blog-fizlicam">выплаты физическим лицам</a>.</p>
-<h2>Сроки и комиссия</h2>
-<p>Зачисление — <strong>от 1 минуты</strong>, комиссия сервиса — <strong>от 0,4%</strong>. Если объём ниже 5 млн ₽ в месяц, сервис обычно избыточен. Если выше — ручная оплата начинает стоить дороже комиссии и ошибок в реквизитах.</p>
-<p style="margin-top:28px;"><a class="qp-btn" href="/selhoz">К выплатам для сельхозвыкупа →</a></p>
+<p><a href="/blog-reestr">Реестр</a> · <a href="/blog-sbp">СБП</a> · <a href="/blog-kontrol">Контроль</a> · <a href="/blog-1c-api">1С/API</a></p>
+
+<h2>Что важно собственнику заготовки</h2>
+<ul>
+<li>единый стандарт выплат на всех площадках сезона;</li>
+<li>СБП для сдатчиков без карты «под рукой»;</li>
+<li>сводка дня для казначейства: сколько ушло физлицам, сколько ошибок реквизитов;</li>
+<li>связка с 1С без ручной сверки выписок в пиковый месяц.</li>
+</ul>
+<p>Общий контур: <a href="/blog-fizlicam">выплаты физическим лицам</a>. Налоги/след документов: <a href="/blog-nalogi">учёт выплат</a>.</p>
+
+<h2>Типичный сбой сезона</h2>
+<p>Точки начинают платить «кто как» — наличные, разные банки, Excel без ID. К концу сезона CFO не собирает картину, а споры со сдатчиками решаются по памяти. Реестр с ID приёмки это снимает.</p>
+
+<h2>Коротко</h2>
+<p>Сельхозвыкуп — пиковые выплаты физлицам. Сервис имеет смысл на объёме от <strong>5 млн ₽ в месяц</strong>, комиссия <strong>от 0,4%</strong>, зачисление <strong>от 1 минуты</strong>.</p>
+<p style="margin-top:28px;"><a class="qp-btn" href="/selhoz">К выплатам для заготовителей →</a></p>
 <p class="qp-crumb" style="margin-top:24px;"><a href="/blog">Все статьи</a></p>
 </div>
 <div class="qp-foot">8 800 555 94 18 · <a href="mailto:office@quantumlabs.ru">office@quantumlabs.ru</a> · <a href="/">Quantum Payouts</a></div>

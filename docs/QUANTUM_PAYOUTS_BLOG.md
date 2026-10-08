@@ -1,48 +1,44 @@
-# Quantum Payouts — блог (live)
+# Quantum Payouts — блог (live + SEO deep)
 
-Updated: 2026-10-06 UTC  
+Updated: 2026-10-08 UTC  
 Tilda projectid `14431186` · счётчик Метрики `104241036`
 
-Раздел запущен, чтобы в поиске появились не только коммерческие лендинги, а индексируемые статьи с перелинковкой.
+Раздел запущен, чтобы в поиске появились не только коммерческие лендинги, а индексируемые статьи с перелинковкой для B2B (CEO / CFO / предприниматели).
 
-## Live (HTTP 200, в sitemap)
+## SEO deep (Wordstat, 2026-10-08)
+
+Сняты частоты Wordstat → артефакт `qp-seo-wordstat/wordstat.json`.  
+Все статьи переписаны глубже под B2B; добавлены gap-URL под кластеры «реестр», «ГПХ», «налоги/сведения», «контроль».  
+Сборка: `docs/seo-qp/blog/scripts/build_articles.py` · карта: `docs/seo-qp/blog/WORDSTAT_SEO.md` · `PLAN.md`.
+
+**Публикация в Tilda:** с VM агента `tilda.ru` (QRATOR `178.248.233.147`) недоступен — логин/редактор не открываются. HTML и SEO meta готовы в `docs/seo-qp/blog/html/` + `manifest.json`. Скрипт заливки: `docs/seo-qp/blog/scripts/publish_tilda.py` (нужен доступ к tilda.ru).
+
+### Новые URL (после publish)
+
+| URL | Кластер |
+|-----|---------|
+| `/blog-reestr` | реестр выплат (10257) |
+| `/blog-nalogi` | сведения / НДФЛ / вознаграждение |
+| `/blog-kontrol` | контроль статусов и ролей |
+| `/blog-gph` | выплаты по ГПХ (10050) |
+
+## Live (уже на сайте, HTTP 200)
 
 | URL | Title / H1 |
 |-----|--------|
 | https://quantumpayouts.ru/blog | Статьи о выплатах физическим лицам |
-| https://quantumpayouts.ru/blog-fizlicam | Выплаты физическим лицам: карты, СБП, API и 1С |
-| https://quantumpayouts.ru/blog-samozanyatye | Выплаты самозанятым и по ГПХ |
-| https://quantumpayouts.ru/blog-sbp | Выплаты физическим лицам по СБП |
+| https://quantumpayouts.ru/blog-fizlicam | Выплаты физическим лицам |
+| https://quantumpayouts.ru/blog-samozanyatye | Выплаты самозанятым |
+| https://quantumpayouts.ru/blog-sbp | Выплаты по СБП |
 | https://quantumpayouts.ru/blog-1c-api | Выплаты из 1С и по API |
-| https://quantumpayouts.ru/blog-lombardy | Выплаты для ломбардов и сетей скупки |
-| https://quantumpayouts.ru/blog-mfo | Выплаты МФО физическим лицам |
-| https://quantumpayouts.ru/blog-trade-in | Выплаты при трейд-ин и выкупе авто |
-| https://quantumpayouts.ru/blog-vtorsyre | Выплаты при приёме вторсырья и металла |
-| https://quantumpayouts.ru/blog-strahovye | Страховые выплаты физическим лицам |
-| https://quantumpayouts.ru/blog-selhoz | Выплаты при выкупе сельхозпродукции |
-| https://quantumpayouts.ru/blog-kuriery | Выплаты курьерам и водителям такси |
+| https://quantumpayouts.ru/blog-lombardy | Ломбарды и скупка |
+| https://quantumpayouts.ru/blog-mfo | МФО |
+| https://quantumpayouts.ru/blog-trade-in | Трейд-ин |
+| https://quantumpayouts.ru/blog-vtorsyre | Вторсырьё |
+| https://quantumpayouts.ru/blog-strahovye | Страховые |
+| https://quantumpayouts.ru/blog-selhoz | Сельхоз |
+| https://quantumpayouts.ru/blog-kuriery | Курьеры и такси |
 
-Пункт **Блог** стоит в выпадающем меню «Меню» на главной и всех лендингах (`/blog`). Сами статьи — тёмная гамма сайта (`#1c1c1c` / `#2c2c2c` / `#ff6400`), не белый фон Tilda.
+Пункт **Блог** в меню «Меню» на главной и лендингах. Тёмная гамма сайта. Шапка блога как на главной + T966.
 
-Шапка блога как на главной: логотип, телефон/email, «ЗАДАТЬ ВОПРОС →», иконки (сайт/Telegram/WhatsApp/MAX), блок «Меню» с T966 (`#submenu:about`). Старая кастомная полоска «Главная / Блог» убрана.
-
-Обратные ссылки с коммерческих лендингов на парные статьи — полоски T123 «разбор в блоге» (scoped HTML, без глобального CSS `#allrecords`). На главной — полоска на хаб `/blog`. Подзаголовок героя: «Для бизнеса с объёмом выплат физическим лицам от 5 млн ₽ в месяц.»
-
-В Title/H1/Description нет слова «массовые». Порог продукта в текстах: от 5 млн ₽ в месяц.
-
-## Переобход Яндекс Вебмастера (2026-10-06 11:16 UTC)
-
-Отправлены 24 URL (хаб, 11 статей, главная, 11 лендингов): статус «В очереди». Остаток дневного лимита: 126 из 150. Обновление в поиске — не сразу, через несколько обновлений базы.
-
-## Зачем это
-
-По Метрике после лендингов выросли визиты, но **кликов из поиска почти нет**. Статьи дают отдельные URL под информационные запросы («как платить самозанятым», «выплаты по СБП», «выплаты МФО») и внутренние ссылки на отраслевые лендинги.
-
-## Главная: мусор `} } } }] }` в шапке (2026-10-06)
-
-Это **не меню и не Title**. В HEAD главной (`pageid 75572866`) стоял FAQ JSON-LD + Organization, а после закрывающих `</script>` остался хвост чужих скобок. Браузер закрывал скрипт и рисовал `} } } … }] }` текстом над меню.
-
-Править: Tilda → страница главной → Настройки → «HTML-код для вставки внутрь HEAD» → [Редактировать код](https://tilda.ru/projects/editheadcode/?projectid=14431186&pageid=75572866).  
-Сайт-wide «Вставка кода» в настройках проекта тут ни при чём (блог этот HEAD не наследует).
-
-После чистки оставлены два валидных `application/ld+json` (FAQPage, Organization), главная опубликована на `quantumpayouts.ru`.
+В Title/H1/Description нет слова «массовые». Порог продукта: от 5 млн ₽ в месяц.

@@ -54,6 +54,12 @@
 .qp-sitehead__name{font-size:12px}
 .qp-sitehead__menu{min-width:110px;font-size:15px}
 }
+
+.qp-wrap h3{font-size:18px;margin:28px 0 10px;color:#fff;font-weight:700}
+.qp-wrap .qp-note{background:#2c2c2c;border-radius:14px;padding:14px 16px;margin:18px 0;color:#d8d4d0}
+.qp-wrap table{width:100%;border-collapse:collapse;margin:16px 0;font-size:15px}
+.qp-wrap th,.qp-wrap td{border:1px solid #3a3a3a;padding:10px 12px;text-align:left;vertical-align:top;color:#d8d4d0}
+.qp-wrap th{background:#2c2c2c;color:#fff;font-weight:600}
 </style>
 <div class="qp-blog">
 <div class="qp-sitehead">
@@ -85,19 +91,31 @@
 <div class="qp-wrap">
 <p class="qp-crumb"><a href="/blog">Блог</a> · Quantum Payouts</p>
 <h1>Выплаты курьерам и водителям такси</h1>
-<p>Курьер и водитель — физлица вне штатной зарплаты: смена закрылась, нужна выплата на карту или по СБП. На парке это ежедневный реестр, а не «перевести вручную десяток людей».</p>
-<p>Страница сервиса: <a href="/kuriery-taxi">выплаты курьерам и водителям такси</a>. Quantum Payouts — для объёма <strong>от 5 млн ₽ в месяц</strong>.</p>
-<h2>Чем это похоже на самозанятых</h2>
-<p>Для платежа и курьер, и самозанятый — физические лица. Разница в договоре, не в номере карты. Поэтому один сервис закрывает оба контура: <a href="/blog-samozanyatye">выплаты самозанятым и по ГПХ</a>.</p>
-<p>СБП часто удобнее: телефон уже в анкете водителя. Разбор канала: <a href="/blog-sbp">выплаты по СБП</a>.</p>
-<h2>Как не копить долг по сменам</h2>
+<p>Для платформы доставки и таксопарка выплата курьеру/водителю — часть продукта для исполнителя. Задержка после смены снижает удержание. На объёме нужен автоматический реестр, карта и СБП, статусы в биллинг.</p>
+<p>Продукт: <a href="/kuriery-taxi">курьеры и такси</a>. Порог: <strong>от 5 млн ₽ в месяц</strong>.</p>
+
+<div class="qp-note">В Wordstat много запросов курьеров «когда придут деньги». Ваш SEO-интерес как B2B — запросы компаний, которые эти выплаты проводят: «выплаты курьерам на карты», «выплаты самозанятым курьерам».</div>
+
+<h2>Модель для платформы</h2>
 <ol>
-<li>Реквизиты в профиле исполнителя заранее.</li>
-<li>Реестр из учёта смен — в сервис по API или из 1С.</li>
-<li>Статусы обратно: успех, отказ реквизитов, повтор.</li>
-<li>Права: кто в парке может запустить выплату.</li>
+<li>Смена/заказ закрыты в биллинге.</li>
+<li>Реестр выплат физлицам (часто самозанятые).</li>
+<li>Отправка по API.</li>
+<li>Статус в кабинет исполнителя и в учёт.</li>
 </ol>
-<p>Зачисление — <strong>от 1 минуты</strong>, комиссия — <strong>от 0,4%</strong>. Интеграция: <a href="/blog-1c-api">выплаты из 1С и по API</a>.</p>
+<p><a href="/blog-samozanyatye">Самозанятые</a> · <a href="/blog-1c-api">API</a> · <a href="/blog-sbp">СБП</a></p>
+
+<h2>Что смотрит CFO</h2>
+<ul>
+<li>стоимость ошибки реквизитов и повторных выплат;</li>
+<li>доля СБП vs карта;</li>
+<li>время от закрытия смены до статуса «успешно»;</li>
+<li>контроль доступов к запуску выплат.</li>
+</ul>
+<p><a href="/blog-kontrol">Контроль</a> · <a href="/blog-reestr">Реестр</a></p>
+
+<h2>Коротко</h2>
+<p>Курьеры и такси — высокочастотные выплаты физлицам. Quantum Payouts: от <strong>5 млн ₽ в месяц</strong>, комиссия <strong>от 0,4%</strong>, зачисление <strong>от 1 минуты</strong>.</p>
 <p style="margin-top:28px;"><a class="qp-btn" href="/kuriery-taxi">К выплатам курьерам и такси →</a></p>
 <p class="qp-crumb" style="margin-top:24px;"><a href="/blog">Все статьи</a></p>
 </div>
