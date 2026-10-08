@@ -2,6 +2,10 @@
 
 Tilda projectid: `14431186` · домен: `quantumpayouts.ru`
 
+## SEO-канон (Codex)
+
+Title / Description / Keywords в `ALL_PAGES.json` и `manifest.json` — **канон Codex** (live настройки страниц Tilda на 2026-10-08). При публикации не перезаписывать другими формулировками.
+
 ## Что сделать
 
 1. Для каждой страницы из `ALL_PAGES.json`:
@@ -13,14 +17,11 @@ Tilda projectid: `14431186` · домен: `quantumpayouts.ru`
 3. Не использовать слово «массовые» в Title/H1/Description/основных H2/CTA.
 4. После всех страниц — переобход URL в Яндекс.Вебмастере.
 
-## Новые страницы (создать)
+## Страницы (все 16 существуют, pageid в ALL_PAGES.json)
 
-- `/blog-reestr`
-- `/blog-nalogi`
-- `/blog-kontrol`
-- `/blog-gph`
+Включая `/blog-reestr`, `/blog-nalogi`, `/blog-kontrol`, `/blog-gph`.
 
-## Уже live (обновить HTML + SEO)
+## Live (обновить HTML; SEO уже канон Codex)
 
 - `/blog` (хаб)
 - `/blog-fizlicam` (уже частично обновлён на проде)
