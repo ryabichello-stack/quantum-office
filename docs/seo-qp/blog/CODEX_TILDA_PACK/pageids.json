@@ -1,0 +1,29 @@
+{
+  "hub": {"pageid": "286640109", "recid": "4526317601", "t966": "4540894201"},
+  "blog-fizlicam": {"pageid": "286652709", "recid": "4526493601", "t966": "4541046201"},
+  "blog-samozanyatye": {"pageid": "286652909", "recid": "4526494101", "t966": "4541050801"},
+  "blog-sbp": {"pageid": "286653109", "recid": "4526494601", "t966": "4541059001"},
+  "blog-1c-api": {"pageid": "286653209", "recid": "4526495001", "t966": "4541065001"},
+  "blog-lombardy": {"pageid": "286653309", "recid": "4526495401", "t966": "4541070801"},
+  "blog-mfo": {"pageid": "286912609", "recid": "4530435201", "t966": "4541076101"},
+  "blog-trade-in": {"pageid": "286913109", "recid": "4530442301", "t966": "4541082601"},
+  "blog-vtorsyre": {"pageid": "286913209", "recid": "4530446601", "t966": "4541090201"},
+  "blog-strahovye": {"pageid": "286913309", "recid": "4530454301", "t966": "4541100101"},
+  "blog-selhoz": {"pageid": "286913409", "recid": "4530465401", "t966": "4541113201"},
+  "blog-kuriery": {"pageid": "286913509", "recid": "4530476601", "t966": "4541122401"},
+  "landing_strips": {
+    "mfo": "4530764201",
+    "trade-in": "4530781301",
+    "vtorsyre": "4530785601",
+    "strahovye": "4530798501",
+    "selhoz": "4530810401",
+    "kuriery-taxi": "4530822801",
+    "lombardy": "4530827101",
+    "samozanyatye": "4530840401",
+    "gph": "4530845101",
+    "sbp": "4530853201",
+    "api-1c": "4530862401"
+  },
+  "home_blog_strip": "4530888601",
+  "header_note": "Blog pages use site header clone (logo, phone, ЗАДАТЬ ВОПРОС, social icons, Меню) + T966 fish from home (#submenu:about)."
+}

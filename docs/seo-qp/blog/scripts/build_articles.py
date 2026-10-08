@@ -48,7 +48,44 @@ HEAD = f"""<style>{CSS}
 
 FOOT = """
 </div>
-<div class="qp-foot">8 800 555 94 18 · <a href="mailto:office@quantumlabs.ru">office@quantumlabs.ru</a> · <a href="/">Quantum Payouts</a></div>
+<footer class="qp-foot">
+  <div class="qp-foot__grid">
+    <div class="qp-foot__card">
+      <h2 class="qp-foot__title">Бесплатная консультация</h2>
+      <p class="qp-foot__lead">Наши специалисты помогут вам разобраться во всех деталях!</p>
+      <p class="qp-foot__label">Контакты:</p>
+      <a class="qp-foot__phone" href="tel:88005559418">8 800 555 94 18</a>
+      <a class="qp-foot__mail" href="mailto:office@quantumlabs.ru">office@quantumlabs.ru</a>
+      <p class="qp-foot__label">Напишите нам:</p>
+      <div class="qp-foot__soc">
+        <a class="i-wa" href="https://api.whatsapp.com/send/?phone=79699665899&amp;text=%D0%94%D0%BE%D0%B1%D1%80%D1%8B%D0%B9+%D0%B4%D0%B5%D0%BD%D1%8C%21+%D0%A5%D0%BE%D1%87%D1%83+%D1%81%D0%B4%D0%B5%D0%BB%D0%B0%D1%82%D1%8C+%D0%B7%D0%B0%D0%BA%D0%B0%D0%B7.&amp;type=phone_number&amp;app_absent=0" target="_blank" rel="noopener" aria-label="WhatsApp"></a>
+        <a class="i-tg" href="https://t.me/quantumlabss" target="_blank" rel="noopener" aria-label="Telegram"></a>
+        <a class="i-web" href="https://quantumlabs.ru/" target="_blank" rel="noopener" aria-label="Сайт Quantum Labs"></a>
+        <a class="i-max" href="https://max.ru/id7840118071_bot" target="_blank" rel="noopener" aria-label="MAX"></a>
+      </div>
+    </div>
+    <div class="qp-foot__card">
+      <p class="qp-foot__menu-title">Меню:</p>
+      <ul class="qp-foot__menu">
+        <li><a href="/#rec1278107731">Главная</a></li>
+        <li><a href="/#rec1277532741">О нас</a></li>
+        <li><a href="/#rec1276047761">Этапы</a></li>
+        <li><a href="/#rec1271709241">Отзывы</a></li>
+        <li><a href="/#rec1271118571">FAQ</a></li>
+        <li><a href="/blog">Блог</a></li>
+      </ul>
+    </div>
+    <div class="qp-foot__card">
+      <a class="qp-foot__cta" href="/#popup:myform2">ОСТАВИТЬ ЗАЯВКУ →</a>
+      <ul class="qp-foot__legal">
+        <li><a href="/privacy">Политика конфиденциальности</a></li>
+        <li><a href="/offer">Оферта</a></li>
+        <li><a href="https://payouts-dev.quantumlabs.ru/docs/index.php?lang=ru" target="_blank" rel="noopener">Инструкция</a></li>
+      </ul>
+      <span class="qp-foot__copy">© Все права защищены</span>
+    </div>
+  </div>
+</footer>
 </div>
 """
 
