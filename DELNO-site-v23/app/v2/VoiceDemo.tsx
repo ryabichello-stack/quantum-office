@@ -10,7 +10,7 @@ import { useCallback, useRef, useState } from "react";
 
 const prompts = ["Сколько стоит?", "Как подключить номер?", "Что умеет DELNO?"];
 
-export default function VoiceDemo() {
+export default function VoiceDemo({ embed = false }: { embed?: boolean }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [question, setQuestion] = useState("Нажмите на кристалл и задайте вопрос");
   const [answer, setAnswer] = useState("Я отвечу по базе знаний DELNO — о тарифах, подключении и возможностях.");
@@ -77,27 +77,34 @@ export default function VoiceDemo() {
       : "Спросить вслух";
 
   return (
-    <section className="voice-demo-section" id="demo">
-      <div className="voice-demo-copy">
-        <div className="v2-kicker pale">Попробуйте сейчас</div>
-        <h2>
-          Спросите
-          <br />
-          DELNO вслух.
-        </h2>
-        <p>
-          Такого голосового помощника можно разместить на вашем сайте. Клиент нажимает, задаёт вопрос и сразу
-          получает ответ по вашей базе знаний.
-        </p>
-        <div className="demo-badges">
-          <span>
-            <Sparkles /> ИИ-ответ
-          </span>
-          <span>
-            <Volume2 /> Голос как на звонке
-          </span>
+    <section className={`voice-demo-section${embed ? " voice-demo-embed" : ""}`} id="demo">
+      {!embed ? (
+        <div className="voice-demo-copy">
+          <div className="v2-kicker pale">Попробуйте сейчас</div>
+          <h2>
+            Спросите
+            <br />
+            DELNO вслух.
+          </h2>
+          <p>
+            Такого голосового помощника можно разместить на вашем сайте. Клиент нажимает, задаёт вопрос и сразу
+            получает ответ по вашей базе знаний.
+          </p>
+          <div className="demo-badges">
+            <span>
+              <Sparkles /> ИИ-ответ
+            </span>
+            <span>
+              <Volume2 /> Голос как на звонке
+            </span>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="voice-demo-embed-label">
+          <div className="v2-kicker pale">Живое демо</div>
+          <h2>Задайте вопрос — как ваш клиент.</h2>
+        </div>
+      )}
 
       <div
         className={`voice-orb-stage${voiceActive ? ` voice-live voice-${voicePhase}` : ""}`}

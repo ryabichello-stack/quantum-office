@@ -1,33 +1,25 @@
-import { Check, Mic, Phone, Play } from "lucide-react";
+import { ArrowDown, CalendarDays, Check, MessageCircle, Mic, Phone, Sparkles, UserRound } from "lucide-react";
 import Link from "next/link";
 import "./v2.css";
 import "./mobile.css";
-import { DelnoMark, V4ProductStage } from "./DelnoPage";
+import { DelnoMark } from "./DelnoPage";
 import { FaqSection, type FaqItem } from "./FaqSection";
 import VoiceDemo from "./VoiceDemo";
 import { LeadFormTrigger } from "./SiteControls";
-import {
-  ConvertPricingNote,
-  ConvertTrustBar,
-  StickyMobileCTA,
-} from "./SiteConvert";
+import { ConvertPricingNote, StickyMobileCTA } from "./SiteConvert";
 
-const convertFaq: FaqItem[] = [
+const hireFaq: FaqItem[] = [
   [
-    "Что входит в 300 диалогов?",
-    "Считаются отдельные ИИ-диалоги с клиентом, а не каждое сообщение внутри одного разговора. Лимит одинаковый на тарифах «Диалоги» и «Диалоги + звонки».",
+    "Это замена администратору?",
+    "DELNO закрывает повторяющуюся первую линию: ответы, запись, приём контактов. Сложные и медицинские решения остаются за человеком — с готовым контекстом диалога.",
   ],
   [
-    "Что входит в тариф за 2 990 ₽?",
-    "Чат и голосовой виджет на сайте, мессенджеры, база знаний, до 300 ИИ-диалогов и 30 минут голоса в виджете. Обычные телефонные звонки (PSTN) не входят.",
+    "Что входит в 2 990 ₽?",
+    "Сайт и мессенджеры, база знаний, до 300 ИИ-диалогов и 30 минут голоса в виджете. Обычные телефонные звонки (PSTN) — в тарифе 5 990 ₽.",
   ],
   [
-    "Когда нужен тариф 5 990 ₽?",
-    "Когда клиенты звонят на номер или нужны исходящие звонки. В пакет входят 100 минут телефонии и всё из тарифа «Диалоги».",
-  ],
-  [
-    "Можно попробовать до оплаты?",
-    "Да. Ниже на странице — голосовое демо с той же логикой, что на вашем сайте. Для запуска на вашем бизнесе оставьте заявку — подготовим демо-сценарий.",
+    "Можно услышать голос до подключения?",
+    "Да — на этой странице. Нажмите на кристалл и задайте вопрос вслух, как ваш клиент.",
   ],
   [
     "DELNO придумает ответ, если не знает?",
@@ -35,144 +27,129 @@ const convertFaq: FaqItem[] = [
   ],
 ];
 
+const pillars = [
+  {
+    icon: MessageCircle,
+    title: "Отвечает",
+    text: "На сайте, в Telegram и MAX — из одной базы знаний, без «бота на каждый канал».",
+  },
+  {
+    icon: CalendarDays,
+    title: "Записывает",
+    text: "Уточняет услугу и время, создаёт запись и отправляет подтверждение клиенту.",
+  },
+  {
+    icon: UserRound,
+    title: "Передаёт человеку",
+    text: "Когда вопрос выходит за рамки — не выдумывает, а передаёт диалог с контекстом.",
+  },
+];
+
 export default function ConvertLanding() {
   return (
-    <main className="v2 v4-refined v2-convert v2-convert-page">
-      <header className="v2-header cvt-header">
-        <Link className="v2-logo" href="/v2">
+    <main className="v2 v2-convert v2-hire-page">
+      <header className="v2-header hire-header">
+        <Link className="v2-logo hire-logo" href="/v2">
           <DelnoMark />
           DELNO
         </Link>
-        <nav className="cvt-nav" aria-label="Разделы страницы">
-          <a href="#demo">Демо</a>
-          <a href="#compare">Сравнение</a>
-          <a href="#prices">Тарифы</a>
-          <a href="#answers">Вопросы</a>
-        </nav>
+        <Link className="hire-main-link" href="/">
+          Основной сайт
+        </Link>
         <div className="v2-header-right">
-          <a className="header-convert-cta" href="#demo">
-            Попробовать бесплатно
+          <a className="hire-scroll-cta" href="#demo">
+            <Mic aria-hidden />
+            Спросить вслух
           </a>
-          <LeadFormTrigger className="v2-btn compact" label="Демо" source="Header v2-convert" />
+          <LeadFormTrigger className="v2-btn compact hire-lead-header" label="Нанять DELNO" source="Header v2-hire" />
         </div>
       </header>
 
-      <section className="cvt-hero" id="product">
-        <div className="cvt-hero-inner">
-          <p className="cvt-eyebrow">Клиники · салоны · сервис с потоком обращений</p>
+      <section className="hire-hero" id="top">
+        <div className="hire-hero-glow" aria-hidden />
+        <div className="hire-hero-inner">
+          <p className="hire-eyebrow">
+            <Sparkles aria-hidden />
+            ИИ-сотрудник на первой линии
+          </p>
           <h1>
-            Клиенты пишут и звонят —
-            <span> DELNO закрывает первую линию.</span>
+            Ваш следующий сотрудник —
+            <span> не человек.</span>
           </h1>
-          <p className="cvt-lead">
-            Ответы из вашей базы знаний на сайте, в мессенджерах и (по тарифу) по телефону.
-            В пакете уже <strong>300 диалогов</strong> и <strong>30 минут</strong> голоса на сайте — без
-            найма ещё одного администратора.
+          <p className="hire-lead">
+            DELNO принимает обращения на сайте, в мессенджерах и по телефону (по тарифу). Отвечает по вашим
+            правилам, записывает клиентов и работает, когда смена уже закончилась.
           </p>
-          <div className="v2-actions cvt-actions">
-            <a className="v2-btn primary" href="#demo">
-              <Mic aria-hidden />
-              Спросить вслух (30 сек)
+          <div className="hire-hero-actions">
+            <LeadFormTrigger className="v2-btn primary hire-btn-primary" label="Нанять DELNO" source="Hero v2-hire" />
+            <a className="v2-btn secondary hire-btn-secondary" href="#demo">
+              Сначала — голос за 30 сек
             </a>
-            <LeadFormTrigger
-              className="v2-btn secondary"
-              label="Демо на моём бизнесе"
-              source="Hero v2-convert"
-            />
           </div>
-          <p className="cvt-micro">
-            Без карты · <Link href="/">Классическая версия сайта</Link>
-          </p>
+          <ul className="hire-stats" aria-label="Ключевые цифры">
+            <li>
+              <strong>300</strong>
+              <span>диалогов в пакете</span>
+            </li>
+            <li>
+              <strong>24/7</strong>
+              <span>на подключённых каналах</span>
+            </li>
+            <li>
+              <strong>от 2 990 ₽</strong>
+              <span>без карты на старте</span>
+            </li>
+          </ul>
         </div>
-        <div className="cvt-hero-visual">
-          <V4ProductStage />
-        </div>
+        <a className="hire-scroll-hint" href="#demo">
+          <span>Живое демо</span>
+          <ArrowDown aria-hidden />
+        </a>
       </section>
 
-      <ConvertTrustBar />
+      <VoiceDemo embed />
 
-      <VoiceDemo />
-
-      <section className="cvt-compare v2-section" id="compare">
-        <div className="v2-kicker">Экономика первой линии</div>
-        <h2 className="cvt-h2">
-          Три смены администраторов
-          <br />
-          <span>или один DELNO в пакете.</span>
+      <section className="hire-pillars v2-section" id="why">
+        <div className="v2-kicker pale">Зачем нанимать DELNO</div>
+        <h2 className="hire-h2">
+          Одна роль вместо
+          <span> пяти разрозненных сервисов.</span>
         </h2>
-        <p className="cvt-compare-lead">
-          Оценка для ориентира — не оферта. DELNO не заменяет врача или мастера, но снимает
-          повторяющиеся обращения: цены, запись, «вы работаете в субботу?».
-        </p>
-        <div className="cvt-compare-table" role="table">
-          <div className="cvt-row cvt-head" role="row">
-            <span role="columnheader" />
-            <span role="columnheader">3 администратора</span>
-            <span role="columnheader">DELNO «Диалоги + звонки»</span>
-          </div>
-          <div className="cvt-row" role="row">
-            <span role="rowheader">Ежемесячные затраты</span>
-            <span>от ~150 000 ₽ ФОТ + налоги</span>
-            <span className="cvt-highlight">5 990 ₽ абонент</span>
-          </div>
-          <div className="cvt-row" role="row">
-            <span role="rowheader">Ночь и выходные</span>
-            <span>смены / пропуски</span>
-            <span className="cvt-highlight">24/7 на подключённых каналах</span>
-          </div>
-          <div className="cvt-row" role="row">
-            <span role="rowheader">Объём в пакете</span>
-            <span>зависит от людей</span>
-            <span className="cvt-highlight">300 диалогов + 100 мин PSTN</span>
-          </div>
-          <div className="cvt-row" role="row">
-            <span role="rowheader">Единая база для каналов</span>
-            <span>часто разрозненно</span>
-            <span className="cvt-highlight">одна KB для сайта и чатов</span>
-          </div>
+        <div className="hire-pillar-grid">
+          {pillars.map(({ icon: Icon, title, text }) => (
+            <article key={title}>
+              <div className="hire-pillar-icon">
+                <Icon aria-hidden />
+              </div>
+              <h3>{title}</h3>
+              <p>{text}</p>
+            </article>
+          ))}
         </div>
-        <LeadFormTrigger
-          className="v2-btn primary cvt-compare-cta"
-          label="Посчитать для моего бизнеса"
-          source="Блок сравнения v2"
-        />
       </section>
 
-      <section className="cvt-steps v2-section">
-        <div className="v2-kicker">Как начать</div>
-        <ol className="cvt-step-list">
-          <li>
-            <span>1</span>
-            <div>
-              <b>Проверьте голосом</b>
-              <p>Задайте вопрос про тарифы или запись — как ваш клиент.</p>
-            </div>
-          </li>
-          <li>
-            <span>2</span>
-            <div>
-              <b>Оставьте заявку</b>
-              <p>Подберём один сценарий: сайт, Telegram или звонки.</p>
-            </div>
-          </li>
-          <li>
-            <span>3</span>
-            <div>
-              <b>Запуск на ваших материалах</b>
-              <p>Услуги, цены, правила — одна база для всех каналов.</p>
-            </div>
-          </li>
-        </ol>
+      <section className="hire-proof">
+        <p>
+          «Вы работаете в субботу?» · «Сколько стоит?» · «Можно завтра вечером?» — DELNO отвечает из вашей базы
+          знаний и ведёт к записи или заявке.
+        </p>
+        <div className="hire-proof-channels">
+          <span>Сайт</span>
+          <span>Telegram</span>
+          <span>MAX</span>
+          <span>Телефон</span>
+          <span>Почта</span>
+        </div>
       </section>
 
-      <section className="v2-pricing cvt-pricing" id="prices">
+      <section className="v2-pricing hire-pricing" id="prices">
         <div className="v2-pricing-head">
-          <div className="v2-kicker pale">Прозрачные пакеты</div>
-          <h2>Выберите, как клиенты обращаются</h2>
-          <p>Лимиты видны сразу — без «уточним по телефону».</p>
+          <div className="v2-kicker pale">Тарифы</div>
+          <h2>Выберите, как к вам обращаются клиенты</h2>
+          <p>Лимиты в открытом доступе — без «уточним по телефону».</p>
         </div>
         <ConvertPricingNote />
-        <div className="v2-price-grid cvt-price-grid">
+        <div className="v2-price-grid hire-price-grid">
           <article>
             <span>Диалоги</span>
             <h3>
@@ -190,7 +167,7 @@ export default function ConvertLanding() {
                 <Check aria-hidden /> Единая база знаний
               </li>
             </ul>
-            <LeadFormTrigger className="price-lead" label="Начать с чатов" source="Convert 2990" />
+            <LeadFormTrigger className="price-lead" label="Начать с чатов" source="Hire 2990" />
           </article>
           <article className="best">
             <div className="best-label">Если звонят</div>
@@ -210,41 +187,40 @@ export default function ConvertLanding() {
                 <Check aria-hidden /> Итог звонка человеку
               </li>
             </ul>
-            <LeadFormTrigger className="price-lead" label="Получить демо" source="Convert 5990" />
+            <LeadFormTrigger className="price-lead" label="Нанять с телефоном" source="Hire 5990" />
           </article>
         </div>
       </section>
 
-      <FaqSection fallback={convertFaq} version4 />
+      <FaqSection fallback={hireFaq} version4 />
 
-      <section className="v2-final cvt-final" id="contact">
+      <section className="v2-final hire-final" id="contact">
         <div className="final-glow" />
         <h2>
-          Проверьте DELNO
-          <span> до найма ещё одного администратора.</span>
+          Нанять DELNO
+          <span> проще, чем искать ещё одного администратора.</span>
         </h2>
-        <p>Сначала голос на этой странице — затем демо на примере вашего бизнеса.</p>
-        <div className="cvt-final-actions">
-          <a className="v2-btn primary" href="#demo">
-            <Play aria-hidden /> Спросить вслух
+        <p>Сначала голос на этой странице — затем демо на материалах вашего бизнеса.</p>
+        <div className="hire-final-actions">
+          <LeadFormTrigger className="v2-btn primary" label="Получить демо" source="Финал v2-hire" />
+          <a className="v2-btn secondary" href="#demo">
+            <Mic aria-hidden /> Спросить вслух
           </a>
-          <LeadFormTrigger className="v2-btn final-lead" label="Получить демо" source="Финал v2-convert" />
         </div>
-        <a className="cvt-phone" href="tel:+78005550000">
+        <a className="hire-phone" href="tel:+78005550000">
           <Phone aria-hidden /> 8 800 555-00-00
         </a>
       </section>
 
       <StickyMobileCTA />
 
-      <footer className="v2-footer">
+      <footer className="v2-footer hire-footer">
         <Link className="v2-logo" href="/v2">
           <DelnoMark />
           DELNO
         </Link>
         <p>
-          Conversion landing <code>/v2</code> ·{" "}
-          <Link href="/">Основной сайт</Link>
+          Страница найма <code>/v2</code> · <Link href="/">dlno.ru</Link>
         </p>
         <div>
           <a href="#prices">Тарифы</a>
