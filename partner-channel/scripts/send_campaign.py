@@ -331,12 +331,22 @@ def save_to_sent(msg: MIMEMultipart) -> str:
             pass
 
 
+STOP_STATUSES = {"отказ", "партнёр подключён"}
+WARM_SKIP = {"prodagi-pro", "callplex", "salesoutsourcing"}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Send Quantum Payouts partner-channel emails via rdv@")
     ap.add_argument("--dry-run", action="store_true", help="Print actions only (default if SEND not enabled)")
     ap.add_argument("--priority", default="A", help="A, B, C, or ALL")
     ap.add_argument("--limit", type=int, default=20)
     ap.add_argument("--ids", default="", help="Comma-separated partner ids")
+    ap.add_argument(
+        "--wave",
+        default="intro",
+        choices=("intro", "fu1", "fu2"),
+        help="intro = first cold mail; fu1/fu2 = follow-up chain",
+    )
     ap.add_argument(
         "--delay",
         type=int,
@@ -371,34 +381,66 @@ def main() -> int:
         print(f"SMTP account: {user} (isolated from office@ outreach limits)")
     data = load_campaign()
     ids = {x.strip() for x in args.ids.split(",") if x.strip()}
+    wave = args.wave
     selected = []
     for p in data["partners"]:
         if not p.get("email"):
             continue
-        if p.get("sent_at"):
+        if p["id"] in WARM_SKIP:
+            continue
+        if (p.get("status") or "") in STOP_STATUSES:
+            continue
+        if (p.get("reply") or "").strip().lower() == "unsubscribe":
             continue
         if ids and p["id"] not in ids:
             continue
         if args.priority.upper() != "ALL" and p.get("priority") != args.priority.upper():
             continue
+        if wave == "intro":
+            if p.get("sent_at"):
+                continue
+            email_rel = p.get("email_file")
+            subject = p.get("subject") or ""
+        elif wave == "fu1":
+            if not p.get("sent_at") or p.get("followup1_sent_at"):
+                continue
+            email_rel = p.get("followup1_file")
+            subject = p.get("followup_subject") or (
+                f"Re: {p.get('subject')}" if p.get("subject") else ""
+            )
+        else:  # fu2
+            if not p.get("followup1_sent_at") or p.get("followup2_sent_at"):
+                continue
+            email_rel = p.get("followup2_file")
+            subject = p.get("followup_subject") or (
+                f"Re: {p.get('subject')}" if p.get("subject") else ""
+            )
+        if not email_rel:
+            print(f"skip {p['id']}: no file for wave={wave}")
+            continue
+        p["_wave_file"] = email_rel
+        p["_wave_subject"] = subject
         selected.append(p)
         if len(selected) >= args.limit:
             break
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    log_path = LOG_DIR / f"send_{_utc_now().strftime('%Y%m%dT%H%M%SZ')}.jsonl"
-    print(f"selected={len(selected)} dry_run={dry} from={ALLOWED_FROM} log={log_path}")
+    log_path = LOG_DIR / f"send_{wave}_{_utc_now().strftime('%Y%m%dT%H%M%SZ')}.jsonl"
+    print(
+        f"wave={wave} selected={len(selected)} dry_run={dry} "
+        f"from={ALLOWED_FROM} log={log_path}"
+    )
 
     today = date.today()
     for i, p in enumerate(selected):
-        email_path = ROOT / p["email_file"]
+        email_path = ROOT / p["_wave_file"]
         to_hdr, subject_hdr, body = parse_email_file(email_path)
         to = (to_hdr or p.get("email") or "").strip()
-        subject = (subject_hdr or p.get("subject") or "").strip()
+        subject = (subject_hdr or p.get("_wave_subject") or "").strip()
         if not to:
             raise SystemExit(f"Missing To for partner {p.get('id')}")
         if not subject:
-            raise SystemExit(f"Missing Subject for partner {p.get('id')} — set CRM subject")
+            raise SystemExit(f"Missing Subject for partner {p.get('id')} wave={wave}")
         if to_hdr and to_hdr.lower() != p["email"].lower():
             raise SystemExit(
                 f"To: header {to_hdr!r} != CRM email {p['email']!r} for {p.get('id')}"
@@ -409,32 +451,43 @@ def main() -> int:
             "id": p["id"],
             "to": to,
             "subject": subject,
+            "wave": wave,
             "dry_run": dry,
             "from": ALLOWED_FROM,
             "has_html": bool(html),
             "isolated_from_outreach": True,
         }
         if dry:
-            print(f"[dry-run] would send → {to} ({p['company']}) html={bool(html)}")
-            p["status"] = "предложение подготовлено"
-            p["comment"] = (
-                f"Dry-run OK. Separate rdv@ channel — does not use office@ outreach limits."
-            )
+            print(f"[dry-run][{wave}] would send → {to} ({p['company']}) html={bool(html)}")
+            p["comment"] = f"Dry-run OK for wave={wave}."
         else:
             mid = send_one(to=to, subject=subject, plain=body, html=html)
             now = _utc_now().strftime("%Y-%m-%d %H:%M:%S UTC")
-            p["sent_at"] = now
             p["from_address"] = ALLOWED_FROM
-            p["status"] = "отправлено"
-            p["followup1_date"] = _business_days_ahead(today, 3).isoformat()
-            p["followup2_date"] = _business_days_ahead(today, 7).isoformat()
-            p["next_contact"] = p["followup1_date"]
-            p["comment"] = f"Sent via rdv@ on prod (/opt/partner-channel). Message-ID={mid}"
+            if wave == "intro":
+                p["sent_at"] = now
+                p["status"] = "отправлено"
+                p["followup1_date"] = _business_days_ahead(today, 3).isoformat()
+                p["followup2_date"] = _business_days_ahead(today, 7).isoformat()
+                p["next_contact"] = p["followup1_date"]
+            elif wave == "fu1":
+                p["followup1_sent_at"] = now
+                p["status"] = "follow-up"
+                p["followup2_date"] = _business_days_ahead(today, 5).isoformat()
+                p["next_contact"] = p["followup2_date"]
+            else:
+                p["followup2_sent_at"] = now
+                p["status"] = "follow-up"
+                p["next_contact"] = ""
+            p["comment"] = f"Sent wave={wave} via rdv@ on prod. Message-ID={mid}"
             entry["message_id"] = mid
-            print(f"[sent] {to} mid={mid}", flush=True)
+            print(f"[sent][{wave}] {to} mid={mid}", flush=True)
         with log_path.open("a", encoding="utf-8") as lf:
             lf.write(json.dumps(entry, ensure_ascii=False) + "\n")
         # Persist after every message so a long jitter sleep cannot lose progress.
+        # Drop ephemeral keys before save.
+        p.pop("_wave_file", None)
+        p.pop("_wave_subject", None)
         save_campaign(data)
         print(f"CRM checkpoint ({i+1}/{len(selected)})", flush=True)
         if not dry and i < len(selected) - 1:
