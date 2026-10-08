@@ -11,7 +11,7 @@ Tilda projectid `14431186` · счётчик Метрики `104241036`
 Все статьи переписаны глубже под B2B; добавлены gap-URL под кластеры «реестр», «ГПХ», «налоги/сведения», «контроль».  
 Сборка: `docs/seo-qp/blog/scripts/build_articles.py` · карта: `docs/seo-qp/blog/WORDSTAT_SEO.md` · `PLAN.md`.
 
-**Публикация в Tilda:** с VM агента `tilda.ru` (QRATOR `178.248.233.147`) недоступен — логин/редактор не открываются. HTML и SEO meta готовы в `docs/seo-qp/blog/html/` + `manifest.json`. Скрипт заливки: `docs/seo-qp/blog/scripts/publish_tilda.py` (нужен доступ к tilda.ru).
+**Публикация в Tilda (блокер):** HTML и SEO meta готовы в `docs/seo-qp/blog/html/` + `manifest.json`. Скрипт: `docs/seo-qp/blog/scripts/publish_tilda.py` (Ace → `edrec__sendForm` / FormData `saverecord` → publish). С этой VM `tilda.ru` нестабилен: GET иногда 200, но `POST /page/submit/` из браузера падает (`Failed to fetch` / QRATOR), curl-заливки крупных body обрываются. Нужен стабильный маршрут до tilda.ru или ручная заливка из HTML + Title/Description из `manifest.json` (12 обновлений + 4 новых URL).
 
 ### Новые URL (после publish)
 
