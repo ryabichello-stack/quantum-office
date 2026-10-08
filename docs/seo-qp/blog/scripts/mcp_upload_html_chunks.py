@@ -241,43 +241,125 @@ def minify_css(css: str) -> str:
     return css.strip()
 
 
+def _css_top_level_rules(css: str) -> list[str]:
+    """Split CSS into top-level rules only (keeps @media blocks intact)."""
+    rules: list[str] = []
+    buf: list[str] = []
+    depth = 0
+    for ch in css:
+        buf.append(ch)
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                rules.append("".join(buf).strip())
+                buf = []
+            elif depth < 0:
+                raise RuntimeError("css brace underflow")
+    tail = "".join(buf).strip()
+    if tail:
+        rules.append(tail)
+    return [r for r in rules if r]
+
+
 def style_chunks(css: str, max_inner: int = 2800) -> list[str]:
     css = minify_css(css)
     parts: list[str] = []
     buf = ""
-    for piece in re.split(r"(?<=})", css):
-        if not piece:
-            continue
-        if len(buf) + len(piece) > max_inner and buf:
+    for rule in _css_top_level_rules(css):
+        if len(rule) > max_inner:
+            raise RuntimeError(f"css rule too long: {len(rule)}")
+        if buf and len(buf) + len(rule) > max_inner:
             parts.append(f"<style>{buf}</style>")
-            buf = piece
+            buf = rule
         else:
-            buf += piece
+            buf += rule
     if buf:
         parts.append(f"<style>{buf}</style>")
+    # sanity: no chunk may start with a stray closing brace
+    for i, p in enumerate(parts):
+        inner = p[len("<style>") : -len("</style>")]
+        if inner.startswith("}"):
+            raise RuntimeError(f"style chunk {i} starts with stray }}")
+        if inner.count("{") != inner.count("}"):
+            raise RuntimeError(f"style chunk {i} unbalanced braces")
     return parts
 
 
+def _extract_footer(body: str) -> tuple[str, str]:
+    """Return (body_without_footer, footer_html). Footer must stay atomic across T123."""
+    m = re.search(
+        r"(?:<!--\s*Blog footer[\s\S]*?-->\s*)?<footer\b[^>]*\bqp-foot\b[\s\S]*?</footer>\s*",
+        body,
+        re.I,
+    )
+    if m:
+        return (body[: m.start()] + body[m.end() :]).strip(), m.group(0).strip()
+    m = re.search(
+        r'<footer\b[^>]*id="rec1275972401"[\s\S]*?</footer>\s*',
+        body,
+        re.I,
+    )
+    if m:
+        return (body[: m.start()] + body[m.end() :]).strip(), m.group(0).strip()
+    # fallback: inject canonical footer
+    return body.strip(), FOOT_HTML
+
+
 def split_body(html: str, max_len: int = MAX_CODE) -> list[str]:
+    """Split pre-footer body into self-contained sibling chunks; footer is last & atomic."""
+    main, footer = _extract_footer(html)
+    if len(footer) > max_len:
+        raise RuntimeError(f"footer too long for one T123: {len(footer)}")
+
+    # Prefer cutting after complete top-level blocks inside .qp-blog / .qp-wrap
     parts: list[str] = []
-    while html:
-        if len(html) <= max_len:
-            parts.append(html)
+    while main:
+        if len(main) <= max_len:
+            parts.append(main)
             break
-        window = html[:max_len]
+        window = main[:max_len]
         cut = -1
-        for marker in ("</p>", "</h2>", "</h3>", "</li>", "</ul>", "</ol>", "</table>", "</div>", "\n"):
+        # Never cut on generic </div> — that splits nested trees across T123 wrappers.
+        for marker in (
+            "</section>",
+            "</article>",
+            "</table>",
+            "</ul>",
+            "</ol>",
+            "</h2>",
+            "</h3>",
+            "</p>",
+            "<!-- /qp-section -->",
+            "\n\n",
+        ):
             pos = window.rfind(marker)
-            if pos > max_len * 0.4:
+            if pos > max_len * 0.35:
                 cut = max(cut, pos + len(marker))
         if cut < 0:
-            pos = window.rfind(">")
-            cut = pos + 1 if pos > max_len * 0.4 else max_len
-        parts.append(html[:cut])
-        html = html[cut:]
+            # last resort: cut after a complete card/link sibling
+            for marker in ('</a>\n', "</a> ", "</a>"):
+                pos = window.rfind(marker)
+                if pos > max_len * 0.5:
+                    cut = max(cut, pos + len(marker))
+                    break
+        if cut < 0:
+            raise RuntimeError(
+                f"cannot split body safely at len={len(main)}; "
+                "add markers or raise MAX_CODE"
+            )
+        parts.append(main[:cut])
+        main = main[cut:].lstrip()
+
+    parts.append(footer)
     for i, p in enumerate(parts):
-        if len(p) > MAX_CODE:
+        if len(p) > max_len:
             raise RuntimeError(f"body chunk {i} too long: {len(p)}")
+        if i < len(parts) - 1 and ("<footer" in p or "qp-foot__cta" in p):
+            raise RuntimeError(f"footer leaked into body chunk {i}")
+    if "<footer" not in parts[-1] or "</footer>" not in parts[-1]:
+        raise RuntimeError("footer chunk incomplete")
     return parts
 
 
@@ -297,13 +379,9 @@ def build_chunks_from_full_html(code: str) -> list[str]:
         css += "\n" + FOOT_CSS
     body = re.sub(r"<style>[\s\S]*?</style>\s*", "", code, count=len(styles))
     body = body.strip()
-    if 'id="rec1275972401"' not in body:
-        if "qp-foot__cta" not in body:
-            jm = re.search(r'<script\s+type="application/ld\+json">', body)
-            if jm:
-                body = body[: jm.start()] + FOOT_HTML + "\n" + body[jm.start() :]
-            else:
-                body = body + "\n" + FOOT_HTML
+    # Always use canonical FOOT_HTML so chunking sees one clean footer block
+    body_wo, _old = _extract_footer(body)
+    body = (body_wo + "\n" + FOOT_HTML).strip()
 
     chunks: list[str] = []
     chunks.extend(style_chunks(css))
@@ -311,6 +389,10 @@ def build_chunks_from_full_html(code: str) -> list[str]:
     for i, c in enumerate(chunks):
         if len(c) > MAX_CODE:
             raise RuntimeError(f"chunk {i} len {len(c)} > {MAX_CODE}")
+    # final invariant: exactly one complete footer across all chunks
+    foot_chunks = [c for c in chunks if "<footer" in c]
+    if len(foot_chunks) != 1 or "</footer>" not in foot_chunks[0]:
+        raise RuntimeError("footer must be exactly one complete chunk")
     return chunks
 
 
