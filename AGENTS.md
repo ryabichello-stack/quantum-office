@@ -48,3 +48,15 @@ curl -sf http://127.0.0.1:8011/health
 ```
 
 Снаружи: `curl -sf https://a.47z.ru/_ava_outreach/health`
+
+## Cloud Agent / local bootstrap
+
+```bash
+./scripts/cloud-agent-install.sh   # uv venvs + deps + local .env stubs
+./scripts/cloud-agent-start.sh     # mailer :8000, text-bot :8011, outreach :8012
+```
+
+- Outreach UI: `http://127.0.0.1:8012/ui/` (token from `OUTREACH_UI_TOKEN`, default local stub `dev-local-token-quantum`)
+- Mailer reads `/opt/ava-mailer/.env` (created by install). Placeholder `OPENAI_API_KEY` boots the process; real key needed for LLM routes.
+- Text-bot without `TELEGRAM_BOT_TOKEN` / `OPENAI_API_KEY` stays `degraded` but `/health` works.
+- Live Bitrix sync needs a portal with REST subscription + valid `BITRIX_WEBHOOK_URL`.

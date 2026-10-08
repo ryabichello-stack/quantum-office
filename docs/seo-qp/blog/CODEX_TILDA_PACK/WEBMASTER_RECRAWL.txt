@@ -1,0 +1,20 @@
+# Переобход Яндекс.Вебмастер
+
+Автологин упёрся в 2FA. Вставить URL в Переобход страниц:
+
+https://quantumpayouts.ru/blog
+https://quantumpayouts.ru/blog-fizlicam
+https://quantumpayouts.ru/blog-reestr
+https://quantumpayouts.ru/blog-nalogi
+https://quantumpayouts.ru/blog-kontrol
+https://quantumpayouts.ru/blog-samozanyatye
+https://quantumpayouts.ru/blog-gph
+https://quantumpayouts.ru/blog-sbp
+https://quantumpayouts.ru/blog-1c-api
+https://quantumpayouts.ru/blog-lombardy
+https://quantumpayouts.ru/blog-mfo
+https://quantumpayouts.ru/blog-trade-in
+https://quantumpayouts.ru/blog-vtorsyre
+https://quantumpayouts.ru/blog-strahovye
+https://quantumpayouts.ru/blog-selhoz
+https://quantumpayouts.ru/blog-kuriery
