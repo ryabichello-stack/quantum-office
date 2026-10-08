@@ -6,6 +6,12 @@ import { ActiveNav, LeadFormTrigger } from "./SiteControls";
 import { FaqSection, type FaqItem } from "./FaqSection";
 import VoiceDemo from "./VoiceDemo";
 import ScenarioSwitcher from "./ScenarioSwitcher";
+import {
+  ConvertHeroExtras,
+  ConvertPricingNote,
+  ConvertTrustBar,
+  StickyMobileCTA,
+} from "./SiteConvert";
 
 const features=[
   {icon:Phone,title:"Разговаривает",text:"Принимает входящие и выполняет исходящие звонки. Уточняет запрос, отвечает и фиксирует результат.",tag:"Телефон"},
@@ -74,15 +80,25 @@ function V4ProductStage(){
   </div>
 }
 
-export function DelnoPage({version4=false}:{version4?:boolean}){
+export function DelnoPage({version4: version4Prop=false,convert=false}:{version4?:boolean;convert?:boolean}){
+  const version4=version4Prop||convert;
   const pageFeatures=version4?v4Features:features;
   const pageFaq=version4?v4Faq:faq;
   const pageChannels=version4?v4ClientChannels:clientChannels;
-  return <main className={version4?"v2 v4-refined":"v2"}>
+  return <main className={version4?`v2 v4-refined${convert?" v2-convert":""}`:"v2"}>
     <header className="v2-header">
-      <Link className="v2-logo" href={version4?"/v4":"/"}><DelnoMark/>DELNO</Link>
+      <Link className="v2-logo" href={convert?"/v2":version4?"/v4":"/"}><DelnoMark/>DELNO</Link>
       <ActiveNav />
-      <div className="v2-header-right"><a className="voice-cta" href="#demo"><span className="voice-cta-orb"><Mic/></span><span>Спросить вслух</span></a></div>
+      <div className="v2-header-right">
+        {convert?(
+          <>
+            <a className="header-convert-cta" href="#demo">Попробовать бесплатно</a>
+            <LeadFormTrigger className="v2-btn compact" label="Демо" source="Header v2-convert" />
+          </>
+        ):(
+          <a className="voice-cta" href="#demo"><span className="voice-cta-orb"><Mic/></span><span>Спросить вслух</span></a>
+        )}
+      </div>
     </header>
 
     <section className="v2-hero" id="product">
@@ -91,7 +107,8 @@ export function DelnoPage({version4=false}:{version4?:boolean}){
         {version4?<h1>Ваш ИИ-сотрудник,<br/><span>который отвечает клиентам вместо вас.</span></h1>:<h1>Клиенты пишут<br/>и звонят.<br/><span>DELNO отвечает.</span></h1>}
         <p>{version4?"Принимает звонки, отвечает на сайте, в Telegram, MAX и по почте. Консультирует, принимает заявки и записывает клиентов — 24/7.":"DELNO принимает звонки и сообщения, отвечает по вашей базе знаний, записывает клиента и сохраняет результат. Вы подключаете только те каналы, которые нужны сейчас."}</p>
         {version4&&<><div className="hero-roles">Секретарь <i/> Администратор <i/> Оператор</div><p className="hero-one">Один сотрудник вместо секретаря, отдельных ботов и сервисов.</p></>}
-        <div className="v2-actions">{version4?<><LeadFormTrigger className="v2-btn primary" label="Попробовать DELNO" source="Первый экран v4"/><a className="v2-btn secondary" href="#demo"><Play/> Посмотреть, как работает</a></>:<><a className="v2-btn primary" href="#demo">Попробовать голосом <ArrowRight/></a><a className="v2-btn secondary" href="#product"><Play/> Как это выглядит</a></>}</div>
+        <div className="v2-actions">{version4?<><LeadFormTrigger className="v2-btn primary" label={convert?"Получить демо бесплатно":"Попробовать DELNO"} source={convert?"Первый экран v2-convert":"Первый экран v4"}/><a className="v2-btn secondary" href="#demo"><Play/> {convert?"Сначала — голос (30 сек)":"Посмотреть, как работает"}</a></>:<><a className="v2-btn primary" href="#demo">Попробовать голосом <ArrowRight/></a><a className="v2-btn secondary" href="#product"><Play/> Как это выглядит</a></>}</div>
+        {convert&&<ConvertHeroExtras/>}
       </div>
       <div className="hero-product">
       {version4?<V4ProductStage/>:<>
@@ -132,6 +149,9 @@ export function DelnoPage({version4=false}:{version4?:boolean}){
       </div>
     </section>
 
+    {convert&&<ConvertTrustBar/>}
+    {convert&&<VoiceDemo />}
+
     <section className="v2-section v2-promise">
       <div className="v2-kicker">Все каналы — один контекст</div>
       <div className="promise-grid"><h2>Не пять отдельных ботов.<br/><span>Один сотрудник.</span></h2><p>{version4?"Телефон, сайт, Telegram, MAX и почта работают через DELNO с общей базой знаний и едиными правилами. Все обращения собраны в одном рабочем пространстве.":"Не отдельный бот для сайта, второй для Telegram, третий для MAX и ещё один для звонков. DELNO отвечает во всех каналах из одной базы знаний и продолжает разговор с того места, где остановился клиент."}</p></div>
@@ -139,7 +159,7 @@ export function DelnoPage({version4=false}:{version4?:boolean}){
       <div className="promise-stats"><article><b>24/7</b><span>может принимать обращения</span></article><article><b>1 окно</b><span>для всей истории клиента</span></article><article><b>1 база</b><span>знаний для всех каналов</span></article></div>
     </section>
 
-    <VoiceDemo />
+    {!convert&&<VoiceDemo />}
 
     <section className="brand-strip"><span>Телефон</span><i/><span>Сайт</span><i/><span>Telegram</span><i/><span>MAX</span><i/><span>Почта</span><i/><span>Календарь</span><i/><span>Одно окно</span></section>
 
@@ -170,6 +190,7 @@ export function DelnoPage({version4=false}:{version4?:boolean}){
     <section className="v2-pricing" id="prices">
       <div className="v2-pricing-head"><div className="v2-kicker pale">{version4?"Два понятных способа начать":"Простые тарифы"}</div><h2>{version4?<>Выберите, как клиенты<br/>обращаются к вам.</>:<>Выберите, что<br/>нужно сейчас.</>}</h2><p>{version4?"«Диалоги» — сайт, мессенджеры и голосовой виджет без телефонного номера. «Диалоги + звонки» — когда нужны обычные входящие и исходящие телефонные разговоры.":"«Диалоги» — для сайта и мессенджеров. «Диалоги + звонки» — когда нужен телефон. Индивидуальный тариф — для нескольких точек и глубокой интеграции."}</p></div>
       <div className="price-logic"><div><b>Понятная абонентская плата</b><span>кабинет, база знаний, каналы и стартовый объём обращений</span></div><i/><div><b>Контроль дополнительных расходов</b><span>минуты и массовые отправки сверх пакета — только по фактическому объёму</span></div></div>
+      {convert&&<ConvertPricingNote/>}
       <div className="v2-price-grid">
         <article>
           <span>Диалоги</span><h3>2 990 ₽<small>/ мес.</small></h3>
@@ -198,8 +219,10 @@ export function DelnoPage({version4=false}:{version4?:boolean}){
     <FaqSection fallback={pageFaq} version4={version4} />
 
     <section className="v2-final" id="contact"><div className="final-glow"/><div className="v2-logo giant-logo"><DelnoMark/>DELNO</div><h2>{version4?<>Покажем DELNO<br/>на вашем <span>бизнесе.</span></>:<>Давайте покажем,<br/>как DELNO будет работать <span>у вас.</span></>}</h2><p>{version4?"Без длинной презентации: выберем одно обращение клиента и покажем, как DELNO его обработает.":"Поговорите с помощником прямо на сайте, позвоните или напишите в удобный мессенджер — подготовим демо на примере вашего бизнеса."}</p><LeadFormTrigger className="v2-btn final-lead" label={version4?"Получить демо":"Оставить заявку"} source="Финальный экран" /><div className="contact-options"><a className="contact-voice" href="#demo"><span className="voice-cta-orb"><Mic/></span><span><b>Поговорить с DELNO</b><small>Голосовое демо на сайте</small></span></a><a className="contact-phone" href="tel:+78005550000"><Phone/><span><b>Позвонить</b><small>8 800 555-00-00</small></span></a><a className="contact-telegram" href={version4?"https://t.me/Dlno_bot":"https://t.me/quantumlabss"} target="_blank" rel="noreferrer"><Send/><span><b>Telegram</b><small>{version4?"@Dlno_bot":"@quantumlabss"}</small></span></a><a className="contact-max" href={version4?"https://max.ru/@id471405233378_bot":"https://max.ru/id7840118071_bot"} target="_blank" rel="noreferrer"><MessageCircle/><span><b>MAX</b><small>Открыть чат с ботом</small></span></a><a className="contact-mail" href={version4?"mailto:office@dlno.ru":"mailto:hello@delno.one?subject=Хочу%20демо%20DELNO"}><Mail/><span><b>Написать на почту</b><small>{version4?"office@dlno.ru":"hello@delno.one"}</small></span></a></div><small className="response-note">Выберите удобный способ — ответим в рабочее время</small></section>
-    <footer className="v2-footer"><Link className="v2-logo" href={version4?"/v4":"/"}><DelnoMark/>DELNO</Link><p>ИИ-сотрудник для работы с клиентами.<br/>Отвечает дельно. Работает по делу.</p><div><a href="#solutions">Возможности</a><a href="#prices">Тарифы</a><a href="#answers">Вопросы</a><a href="tel:+78005550000">8 800 555-00-00</a><a href={version4?"https://t.me/Dlno_bot":"https://t.me/quantumlabss"} target="_blank" rel="noreferrer">Telegram</a><a href={version4?"https://max.ru/@id471405233378_bot":"https://max.ru/id7840118071_bot"} target="_blank" rel="noreferrer">MAX</a><a href={version4?"mailto:office@dlno.ru":"mailto:hello@delno.one"}>{version4?"office@dlno.ru":"hello@delno.one"}</a><Link href="/privacy">Конфиденциальность</Link><Link href="/terms">Пользовательское соглашение</Link></div><small>© 2026 DELNO</small></footer>
+    {convert&&<StickyMobileCTA/>}
+    <footer className="v2-footer"><Link className="v2-logo" href={convert?"/v2":version4?"/v4":"/"}><DelnoMark/>DELNO</Link><p>ИИ-сотрудник для работы с клиентами.<br/>Отвечает дельно. Работает по делу.</p><div><a href="#solutions">Возможности</a><a href="#prices">Тарифы</a><a href="#answers">Вопросы</a><a href="tel:+78005550000">8 800 555-00-00</a><a href={version4?"https://t.me/Dlno_bot":"https://t.me/quantumlabss"} target="_blank" rel="noreferrer">Telegram</a><a href={version4?"https://max.ru/@id471405233378_bot":"https://max.ru/id7840118071_bot"} target="_blank" rel="noreferrer">MAX</a><a href={version4?"mailto:office@dlno.ru":"mailto:hello@delno.one"}>{version4?"office@dlno.ru":"hello@delno.one"}</a><Link href="/privacy">Конфиденциальность</Link><Link href="/terms">Пользовательское соглашение</Link></div><small>© 2026 DELNO</small></footer>
   </main>
 }
 
-export default function DelnoV2(){return <DelnoPage/>}
+/** Conversion-optimized landing — demo first, limits visible, sticky mobile CTA. */
+export default function DelnoV2(){return <DelnoPage convert />}
