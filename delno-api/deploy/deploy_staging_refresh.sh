@@ -41,7 +41,7 @@ rsync -az -e "${RSYNC_SSH[*]}" \
 rsync -az -e "${RSYNC_SSH[*]}" \
   "${REPO_ROOT}/DELNO-site-v23/app/v2/VoiceDemo.tsx" "${SSH_HOST}:${STACK_DIR}/site/app/v2/VoiceDemo.tsx" 2>/dev/null || true
 rsync -az -e "${RSYNC_SSH[*]}" \
-  "${REPO_ROOT}/DELNO-site-v23/app/v2/v2.css" "${SSH_HOST}:${STACK_DIR}/site/app/v2/v2.css" 2>/dev/null || true
+  "${REPO_ROOT}/DELNO-site-v23/app/v2/" "${SSH_HOST}:${STACK_DIR}/site/app/v2/" 2>/dev/null || true
 rsync -az -e "${RSYNC_SSH[*]}" \
   "${REPO_ROOT}/DELNO-site-v23/hooks/useDelnoVoice.ts" "${SSH_HOST}:${STACK_DIR}/site/hooks/useDelnoVoice.ts" 2>/dev/null || true
 

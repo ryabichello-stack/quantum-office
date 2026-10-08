@@ -1,0 +1,10 @@
+---
+description: Design quality — hierarchy, restraint, no generic AI chrome
+globs: DELNO-site-v23/**,delno-web/**,delno-widget/**
+alwaysApply: false
+---
+
+- Premium means better hierarchy, typography, spacing, and interaction — not more decorative effects.
+- Avoid default purple gradients, gratuitous glass, fake metrics, and decorative Three.js.
+- Prefer design tokens in `docs/design/design-system.md` over one-off magic numbers.
+- Invoke `creative-director` and `visual-qa` subagents for premium UI before marking done.

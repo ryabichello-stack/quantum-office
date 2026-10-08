@@ -1,0 +1,9 @@
+---
+description: Conversion hierarchy for marketing and signup surfaces
+globs: DELNO-site-v23/**,delno-web/app/page.tsx,delno-web/app/**/onboarding/**
+alwaysApply: false
+---
+
+- Primary conversion: voice demo and/or qualified lead form; secondary: phone, Telegram, MAX, email.
+- Objections and proof blocks should precede hard asks on conversion variants (`/v2`).
+- Use `conversion-strategist` + `cro` skill when changing funnel structure, not for every typo fix.

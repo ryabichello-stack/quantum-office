@@ -52,3 +52,12 @@ curl -sf http://127.0.0.1:8011/health
 ```
 
 Снаружи: `curl -sf https://a.47z.ru/_ava_outreach/health`
+
+## Cursor Design / Marketing Studio
+
+Для UI, лендингов, копирайта и CRO в этом репо:
+
+- **Setup:** [`docs/cursor-studio-setup.md`](docs/cursor-studio-setup.md)
+- **Workflow skill:** `.cursor/skills/premium-web-workflow/SKILL.md`
+- **Product context:** `.agents/product-marketing.md`
+- **Landing policy:** [`docs/P1.1_SITE_LANDING.md`](docs/P1.1_SITE_LANDING.md)
