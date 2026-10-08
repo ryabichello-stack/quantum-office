@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "../v4/v4.css";
 import "./convert.css";
+import "./convert-landing.css";
 
 export const metadata: Metadata = {
   title: "DELNO — попробуйте ИИ-сотрудника на вашем бизнесе",

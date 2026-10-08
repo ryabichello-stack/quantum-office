@@ -1,0 +1,273 @@
+/* Dedicated /v2 conversion landing — distinct from canonical / */
+
+.v2-convert-page {
+  background: var(--v4-paper, #f5f6f2);
+}
+
+.v2-convert-page .cvt-header {
+  gap: 12px;
+}
+
+.cvt-nav {
+  display: flex;
+  gap: 20px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cvt-nav a:hover {
+  opacity: 0.55;
+}
+
+.cvt-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: clamp(24px, 4vw, 48px);
+  align-items: center;
+  padding: clamp(48px, 6vw, 96px) clamp(24px, 5vw, 78px) 32px;
+  min-height: min(820px, 100dvh);
+}
+
+.cvt-hero-inner {
+  max-width: 560px;
+}
+
+.cvt-eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #5c6863;
+  margin: 0 0 16px;
+}
+
+.cvt-hero h1 {
+  font-size: clamp(40px, 4.8vw, 64px);
+  line-height: 0.95;
+  letter-spacing: -0.06em;
+  margin: 0 0 20px;
+  font-weight: 900;
+}
+
+.cvt-hero h1 span {
+  color: #2a6b55;
+}
+
+.cvt-lead {
+  font-size: 17px;
+  line-height: 1.6;
+  color: #4a5651;
+  margin: 0 0 24px;
+}
+
+.cvt-actions {
+  flex-wrap: wrap;
+}
+
+.cvt-micro {
+  margin-top: 16px;
+  font-size: 12px;
+  color: #6a736e;
+}
+
+.cvt-micro a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.cvt-hero-visual .v4-product-stage {
+  min-height: 480px;
+  height: auto;
+}
+
+.cvt-h2 {
+  font-size: clamp(36px, 4.5vw, 56px);
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+  margin: 0 0 16px;
+}
+
+.cvt-h2 span {
+  color: #397c68;
+}
+
+.cvt-compare-lead {
+  max-width: 640px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #5f6a65;
+  margin-bottom: 28px;
+}
+
+.cvt-compare-table {
+  border: 1px solid #d5dcd7;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 18px 50px #1420190a;
+}
+
+.cvt-row {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr;
+  gap: 12px;
+  padding: 14px 18px;
+  font-size: 12px;
+  line-height: 1.45;
+  border-bottom: 1px solid #e8ece9;
+}
+
+.cvt-row:last-child {
+  border-bottom: 0;
+}
+
+.cvt-head {
+  background: #f3f6f4;
+  font-weight: 800;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.cvt-row [role="rowheader"] {
+  font-weight: 700;
+  color: #2d3531;
+}
+
+.cvt-highlight {
+  color: #1a6b55;
+  font-weight: 700;
+}
+
+.cvt-compare-cta {
+  margin-top: 28px;
+}
+
+.cvt-step-list {
+  list-style: none;
+  margin: 24px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+  max-width: 720px;
+}
+
+.cvt-step-list li {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 16px;
+  padding: 18px 20px;
+  border: 1px solid #d5dcd7;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.cvt-step-list li span {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--v4-accent, #74e4c3);
+  color: #0d1612;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  font-size: 14px;
+}
+
+.cvt-step-list b {
+  display: block;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.cvt-step-list p {
+  margin: 0;
+  font-size: 13px;
+  color: #5f6a65;
+  line-height: 1.5;
+}
+
+.cvt-pricing .v2-pricing-head h2 {
+  font-size: clamp(32px, 4vw, 48px);
+}
+
+.cvt-price-grid {
+  max-width: 880px;
+  margin-inline: auto;
+}
+
+.cvt-final h2 {
+  font-size: clamp(36px, 5vw, 56px);
+  max-width: 900px;
+  line-height: 0.98;
+}
+
+.cvt-final h2 span {
+  background: var(--v4-accent, #74e4c3);
+  color: #102019;
+  padding: 0 0.08em;
+}
+
+.cvt-final-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.cvt-phone {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+.cvt-phone svg {
+  width: 16px;
+}
+
+@media (max-width: 1024px) {
+  .cvt-nav {
+    display: none;
+  }
+
+  .cvt-hero {
+    grid-template-columns: 1fr;
+    min-height: auto;
+    padding-top: 40px;
+  }
+
+  .cvt-hero-visual {
+    order: -1;
+  }
+
+  .cvt-hero-visual .v4-product-stage {
+    min-height: 420px;
+  }
+}
+
+@media (max-width: 740px) {
+  .cvt-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .cvt-head {
+    display: none;
+  }
+
+  .cvt-row [role="rowheader"] {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #6a736e;
+  }
+
+  .v2-convert-page .section-nav {
+    display: none;
+  }
+}
