@@ -1,0 +1,10 @@
+---
+description: Persistent product quality constraints for DELNO and office services
+alwaysApply: true
+---
+
+- Read `.agents/product-marketing.md` before marketing or landing copy changes.
+- Canonical landing `/` is owner-approved v2 — see `docs/P1.1_SITE_LANDING.md`; do not switch default to v4 without explicit approval.
+- Do not invent pricing, limits, or ROI; use KB and product marketing context.
+- Meaningful UI work follows project skill `premium-web-workflow` (browser verification required).
+- REUSE → IMPROVE → ADD → REPLACE; do not delete useful skills, rules, or MCP config.

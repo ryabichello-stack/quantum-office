@@ -1,0 +1,10 @@
+---
+description: UX — flows, states, mobile, cognitive load
+globs: DELNO-site-v23/**,delno-web/**,delno-widget/**
+alwaysApply: false
+---
+
+- Design empty, loading, error, and success states for user-facing surfaces.
+- Progressive disclosure over long static pages; one primary action per viewport.
+- Mobile: touch targets, sticky CTAs must not hide widget or critical content (`docs/P1.5_MOBILE_PASS.md`).
+- Run `break-ui` for adversarial content on changed layouts.

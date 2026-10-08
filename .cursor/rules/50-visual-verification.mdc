@@ -1,0 +1,9 @@
+---
+description: Visual verification gate — browser screenshots required
+globs: DELNO-site-v23/**,delno-web/**
+alwaysApply: false
+---
+
+- Do not mark UI tasks complete from code review alone; open the app in Cursor Browser.
+- Capture desktop and mobile screenshots for material UI changes.
+- Follow project skill `visual-qa`; fix console errors relevant to the change.
