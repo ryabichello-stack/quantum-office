@@ -38,4 +38,4 @@ Tilda projectid: `14431186` · домен: `quantumpayouts.ru`
 | `pageids.json` | Tilda IDs |
 | `WORDSTAT_SEO.md` | карта кластеров Wordstat |
 
-Подвал — точная копия Zero Block с главной (rec1275972401) + tilda-zero.js. Ссылки меню ведут на /#rec…; пункт «Контакты» в шапке скроллит к этому подвалу.
+Подвал — CSS-клон главной (без Zero Block / tilda-zero: вложенный t396 в T123 ломает меню и обрезает карточку). `id="rec1275972401"` — якорь «Контакты». Ссылки меню/заявки — абсолютные на quantumpayouts.ru.

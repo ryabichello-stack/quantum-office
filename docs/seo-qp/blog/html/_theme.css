@@ -41,14 +41,51 @@
 .qp-card span{display:block;color:#9a9692;font-size:14px;margin-top:6px}
 .qp-chips a{display:inline-block;background:#2c2c2c;color:#fff!important;text-decoration:none!important;border-radius:12px;padding:8px 12px;margin:0 8px 8px 0;font-size:15px}
 .qp-chips a:hover{background:#333;text-decoration:none!important}
+.qp-foot{position:relative;max-width:1200px;margin:0 auto;padding:36px 20px 48px;box-sizing:border-box;overflow:hidden;color:#fff}
+.qp-foot a{color:#fff!important;text-decoration:none!important}
+.qp-foot a:hover{color:#ff6400!important;text-decoration:none!important}
+.qp-foot__bg{position:absolute;right:-40px;top:0;width:432px;height:100%;background:url(https://static.tildacdn.com/tild3364-6365-4866-a332-646463616233/photo.png) right center/cover no-repeat;opacity:.95;pointer-events:none;border-radius:50px;z-index:0}
+.qp-foot__inner{position:relative;z-index:1;display:grid;grid-template-columns:362px 1fr 1fr;gap:28px;align-items:start}
+.qp-foot__card{background:#282828;border:1px solid #3a3a3a;border-radius:25px;padding:28px 24px 16px;min-height:383px;box-sizing:border-box;display:flex;flex-direction:column}
+.qp-foot__title{margin:0 0 14px;font-size:25px;font-weight:300;line-height:1.15;color:#fff}
+.qp-foot__title strong{font-weight:600}
+.qp-foot__lead{margin:0 0 22px;font-size:17px;font-weight:300;line-height:1.2;color:#fff}
+.qp-foot__cta{display:inline-flex;align-items:center;justify-content:center;align-self:flex-start;min-width:189px;height:35px;padding:0 16px;border:1px solid #ff6400;border-radius:12px;background:#ff6400;color:#fff!important;font-size:14px;font-weight:400;letter-spacing:.5px;text-transform:uppercase;text-decoration:none!important;box-sizing:border-box}
+.qp-foot__cta:hover{background:#282828;color:#fff!important;text-decoration:none!important}
+.qp-foot__coins{display:block;width:230px;max-width:100%;height:auto;margin:18px 0 0 auto}
+.qp-foot__label{margin:0 0 10px;font-size:17px;font-weight:100;line-height:1.55;color:#fff}
+.qp-foot__label--menu{margin-top:28px}
+.qp-foot__phone,.qp-foot__mail{display:block;font-size:17px;font-weight:400;line-height:1.55;color:#fff!important;text-decoration:none!important}
+.qp-foot__mail{margin-bottom:4px}
+.qp-foot__menu,.qp-foot__legal{list-style:none;margin:0;padding:0}
+.qp-foot__menu li{margin:0 0 10px}
+.qp-foot__menu a{font-size:15px;font-weight:300;line-height:1.55;color:#fff!important;text-decoration:none!important}
+.qp-foot__menu a:hover{color:#ff6400!important}
+.qp-foot__soc{display:flex;gap:10px;margin:0 0 18px}
+.qp-foot__soc a{display:block;width:52px;height:52px;border-radius:14px;background-color:#282828;background-position:center;background-repeat:no-repeat;background-size:28px 28px;text-decoration:none!important}
+.qp-foot__soc a.i-web{background-image:url(https://static.tildacdn.com/tild6433-3339-4139-b231-343265366339/noroot.png)}
+.qp-foot__soc a.i-tg{background-image:url(https://static.tildacdn.com/tild6263-3535-4536-b130-663735313033/noroot.png)}
+.qp-foot__soc a.i-wa{background-image:url(https://static.tildacdn.com/tild3363-3262-4538-b833-643564376561/noroot.png);background-size:30px 30px}
+.qp-foot__legal li{margin:0 0 8px}
+.qp-foot__legal a{font-size:15px;font-weight:400;line-height:1.55;color:#fff!important;text-decoration:none!important}
+.qp-foot__legal a:hover{color:#ff6400!important}
+.qp-foot__copy{margin:14px 0 12px;font-size:15px;font-weight:300;line-height:1.55;color:#fff}
+.qp-foot__logo{display:inline-block;width:120px;text-decoration:none!important}
+.qp-foot__logo img{display:block;width:120px;height:auto}
 @media(max-width:980px){
 .qp-sitehead__contacts,.qp-sitehead__div{display:none}
 .qp-sitehead__icons a{width:42px;height:42px;border-radius:12px}
 .qp-sitehead__menu{min-width:120px;padding:0 14px}
+.qp-foot__inner{grid-template-columns:1fr 1fr;gap:20px}
+.qp-foot__card{grid-column:1/-1;min-height:0}
+.qp-foot__bg{opacity:.35}
 }
 @media(max-width:720px){
 .qp-wrap h1{font-size:28px}
 .qp-sitehead__ask,.qp-sitehead__icons{display:none}
 .qp-sitehead__name{font-size:12px}
 .qp-sitehead__menu{min-width:110px;font-size:15px}
+.qp-foot__inner{grid-template-columns:1fr}
+.qp-foot__bg{display:none}
+.qp-foot__coins{margin-left:0;margin-right:auto}
 }

@@ -46,8 +46,8 @@ HEAD = f"""<style>{CSS}
 <div class="qp-wrap">
 """
 
-# Exact Zero Block footer from quantumpayouts.ru home (rec1275972401).
-# Anchors to other home sections rewritten to /#rec…; Контакты menu keeps #rec1275972401.
+# CSS clone of home footer (T123-safe). id=rec1275972401 for Меню→Контакты.
+# Do NOT embed Zero Block / tilda-zero — nested t396 breaks menu & cuts the card.
 FOOTER_MAIN = (HTML / "_footer_main.html").read_text(encoding="utf-8")
 
 FOOT = f"""
