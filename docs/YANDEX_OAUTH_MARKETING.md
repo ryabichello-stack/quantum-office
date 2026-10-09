@@ -47,13 +47,13 @@
 **Рекомендуемый `YANDEX_MARKETING_OAUTH_SCOPE`** (пробелы между правами):
 
 ```text
-metrika:read metrika:write direct:api webmaster:hostinfo webmaster:verify
+metrika:read metrika:write direct:api webmaster:hostinfo webmaster:verify webmaster:turbopages wordstat:api
 ```
 
 - **Метрика** — `metrika:read`, `metrika:write`
 - **Директ** — `direct:api` ([регистрация приложения](https://yandex.ru/dev/direct/doc/en/register))
-- **Вебмастер** — `webmaster:hostinfo`, `webmaster:verify` ([OAuth](https://yandex.com/dev/webmaster/doc/en/tasks/how-to-get-oauth))
-- **Вордstat** — отдельного scope в URL часто нет: доступ включается **галочкой «API Вордстата»** в oauth.yandex.ru; тот же OAuth-токен + **ClientId** в запросах к [Wordstat API](https://yandex.ru/support/wordstat/en/content/api-wordstat) (`Authorization: Bearer …`), плюс заявка в поддержку Директа на доступ к API.
+- **Вебмастер** — `webmaster:hostinfo`, `webmaster:verify`, опционально `webmaster:turbopages` ([OAuth](https://yandex.com/dev/webmaster/doc/en/tasks/how-to-get-oauth))
+- **Вордstat** — в кабинете OAuth: право **`wordstat:api`** (как на вашем скрине) + **`wordstat:api` в scope URL** при авторизации; заявка в [поддержку Директа](https://yandex.ru/support/direct/) с логином и **ClientId**. Пока доступ не включён, `api.wordstat.yandex.net` может отвечать 404 / ошибкой TLS — это не из‑за отсутствия галочки в приложении.
 
 Mailer: `/oauth/yandex/marketing/*`, `/yandex/metrika/ensure` (счётчик на сайт — только Метрика; остальные API — позже на том же token).
 

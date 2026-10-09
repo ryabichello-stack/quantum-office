@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_SCOPE = (
     "metrika:read metrika:write "
     "direct:api "
-    "webmaster:hostinfo webmaster:verify"
+    "webmaster:hostinfo webmaster:verify webmaster:turbopages "
+    "wordstat:api"
 )
 
 YANDEX_OAUTH_CLIENT_ID = os.getenv("YANDEX_MARKETING_OAUTH_CLIENT_ID", "").strip()

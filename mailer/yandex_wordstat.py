@@ -35,10 +35,23 @@ def _post(path: str, body: Dict[str, Any]) -> Dict[str, Any]:
     except urllib.error.HTTPError as exc:
         err_body = exc.read().decode("utf-8", errors="replace")
         logger.error("Wordstat API %s: %s %s", path, exc.code, err_body[:400])
-        return {"ok": False, "error": f"http_{exc.code}", "detail": err_body[:500]}
+        hint = None
+        if exc.code == 404:
+            hint = (
+                "Legacy api.wordstat.yandex.net недоступен (404). Нужна заявка в поддержку Директа "
+                "с ClientId и правом wordstat:api в OAuth; после одобрения повторите запрос."
+            )
+        return {"ok": False, "error": f"http_{exc.code}", "detail": err_body[:500], "hint": hint}
     except Exception as exc:
+        err = str(exc)
+        hint = None
+        if "CERTIFICATE_VERIFY_FAILED" in err or "Hostname mismatch" in err:
+            hint = (
+                "TLS к api.wordstat.yandex.net не совпадает с сертификатом — часто до активации API "
+                "Директом. Подайте заявку на доступ к Wordstat API (ClientId 279b496a…)."
+            )
         logger.exception("Wordstat API error")
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": err, "hint": hint}
 
 
 def top_requests_for_phrase(phrase: str, num_phrases: int = 40) -> Dict[str, Any]:

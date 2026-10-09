@@ -29,7 +29,7 @@ curl -sf https://dlno.ru/sitemap.xml | head
 | `GET /yandex/webmaster/bootstrap?token=…` | Добавить `https://dlno.ru/`, verification, sitemap (если verified) |
 | `GET /yandex/metrika/ensure?token=…&site=dlno.ru` | Счётчик Метрики |
 
-Wordstat: доступ к API по заявке в поддержку Директа + Bearer token.
+Wordstat: в OAuth приложении право `wordstat:api`, scope в `.env`, заявка в поддержку Директа (логин + ClientId). После одобрения — `GET /yandex/wordstat/phrases`. Если legacy endpoint недоступен (TLS/404), ждём активации доступа или подключаем Yandex Cloud Search API v2 отдельно.
 
 ## Порядок на prod
 
