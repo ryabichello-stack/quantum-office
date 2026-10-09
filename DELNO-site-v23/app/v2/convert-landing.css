@@ -459,6 +459,28 @@
   color: #1a1205;
 }
 
+.v2-hire-page .v2-faq {
+  background: var(--hire-bg);
+  color: var(--hire-text);
+}
+
+.v2-hire-page .v2-faq .v2-kicker {
+  color: var(--hire-accent);
+}
+
+.v2-hire-page .v2-faq h2 span {
+  color: var(--hire-muted);
+}
+
+.v2-hire-page .v2-faq > div:last-child,
+.v2-hire-page .v2-faq details {
+  border-color: var(--hire-border);
+}
+
+.v2-hire-page .v2-faq details p {
+  color: var(--hire-muted);
+}
+
 @media (max-width: 1100px) {
   .hire-pillar-grid {
     grid-template-columns: 1fr;
