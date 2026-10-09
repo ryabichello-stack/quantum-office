@@ -4,6 +4,22 @@ OAuth-приложение в [oauth.yandex.ru](https://oauth.yandex.ru) даё�
 
 **Секреты только на сервере** — в `.env`, не в git. См. также `docs/PROD_MAP.md`.
 
+## Что на скриншоте oauth.yandex.ru (приложение DELNO)
+
+На странице настроек OAuth-приложения обычно видны только **ключи приложения**, не «готовый токен Метрики» и не **номер счётчика** для сайта:
+
+| Поле на скрине | Куда попадает на prod |
+|----------------|------------------------|
+| **ClientID** (`279b496a…`) | `YANDEX_MARKETING_OAUTH_CLIENT_ID` в `/opt/ava-mailer/.env` |
+| **Client secret** | `YANDEX_MARKETING_OAUTH_CLIENT_SECRET` |
+| **Redirect URI** `verification_code` | `YANDEX_MARKETING_OAUTH_REDIRECT_URI` |
+
+Эти три значения **уже сверены с prod** (совпадают). Их достаточно, чтобы **запросить** OAuth-токен, но не заменяют шаг «войти в Яндекс → скопировать verification code → обменять на refresh_token» (файл `yandex_marketing_oauth_tokens.json`).
+
+**ClientID ≠ ID счётчика Метрики** на `dlno.ru`. Номер счётчика (цифры в коде `ym(12345678)`) появляется после API `ensure` или в интерфейсе [metrika.yandex.ru](https://metrika.yandex.ru).
+
+Для автоматизации **не использовать** посторонние логины из Cloud Agent (`YANDEX_LOGIN` и т.п.) — только OAuth-приложение со скрина и аккаунт, у которого есть доступ к счётчикам.
+
 ## Переменные окружения
 
 Используется тот же механизм, что и для Телемоста в `mailer/yandex_oauth.py`:
