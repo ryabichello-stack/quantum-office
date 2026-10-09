@@ -185,13 +185,142 @@ export const blogSeriesSeeds: string[] = [
   "напоминание о записи",
   "подтверждение записи",
   "перенос записи бот",
+  "лист ожидания запись",
+  "бот сбор отзывов",
+  "возврат клиентов бот",
   "стоимость чат бота",
   "бот вместо администратора",
   "голосовой бот для бизнеса",
   "конструктор чат ботов",
 ];
 
-export type SeriesPillar = "A" | "B" | "C" | "D" | "E";
+/**
+ * Жизненный цикл клиента: что сильнее всего жрёт время у малого бизнеса
+ * и что владельцы охотнее отдают на автоматизацию.
+ * priority 1 = внедрять и описывать в статьях в первую очередь.
+ */
+export type LifecycleScenario = {
+  id: string;
+  step: number;
+  name: string;
+  entrepreneurPain: string;
+  automateWillingness: "very-high" | "high" | "medium";
+  seeds: string[];
+  inCoreChain: boolean;
+};
+
+export const clientLifecycleScenarios: LifecycleScenario[] = [
+  {
+    id: "L01",
+    step: 1,
+    name: "Ответ на цену и наличие окна 24/7",
+    entrepreneurPain: "Чаты и звонки в час пик, пока мастер занят; клиент уходит к конкуренту",
+    automateWillingness: "very-high",
+    seeds: ["чат бот для сайта", "сколько стоит услуга бот"],
+    inCoreChain: true,
+  },
+  {
+    id: "L02",
+    step: 2,
+    name: "Запись в слот",
+    entrepreneurPain: "Ручной подбор времени, ошибки, двойные записи",
+    automateWillingness: "very-high",
+    seeds: ["бот для записи клиентов", "бот для записи на прием"],
+    inCoreChain: true,
+  },
+  {
+    id: "L03",
+    step: 3,
+    name: "Перенос / отмена клиентом",
+    entrepreneurPain: "Админ снова в переписке; слот висит занятым впустую",
+    automateWillingness: "very-high",
+    seeds: ["перенос записи бот"],
+    inCoreChain: true,
+  },
+  {
+    id: "L04",
+    step: 4,
+    name: "Подтверждение накануне напрямую у человека",
+    entrepreneurPain: "Ручной обзвон часами; неявки = пустые слоты и деньги в ноль",
+    automateWillingness: "very-high",
+    seeds: ["подтверждение записи", "напоминание о записи"],
+    inCoreChain: true,
+  },
+  {
+    id: "L05",
+    step: 5,
+    name: "Короткое напоминание в день визита",
+    entrepreneurPain: "«Забыл / застрял» в последний момент",
+    automateWillingness: "high",
+    seeds: ["напоминание о записи"],
+    inCoreChain: true,
+  },
+  {
+    id: "L06",
+    step: 6,
+    name: "Лист ожидания на освободившийся слот",
+    entrepreneurPain: "Пустой час мастера после отмены",
+    automateWillingness: "high",
+    seeds: ["лист ожидания запись"],
+    inCoreChain: false,
+  },
+  {
+    id: "L07",
+    step: 7,
+    name: "FAQ до визита (как добраться, что взять)",
+    entrepreneurPain: "Одни и те же вопросы десятки раз в день",
+    automateWillingness: "high",
+    seeds: ["база знаний для бота"],
+    inCoreChain: false,
+  },
+  {
+    id: "L08",
+    step: 8,
+    name: "Заявка / контакт, если слота нет",
+    entrepreneurPain: "«Перезвоните» = потерянный лид",
+    automateWillingness: "high",
+    seeds: ["бот для заявок"],
+    inCoreChain: false,
+  },
+  {
+    id: "L09",
+    step: 9,
+    name: "После визита: отзыв о визите + следующая запись",
+    entrepreneurPain: "Нет повторных визитов; админ не успевает писать",
+    automateWillingness: "high",
+    seeds: ["запись повторный визит"],
+    inCoreChain: false,
+  },
+  {
+    id: "L10",
+    step: 10,
+    name: "Просьба об отзыве на площадке",
+    entrepreneurPain: "Просят вручную редко и неловко",
+    automateWillingness: "medium",
+    seeds: ["бот сбор отзывов"],
+    inCoreChain: false,
+  },
+  {
+    id: "L11",
+    step: 11,
+    name: "Мягкий возврат «вы давно не были»",
+    entrepreneurPain: "База клиентов лежит мёртвым грузом",
+    automateWillingness: "medium",
+    seeds: ["возврат клиентов бот"],
+    inCoreChain: false,
+  },
+  {
+    id: "L12",
+    step: 12,
+    name: "Эскалация человеку (жалоба, нестандарт)",
+    entrepreneurPain: "Страх, что бот накосячит на чувствительном",
+    automateWillingness: "very-high",
+    seeds: ["эскалация на оператора"],
+    inCoreChain: false,
+  },
+];
+
+export type SeriesPillar = "A" | "B" | "C" | "D" | "E" | "F" | "G";
 
 export type SeriesArticlePlan = {
   id: string;
@@ -519,10 +648,27 @@ export const blogSeriesPlan: SeriesArticlePlan[] = [
     id: "C12",
     pillar: "C",
     slug: "booking-any-service",
-    title: "Любой бизнес по записи: записал, перенёс, подтвердил накануне",
+    title: "Любой бизнес по записи: от «сколько стоит» до подтверждения накануне и следующей записи",
     primary: "бот для записи клиентов",
-    seeds: ["бот для записи на прием", "подтверждение записи", "перенос записи бот", "напоминание о записи"],
-    features: ["telegram", "site", "booking", "reschedule", "confirm", "reminders", "kb", "simple-fast-cheap"],
+    seeds: [
+      "бот для записи на прием",
+      "подтверждение записи",
+      "перенос записи бот",
+      "напоминание о записи",
+      "лист ожидания запись",
+    ],
+    features: [
+      "telegram",
+      "site",
+      "booking",
+      "reschedule",
+      "confirm",
+      "reminders",
+      "waitlist",
+      "rebook",
+      "kb",
+      "simple-fast-cheap",
+    ],
     wave: 1,
     status: "planned",
   },
