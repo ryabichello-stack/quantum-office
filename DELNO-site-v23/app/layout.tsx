@@ -1,6 +1,9 @@
-import type { Metadata, Viewport } from "next";
+import type { Viewport } from "next";
 import "./globals.css";
+import { SeoJsonLd } from "@/components/SeoJsonLd";
+import { YandexMetrika } from "@/components/YandexMetrika";
 import { WidgetHost } from "@/components/widget/WidgetHost";
+import { buildDelnoMetadata } from "@/lib/buildMetadata";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -8,13 +11,21 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export const metadata: Metadata = { title: "DELNO — отвечает клиентам во всех каналах", description: "DELNO принимает звонки и сообщения, отвечает по вашей базе знаний, записывает клиента и сохраняет результат в одном окне.", keywords: ["ИИ сотрудник","голосовой бот","бот для записи","бот для бизнеса","автоматизация звонков","чат-бот для сайта"], icons:{icon:"/favicon.svg",shortcut:"/favicon.svg"} };
-export default function RootLayout({children}:Readonly<{children:React.ReactNode}>){
+export const metadata = buildDelnoMetadata({
+  title: "DELNO — ИИ-сотрудник: звонки, Telegram, MAX, запись клиентов",
+  description:
+    "Попробуйте DELNO на сайте: ИИ отвечает по вашим услугам и ценам, ведёт диалог в мессенджерах и записывает клиентов. Демо без регистрации.",
+  path: "/",
+});
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ru">
       <body>
+        <SeoJsonLd path="/" />
         {children}
         <WidgetHost />
+        <YandexMetrika />
       </body>
     </html>
   );

@@ -41,7 +41,45 @@ rsync -az -e "${RSYNC_SSH[*]}" \
 rsync -az -e "${RSYNC_SSH[*]}" \
   "${REPO_ROOT}/DELNO-site-v23/app/v2/VoiceDemo.tsx" "${SSH_HOST}:${STACK_DIR}/site/app/v2/VoiceDemo.tsx" 2>/dev/null || true
 rsync -az -e "${RSYNC_SSH[*]}" \
-  "${REPO_ROOT}/DELNO-site-v23/app/v2/v2.css" "${SSH_HOST}:${STACK_DIR}/site/app/v2/v2.css" 2>/dev/null || true
+  "${REPO_ROOT}/DELNO-site-v23/app/v2/" "${SSH_HOST}:${STACK_DIR}/site/app/v2/" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/app/globals.css" "${SSH_HOST}:${STACK_DIR}/site/app/globals.css" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/app/layout.tsx" "${SSH_HOST}:${STACK_DIR}/site/app/layout.tsx" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/components/YandexMetrika.tsx" "${SSH_HOST}:${STACK_DIR}/site/components/YandexMetrika.tsx" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/components/SeoJsonLd.tsx" "${SSH_HOST}:${STACK_DIR}/site/components/SeoJsonLd.tsx" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/lib/siteUrl.ts" "${REPO_ROOT}/DELNO-site-v23/lib/seoKeywords.ts" "${REPO_ROOT}/DELNO-site-v23/lib/buildMetadata.ts" \
+  "${SSH_HOST}:${STACK_DIR}/site/lib/" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/app/sitemap.ts" "${REPO_ROOT}/DELNO-site-v23/app/robots.ts" \
+  "${SSH_HOST}:${STACK_DIR}/site/app/" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/app/blog/" "${SSH_HOST}:${STACK_DIR}/site/app/blog/" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/app/help/" "${SSH_HOST}:${STACK_DIR}/site/app/help/" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/app/v3/" "${SSH_HOST}:${STACK_DIR}/site/app/v3/" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/app/page.tsx" "${SSH_HOST}:${STACK_DIR}/site/app/page.tsx" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/components/blog/" "${SSH_HOST}:${STACK_DIR}/site/components/blog/" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/lib/blogPosts.ts" "${REPO_ROOT}/DELNO-site-v23/lib/landingPaths.ts" \
+  "${SSH_HOST}:${STACK_DIR}/site/lib/" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/mailer/yandex_webmaster.py" "${REPO_ROOT}/mailer/yandex_wordstat.py" \
+  "${SSH_HOST}:/opt/ava-mailer/"
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/mailer/yandex_marketing_oauth.py" "${SSH_HOST}:/opt/ava-mailer/yandex_marketing_oauth.py"
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/mailer/yandex_metrika.py" "${SSH_HOST}:/opt/ava-mailer/yandex_metrika.py"
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/mailer/main.py" "${SSH_HOST}:/opt/ava-mailer/main.py"
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/delno-api/deploy/sync_metrika_and_site.sh" "${SSH_HOST}:${STACK_DIR}/deploy/sync_metrika_and_site.sh"
 rsync -az -e "${RSYNC_SSH[*]}" \
   "${REPO_ROOT}/DELNO-site-v23/hooks/useDelnoVoice.ts" "${SSH_HOST}:${STACK_DIR}/site/hooks/useDelnoVoice.ts" 2>/dev/null || true
 
@@ -59,7 +97,24 @@ cd ${STACK_DIR}
 docker compose build knowledge api site
 docker compose up -d knowledge api site
 echo "==> build delno-site-root (https://dlno.ru) :18022"
-docker build --build-arg NEXT_PUBLIC_BASE_PATH= -t delno-site-root:latest "\$SITE"
+YM_ID=""
+if [ -f "${STACK_DIR}/.env" ]; then
+  YM_ID=\$(grep -E '^YM_COUNTER_ID=' "${STACK_DIR}/.env" | cut -d= -f2- | tr -d '\r' || true)
+fi
+BUILD_ARGS=(--build-arg NEXT_PUBLIC_BASE_PATH= --build-arg NEXT_PUBLIC_SITE_URL=https://dlno.ru)
+if [ -n "\$YM_ID" ]; then
+  BUILD_ARGS+=(--build-arg "NEXT_PUBLIC_YM_COUNTER_ID=\$YM_ID")
+fi
+YANDEX_VERIFY=""
+if [ -f "${STACK_DIR}/.env" ]; then
+  YANDEX_VERIFY=\$(grep -E '^NEXT_PUBLIC_YANDEX_VERIFICATION=' "${STACK_DIR}/.env" | cut -d= -f2- | tr -d '\r' || true)
+fi
+if [ -n "\$YANDEX_VERIFY" ]; then
+  BUILD_ARGS+=(--build-arg "NEXT_PUBLIC_YANDEX_VERIFICATION=\$YANDEX_VERIFY")
+fi
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/Dockerfile" "${SSH_HOST}:${STACK_DIR}/site/Dockerfile" 2>/dev/null || true
+docker build "\${BUILD_ARGS[@]}" -t delno-site-root:latest "\$SITE"
 docker rm -f delno-site-root 2>/dev/null || true
 ENV_FILE=()
 [ -f "${STACK_DIR}/.env" ] && ENV_FILE=(--env-file "${STACK_DIR}/.env")

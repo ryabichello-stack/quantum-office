@@ -1,0 +1,168 @@
+/* Layout fixes for ported V17 (reference: header + footer inside `.delno-v17`) */
+
+.delno-v17 {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  min-height: 100dvh;
+  margin: 0;
+}
+
+.delno-v17 > .dc-header,
+.delno-v17 > .dc-footer {
+  flex-shrink: 0;
+}
+
+.dv17-inline-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.delno-v17 .dv17-hero-contact.dv17-demo-link {
+  border: 0;
+  background: none;
+}
+
+/* Footer was visually shifted: asymmetric padding on `<footer>` + centered grid tracks */
+.dc-footer {
+  width: 100%;
+  max-width: 100%;
+  margin-inline: 0;
+  padding: 64px clamp(22px, 5vw, 40px) 28px;
+  box-sizing: border-box;
+}
+
+.dc-footer-inner {
+  width: 100%;
+  max-width: 1200px;
+  margin-inline: auto;
+}
+
+.dc-footer-grid {
+  width: 100%;
+  justify-content: stretch;
+  justify-items: start;
+  margin-inline: auto;
+}
+
+.dc-footer-bottom {
+  width: 100%;
+}
+
+.dc-header-inner {
+  max-width: 1200px;
+}
+
+/* Content subpages */
+.dc-content-page {
+  flex: 1;
+  padding: 120px clamp(24px, 5vw, 40px) 80px;
+  background: var(--dv17-soft, #f5f5f7);
+  min-height: 0;
+}
+
+.dc-content-wrap {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.dc-content-wrap h1 {
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  letter-spacing: -0.04em;
+  margin: 20px 0 16px;
+}
+
+.dc-content-wrap p,
+.dc-content-wrap li {
+  line-height: 1.65;
+  color: #424245;
+}
+
+.dc-link-list {
+  margin: 16px 0;
+  padding-left: 1.2rem;
+}
+
+.dc-link-list a {
+  font-weight: 600;
+}
+
+/* Blog index — tile grid (same cards as landing preview) */
+.dc-blog-index-inner {
+  max-width: 960px;
+}
+
+.dc-blog-eyebrow {
+  margin-top: 20px;
+}
+
+.dc-blog-lead {
+  font-size: 1.05rem;
+  line-height: 1.65;
+  color: #424245;
+  margin: 12px 0 0;
+}
+
+.dc-blog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 10px;
+  margin-top: 32px;
+}
+
+.dc-blog-grid a {
+  min-height: 150px;
+}
+
+.dc-blog-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 8px;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #697e9c;
+}
+
+.dc-blog-excerpt {
+  font-size: 1.125rem;
+  line-height: 1.55;
+  color: #515154;
+  margin: 0 0 28px;
+}
+
+.dc-blog-body p {
+  margin: 0 0 1.15em;
+}
+
+.dc-blog-body p:last-child {
+  margin-bottom: 0;
+}
+
+/* Prevent horizontal scroll from wide sections (neural scene, voice demo) */
+.delno-v17 section {
+  max-width: 100%;
+}
+
+.delno-v17 .dv17-neural-scene,
+.delno-v17 .voice-demo-section {
+  overflow-x: clip;
+}
+
+@media (width <= 680px) {
+  .dc-footer {
+    padding: 49px 19px 28px;
+  }
+
+  .dc-footer-bottom {
+    align-items: flex-start;
+  }
+}

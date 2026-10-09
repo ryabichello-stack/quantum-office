@@ -29,6 +29,10 @@ import logging
 load_dotenv("/opt/ava-mailer/.env")
 
 import yandex_oauth
+import yandex_marketing_oauth
+import yandex_metrika
+import yandex_webmaster
+import yandex_wordstat
 
 # --------------------
 # ENV
@@ -1220,6 +1224,163 @@ def _yandex_oauth_finish(code: str = "", error: str = "", error_description: str
         <p>Можно закрыть эту страницу.</p>
         """
     )
+
+
+def _yandex_marketing_oauth_finish(code: str = "", error: str = "", error_description: str = ""):
+    if error:
+        return HTMLResponse(
+            f"<h1>Ошибка авторизации (Метрика)</h1><p>{error}: {error_description}</p>",
+            status_code=400,
+        )
+    if not code:
+        return HTMLResponse("<h1>Нет кода авторизации</h1>", status_code=400)
+
+    result = yandex_marketing_oauth.exchange_authorization_code(code)
+    if not result.get("ok"):
+        err = result.get("error") or {}
+        return HTMLResponse(
+            "<h1>Не удалось получить marketing-токен</h1>"
+            f"<pre>{json.dumps(err, ensure_ascii=False, indent=2)}</pre>",
+            status_code=502,
+        )
+
+    return HTMLResponse(
+        """
+        <h1>Яндекс OAuth (Метрика) подключён</h1>
+        <p>Refresh-токен сохранён. Можно вызывать /yandex/metrika/ensure для счётчика dlno.ru.</p>
+        """
+    )
+
+
+@app.get("/oauth/yandex/marketing/status")
+def yandex_marketing_oauth_status(x_webhook_token: str = Header(None)):
+    if x_webhook_token != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="bad token")
+    status = yandex_marketing_oauth.oauth_status()
+    status["authorize_url_hint"] = "/oauth/yandex/marketing/start?token=<WEBHOOK_TOKEN>"
+    return status
+
+
+@app.get("/oauth/yandex/marketing/start")
+def yandex_marketing_oauth_start(token: str = ""):
+    if token != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="bad token")
+    if not yandex_marketing_oauth.oauth_configured():
+        raise HTTPException(
+            status_code=500,
+            detail="Set YANDEX_MARKETING_OAUTH_CLIENT_ID and YANDEX_MARKETING_OAUTH_CLIENT_SECRET in .env",
+        )
+    return RedirectResponse(yandex_marketing_oauth.build_authorize_url(), status_code=302)
+
+
+@app.get("/oauth/yandex/marketing/manual")
+def yandex_marketing_oauth_manual_page(token: str = ""):
+    if token != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="bad token")
+    auth_url = yandex_marketing_oauth.build_authorize_url()
+    return HTMLResponse(
+        f"""
+        <h1>Яндекс OAuth — Метрика (ручной код)</h1>
+        <ol>
+          <li><a href="{auth_url}" target="_blank">Открыть авторизацию Яндекса</a></li>
+          <li>Разрешите доступ и скопируйте код с экрана</li>
+          <li>Вставьте код ниже</li>
+        </ol>
+        <form method="post" action="/oauth/yandex/marketing/manual?token={token}">
+          <input name="code" size="40" placeholder="код подтверждения" required />
+          <button type="submit">Сохранить токен</button>
+        </form>
+        """
+    )
+
+
+@app.get("/oauth/yandex/marketing/exchange")
+def yandex_marketing_oauth_exchange(code: str = "", token: str = ""):
+    if token != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="bad token")
+    return _yandex_marketing_oauth_finish(code=code.strip())
+
+
+@app.post("/oauth/yandex/marketing/manual")
+async def yandex_marketing_oauth_manual_submit(request: Request, token: str = ""):
+    if token != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="bad token")
+    form = await request.form()
+    code = str(form.get("code") or "").strip()
+    return _yandex_marketing_oauth_finish(code=code)
+
+
+@app.get("/yandex/metrika/ensure")
+def yandex_metrika_ensure_counter(
+    token: str = "",
+    site: str = "dlno.ru",
+    name: str = "DELNO — dlno.ru",
+):
+    if token != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="bad token")
+    result = yandex_metrika.ensure_counter(site=site, name=name)
+    if not result.get("ok"):
+        raise HTTPException(status_code=502, detail=result)
+    return result
+
+
+class YandexMarketingTokenImport(BaseModel):
+    access_token: str = ""
+    refresh_token: str = ""
+    expires_in: Optional[int] = None
+
+
+@app.get("/yandex/webmaster/bootstrap")
+def yandex_webmaster_bootstrap(
+    token: str = "",
+    host_url: str = "https://dlno.ru/",
+    sitemap_url: str = "https://dlno.ru/sitemap.xml",
+):
+    if token != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="bad token")
+    result = yandex_webmaster.seo_bootstrap(host_url=host_url, sitemap_url=sitemap_url)
+    if not result.get("ok"):
+        raise HTTPException(status_code=502, detail=result)
+    return result
+
+
+@app.get("/yandex/wordstat/phrases")
+def yandex_wordstat_phrases(token: str = "", seeds: str = ""):
+    if token != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="bad token")
+    if seeds.strip():
+        phrases = [s.strip() for s in seeds.split(",") if s.strip()]
+        result = yandex_wordstat.top_requests(phrases)
+    else:
+        result = yandex_wordstat.seo_seed_phrases()
+    if not result.get("ok"):
+        raise HTTPException(status_code=502, detail=result)
+    return result
+
+
+@app.post("/oauth/yandex/marketing/import")
+def yandex_marketing_import_tokens(
+    body: YandexMarketingTokenImport,
+    x_webhook_token: str = Header(None),
+):
+    """One-time bootstrap when OAuth was completed manually (e.g. with 2FA in browser)."""
+    if x_webhook_token != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="bad token")
+    access = body.access_token.strip()
+    refresh = body.refresh_token.strip()
+    if not access and not refresh:
+        raise HTTPException(status_code=400, detail="access_token or refresh_token required")
+    data = yandex_marketing_oauth.load_tokens()
+    if access:
+        data["access_token"] = access
+    if refresh:
+        data["refresh_token"] = refresh
+    if body.expires_in is not None:
+        import time
+
+        data["expires_at"] = int(time.time()) + int(body.expires_in) - 60
+    yandex_marketing_oauth.store_tokens(data)
+    return {"ok": True, "status": yandex_marketing_oauth.oauth_status()}
 
 
 # --------------------
