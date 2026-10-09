@@ -31,6 +31,8 @@ load_dotenv("/opt/ava-mailer/.env")
 import yandex_oauth
 import yandex_marketing_oauth
 import yandex_metrika
+import yandex_webmaster
+import yandex_wordstat
 
 # --------------------
 # ENV
@@ -1328,6 +1330,34 @@ class YandexMarketingTokenImport(BaseModel):
     expires_in: Optional[int] = None
 
 
+@app.get("/yandex/webmaster/bootstrap")
+def yandex_webmaster_bootstrap(
+    token: str = "",
+    host_url: str = "https://dlno.ru/",
+    sitemap_url: str = "https://dlno.ru/sitemap.xml",
+):
+    if token != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="bad token")
+    result = yandex_webmaster.seo_bootstrap(host_url=host_url, sitemap_url=sitemap_url)
+    if not result.get("ok"):
+        raise HTTPException(status_code=502, detail=result)
+    return result
+
+
+@app.get("/yandex/wordstat/phrases")
+def yandex_wordstat_phrases(token: str = "", seeds: str = ""):
+    if token != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="bad token")
+    if seeds.strip():
+        phrases = [s.strip() for s in seeds.split(",") if s.strip()]
+        result = yandex_wordstat.top_requests(phrases)
+    else:
+        result = yandex_wordstat.seo_seed_phrases()
+    if not result.get("ok"):
+        raise HTTPException(status_code=502, detail=result)
+    return result
+
+
 @app.post("/oauth/yandex/marketing/import")
 def yandex_marketing_import_tokens(
     body: YandexMarketingTokenImport,
@@ -1340,7 +1370,7 @@ def yandex_marketing_import_tokens(
     refresh = body.refresh_token.strip()
     if not access and not refresh:
         raise HTTPException(status_code=400, detail="access_token or refresh_token required")
-    data = yandex_marketing_oauth._load_tokens()  # noqa: SLF001 — bootstrap helper
+    data = yandex_marketing_oauth.load_tokens()
     if access:
         data["access_token"] = access
     if refresh:
@@ -1349,7 +1379,7 @@ def yandex_marketing_import_tokens(
         import time
 
         data["expires_at"] = int(time.time()) + int(body.expires_in) - 60
-    yandex_marketing_oauth._save_tokens(data)  # noqa: SLF001
+    yandex_marketing_oauth.store_tokens(data)
     return {"ok": True, "status": yandex_marketing_oauth.oauth_status()}
 
 

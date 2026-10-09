@@ -49,6 +49,17 @@ rsync -az -e "${RSYNC_SSH[*]}" \
 rsync -az -e "${RSYNC_SSH[*]}" \
   "${REPO_ROOT}/DELNO-site-v23/components/YandexMetrika.tsx" "${SSH_HOST}:${STACK_DIR}/site/components/YandexMetrika.tsx" 2>/dev/null || true
 rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/components/SeoJsonLd.tsx" "${SSH_HOST}:${STACK_DIR}/site/components/SeoJsonLd.tsx" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/lib/siteUrl.ts" "${REPO_ROOT}/DELNO-site-v23/lib/seoKeywords.ts" "${REPO_ROOT}/DELNO-site-v23/lib/buildMetadata.ts" \
+  "${SSH_HOST}:${STACK_DIR}/site/lib/" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/app/sitemap.ts" "${REPO_ROOT}/DELNO-site-v23/app/robots.ts" \
+  "${SSH_HOST}:${STACK_DIR}/site/app/" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/mailer/yandex_webmaster.py" "${REPO_ROOT}/mailer/yandex_wordstat.py" \
+  "${SSH_HOST}:/opt/ava-mailer/"
+rsync -az -e "${RSYNC_SSH[*]}" \
   "${REPO_ROOT}/mailer/yandex_marketing_oauth.py" "${SSH_HOST}:/opt/ava-mailer/yandex_marketing_oauth.py"
 rsync -az -e "${RSYNC_SSH[*]}" \
   "${REPO_ROOT}/mailer/yandex_metrika.py" "${SSH_HOST}:/opt/ava-mailer/yandex_metrika.py"
@@ -77,10 +88,19 @@ YM_ID=""
 if [ -f "${STACK_DIR}/.env" ]; then
   YM_ID=\$(grep -E '^YM_COUNTER_ID=' "${STACK_DIR}/.env" | cut -d= -f2- | tr -d '\r' || true)
 fi
-BUILD_ARGS=(--build-arg NEXT_PUBLIC_BASE_PATH=)
+BUILD_ARGS=(--build-arg NEXT_PUBLIC_BASE_PATH= --build-arg NEXT_PUBLIC_SITE_URL=https://dlno.ru)
 if [ -n "\$YM_ID" ]; then
   BUILD_ARGS+=(--build-arg "NEXT_PUBLIC_YM_COUNTER_ID=\$YM_ID")
 fi
+YANDEX_VERIFY=""
+if [ -f "${STACK_DIR}/.env" ]; then
+  YANDEX_VERIFY=\$(grep -E '^NEXT_PUBLIC_YANDEX_VERIFICATION=' "${STACK_DIR}/.env" | cut -d= -f2- | tr -d '\r' || true)
+fi
+if [ -n "\$YANDEX_VERIFY" ]; then
+  BUILD_ARGS+=(--build-arg "NEXT_PUBLIC_YANDEX_VERIFICATION=\$YANDEX_VERIFY")
+fi
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/Dockerfile" "${SSH_HOST}:${STACK_DIR}/site/Dockerfile" 2>/dev/null || true
 docker build "\${BUILD_ARGS[@]}" -t delno-site-root:latest "\$SITE"
 docker rm -f delno-site-root 2>/dev/null || true
 ENV_FILE=()
