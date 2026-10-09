@@ -164,30 +164,504 @@ export const blogSeoClusters: BlogSeoCluster[] = [
   },
 ];
 
-/** Кандидаты на новые статьи (после съёма частот — приоритизировать по wsBase). */
-export const blogTopicBacklog: KeywordRow[] = [
-  { phrase: "чат бот для салона красоты", wsBase: null, intent: "commercial" },
-  { phrase: "чат бот для клиники", wsBase: null, intent: "commercial" },
-  { phrase: "бот для записи на прием", wsBase: null, intent: "commercial" },
-  { phrase: "голосовой бот для бизнеса", wsBase: null, intent: "commercial" },
-  { phrase: "бот для приема звонков", wsBase: null, intent: "commercial" },
-  { phrase: "ии администратор", wsBase: null, intent: "commercial" },
-  { phrase: "нейросотрудник", wsBase: null, intent: "commercial" },
-  { phrase: "автоматизация звонков", wsBase: null, intent: "commercial" },
+/** Доп. сиды под серию «ИИ в бизнесе + ниши» (см. docs/DELNO_BLOG_SERIES_PLAN.md). */
+export const blogSeriesSeeds: string[] = [
+  "как внедрить ии в бизнес",
+  "ии для малого бизнеса",
+  "ии сотрудник для бизнеса",
+  "запись на маникюр бот",
+  "бот для барбершопа",
+  "бот для записи на тренировку",
+  "бот для автосервиса",
+  "запись на шиномонтаж",
+  "бот для записи на фотосессию",
+  "запись к врачу бот",
+  "бот для записи на массаж",
+  "бот для автошколы",
+  "бот для записи к репетитору",
+  "бот для ветклиники",
+  "напоминание о записи",
+  "стоимость чат бота",
+  "бот вместо администратора",
+  "голосовой бот для бизнеса",
+  "конструктор чат ботов",
 ];
+
+export type SeriesPillar = "A" | "B" | "C" | "D" | "E";
+
+export type SeriesArticlePlan = {
+  id: string;
+  pillar: SeriesPillar;
+  slug: string;
+  title: string;
+  primary: string;
+  seeds: string[];
+  /** Product capabilities to feature (honest scope). */
+  features: string[];
+  wave: 1 | 2 | 3;
+  status: "live" | "planned";
+};
+
+/**
+ * Полная серия ~36 статей: внедрение ИИ → каналы → ниши → запуск → деньги.
+ * Живые 4 статьи помечены status: live (существующие slug).
+ */
+export const blogSeriesPlan: SeriesArticlePlan[] = [
+  // A — внедрение
+  {
+    id: "A01",
+    pillar: "A",
+    slug: "one-employee-many-channels",
+    title: "ИИ-сотрудник вместо нескольких ботов",
+    primary: "ии сотрудник",
+    seeds: ["нейросотрудник", "единый бот для всех каналов", "бот вместо администратора"],
+    features: ["omnichannel", "kb", "telegram", "site", "phone"],
+    wave: 1,
+    status: "live",
+  },
+  {
+    id: "A02",
+    pillar: "A",
+    slug: "start-with-one-task",
+    title: "С одной задачи: как не утонуть во внедрении ИИ",
+    primary: "как внедрить ии в бизнес",
+    seeds: ["как запустить чат бот", "первый сценарий бота"],
+    features: ["pilot", "one-channel"],
+    wave: 1,
+    status: "planned",
+  },
+  {
+    id: "A03",
+    pillar: "A",
+    slug: "cheap-employee-24-7",
+    title: "Дешёвый сотрудник 24/7: что реально закрывает ИИ",
+    primary: "ии администратор",
+    seeds: ["бот вместо администратора", "стоимость чат бота"],
+    features: ["pricing", "site", "telegram", "max"],
+    wave: 1,
+    status: "planned",
+  },
+  {
+    id: "A04",
+    pillar: "A",
+    slug: "prepare-knowledge-base",
+    title: "База знаний — это и есть продукт",
+    primary: "база знаний для бота",
+    seeds: ["как настроить чат бот", "прайс для чат бота"],
+    features: ["kb"],
+    wave: 1,
+    status: "live",
+  },
+  {
+    id: "A05",
+    pillar: "A",
+    slug: "where-ai-fails",
+    title: "Где ИИ обязан молчать и звать человека",
+    primary: "эскалация на оператора",
+    seeds: ["передача обращения человеку"],
+    features: ["escalation"],
+    wave: 2,
+    status: "planned",
+  },
+  {
+    id: "A06",
+    pillar: "A",
+    slug: "ai-for-small-business-russia",
+    title: "ИИ для малого бизнеса в РФ: Telegram, MAX и телефон",
+    primary: "ии для малого бизнеса",
+    seeds: ["ии сотрудник для бизнеса"],
+    features: ["telegram", "max", "phone", "site"],
+    wave: 2,
+    status: "planned",
+  },
+  {
+    id: "A07",
+    pillar: "A",
+    slug: "from-demo-to-first-week",
+    title: "От демо на сайте до первой рабочей недели",
+    primary: "как запустить чат бот",
+    seeds: ["как внедрить ии в бизнес"],
+    features: ["demo", "pilot"],
+    wave: 2,
+    status: "planned",
+  },
+  {
+    id: "A08",
+    pillar: "A",
+    slug: "myths-about-ai-bots",
+    title: "7 мифов про ИИ-ботов для бизнеса",
+    primary: "нейросотрудник",
+    seeds: ["ии сотрудник"],
+    features: ["kb", "escalation", "pricing"],
+    wave: 2,
+    status: "planned",
+  },
+  // B — каналы
+  {
+    id: "B01",
+    pillar: "B",
+    slug: "website-widget-that-answers",
+    title: "Виджет на сайте, который отвечает по вашим ценам",
+    primary: "чат бот для сайта",
+    seeds: ["чат бот для сайта"],
+    features: ["site-widget"],
+    wave: 1,
+    status: "planned",
+  },
+  {
+    id: "B02",
+    pillar: "B",
+    slug: "voice-and-chat-one-policy",
+    title: "Голос и чат по одним правилам",
+    primary: "голосовой бот",
+    seeds: ["голосовой помощник для бизнеса", "автоответчик с ии"],
+    features: ["voice-widget", "kb"],
+    wave: 1,
+    status: "live",
+  },
+  {
+    id: "B03",
+    pillar: "B",
+    slug: "telegram-bot-booking",
+    title: "Telegram-бот для записи: сценарий, который не бесит",
+    primary: "чат бот telegram",
+    seeds: ["бот для записи клиентов", "бот для записи на прием"],
+    features: ["telegram", "booking"],
+    wave: 1,
+    status: "planned",
+  },
+  {
+    id: "B04",
+    pillar: "B",
+    slug: "max-messenger-for-business",
+    title: "MAX для бизнеса рядом с Telegram",
+    primary: "бот max",
+    seeds: ["мессенджер max для бизнеса"],
+    features: ["max"],
+    wave: 2,
+    status: "planned",
+  },
+  {
+    id: "B05",
+    pillar: "B",
+    slug: "email-as-channel",
+    title: "Почта как канал первой линии",
+    primary: "бот для почты",
+    seeds: ["автоответы на почту"],
+    features: ["mail"],
+    wave: 3,
+    status: "planned",
+  },
+  {
+    id: "B06",
+    pillar: "B",
+    slug: "phone-ai-incoming",
+    title: "ИИ на входящих звонках: когда нужен тариф со звонками",
+    primary: "бот для приема звонков",
+    seeds: ["автоматизация звонков", "голосовой бот для бизнеса"],
+    features: ["phone", "pricing-calls"],
+    wave: 1,
+    status: "planned",
+  },
+  {
+    id: "B07",
+    pillar: "B",
+    slug: "reminders-reduce-no-shows",
+    title: "Напоминания о визите: как ИИ режет неявки",
+    primary: "напоминание о записи",
+    seeds: ["подтверждение записи"],
+    features: ["reminders", "outbound"],
+    wave: 2,
+    status: "planned",
+  },
+  {
+    id: "B08",
+    pillar: "B",
+    slug: "one-history-all-channels",
+    title: "Одна история обращения во всех каналах",
+    primary: "единый бот для всех каналов",
+    seeds: ["омниканальный бот"],
+    features: ["omnichannel"],
+    wave: 2,
+    status: "planned",
+  },
+  // C — ниши
+  {
+    id: "C01",
+    pillar: "C",
+    slug: "booking-manicure",
+    title: "ИИ запишет на маникюр, пока администратор занят",
+    primary: "чат бот для салона красоты",
+    seeds: ["запись на маникюр бот", "бот для записи клиентов"],
+    features: ["telegram", "site", "booking", "reminders"],
+    wave: 1,
+    status: "planned",
+  },
+  {
+    id: "C02",
+    pillar: "C",
+    slug: "booking-hairdresser",
+    title: "Барбершоп и парикмахерская: запись без сорванных звонков",
+    primary: "бот для барбершопа",
+    seeds: ["чат бот для салона красоты"],
+    features: ["telegram", "phone", "booking"],
+    wave: 1,
+    status: "planned",
+  },
+  {
+    id: "C03",
+    pillar: "C",
+    slug: "booking-fitness",
+    title: "Запись на тренировку и йогу через ИИ-сотрудника",
+    primary: "бот для записи на тренировку",
+    seeds: ["бот для фитнеса"],
+    features: ["telegram", "booking", "reminders"],
+    wave: 1,
+    status: "planned",
+  },
+  {
+    id: "C04",
+    pillar: "C",
+    slug: "booking-tire-service",
+    title: "Шиномонтаж и автосервис: ИИ на линии в сезон",
+    primary: "бот для автосервиса",
+    seeds: ["запись на шиномонтаж", "бот для приема звонков"],
+    features: ["phone", "telegram", "booking"],
+    wave: 1,
+    status: "planned",
+  },
+  {
+    id: "C05",
+    pillar: "C",
+    slug: "booking-photo",
+    title: "Фотостудия: запись на съёмку без переписки «а свободно?»",
+    primary: "бот для записи на фотосессию",
+    seeds: ["бот для фотостудии"],
+    features: ["site", "telegram", "booking"],
+    wave: 2,
+    status: "planned",
+  },
+  {
+    id: "C06",
+    pillar: "C",
+    slug: "booking-clinic",
+    title: "Клиника и стоматология: запись и напоминания без медсоветов",
+    primary: "чат бот для клиники",
+    seeds: ["запись к врачу бот"],
+    features: ["telegram", "reminders", "escalation", "booking"],
+    wave: 1,
+    status: "planned",
+  },
+  {
+    id: "C07",
+    pillar: "C",
+    slug: "booking-massage",
+    title: "Массаж и SPA: запись вечером и в выходные",
+    primary: "бот для записи на массаж",
+    seeds: ["бот для записи клиентов"],
+    features: ["telegram", "booking"],
+    wave: 2,
+    status: "planned",
+  },
+  {
+    id: "C08",
+    pillar: "C",
+    slug: "booking-auto-school",
+    title: "Автошкола: запись на занятия и ответы по расписанию",
+    primary: "бот для автошколы",
+    seeds: ["бот для записи клиентов"],
+    features: ["site", "telegram", "mail"],
+    wave: 3,
+    status: "planned",
+  },
+  {
+    id: "C09",
+    pillar: "C",
+    slug: "booking-tutor",
+    title: "Репетитор и курсы: слоты и переносы без хаоса в чате",
+    primary: "бот для записи к репетитору",
+    seeds: ["бот для онлайн школы"],
+    features: ["telegram", "mail", "booking"],
+    wave: 3,
+    status: "planned",
+  },
+  {
+    id: "C10",
+    pillar: "C",
+    slug: "booking-vet",
+    title: "Ветклиника: запись и уточнения до визита",
+    primary: "бот для ветклиники",
+    seeds: ["чат бот для клиники"],
+    features: ["telegram", "phone", "booking", "escalation"],
+    wave: 2,
+    status: "planned",
+  },
+  {
+    id: "C11",
+    pillar: "C",
+    slug: "booking-coworking",
+    title: "Коворкинг: бронь переговорки с сайта",
+    primary: "бот для бронирования переговорки",
+    seeds: ["чат бот для сайта"],
+    features: ["site", "booking"],
+    wave: 3,
+    status: "planned",
+  },
+  {
+    id: "C12",
+    pillar: "C",
+    slug: "booking-any-service",
+    title: "Шаблон: ИИ-сотрудник для любой услуги по записи",
+    primary: "бот для записи клиентов",
+    seeds: ["бот для записи на прием"],
+    features: ["telegram", "site", "booking", "kb"],
+    wave: 1,
+    status: "planned",
+  },
+  // D — запуск
+  {
+    id: "D01",
+    pillar: "D",
+    slug: "what-to-put-in-kb",
+    title: "Что положить в базу знаний за один вечер",
+    primary: "база знаний для бота",
+    seeds: ["что загрузить в базу знаний"],
+    features: ["kb"],
+    wave: 1,
+    status: "planned",
+  },
+  {
+    id: "D02",
+    pillar: "D",
+    slug: "launch-checklist",
+    title: "Чек-лист перед включением на прод",
+    primary: "как запустить чат бот",
+    seeds: ["тестовые фразы для бота"],
+    features: ["pilot", "escalation", "booking"],
+    wave: 1,
+    status: "live",
+  },
+  {
+    id: "D03",
+    pillar: "D",
+    slug: "calendar-without-double-booking",
+    title: "Запись без двойных слотов",
+    primary: "бот для записи на прием",
+    seeds: ["бот для записи клиентов"],
+    features: ["booking", "calendar"],
+    wave: 2,
+    status: "planned",
+  },
+  {
+    id: "D04",
+    pillar: "D",
+    slug: "handoff-to-human",
+    title: "Передача человеку: когда и с каким резюме",
+    primary: "эскалация на оператора",
+    seeds: ["передача обращения человеку"],
+    features: ["escalation"],
+    wave: 2,
+    status: "planned",
+  },
+  {
+    id: "D05",
+    pillar: "D",
+    slug: "week-1-control",
+    title: "Первая неделя: что смотреть в диалогах",
+    primary: "как запустить чат бот",
+    seeds: ["контроль качества бота"],
+    features: ["pilot"],
+    wave: 2,
+    status: "planned",
+  },
+  {
+    id: "D06",
+    pillar: "D",
+    slug: "scale-channels-after-pilot",
+    title: "Как наращивать каналы после пилота",
+    primary: "единый бот для всех каналов",
+    seeds: ["подключить telegram к сайту"],
+    features: ["omnichannel", "telegram", "phone"],
+    wave: 3,
+    status: "planned",
+  },
+  // E — деньги / выбор
+  {
+    id: "E01",
+    pillar: "E",
+    slug: "price-2990-vs-admin",
+    title: "2 990 ₽ vs администратор: честный счёт",
+    primary: "стоимость чат бота",
+    seeds: ["ии сотрудник для бизнеса"],
+    features: ["pricing"],
+    wave: 1,
+    status: "planned",
+  },
+  {
+    id: "E02",
+    pillar: "E",
+    slug: "diy-bot-vs-delno",
+    title: "Конструктор ботов vs готовый ИИ-сотрудник",
+    primary: "конструктор чат ботов",
+    seeds: ["чат бот для бизнеса"],
+    features: ["kb", "omnichannel", "pricing"],
+    wave: 2,
+    status: "planned",
+  },
+  {
+    id: "E03",
+    pillar: "E",
+    slug: "when-you-need-calls",
+    title: "Когда хватит мессенджеров, а когда нужны звонки",
+    primary: "голосовой бот для бизнеса",
+    seeds: ["бот для приема звонков"],
+    features: ["phone", "pricing-calls", "voice-widget"],
+    wave: 2,
+    status: "planned",
+  },
+  {
+    id: "E04",
+    pillar: "E",
+    slug: "checklist-buy-ai-employee",
+    title: "Чек-лист покупки ИИ-сотрудника",
+    primary: "ии сотрудник для бизнеса",
+    seeds: ["ии сотрудник"],
+    features: ["pricing", "kb", "escalation", "pilot"],
+    wave: 3,
+    status: "planned",
+  },
+];
+
+/** Кандидаты на новые статьи (после съёма частот — приоритизировать по wsBase). */
+export const blogTopicBacklog: KeywordRow[] = blogSeriesPlan
+  .filter((a) => a.status === "planned")
+  .map((a) => ({
+    phrase: a.primary,
+    wsBase: null as WsFreq,
+    intent: "commercial" as const,
+    notes: `${a.id} · ${a.slug}`,
+  }));
 
 export function getClusterForSlug(slug: string): BlogSeoCluster | undefined {
   return blogSeoClusters.find((c) => c.slug === slug);
+}
+
+export function getSeriesArticle(slug: string): SeriesArticlePlan | undefined {
+  return blogSeriesPlan.find((a) => a.slug === slug);
 }
 
 /** Все уникальные фразы ядра (для пакетного съёма частот). */
 export function allCorePhrases(): string[] {
   const set = new Set<string>();
   for (const seed of wordstatSeedQueue) set.add(seed);
+  for (const seed of blogSeriesSeeds) set.add(seed);
   for (const c of blogSeoClusters) {
     set.add(c.primary.phrase);
     for (const k of [...c.secondary, ...c.lsi]) set.add(k.phrase);
   }
-  for (const t of blogTopicBacklog) set.add(t.phrase);
+  for (const a of blogSeriesPlan) {
+    set.add(a.primary);
+    for (const s of a.seeds) set.add(s);
+  }
   return [...set];
 }
