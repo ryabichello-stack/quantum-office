@@ -41,6 +41,19 @@ def main() -> int:
         page = browser.new_page()
         page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
+        for label in ("Allow all", "Allow essential cookies", "Разрешить все", "Разрешить essential"):
+            if page.locator(f'button:has-text("{label}")').count():
+                page.locator(f'button:has-text("{label}")').first.click()
+                page.wait_for_timeout(800)
+
+        for label in ("Other login method", "Другой способ войти", "Ещё", "Log in with password"):
+            if page.locator(f'button:has-text("{label}")').count():
+                page.locator(f'button:has-text("{label}")').first.click()
+                page.wait_for_timeout(1200)
+            if page.locator(f'a:has-text("{label}")').count():
+                page.locator(f'a:has-text("{label}")').first.click()
+                page.wait_for_timeout(1200)
+
         if page.locator('input[name="login"]').count():
             page.fill('input[name="login"]', login)
             page.locator('button[type="submit"]').first.click()
@@ -51,21 +64,39 @@ def main() -> int:
             page.locator('button[type="submit"]').first.click()
             page.wait_for_timeout(2500)
 
-        if page.locator('button[data-t="button:action"]').count():
-            page.locator('button[data-t="button:action"]').first.click()
-            page.wait_for_timeout(2000)
+        for _ in range(3):
+            if page.locator('button[data-t="button:action"]').count():
+                page.locator('button[data-t="button:action"]').first.click()
+                page.wait_for_timeout(2000)
+            if page.locator('button:has-text("Разрешить")').count():
+                page.locator('button:has-text("Разрешить")').first.click()
+                page.wait_for_timeout(2000)
+            if page.locator('button:has-text("Allow")').count():
+                page.locator('button:has-text("Allow")').first.click()
+                page.wait_for_timeout(2000)
 
+        page.wait_for_timeout(3000)
+        text = page.inner_text("body")
         body = page.content()
         browser.close()
 
-    m = re.search(r"verification_code[^0-9a-zA-Z]*([a-zA-Z0-9]{7,})", body)
-    if not m:
-        m = re.search(r'class="[^"]*code[^"]*"[^>]*>([a-zA-Z0-9]{7,})<', body)
-    if not m:
-        print("could not find verification code in OAuth page", file=sys.stderr)
-        return 1
+    for pattern in (
+        r"(?m)^([a-z0-9]{7,12})\s*$",
+        r"verification_code[^0-9a-zA-Z]*([a-zA-Z0-9]{7,12})",
+        r"код[^0-9a-zA-Z]{0,20}([a-z0-9]{7,12})",
+    ):
+        m = re.search(pattern, text, re.I)
+        if m:
+            print(m.group(1).strip())
+            return 0
 
-    print(m.group(1).strip())
+    m = re.search(r'class="[^"]*code[^"]*"[^>]*>([a-zA-Z0-9]{7,12})<', body)
+    if m:
+        print(m.group(1).strip())
+        return 0
+
+    print("could not find verification code in OAuth page", file=sys.stderr)
+    return 1
     return 0
 
 
