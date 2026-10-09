@@ -1,0 +1,33 @@
+/* Archived console landing (/v3) — center footer that was visually shifted left */
+.v3-landing .v2-footer {
+  width: 100%;
+  max-width: 1280px;
+  margin-inline: auto;
+  box-sizing: border-box;
+  grid-template-columns: 1fr;
+  justify-items: center;
+  text-align: center;
+  gap: 28px;
+}
+
+.v3-landing .v2-footer > div {
+  justify-content: center;
+  justify-items: center;
+  margin-inline: auto;
+}
+
+.v3-landing .v2-footer p {
+  max-width: 420px;
+}
+
+@media (min-width: 741px) {
+  .v3-landing .v2-footer {
+    grid-template-columns: 1fr 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .v3-landing .v2-footer > div {
+    grid-column: 1 / -1;
+  }
+}

@@ -57,6 +57,19 @@ rsync -az -e "${RSYNC_SSH[*]}" \
   "${REPO_ROOT}/DELNO-site-v23/app/sitemap.ts" "${REPO_ROOT}/DELNO-site-v23/app/robots.ts" \
   "${SSH_HOST}:${STACK_DIR}/site/app/" 2>/dev/null || true
 rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/app/blog/" "${SSH_HOST}:${STACK_DIR}/site/app/blog/" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/app/help/" "${SSH_HOST}:${STACK_DIR}/site/app/help/" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/app/v3/" "${SSH_HOST}:${STACK_DIR}/site/app/v3/" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/app/page.tsx" "${SSH_HOST}:${STACK_DIR}/site/app/page.tsx" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/components/blog/" "${SSH_HOST}:${STACK_DIR}/site/components/blog/" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
+  "${REPO_ROOT}/DELNO-site-v23/lib/blogPosts.ts" "${REPO_ROOT}/DELNO-site-v23/lib/landingPaths.ts" \
+  "${SSH_HOST}:${STACK_DIR}/site/lib/" 2>/dev/null || true
+rsync -az -e "${RSYNC_SSH[*]}" \
   "${REPO_ROOT}/mailer/yandex_webmaster.py" "${REPO_ROOT}/mailer/yandex_wordstat.py" \
   "${SSH_HOST}:/opt/ava-mailer/"
 rsync -az -e "${RSYNC_SSH[*]}" \

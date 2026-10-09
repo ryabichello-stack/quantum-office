@@ -22,6 +22,9 @@ import { LeadFormTrigger } from "../SiteControls";
 import NeuralScene from "./NeuralScene";
 import { V17PageShell } from "./V17PageShell";
 import V17IndustryTabs from "./V17IndustryTabs";
+import { BlogCardGrid } from "@/components/blog/BlogCardGrid";
+import { blogPosts } from "@/lib/blogPosts";
+import { mainPath } from "@/lib/landingPaths";
 
 const faqItems: [string, string][] = [
   [
@@ -446,22 +449,11 @@ export default function V17Landing() {
             <span>и сохранить качество сервиса.</span>
           </h2>
           <p>Разбираем сценарии, подготовку базы знаний и запуск ИИ-сотрудника без сложных терминов.</p>
-          <Link href="/v2/blog" className="dv17-inline-link">
+          <Link href={mainPath("/blog")} className="dv17-inline-link">
             Читать статьи <ArrowRight size={18} aria-hidden />
           </Link>
         </div>
-        <div className="dv17-blog-preview-cards">
-          <Link href="/v2/blog/one-employee-many-channels">
-            <span>Основа</span>
-            <strong>Один ИИ-сотрудник вместо нескольких ботов</strong>
-            <ArrowUpRight size={18} aria-hidden />
-          </Link>
-          <Link href="/v2/blog/prepare-knowledge-base">
-            <span>Практика</span>
-            <strong>Что подготовить для первого сценария</strong>
-            <ArrowUpRight size={18} aria-hidden />
-          </Link>
-        </div>
+        <BlogCardGrid posts={blogPosts.slice(0, 2)} />
       </section>
 
       <section className="dv17-section dv17-faq" id="answers">

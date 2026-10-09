@@ -80,14 +80,24 @@ export function V4ProductStage(){
   </div>
 }
 
-export function DelnoPage({version4: version4Prop=false,convert=false}:{version4?:boolean;convert?:boolean}){
-  const version4=version4Prop||convert;
+export function DelnoPage({
+  version4: version4Prop = false,
+  convert = false,
+  homeHref = "/",
+}: {
+  version4?: boolean;
+  convert?: boolean;
+  /** Logo / footer home link (e.g. `/v3` for archived landing). */
+  homeHref?: string;
+}) {
+  const version4 = version4Prop || convert;
+  const home = convert ? "/" : version4 ? "/v4" : homeHref;
   const pageFeatures=version4?v4Features:features;
   const pageFaq=version4?v4Faq:faq;
   const pageChannels=version4?v4ClientChannels:clientChannels;
   return <main className={version4?`v2 v4-refined${convert?" v2-convert":""}`:"v2"}>
     <header className="v2-header">
-      <Link className="v2-logo" href={convert?"/v2":version4?"/v4":"/"}><DelnoMark/>DELNO</Link>
+      <Link className="v2-logo" href={home}><DelnoMark/>DELNO</Link>
       <ActiveNav />
       <div className="v2-header-right">
         {convert?(
@@ -220,6 +230,6 @@ export function DelnoPage({version4: version4Prop=false,convert=false}:{version4
 
     <section className="v2-final" id="contact"><div className="final-glow"/><div className="v2-logo giant-logo"><DelnoMark/>DELNO</div><h2>{version4?<>Покажем DELNO<br/>на вашем <span>бизнесе.</span></>:<>Давайте покажем,<br/>как DELNO будет работать <span>у вас.</span></>}</h2><p>{version4?"Без длинной презентации: выберем одно обращение клиента и покажем, как DELNO его обработает.":"Поговорите с помощником прямо на сайте, позвоните или напишите в удобный мессенджер — подготовим демо на примере вашего бизнеса."}</p><LeadFormTrigger className="v2-btn final-lead" label={version4?"Получить демо":"Оставить заявку"} source="Финальный экран" /><div className="contact-options"><a className="contact-voice" href="#demo"><span className="voice-cta-orb"><Mic/></span><span><b>Поговорить с DELNO</b><small>Голосовое демо на сайте</small></span></a><a className="contact-phone" href="tel:+78005550000"><Phone/><span><b>Позвонить</b><small>8 800 555-00-00</small></span></a><a className="contact-telegram" href={version4?"https://t.me/Dlno_bot":"https://t.me/quantumlabss"} target="_blank" rel="noreferrer"><Send/><span><b>Telegram</b><small>{version4?"@Dlno_bot":"@quantumlabss"}</small></span></a><a className="contact-max" href={version4?"https://max.ru/@id471405233378_bot":"https://max.ru/id7840118071_bot"} target="_blank" rel="noreferrer"><MessageCircle/><span><b>MAX</b><small>Открыть чат с ботом</small></span></a><a className="contact-mail" href={version4?"mailto:office@dlno.ru":"mailto:hello@delno.one?subject=Хочу%20демо%20DELNO"}><Mail/><span><b>Написать на почту</b><small>{version4?"office@dlno.ru":"hello@delno.one"}</small></span></a></div><small className="response-note">Выберите удобный способ — ответим в рабочее время</small></section>
     {convert&&<StickyMobileCTA/>}
-    <footer className="v2-footer"><Link className="v2-logo" href={convert?"/v2":version4?"/v4":"/"}><DelnoMark/>DELNO</Link><p>ИИ-сотрудник для работы с клиентами.<br/>Отвечает дельно. Работает по делу.</p><div><a href="#solutions">Возможности</a><a href="#prices">Тарифы</a><a href="#answers">Вопросы</a><a href="tel:+78005550000">8 800 555-00-00</a><a href={version4?"https://t.me/Dlno_bot":"https://t.me/quantumlabss"} target="_blank" rel="noreferrer">Telegram</a><a href={version4?"https://max.ru/@id471405233378_bot":"https://max.ru/id7840118071_bot"} target="_blank" rel="noreferrer">MAX</a><a href={version4?"mailto:office@dlno.ru":"mailto:hello@delno.one"}>{version4?"office@dlno.ru":"hello@delno.one"}</a><Link href="/privacy">Конфиденциальность</Link><Link href="/terms">Пользовательское соглашение</Link></div><small>© 2026 DELNO</small></footer>
+    <footer className="v2-footer"><Link className="v2-logo" href={home}><DelnoMark/>DELNO</Link><p>ИИ-сотрудник для работы с клиентами.<br/>Отвечает дельно. Работает по делу.</p><div><a href="#solutions">Возможности</a><a href="#prices">Тарифы</a><a href="#answers">Вопросы</a><a href="tel:+78005550000">8 800 555-00-00</a><a href={version4?"https://t.me/Dlno_bot":"https://t.me/quantumlabss"} target="_blank" rel="noreferrer">Telegram</a><a href={version4?"https://max.ru/@id471405233378_bot":"https://max.ru/id7840118071_bot"} target="_blank" rel="noreferrer">MAX</a><a href={version4?"mailto:office@dlno.ru":"mailto:hello@delno.one"}>{version4?"office@dlno.ru":"hello@delno.one"}</a><Link href="/privacy">Конфиденциальность</Link><Link href="/terms">Пользовательское соглашение</Link></div><small>© 2026 DELNO</small></footer>
   </main>
 }

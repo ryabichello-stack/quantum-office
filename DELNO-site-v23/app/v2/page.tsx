@@ -1,7 +1,8 @@
-import ConvertLanding from "./ConvertLanding";
+import { redirect } from "next/navigation";
 
 export { DelnoPage } from "./DelnoPage";
 
-export default function V2Route() {
-  return <ConvertLanding />;
+/** Legacy URL — main landing is now `/`. */
+export default function V2LegacyRedirect() {
+  redirect("/");
 }

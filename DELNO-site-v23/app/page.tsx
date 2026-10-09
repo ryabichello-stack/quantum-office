@@ -1,6 +1,9 @@
-import { DelnoPage } from "./v2/DelnoPage";
+import ConvertLanding from "./v2/ConvertLanding";
 
-/** Canonical landing — v2 (owner-approved). Do not switch `/` to v4 without explicit approval. */
+import "./v2/dv17.bundle.css";
+import "./v2/v17-overrides.css";
+
+/** Canonical marketing landing — V17 (former `/v2`). */
 export default function DelnoHome() {
-  return <DelnoPage />;
+  return <ConvertLanding />;
 }

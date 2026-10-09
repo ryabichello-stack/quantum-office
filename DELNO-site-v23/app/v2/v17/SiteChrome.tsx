@@ -2,7 +2,9 @@ import { ArrowUpRight, Menu } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
-const base = "/v2";
+import { mainPath } from "@/lib/landingPaths";
+
+const base = mainPath("/");
 
 export function V17SiteHeader() {
   return (

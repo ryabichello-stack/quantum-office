@@ -47,6 +47,7 @@
   width: 100%;
   justify-content: stretch;
   justify-items: start;
+  margin-inline: auto;
 }
 
 .dc-footer-bottom {
@@ -89,6 +90,61 @@
 
 .dc-link-list a {
   font-weight: 600;
+}
+
+/* Blog index — tile grid (same cards as landing preview) */
+.dc-blog-index-inner {
+  max-width: 960px;
+}
+
+.dc-blog-eyebrow {
+  margin-top: 20px;
+}
+
+.dc-blog-lead {
+  font-size: 1.05rem;
+  line-height: 1.65;
+  color: #424245;
+  margin: 12px 0 0;
+}
+
+.dc-blog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 10px;
+  margin-top: 32px;
+}
+
+.dc-blog-grid a {
+  min-height: 150px;
+}
+
+.dc-blog-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 8px;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #697e9c;
+}
+
+.dc-blog-excerpt {
+  font-size: 1.125rem;
+  line-height: 1.55;
+  color: #515154;
+  margin: 0 0 28px;
+}
+
+.dc-blog-body p {
+  margin: 0 0 1.15em;
+}
+
+.dc-blog-body p:last-child {
+  margin-bottom: 0;
 }
 
 /* Prevent horizontal scroll from wide sections (neural scene, voice demo) */
