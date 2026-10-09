@@ -1,12 +1,41 @@
 import { ArrowLeft } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getBlogPost } from "@/lib/blogPosts";
+import { blogPosts, getBlogPost } from "@/lib/blogPosts";
+import { buildDelnoMetadata } from "@/lib/buildMetadata";
 import { mainPath } from "@/lib/landingPaths";
+import { getClusterForSlug } from "@/lib/seoBlogCore";
 import { V17PageShell } from "../../v2/v17/V17PageShell";
 
 import "../../v2/dv17.bundle.css";
 import "../../v2/v17-overrides.css";
+
+export function generateStaticParams() {
+  return blogPosts.map((p) => ({ slug: p.slug }));
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const post = getBlogPost(slug);
+  if (!post) return {};
+  const cluster = getClusterForSlug(slug);
+  const keywords = cluster
+    ? [cluster.primary.phrase, ...cluster.secondary.map((k) => k.phrase), ...cluster.lsi.map((k) => k.phrase)]
+    : post.focusKeyword
+      ? [post.focusKeyword]
+      : undefined;
+  return buildDelnoMetadata({
+    title: post.metaTitle ?? `${post.title} — DELNO`,
+    description: post.metaDescription ?? post.excerpt,
+    path: `/blog/${slug}`,
+    keywords,
+  });
+}
 
 export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;

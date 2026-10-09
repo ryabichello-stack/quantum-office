@@ -6,6 +6,10 @@ export type BlogPost = {
   readMinutes: number;
   publishedAt: string;
   body: string[];
+  /** Focus keyword from SEO core (Wordstat cluster primary). */
+  focusKeyword?: string;
+  metaTitle?: string;
+  metaDescription?: string;
 };
 
 export const blogPosts: BlogPost[] = [
@@ -13,6 +17,10 @@ export const blogPosts: BlogPost[] = [
     slug: "one-employee-many-channels",
     category: "Основа",
     title: "Один ИИ-сотрудник вместо нескольких ботов",
+    focusKeyword: "ии сотрудник",
+    metaTitle: "ИИ-сотрудник вместо нескольких ботов — один для всех каналов",
+    metaDescription:
+      "Зачем бизнесу один ИИ-сотрудник вместо чат-бота, автоответчика и скриптов: общая база знаний, Telegram, звонки и сайт в одной истории обращения.",
     excerpt:
       "Telegram, звонки и почта — одна база знаний и одна история обращения, без разъезжающихся ответов.",
     readMinutes: 4,
@@ -27,6 +35,10 @@ export const blogPosts: BlogPost[] = [
     slug: "prepare-knowledge-base",
     category: "Практика",
     title: "Что подготовить для первого сценария",
+    focusKeyword: "база знаний для бота",
+    metaTitle: "База знаний для бота: что подготовить перед запуском",
+    metaDescription:
+      "Чек-лист материалов для ИИ-сотрудника: сайт, прайс, услуги, правила записи. Как проверить ответы до телефонии и не усложнять старт.",
     excerpt:
       "Сайт или прайс, список услуг и простые правила — этого хватит, чтобы проверить ответы до телефонии.",
     readMinutes: 5,
@@ -41,6 +53,10 @@ export const blogPosts: BlogPost[] = [
     slug: "voice-and-chat-one-policy",
     category: "Сценарии",
     title: "Голос и чат по одним правилам",
+    focusKeyword: "голосовой бот",
+    metaTitle: "Голосовой бот и чат по одним правилам — без расхождений",
+    metaDescription:
+      "Почему голос и мессенджеры должны жить на одной базе знаний: одинаковые цены, эскалации и запись клиента в звонке и в виджете.",
     excerpt:
       "Одинаковые тарифы и ограничения в звонке и в виджете — без расхождений между каналами.",
     readMinutes: 3,
@@ -55,6 +71,10 @@ export const blogPosts: BlogPost[] = [
     slug: "launch-checklist",
     category: "Запуск",
     title: "Чек-лист перед включением на прод",
+    focusKeyword: "как запустить чат бот",
+    metaTitle: "Чек-лист запуска ИИ-бота: от тестовых фраз до прода",
+    metaDescription:
+      "Пять шагов перед включением ИИ-сотрудника: типовые вопросы, отказы, запись в CRM, тон бренда и контроль диалогов первые недели.",
     excerpt:
       "Пять шагов проверки: от тестовых фраз до контроля записей и эскалаций.",
     readMinutes: 6,
