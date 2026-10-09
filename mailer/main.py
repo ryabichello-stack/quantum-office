@@ -1322,6 +1322,37 @@ def yandex_metrika_ensure_counter(
     return result
 
 
+class YandexMarketingTokenImport(BaseModel):
+    access_token: str = ""
+    refresh_token: str = ""
+    expires_in: Optional[int] = None
+
+
+@app.post("/oauth/yandex/marketing/import")
+def yandex_marketing_import_tokens(
+    body: YandexMarketingTokenImport,
+    x_webhook_token: str = Header(None),
+):
+    """One-time bootstrap when OAuth was completed manually (e.g. with 2FA in browser)."""
+    if x_webhook_token != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="bad token")
+    access = body.access_token.strip()
+    refresh = body.refresh_token.strip()
+    if not access and not refresh:
+        raise HTTPException(status_code=400, detail="access_token or refresh_token required")
+    data = yandex_marketing_oauth._load_tokens()  # noqa: SLF001 — bootstrap helper
+    if access:
+        data["access_token"] = access
+    if refresh:
+        data["refresh_token"] = refresh
+    if body.expires_in is not None:
+        import time
+
+        data["expires_at"] = int(time.time()) + int(body.expires_in) - 60
+    yandex_marketing_oauth._save_tokens(data)  # noqa: SLF001
+    return {"ok": True, "status": yandex_marketing_oauth.oauth_status()}
+
+
 # --------------------
 # CALENDAR API
 # --------------------

@@ -35,6 +35,14 @@ def oauth_configured() -> bool:
     return bool(YANDEX_OAUTH_CLIENT_ID and YANDEX_OAUTH_CLIENT_SECRET)
 
 
+def load_tokens() -> Dict[str, Any]:
+    return _load_tokens()
+
+
+def store_tokens(data: Dict[str, Any]) -> None:
+    _save_tokens(data)
+
+
 def _load_tokens() -> Dict[str, Any]:
     if not YANDEX_OAUTH_TOKEN_FILE or not os.path.isfile(YANDEX_OAUTH_TOKEN_FILE):
         return {}
