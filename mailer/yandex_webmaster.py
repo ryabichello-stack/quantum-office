@@ -68,6 +68,11 @@ def get_verification(user_id: int, host_id: str) -> Dict[str, Any]:
     return _request("GET", f"/user/{user_id}/hosts/{host_id}/verification")
 
 
+def start_verification(user_id: int, host_id: str, verification_type: str = "META_TAG") -> Dict[str, Any]:
+    path = f"/user/{user_id}/hosts/{host_id}/verification?verification_type={verification_type}"
+    return _request("POST", path, {})
+
+
 def seo_bootstrap(host_url: str = "https://dlno.ru/", sitemap_url: str = "https://dlno.ru/sitemap.xml") -> Dict[str, Any]:
     if not oauth_configured():
         return {"ok": False, "error": "marketing_oauth_not_configured"}
@@ -101,6 +106,16 @@ def seo_bootstrap(host_url: str = "https://dlno.ru/", sitemap_url: str = "https:
     if host_id:
         verification = get_verification(user_id, host_id)
 
+    verify_start = None
+    if host_id and not verified and verification and verification.get("ok"):
+        verify_start = start_verification(user_id, host_id, "META_TAG")
+        if verify_start.get("ok"):
+            verification = get_verification(user_id, host_id)
+            verified = str((verification.get("data") or {}).get("verification_state", "")).upper() in (
+                "VERIFIED",
+                "IN_PROGRESS",
+            )
+
     sitemap = None
     if host_id and verified:
         sitemap = add_sitemap(user_id, host_id, sitemap_url)
@@ -112,6 +127,7 @@ def seo_bootstrap(host_url: str = "https://dlno.ru/", sitemap_url: str = "https:
         "verified": verified,
         "added_host": added_host,
         "verification": verification,
+        "verification_start": verify_start,
         "sitemap_submit": sitemap,
         "note": "Пока сайт не verified, sitemap в Вебmaster не примут — добавьте meta/HTML из verification.",
     }
