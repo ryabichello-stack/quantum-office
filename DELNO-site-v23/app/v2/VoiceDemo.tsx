@@ -15,9 +15,9 @@ export default function VoiceDemo({
   variant = "default",
 }: {
   embed?: boolean;
-  variant?: "default" | "v15";
+  variant?: "default" | "v15" | "v17";
 }) {
-  const isV15 = variant === "v15";
+  const isV15 = variant === "v15" || variant === "v17";
   const mountRef = useRef<HTMLDivElement>(null);
   const [question, setQuestion] = useState(
     isV15 ? "Выберите вопрос для демонстрации" : "Нажмите на кристалл и задайте вопрос",

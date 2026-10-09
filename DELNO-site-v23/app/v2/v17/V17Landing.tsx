@@ -9,7 +9,6 @@ import {
   Earth,
   FileText,
   Mail,
-  Menu,
   MessageCircle,
   Phone,
   PhoneOutgoing,
@@ -21,7 +20,8 @@ import Link from "next/link";
 import VoiceDemo from "../VoiceDemo";
 import { LeadFormTrigger } from "../SiteControls";
 import NeuralScene from "./NeuralScene";
-import V15IndustryTabs from "./V15IndustryTabs";
+import { V17SiteFooter, V17SiteHeader } from "./SiteChrome";
+import V17IndustryTabs from "./V17IndustryTabs";
 
 const faqItems: [string, string][] = [
   [
@@ -50,40 +50,16 @@ const faqItems: [string, string][] = [
   ],
 ];
 
-export default function V15Landing() {
+export default function V17Landing() {
   return (
-    <main className="delno-v15">
-      <header className="dv15-header">
-        <div className="dv15-nav-wrap">
-          <Link href="/v2" className="dv15-brand" aria-label="DELNO — главная">
-            <Image src="/delno-mark.svg" width={29} height={28} alt="" />
-            DELNO
-          </Link>
-          <nav className="dv15-desktop-nav" aria-label="Разделы сайта">
-            <a href="#work">Как работает</a>
-            <a href="#scenarios">Сценарии</a>
-            <a href="#prices">Стоимость</a>
-            <Link href="/">Основной сайт</Link>
-            <a href="#contact">Контакты</a>
-          </nav>
-          <div className="dv15-nav-actions">
-            <a className="dv15-button dv15-button-small" href="#demo">
-              Попробовать
-            </a>
-            <div className="dv15-mobile-nav">
-              <button type="button" className="dv15-menu-toggle" aria-label="Меню">
-                <Menu aria-hidden />
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <section className="dv15-hero" id="product">
-        <div className="dv15-hero-grid">
-          <div className="dv15-hero-copy">
-            <p className="dv15-eyebrow">
-              <span className="dv15-presence-dot" /> ИИ-сотрудник на связи 24/7
+    <>
+      <V17SiteHeader />
+      <main className="delno-v17">
+      <section className="dv17-hero" id="product">
+        <div className="dv17-hero-grid">
+          <div className="dv17-hero-copy">
+            <p className="dv17-eyebrow">
+              <span className="dv17-presence-dot" /> ИИ-сотрудник на связи 24/7
             </p>
             <h1>
               Ваш ИИ-сотрудник.
@@ -94,22 +70,22 @@ export default function V15Landing() {
                 Записывает.
               </span>
             </h1>
-            <p className="dv15-hero-description">
+            <p className="dv17-hero-description">
               Пока команда занята, DELNO принимает звонки и сообщения, отвечает по вашей базе знаний и
               записывает клиентов. На связи 24/7.
             </p>
-            <div className="dv15-hero-actions">
-              <a className="dv15-button dv15-primary dv15-try-button" href="#demo">
+            <div className="dv17-hero-actions">
+              <a className="dv17-button dv17-primary dv17-try-button" href="#demo">
                 Попробовать DELNO <ArrowRight size={18} aria-hidden />
               </a>
               <LeadFormTrigger
-                className="dv15-demo-link dv15-hero-contact"
+                className="dv17-demo-link dv17-hero-contact"
                 label="Хочу попробовать у себя"
-                source="V15 hero contact"
+                source="V17 hero contact"
               />
             </div>
-            <p className="dv15-try-note">Демо прямо здесь · без регистрации</p>
-            <div className="dv15-hero-prices">
+            <p className="dv17-try-note">Демо прямо здесь · без регистрации</p>
+            <div className="dv17-hero-prices">
               <a href="#prices">
                 Диалоги <strong>2 990 ₽/мес.</strong>
               </a>
@@ -118,27 +94,27 @@ export default function V15Landing() {
                 Со звонками <strong>5 990 ₽/мес.</strong>
               </a>
             </div>
-            <p className="dv15-start-note">Начнём с одной задачи. Поможем с настройкой.</p>
+            <p className="dv17-start-note">Начнём с одной задачи. Поможем с настройкой.</p>
           </div>
           <NeuralScene />
         </div>
       </section>
 
-      <section className="dv15-live-demo">
-        <VoiceDemo variant="v15" />
-        <div className="dv15-after-demo">
+      <section className="dv17-live-demo">
+        <VoiceDemo variant="v17" />
+        <div className="dv17-after-demo">
           <p>Хотите услышать DELNO с вашими услугами и правилами?</p>
           <LeadFormTrigger
-            className="dv15-button dv15-primary"
+            className="dv17-button dv17-primary"
             label="Хочу попробовать у себя"
-            source="V15 after demo"
+            source="V17 after demo"
           />
         </div>
       </section>
 
-      <section className="dv15-section dv15-work" id="work">
-        <div className="dv15-section-intro">
-          <p className="dv15-eyebrow">Больше времени на ваше дело</p>
+      <section className="dv17-section dv17-work" id="work">
+        <div className="dv17-section-intro">
+          <p className="dv17-eyebrow">Больше времени на ваше дело</p>
           <h2>
             Рутина — DELNO.
             <br />
@@ -150,11 +126,11 @@ export default function V15Landing() {
             Сотрудники смогут заняться тем, где нужен человек.
           </p>
         </div>
-        <div className="dv15-capabilities">
-          <article className="dv15-capability dv15-capability-phone">
-            <div className="dv15-capability-number">01</div>
-            <div className="dv15-capability-top">
-              <span className="dv15-icon-tile dv15-tile-phone">
+        <div className="dv17-capabilities">
+          <article className="dv17-capability dv17-capability-phone">
+            <div className="dv17-capability-number">01</div>
+            <div className="dv17-capability-top">
+              <span className="dv17-icon-tile dv17-tile-phone">
                 <Phone size={22} aria-hidden />
               </span>
               <span>Секретарь и администратор</span>
@@ -165,20 +141,20 @@ export default function V15Landing() {
               Следующий шаг.
             </h3>
             <p>Ответит на входящий, уточнит запрос и предложит запись. Сам позвонит, чтобы подтвердить визит.</p>
-            <div className="dv15-call-receipt">
+            <div className="dv17-call-receipt">
               <div>
                 <PhoneOutgoing size={18} aria-hidden />
                 <span>Подтверждение записи</span>
               </div>
-              <span className="dv15-result">
+              <span className="dv17-result">
                 <Check size={15} aria-hidden /> Визит подтверждён
               </span>
             </div>
           </article>
-          <article className="dv15-capability dv15-capability-messages">
-            <div className="dv15-capability-number">02</div>
-            <div className="dv15-capability-top">
-              <span className="dv15-icon-tile dv15-tile-message">
+          <article className="dv17-capability dv17-capability-messages">
+            <div className="dv17-capability-number">02</div>
+            <div className="dv17-capability-top">
+              <span className="dv17-icon-tile dv17-tile-message">
                 <MessageCircle size={22} aria-hidden />
               </span>
               <span>Первая линия поддержки</span>
@@ -189,24 +165,24 @@ export default function V15Landing() {
               ожидания.
             </h3>
             <p>Поможет с услугами, ценами и условиями в Telegram, MAX и почте. Соберёт информацию для вашей команды.</p>
-            <div className="dv15-channel-signatures">
-              <span className="dv15-sign-telegram">
+            <div className="dv17-channel-signatures">
+              <span className="dv17-sign-telegram">
                 <Send size={24} aria-hidden />
                 Telegram
               </span>
-              <span className="dv15-sign-max">
+              <span className="dv17-sign-max">
                 <MessageCircle size={24} aria-hidden />
                 MAX
               </span>
-              <span className="dv15-sign-mail">
+              <span className="dv17-sign-mail">
                 <Mail size={24} aria-hidden />
                 Почта
               </span>
             </div>
           </article>
-          <article className="dv15-capability dv15-capability-wide">
+          <article className="dv17-capability dv17-capability-wide">
             <div>
-              <div className="dv15-capability-top">
+              <div className="dv17-capability-top">
                 <CalendarCheck size={26} aria-hidden />
                 <span>Помощник по записи</span>
               </div>
@@ -220,16 +196,16 @@ export default function V15Landing() {
                 встрече и зафиксирует ответ.
               </p>
             </div>
-            <div className="dv15-booking-preview">
-              <span className="dv15-example-label">Пример результата</span>
-              <div className="dv15-booking-date">
+            <div className="dv17-booking-preview">
+              <span className="dv17-example-label">Пример результата</span>
+              <div className="dv17-booking-date">
                 <CalendarCheck aria-hidden />
                 <div>
                   <strong>Консультация</strong>
                   <span>Завтра, 16:30</span>
                 </div>
               </div>
-              <div className="dv15-booking-bottom">
+              <div className="dv17-booking-bottom">
                 <span>Запись в календаре</span>
                 <Check size={18} aria-hidden />
               </div>
@@ -238,9 +214,9 @@ export default function V15Landing() {
         </div>
       </section>
 
-      <section className="dv15-section dv15-industries" id="scenarios">
-        <div className="dv15-section-intro">
-          <p className="dv15-eyebrow">Узнайте свой бизнес</p>
+      <section className="dv17-section dv17-industries" id="scenarios">
+        <div className="dv17-section-intro">
+          <p className="dv17-eyebrow">Узнайте свой бизнес</p>
           <h2>
             Одна задача.
             <br />
@@ -252,12 +228,12 @@ export default function V15Landing() {
             или согласовать следующий шаг с клиентом.
           </p>
         </div>
-        <V15IndustryTabs />
+        <V17IndustryTabs />
       </section>
 
-      <section className="dv15-knowledge dv15-section" id="knowledge">
-        <div className="dv15-knowledge-copy">
-          <p className="dv15-eyebrow">Единая база знаний</p>
+      <section className="dv17-knowledge dv17-section" id="knowledge">
+        <div className="dv17-knowledge-copy">
+          <p className="dv17-eyebrow">Единая база знаний</p>
           <h2>
             Одна информация.
             <br />
@@ -267,16 +243,16 @@ export default function V15Landing() {
             Передайте сайт, прайс и правила работы. DELNO использует одну базу знаний в звонках, мессенджерах и
             письмах.
           </p>
-          <p className="dv15-knowledge-secondary">
+          <p className="dv17-knowledge-secondary">
             Обновляйте цены и условия в одной базе. После обновления помощник использует эти данные во всех
             подключённых каналах.
           </p>
-          <a className="dv15-inline-link" href="#launch">
+          <a className="dv17-inline-link" href="#launch">
             Как устроен запуск <ArrowRight size={18} aria-hidden />
           </a>
         </div>
-        <div className="dv15-knowledge-map">
-          <div className="dv15-knowledge-map-head">
+        <div className="dv17-knowledge-map">
+          <div className="dv17-knowledge-map-head">
             <span>
               <BookOpen size={19} aria-hidden />
               База знаний DELNO
@@ -285,8 +261,8 @@ export default function V15Landing() {
               <i /> Пример базы
             </small>
           </div>
-          <div className="dv15-knowledge-flow">
-            <div className="dv15-knowledge-inputs">
+          <div className="dv17-knowledge-flow">
+            <div className="dv17-knowledge-inputs">
               <span>
                 <Earth aria-hidden /> Сайт
               </span>
@@ -297,7 +273,7 @@ export default function V15Landing() {
                 <ShieldCheck aria-hidden /> Правила
               </span>
             </div>
-            <div className="dv15-knowledge-core">
+            <div className="dv17-knowledge-core">
               <div>
                 <Image src="/delno-mark.svg" alt="" width={38} height={37} />
                 <span>
@@ -307,31 +283,31 @@ export default function V15Landing() {
                 </span>
               </div>
             </div>
-            <div className="dv15-knowledge-outputs">
-              <span className="dv15-output-phone">
+            <div className="dv17-knowledge-outputs">
+              <span className="dv17-output-phone">
                 <Phone aria-hidden /> Звонки
               </span>
-              <span className="dv15-output-telegram">
+              <span className="dv17-output-telegram">
                 <Send aria-hidden /> Telegram
               </span>
-              <span className="dv15-output-max">
+              <span className="dv17-output-max">
                 <MessageCircle aria-hidden /> MAX
               </span>
-              <span className="dv15-output-mail">
+              <span className="dv17-output-mail">
                 <Mail aria-hidden /> Почта
               </span>
             </div>
           </div>
-          <div className="dv15-knowledge-insight">
+          <div className="dv17-knowledge-insight">
             <Check size={17} aria-hidden />
             <span>Одни услуги, цены и правила во всех каналах</span>
           </div>
         </div>
       </section>
 
-      <section className="dv15-section dv15-launch" id="launch">
-        <div className="dv15-section-intro">
-          <p className="dv15-eyebrow">Поможем на каждом шаге</p>
+      <section className="dv17-section dv17-launch" id="launch">
+        <div className="dv17-section-intro">
+          <p className="dv17-eyebrow">Поможем на каждом шаге</p>
           <h2>
             Начать проще,
             <br />
@@ -343,7 +319,7 @@ export default function V15Landing() {
             Вы знаете свой бизнес. Мы поможем научить ему DELNO.
           </p>
         </div>
-        <ol className="dv15-steps">
+        <ol className="dv17-steps">
           <li>
             <span>01</span>
             <h3>Выберите задачу</h3>
@@ -360,17 +336,17 @@ export default function V15Landing() {
             <p>Вместе проверим диалоги. После запуска можно расширять задачи.</p>
           </li>
         </ol>
-        <div className="dv15-launch-bottom">
+        <div className="dv17-launch-bottom">
           <span>
             <Clock3 size={18} aria-hidden /> Первый сценарий — обычно за несколько дней
           </span>
-          <LeadFormTrigger className="dv15-inline-link" label="Хочу попробовать у себя" source="V15 launch" />
+          <LeadFormTrigger className="dv17-inline-link" label="Хочу попробовать у себя" source="V17 launch" />
         </div>
       </section>
 
-      <section className="dv15-section dv15-pricing" id="prices">
-        <div className="dv15-section-intro">
-          <p className="dv15-eyebrow">Понятная стоимость</p>
+      <section className="dv17-section dv17-pricing" id="prices">
+        <div className="dv17-section-intro">
+          <p className="dv17-eyebrow">Понятная стоимость</p>
           <h2>
             Новый сотрудник.
             <br />
@@ -382,9 +358,9 @@ export default function V15Landing() {
             Расширяйте возможности по мере роста.
           </p>
         </div>
-        <div className="dv15-price-grid">
-          <article className="dv15-plan">
-            <span className="dv15-plan-type">Диалоги</span>
+        <div className="dv17-price-grid">
+          <article className="dv17-plan">
+            <span className="dv17-plan-type">Диалоги</span>
             <h3>
               2 990 <span>₽/мес.</span>
             </h3>
@@ -403,12 +379,12 @@ export default function V15Landing() {
                 <Check aria-hidden /> История обращений и запись
               </li>
             </ul>
-            <LeadFormTrigger className="dv15-button dv15-secondary" label="Начать с диалогов" source="V15 plan 2990" />
+            <LeadFormTrigger className="dv17-button dv17-secondary" label="Начать с диалогов" source="V17 plan 2990" />
             <small>Без телефонных звонков</small>
           </article>
-          <article className="dv15-plan dv15-plan-featured">
-            <div className="dv15-plan-badge">Входящие + исходящие</div>
-            <span className="dv15-plan-type">Диалоги + звонки</span>
+          <article className="dv17-plan dv17-plan-featured">
+            <div className="dv17-plan-badge">Входящие + исходящие</div>
+            <span className="dv17-plan-type">Диалоги + звонки</span>
             <h3>
               5 990 <span>₽/мес.</span>
             </h3>
@@ -427,12 +403,12 @@ export default function V15Landing() {
                 <Check aria-hidden /> Итоги звонков и передача человеку
               </li>
             </ul>
-            <LeadFormTrigger className="dv15-button dv15-primary" label="Обсудить звонки" source="V15 plan 5990" />
+            <LeadFormTrigger className="dv17-button dv17-primary" label="Обсудить звонки" source="V17 plan 5990" />
             <small>Дополнительные минуты — отдельно</small>
           </article>
-          <article className="dv15-plan">
-            <span className="dv15-plan-type">Компания</span>
-            <h3 className="dv15-custom-price">Индивидуально</h3>
+          <article className="dv17-plan">
+            <span className="dv17-plan-type">Компания</span>
+            <h3 className="dv17-custom-price">Индивидуально</h3>
             <p>Для нескольких точек и ваших систем.</p>
             <ul>
               <li>
@@ -449,30 +425,57 @@ export default function V15Landing() {
               </li>
             </ul>
             <LeadFormTrigger
-              className="dv15-button dv15-secondary"
+              className="dv17-button dv17-secondary"
               label="Обсудить подключение"
-              source="V15 plan enterprise"
+              source="V17 plan enterprise"
             />
             <small>Под задачи и объём компании</small>
           </article>
         </div>
-        <p className="dv15-pricing-note">
+        <p className="dv17-pricing-note">
           Телефонию, дополнительные объёмы, настройку и интеграции согласуем до запуска.
           <br />
           Подключение почты и доступность виджета для сайта уточним под вашу задачу.
         </p>
       </section>
 
-      <section className="dv15-section dv15-faq" id="answers">
+      <section className="dv17-section dv17-blog-preview" id="blog">
         <div>
-          <p className="dv15-eyebrow">До знакомства</p>
+          <p className="dv17-eyebrow">Блог DELNO</p>
+          <h2>
+            Как поручить рутину ИИ
+            <br />
+            <span>и сохранить качество сервиса.</span>
+          </h2>
+          <p>Разбираем сценарии, подготовку базы знаний и запуск ИИ-сотрудника без сложных терминов.</p>
+          <Link href="/v2/blog" className="dv17-inline-link">
+            Читать статьи <ArrowRight size={18} aria-hidden />
+          </Link>
+        </div>
+        <div className="dv17-blog-preview-cards">
+          <Link href="/v2/blog/one-employee-many-channels">
+            <span>Основа</span>
+            <strong>Один ИИ-сотрудник вместо нескольких ботов</strong>
+            <ArrowUpRight size={18} aria-hidden />
+          </Link>
+          <Link href="/v2/blog/prepare-knowledge-base">
+            <span>Практика</span>
+            <strong>Что подготовить для первого сценария</strong>
+            <ArrowUpRight size={18} aria-hidden />
+          </Link>
+        </div>
+      </section>
+
+      <section className="dv17-section dv17-faq" id="answers">
+        <div>
+          <p className="dv17-eyebrow">До знакомства</p>
           <h2>
             Вопросы?
             <br />
             <span>По делу.</span>
           </h2>
         </div>
-        <div className="dv15-faq-list">
+        <div className="dv17-faq-list">
           {faqItems.map(([q, a]) => (
             <details key={q}>
               <summary>
@@ -485,11 +488,11 @@ export default function V15Landing() {
         </div>
       </section>
 
-      <section className="dv15-final" id="contact">
-        <div className="dv15-final-mark">
+      <section className="dv17-final" id="contact">
+        <div className="dv17-final-mark">
           <Image src="/delno-mark.svg" alt="" width={48} height={46} />
         </div>
-        <p className="dv15-eyebrow">Ваш следующий шаг</p>
+        <p className="dv17-eyebrow">Ваш следующий шаг</p>
         <h2>
           Покажите задачу.
           <br />
@@ -500,17 +503,17 @@ export default function V15Landing() {
           <br />
           для DELNO. Начать можно с одного канала.
         </p>
-        <div className="dv15-final-actions">
+        <div className="dv17-final-actions">
           <LeadFormTrigger
-            className="dv15-button dv15-primary"
+            className="dv17-button dv17-primary"
             label="Хочу попробовать у себя"
-            source="V15 final"
+            source="V17 final"
           />
-          <a href="#demo" className="dv15-demo-link">
+          <a href="#demo" className="dv17-demo-link">
             Сначала попробовать демо
           </a>
         </div>
-        <div className="dv15-direct-contacts">
+        <div className="dv17-direct-contacts">
           <a href="https://t.me/Dlno_bot" target="_blank" rel="noreferrer">
             Telegram <ArrowUpRight size={15} aria-hidden />
           </a>
@@ -522,22 +525,8 @@ export default function V15Landing() {
           </a>
         </div>
       </section>
-
-      <footer className="dv15-footer">
-        <div>
-          <Link href="/v2" className="dv15-brand">
-            <Image src="/delno-mark.svg" width={26} height={25} alt="" />
-            DELNO
-          </Link>
-          <span>ИИ-сотрудник для работы с клиентами.</span>
-        </div>
-        <div>
-          <Link href="/">dlno.ru</Link>
-          <Link href="/privacy">Конфиденциальность</Link>
-          <Link href="/terms">Пользовательское соглашение</Link>
-          <span>© 2026 DELNO</span>
-        </div>
-      </footer>
     </main>
+      <V17SiteFooter />
+    </>
   );
 }

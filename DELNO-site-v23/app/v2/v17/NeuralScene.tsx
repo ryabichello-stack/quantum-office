@@ -107,13 +107,13 @@ export default function NeuralScene() {
 
   return (
     <div
-      className="dv15-neural-scene"
+      className="dv17-neural-scene"
       aria-label="Как работает ИИ-сотрудник DELNO"
       style={{ "--signal-color": active.color } as React.CSSProperties}
     >
-      <div className="dv15-neural-canvas" ref={canvasRef}>
+      <div className="dv17-neural-canvas" ref={canvasRef}>
         {wires && (
-          <svg className="dv15-neural-wires" viewBox={`0 0 ${wires.width} ${wires.height}`} aria-hidden>
+          <svg className="dv17-neural-wires" viewBox={`0 0 ${wires.width} ${wires.height}`} aria-hidden>
             {wires.inputs.map((seg, i) => (
               <path
                 key={`in-${neuralChannels[i]?.id}`}
@@ -121,15 +121,15 @@ export default function NeuralScene() {
                 d={wirePath(seg)}
               />
             ))}
-            <path className="is-active dv15-neural-output-wire" d={wirePath(wires.output)} />
+            <path className="is-active dv17-neural-output-wire" d={wirePath(wires.output)} />
           </svg>
         )}
 
-        <div className="dv15-neural-input">
-          <div className="dv15-neural-caption">
+        <div className="dv17-neural-input">
+          <div className="dv17-neural-caption">
             <span>01</span> Клиенты обращаются
           </div>
-          <div className="dv15-neural-channels" role="group" aria-label="Примеры каналов общения">
+          <div className="dv17-neural-channels" role="group" aria-label="Примеры каналов общения">
             {neuralChannels.map((channel, index) => (
               <button
                 key={channel.id}
@@ -137,28 +137,28 @@ export default function NeuralScene() {
                 ref={(el) => {
                   channelRefs.current[index] = el;
                 }}
-                className={`dv15-neural-channel ${activeId === channel.id ? "is-active" : ""}`}
+                className={`dv17-neural-channel ${activeId === channel.id ? "is-active" : ""}`}
                 style={{ "--channel-color": channel.color } as React.CSSProperties}
                 aria-pressed={activeId === channel.id}
                 onClick={() => setActiveId(channel.id)}
               >
-                <span className={`dv15-neural-channel-icon dv15-neural-${channel.id}`}>
+                <span className={`dv17-neural-channel-icon dv17-neural-${channel.id}`}>
                   <ChannelIcon channel={channel} />
                 </span>
                 <span>{channel.name}</span>
-                <ArrowRight size={13} className="dv15-channel-chevron" aria-hidden />
+                <ArrowRight size={13} className="dv17-channel-chevron" aria-hidden />
               </button>
             ))}
           </div>
-          <span className="dv15-neural-more">Другие каналы — по запросу</span>
+          <span className="dv17-neural-more">Другие каналы — по запросу</span>
         </div>
 
-        <div className="dv15-neural-center">
-          <div className="dv15-neural-caption">
+        <div className="dv17-neural-center">
+          <div className="dv17-neural-caption">
             <span>02</span> Единая база знаний
           </div>
-          <div className="dv15-neural-core" ref={coreRef}>
-            <svg className="dv15-core-network" viewBox="0 0 220 210" aria-hidden>
+          <div className="dv17-neural-core" ref={coreRef}>
+            <svg className="dv17-core-network" viewBox="0 0 220 210" aria-hidden>
               <circle cx="110" cy="105" r="76" fill="none" stroke="#dbe6f5" strokeWidth="1" />
               <g stroke="#9ab7db" strokeWidth="0.9" opacity="0.62">
                 {outerNodes.map((node, t) => (
@@ -196,18 +196,18 @@ export default function NeuralScene() {
                 <circle key={`inner-dot-${t}`} cx={node.x} cy={node.y} r="3.4" fill="#678dc1" />
               ))}
             </svg>
-            <span className="dv15-core-port dv15-core-port-in" aria-hidden />
-            <div className="dv15-core-brand">
+            <span className="dv17-core-port dv17-core-port-in" aria-hidden />
+            <div className="dv17-core-brand">
               <strong>DELNO</strong>
               <span>ИИ-сотрудник</span>
             </div>
-            <span className="dv15-core-port dv15-core-port-out" aria-hidden />
+            <span className="dv17-core-port dv17-core-port-out" aria-hidden />
           </div>
-          <div className="dv15-neural-core-copy">
+          <div className="dv17-neural-core-copy">
             <strong>Память вашего бизнеса</strong>
             <span>Услуги · цены · правила</span>
           </div>
-          <div className="dv15-neural-integrations">
+          <div className="dv17-neural-integrations">
             <span>
               <Calendar size={13} aria-hidden /> Календарь
             </span>
@@ -215,21 +215,21 @@ export default function NeuralScene() {
               <Database size={13} aria-hidden /> CRM
             </span>
           </div>
-          <small className="dv15-neural-integration-note">Системы записи — по задаче</small>
+          <small className="dv17-neural-integration-note">Системы записи — по задаче</small>
         </div>
 
-        <div className="dv15-neural-output">
-          <div className="dv15-neural-caption">
+        <div className="dv17-neural-output">
+          <div className="dv17-neural-caption">
             <span>03</span> Отвечает и вносит запись
           </div>
-          <div className="dv15-neural-example" ref={outputRef} aria-live="polite" aria-atomic="true">
-            <div className="dv15-neural-example-top">
+          <div className="dv17-neural-example" ref={outputRef} aria-live="polite" aria-atomic="true">
+            <div className="dv17-neural-example-top">
               <span>Клиенту в канале</span>
-              <div className="dv15-neural-out-channels" aria-label="Каналы ответа">
+              <div className="dv17-neural-out-channels" aria-label="Каналы ответа">
                 {neuralChannels.map((channel) => (
                   <span
                     key={channel.id}
-                    className={`dv15-neural-channel-icon dv15-neural-${channel.id} ${activeId === channel.id ? "is-active" : ""}`}
+                    className={`dv17-neural-channel-icon dv17-neural-${channel.id} ${activeId === channel.id ? "is-active" : ""}`}
                     role="img"
                     aria-label={channel.name}
                     title={channel.name}
@@ -240,12 +240,12 @@ export default function NeuralScene() {
                 ))}
               </div>
             </div>
-            <div className="dv15-neural-business">
-              <span className="dv15-example-indicator" style={{ background: active.color }} />
+            <div className="dv17-neural-business">
+              <span className="dv17-example-indicator" style={{ background: active.color }} />
               {scenario.business}
             </div>
             {activeId === "phone" && (
-              <div className="dv15-neural-call-switch" role="group" aria-label="Направление звонка">
+              <div className="dv17-neural-call-switch" role="group" aria-label="Направление звонка">
                 <button type="button" aria-pressed={!isOutboundPhone} onClick={() => setCallMode("incoming")}>
                   <PhoneIncoming size={13} aria-hidden />
                   Принимает
@@ -256,40 +256,40 @@ export default function NeuralScene() {
                 </button>
               </div>
             )}
-            <div className="dv15-neural-exchange">
-              <div className="dv15-neural-client">
+            <div className="dv17-neural-exchange">
+              <div className="dv17-neural-client">
                 <small>{isOutboundPhone ? "DELNO звонит" : "Клиент обращается"}</small>
                 <p>{isOutboundPhone ? scenario.reply : scenario.customer}</p>
               </div>
-              <div className="dv15-neural-reply">
+              <div className="dv17-neural-reply">
                 <small>
                   {isOutboundPhone ? "Клиент отвечает" : "DELNO отвечает"} <Check size={12} aria-hidden />
                 </small>
                 <p>{isOutboundPhone ? scenario.customer : scenario.reply}</p>
               </div>
             </div>
-            <div className="dv15-neural-result">
+            <div className="dv17-neural-result">
               <Mail size={14} aria-hidden />
               <span>
                 <strong>{scenario.result}</strong>
                 <small>{scenario.detail}</small>
               </span>
-              {activeId === "phone" && <Calendar className="dv15-result-system-icon" size={15} aria-label="Календарь" />}
+              {activeId === "phone" && <Calendar className="dv17-result-system-icon" size={15} aria-label="Календарь" />}
             </div>
           </div>
         </div>
 
-        <ArrowRight className="dv15-mobile-flow dv15-mobile-flow-first" size={18} aria-hidden />
-        <ArrowRight className="dv15-mobile-flow dv15-mobile-flow-second" size={18} aria-hidden />
+        <ArrowRight className="dv17-mobile-flow dv17-mobile-flow-first" size={18} aria-hidden />
+        <ArrowRight className="dv17-mobile-flow dv17-mobile-flow-second" size={18} aria-hidden />
       </div>
 
-      <div className="dv15-neural-foot">
+      <div className="dv17-neural-foot">
         <span>Одна память для каналов общения и систем записи.</span>
         <Link href="#knowledge">
           Как это устроено <ArrowRight size={14} aria-hidden />
         </Link>
       </div>
-      <p className="dv15-neural-note">
+      <p className="dv17-neural-note">
         {scenario.note} Дополнительные каналы и интеграции уточним под вашу задачу.
       </p>
     </div>

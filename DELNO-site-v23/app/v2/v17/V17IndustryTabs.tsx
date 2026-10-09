@@ -45,13 +45,13 @@ const industries: {
   },
 ];
 
-export default function V15IndustryTabs() {
+export default function V17IndustryTabs() {
   const [active, setActive] = useState<IndustryId>("beauty");
   const item = industries.find((i) => i.id === active)!;
 
   return (
-    <div className="dv15-industry-tabs">
-      <div className="dv15-segmented" role="tablist" aria-label="Примеры для вашей сферы">
+    <div className="dv17-industry-tabs">
+      <div className="dv17-segmented" role="tablist" aria-label="Примеры для вашей сферы">
         {industries.map((ind) => (
           <button
             key={ind.id}
@@ -65,9 +65,9 @@ export default function V15IndustryTabs() {
           </button>
         ))}
       </div>
-      <div className="dv15-industry-panel" role="tabpanel">
-        <div className="dv15-industry-copy">
-          <span className="dv15-task-label">
+      <div className="dv17-industry-panel" role="tabpanel">
+        <div className="dv17-industry-copy">
+          <span className="dv17-task-label">
             <PhoneOutgoing size={16} aria-hidden />
             Подтвердить запись
           </span>
@@ -81,35 +81,35 @@ export default function V15IndustryTabs() {
           </h3>
           <p>{item.body}</p>
           <LeadFormTrigger
-            className="dv15-inline-link"
+            className="dv17-inline-link"
             label="Хочу так же"
-            source="V15 industry scenario"
+            source="V17 industry scenario"
           />
         </div>
-        <div className="dv15-industry-conversation">
-          <div className="dv15-conversation-header">
+        <div className="dv17-industry-conversation">
+          <div className="dv17-conversation-header">
             <Image src="/delno-mark.svg" alt="" width={22} height={21} />
             <strong>DELNO</strong>
             <span>Пример звонка</span>
           </div>
-          <div className="dv15-dialog-line">
+          <div className="dv17-dialog-line">
             <small>DELNO</small>
             <p>{item.delnoLine}</p>
           </div>
-          <div className="dv15-dialog-line dv15-customer-line">
+          <div className="dv17-dialog-line dv17-customer-line">
             <small>Клиент</small>
             <p>{item.clientLine}</p>
           </div>
-          <div className="dv15-industry-outcome">
+          <div className="dv17-industry-outcome">
             <Check size={17} aria-hidden />
             {item.outcome}
           </div>
-          <div className="dv15-sample-audio">
+          <div className="dv17-sample-audio">
             <div>
-              <button className="dv15-audio-button" type="button" aria-label="Послушать реплику DELNO">
+              <button className="dv17-audio-button" type="button" aria-label="Послушать реплику DELNO">
                 <Play size={18} aria-hidden />
               </button>
-              <span className="dv15-wave" aria-hidden>
+              <span className="dv17-wave" aria-hidden>
                 {Array.from({ length: 32 }).map((_, i) => (
                   <i key={i} style={{ height: `${8 + (i % 5) * 5}px`, animationDelay: `${-(i % 8) * 0.13}s` }} />
                 ))}
