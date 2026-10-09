@@ -25,7 +25,7 @@ OAuth-приложение в [oauth.yandex.ru](https://oauth.yandex.ru) даё�
 | `YANDEX_MARKETING_OAUTH_CLIENT_ID` | ClientID приложения с доступами Метрика / Директ / Вебмастер |
 | `YANDEX_MARKETING_OAUTH_CLIENT_SECRET` | Client secret |
 | `YANDEX_MARKETING_OAUTH_REDIRECT_URI` | `https://oauth.yandex.ru/verification_code` |
-| `YANDEX_MARKETING_OAUTH_SCOPE` | Scope для URL авторизации (заполнить при интеграции) |
+| `YANDEX_MARKETING_OAUTH_SCOPE` | `metrika:read metrika:write` (создание/чтение счётчиков) |
 | `YANDEX_MARKETING_OAUTH_TOKEN_FILE` | `/opt/ava-mailer/yandex_marketing_oauth_tokens.json` |
 
 Код обмена token пока общий (`mailer/yandex_oauth.py`); для marketing-потока можно временно подставить marketing-переменные в `YANDEX_OAUTH_*` на время получения token или добавить `/oauth/yandex/marketing/*` — см. задачу интеграции.
@@ -60,7 +60,14 @@ DELNO (`/opt/delno`) пока **не** дублирует эти ключи — 
 
    Либо callback-URL mailer, если redirect URI укажете на ваш домен (не `verification_code`).
 
-4. Проверка: `GET /yandex/oauth/status?token=…` → `configured: true`, `has_refresh_token: true`.
+4. Проверка Telemost: `GET /oauth/yandex/status` + header `X-Webhook-Token`.
+
+### Marketing (Метрика)
+
+1. В `.env` mailer: `YANDEX_MARKETING_OAUTH_SCOPE=metrika:read metrika:write`
+2. `GET /oauth/yandex/marketing/manual?token=<WEBHOOK_TOKEN>` — получить код, сохранить refresh в `YANDEX_MARKETING_OAUTH_TOKEN_FILE`
+3. `GET /yandex/metrika/ensure?token=<WEBHOOK_TOKEN>&site=dlno.ru` — найти или создать счётчик, вернуть `counter_id`
+4. На prod: `bash /opt/delno/deploy/sync_metrika_and_site.sh` — прописать `YM_COUNTER_ID` и пересобрать `delno-site-root`
 
 ## API после token
 

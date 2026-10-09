@@ -1,6 +1,10 @@
 import Script from "next/script";
 
-const counterId = process.env.NEXT_PUBLIC_YM_COUNTER_ID?.trim();
+const counterId = (
+  process.env.YM_COUNTER_ID ??
+  process.env.NEXT_PUBLIC_YM_COUNTER_ID ??
+  ""
+).trim();
 
 /** Yandex Metrika — loads only when NEXT_PUBLIC_YM_COUNTER_ID is set in env. */
 export function YandexMetrika() {
