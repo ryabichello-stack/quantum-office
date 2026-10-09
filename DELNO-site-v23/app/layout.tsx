@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { YandexMetrika } from "@/components/YandexMetrika";
 import { WidgetHost } from "@/components/widget/WidgetHost";
 
 export const viewport: Viewport = {
@@ -15,6 +16,7 @@ export default function RootLayout({children}:Readonly<{children:React.ReactNode
       <body>
         {children}
         <WidgetHost />
+        <YandexMetrika />
       </body>
     </html>
   );

@@ -20,7 +20,7 @@ import Link from "next/link";
 import VoiceDemo from "../VoiceDemo";
 import { LeadFormTrigger } from "../SiteControls";
 import NeuralScene from "./NeuralScene";
-import { V17SiteFooter, V17SiteHeader } from "./SiteChrome";
+import { V17PageShell } from "./V17PageShell";
 import V17IndustryTabs from "./V17IndustryTabs";
 
 const faqItems: [string, string][] = [
@@ -52,9 +52,7 @@ const faqItems: [string, string][] = [
 
 export default function V17Landing() {
   return (
-    <>
-      <V17SiteHeader />
-      <main className="delno-v17">
+    <V17PageShell>
       <section className="dv17-hero" id="product">
         <div className="dv17-hero-grid">
           <div className="dv17-hero-copy">
@@ -525,8 +523,6 @@ export default function V17Landing() {
           </a>
         </div>
       </section>
-    </main>
-      <V17SiteFooter />
-    </>
+    </V17PageShell>
   );
 }

@@ -1,12 +1,11 @@
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { V17SiteFooter, V17SiteHeader } from "../v17/SiteChrome";
+import { V17PageShell } from "../v17/V17PageShell";
 
 export default function V2HelpPage() {
   return (
-    <>
-      <V17SiteHeader />
-      <main className="delno-v17 dc-content-page">
+    <V17PageShell>
+      <div className="dc-content-page">
         <div className="dc-content-wrap">
           <Link href="/v2" className="dv17-inline-link">
             <ArrowLeft size={16} aria-hidden /> На главную V17
@@ -23,8 +22,7 @@ export default function V2HelpPage() {
             <a href="https://t.me/Dlno_bot">Telegram</a>
           </p>
         </div>
-      </main>
-      <V17SiteFooter />
-    </>
+      </div>
+    </V17PageShell>
   );
 }

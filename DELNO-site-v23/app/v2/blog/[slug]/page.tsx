@@ -1,7 +1,7 @@
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { V17SiteFooter, V17SiteHeader } from "../../v17/SiteChrome";
+import { V17PageShell } from "../../v17/V17PageShell";
 
 const posts: Record<string, { title: string; body: string[] }> = {
   "one-employee-many-channels": {
@@ -26,9 +26,8 @@ export default async function V2BlogPost({ params }: { params: Promise<{ slug: s
   if (!post) notFound();
 
   return (
-    <>
-      <V17SiteHeader />
-      <main className="delno-v17 dc-content-page">
+    <V17PageShell>
+      <div className="dc-content-page">
         <article className="dc-content-wrap">
           <Link href="/v2/blog" className="dv17-inline-link">
             <ArrowLeft size={16} aria-hidden /> Все статьи
@@ -38,8 +37,7 @@ export default async function V2BlogPost({ params }: { params: Promise<{ slug: s
             <p key={p.slice(0, 24)}>{p}</p>
           ))}
         </article>
-      </main>
-      <V17SiteFooter />
-    </>
+      </div>
+    </V17PageShell>
   );
 }
