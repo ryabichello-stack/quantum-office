@@ -31,6 +31,8 @@ curl -sf https://dlno.ru/sitemap.xml | head
 
 Wordstat: в OAuth приложении право `wordstat:api`, scope в `.env`, заявка в поддержку Директа (логин + ClientId). После одобрения — `GET /yandex/wordstat/phrases`. Если legacy endpoint недоступен (TLS/404), ждём активации доступа или подключаем Yandex Cloud Search API v2 отдельно.
 
+**SEO-ядро блога:** [`docs/DELNO_SEO_BLOG_CORE.md`](DELNO_SEO_BLOG_CORE.md) · код `DELNO-site-v23/lib/seoBlogCore.ts`. Частоты (`wsBase`) пока `null` — Direct API error 58 (незавершённая регистрация приложения).
+
 ## Порядок на prod
 
 1. OAuth marketing token (verification code).

@@ -1,13 +1,7 @@
-/** Core queries for DELNO (refine via mailer /yandex/wordstat/phrases when OAuth token is ready). */
+import { wordstatSeedQueue } from "./seoBlogCore";
+
+/** Core queries for DELNO — synced with blog SEO seed queue (Wordstat). */
 export const delnoSeoKeywords = [
-  "ИИ сотрудник",
-  "ИИ сотрудник для бизнеса",
-  "голосовой бот",
-  "бот для записи клиентов",
-  "автоматизация звонков",
-  "чат-бот для сайта",
-  "бот для бизнеса",
-  "искусственный интеллект для звонков",
-  "автоответчик с ИИ",
+  ...wordstatSeedQueue.slice(0, 12),
   "DELNO",
 ] as const;

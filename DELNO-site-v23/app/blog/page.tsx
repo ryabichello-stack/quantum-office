@@ -1,12 +1,23 @@
 import { ArrowLeft } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { BlogCardGrid } from "@/components/blog/BlogCardGrid";
 import { blogPosts } from "@/lib/blogPosts";
+import { buildDelnoMetadata } from "@/lib/buildMetadata";
 import { mainPath } from "@/lib/landingPaths";
+import { wordstatSeedQueue } from "@/lib/seoBlogCore";
 import { V17PageShell } from "../v2/v17/V17PageShell";
 
 import "../v2/dv17.bundle.css";
 import "../v2/v17-overrides.css";
+
+export const metadata: Metadata = buildDelnoMetadata({
+  title: "Блог DELNO — ИИ-сотрудник, голосовой бот, запись клиентов",
+  description:
+    "Статьи о запуске ИИ-сотрудника: база знаний, голосовой бот и чат, чек-лист перед продом. Без лишней терминологии.",
+  path: "/blog",
+  keywords: [...wordstatSeedQueue.slice(0, 12)],
+});
 
 export default function BlogIndexPage() {
   return (
