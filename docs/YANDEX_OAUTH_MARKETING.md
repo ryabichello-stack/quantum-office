@@ -16,6 +16,20 @@ OAuth-приложение в [oauth.yandex.ru](https://oauth.yandex.ru) даё�
 | `YANDEX_OAUTH_SCOPE` | Права в URL авторизации (пробелы). Для Телемоста уже есть дефолт; при подключении Метрики/Директа/Вебмастера допишите scope из документации соответствующего API |
 | `YANDEX_OAUTH_TOKEN_FILE` | Файл с `access_token` / `refresh_token` (prod: `/opt/ava-mailer/yandex_oauth_tokens.json`, `chmod 600`) |
 
+### Отдельное приложение «Метрика + Директ + Вебмастер»
+
+На prod (`/opt/ava-mailer/.env`) заведён **второй** блок, чтобы не ломать Телемост (`YANDEX_OAUTH_*` со старым ClientID):
+
+| Переменная | Назначение |
+|------------|------------|
+| `YANDEX_MARKETING_OAUTH_CLIENT_ID` | ClientID приложения с доступами Метрика / Директ / Вебмастер |
+| `YANDEX_MARKETING_OAUTH_CLIENT_SECRET` | Client secret |
+| `YANDEX_MARKETING_OAUTH_REDIRECT_URI` | `https://oauth.yandex.ru/verification_code` |
+| `YANDEX_MARKETING_OAUTH_SCOPE` | Scope для URL авторизации (заполнить при интеграции) |
+| `YANDEX_MARKETING_OAUTH_TOKEN_FILE` | `/opt/ava-mailer/yandex_marketing_oauth_tokens.json` |
+
+Код обмена token пока общий (`mailer/yandex_oauth.py`); для marketing-потока можно временно подставить marketing-переменные в `YANDEX_OAUTH_*` на время получения token или добавить `/oauth/yandex/marketing/*` — см. задачу интеграции.
+
 Опционально одноразово:
 
 | `YANDEX_TELEMOST_OAUTH_TOKEN` | Статический access token, если не используете refresh |
