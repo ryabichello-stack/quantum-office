@@ -103,13 +103,14 @@
 
 ---
 
-## Серия 36 статей (ИИ в бизнесе + ниши)
+## Серия ~50–55 статей + исследование рынка
 
-Полный план: [`docs/DELNO_BLOG_SERIES_PLAN.md`](DELNO_BLOG_SERIES_PLAN.md) · код `blogSeriesPlan` в `seoBlogCore.ts`.
+- Исследование: [`docs/DELNO_MARKET_CONTENT_RESEARCH.md`](DELNO_MARKET_CONTENT_RESEARCH.md)  
+- План: [`docs/DELNO_BLOG_SERIES_PLAN.md`](DELNO_BLOG_SERIES_PLAN.md) · код `blogSeriesPlan` / `clientLifecycleScenarios`
 
-Столпы: **A** внедрение · **B** каналы (сайт/TG/MAX/почта/звонки) · **C** ниши (маникюр, шиномонтаж, фитнес, фото…) · **D** запуск · **E** цена/выбор.
+Столпы: **A** внедрение · **B** каналы · **C** ниши · **D** запуск · **E** цена · **F** боли/метрики · **G** сравнения/интеграции.
 
-Волна 1 к публикации сразу после частот: A02, A03, B01, B03, B06, C01–C04, C06, C12, D01, E01.  
+**Волна 0 (сразу):** F01–F03, A02, A03, E01, C12, B03, B07.  
 
 ---
 
