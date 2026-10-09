@@ -23,7 +23,10 @@ def main() -> int:
         print("YANDEX_LOGIN and YANDEX_PASSWORD required", file=sys.stderr)
         return 2
 
-    scope = os.getenv("YANDEX_MARKETING_OAUTH_SCOPE", "metrika:read metrika:write").strip()
+    scope = os.getenv(
+        "YANDEX_MARKETING_OAUTH_SCOPE",
+        "metrika:read metrika:write direct:api webmaster:hostinfo webmaster:verify",
+    ).strip()
     redirect = os.getenv(
         "YANDEX_MARKETING_OAUTH_REDIRECT_URI",
         "https://oauth.yandex.ru/verification_code",

@@ -1,6 +1,6 @@
-# Yandex OAuth — Метрика, Директ, Вебмастер
+# Yandex OAuth — Метрика, Директ, Вебмастер, Вордstat
 
-OAuth-приложение в [oauth.yandex.ru](https://oauth.yandex.ru) даёт один **ClientID** / **Client secret** для API, к которым вы отметили доступ в кабинете (Метрика, Директ, Вебмастер, при необходимости Вордstat и др.).
+Одно OAuth-приложение в [oauth.yandex.ru](https://oauth.yandex.ru) → **один refresh/access token** (`YANDEX_MARKETING_OAUTH_*`) для всех включённых в кабинете API: **Метрика, Директ, Вебмастер, Вордstat** (как на вашем скрине с «API Вордстата» и остальными доступами).
 
 **Секреты только на сервере** — в `.env`, не в git. См. также `docs/PROD_MAP.md`.
 
@@ -32,19 +32,30 @@ OAuth-приложение в [oauth.yandex.ru](https://oauth.yandex.ru) даё�
 | `YANDEX_OAUTH_SCOPE` | Права в URL авторизации (пробелы). Для Телемоста уже есть дефолт; при подключении Метрики/Директа/Вебмастера допишите scope из документации соответствующего API |
 | `YANDEX_OAUTH_TOKEN_FILE` | Файл с `access_token` / `refresh_token` (prod: `/opt/ava-mailer/yandex_oauth_tokens.json`, `chmod 600`) |
 
-### Отдельное приложение «Метрика + Директ + Вебмастер»
+### Marketing-приложение (единый токен)
 
-На prod (`/opt/ava-mailer/.env`) заведён **второй** блок, чтобы не ломать Телемост (`YANDEX_OAUTH_*` со старым ClientID):
+На prod (`/opt/ava-mailer/.env`) — **второй** блок, отдельно от Телемоста (`YANDEX_OAUTH_*`):
 
 | Переменная | Назначение |
 |------------|------------|
-| `YANDEX_MARKETING_OAUTH_CLIENT_ID` | ClientID приложения с доступами Метрика / Директ / Вебмастер |
+| `YANDEX_MARKETING_OAUTH_CLIENT_ID` | ClientID приложения (Метрика + Директ + Вебмастер + Вордstat в кабинете) |
 | `YANDEX_MARKETING_OAUTH_CLIENT_SECRET` | Client secret |
 | `YANDEX_MARKETING_OAUTH_REDIRECT_URI` | `https://oauth.yandex.ru/verification_code` |
-| `YANDEX_MARKETING_OAUTH_SCOPE` | `metrika:read metrika:write` (создание/чтение счётчиков) |
+| `YANDEX_MARKETING_OAUTH_SCOPE` | Scope в URL авторизации (см. ниже) |
 | `YANDEX_MARKETING_OAUTH_TOKEN_FILE` | `/opt/ava-mailer/yandex_marketing_oauth_tokens.json` |
 
-Код обмена token пока общий (`mailer/yandex_oauth.py`); для marketing-потока можно временно подставить marketing-переменные в `YANDEX_OAUTH_*` на время получения token или добавить `/oauth/yandex/marketing/*` — см. задачу интеграции.
+**Рекомендуемый `YANDEX_MARKETING_OAUTH_SCOPE`** (пробелы между правами):
+
+```text
+metrika:read metrika:write direct:api webmaster:hostinfo webmaster:verify
+```
+
+- **Метрика** — `metrika:read`, `metrika:write`
+- **Директ** — `direct:api` ([регистрация приложения](https://yandex.ru/dev/direct/doc/en/register))
+- **Вебмастер** — `webmaster:hostinfo`, `webmaster:verify` ([OAuth](https://yandex.com/dev/webmaster/doc/en/tasks/how-to-get-oauth))
+- **Вордstat** — отдельного scope в URL часто нет: доступ включается **галочкой «API Вордстата»** в oauth.yandex.ru; тот же OAuth-токен + **ClientId** в запросах к [Wordstat API](https://yandex.ru/support/wordstat/en/content/api-wordstat) (`Authorization: Bearer …`), плюс заявка в поддержку Директа на доступ к API.
+
+Mailer: `/oauth/yandex/marketing/*`, `/yandex/metrika/ensure` (счётчик на сайт — только Метрика; остальные API — позже на том же token).
 
 Опционально одноразово:
 
@@ -78,12 +89,12 @@ DELNO (`/opt/delno`) пока **не** дублирует эти ключи — 
 
 4. Проверка Telemost: `GET /oauth/yandex/status` + header `X-Webhook-Token`.
 
-### Marketing (Метрика)
+### Marketing (единый токен → все API)
 
-1. В `.env` mailer: `YANDEX_MARKETING_OAUTH_SCOPE=metrika:read metrika:write`
-2. `GET /oauth/yandex/marketing/manual?token=<WEBHOOK_TOKEN>` — получить код, сохранить refresh в `YANDEX_MARKETING_OAUTH_TOKEN_FILE`
-3. `GET /yandex/metrika/ensure?token=<WEBHOOK_TOKEN>&site=dlno.ru` — найти или создать счётчик, вернуть `counter_id`
-4. На prod: `bash /opt/delno/deploy/sync_metrika_and_site.sh` — прописать `YM_COUNTER_ID` и пересобрать `delno-site-root`
+1. В `.env` mailer задайте полный `YANDEX_MARKETING_OAUTH_SCOPE` (см. выше).
+2. `GET /oauth/yandex/marketing/manual?token=<WEBHOOK_TOKEN>` — войти, выдать **все** запрошенные права, сохранить refresh в `YANDEX_MARKETING_OAUTH_TOKEN_FILE`.
+3. Для **счётчика на dlno.ru**: `GET /yandex/metrika/ensure?token=<WEBHOOK_TOKEN>&site=dlno.ru` → `counter_id`.
+4. `bash /opt/delno/deploy/sync_metrika_and_site.sh` — `YM_COUNTER_ID` и пересборка `delno-site-root`.
 
 ## API после token
 
@@ -92,8 +103,11 @@ DELNO (`/opt/delno`) пока **не** дублирует эти ключи — 
 | Метрика | [API Метрики](https://yandex.ru/dev/metrika/doc/api2/concept/about.html) — заголовок `Authorization: OAuth <token>` |
 | Директ | [API Директа](https://yandex.ru/dev/direct/doc/dg/concepts/about.html) |
 | Вебмастер | [API Вебмастера](https://yandex.ru/dev/webmaster/doc/dg/concepts/about.html) |
+| Вордstat | [Wordstat API](https://yandex.ru/support/wordstat/en/content/api-wordstat) — Bearer + ClientId, доступ по заявке |
 
-Конкретные scope и лимиты — в картоchках доступа вашего приложения на oauth.yandex.ru.
+Заголовок для Метрики/Директа/Вебмастера: `Authorization: OAuth <token>`. Для Вордstata: `Authorization: Bearer <token>` (тот же access token после OAuth).
+
+Конкретные scope и лимиты — в карточках доступа приложения на oauth.yandex.ru.
 
 ## Счётчик на сайте (dlno.ru)
 

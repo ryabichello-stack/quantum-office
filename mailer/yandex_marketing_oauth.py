@@ -1,4 +1,4 @@
-"""Yandex OAuth for Metrika / Direct / Webmaster (marketing app, separate from Telemost)."""
+"""Yandex OAuth — один marketing-токен: Метрика, Директ, Вебмастер, Вордstat (отдельно от Telemost)."""
 
 from __future__ import annotations
 
@@ -13,7 +13,12 @@ from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SCOPE = "metrika:read metrika:write"
+# Scope в URL авторизации; галочки в oauth.yandex.ru (Метрика, Директ, Вебmaster, Вордstat) должны совпадать.
+DEFAULT_SCOPE = (
+    "metrika:read metrika:write "
+    "direct:api "
+    "webmaster:hostinfo webmaster:verify"
+)
 
 YANDEX_OAUTH_CLIENT_ID = os.getenv("YANDEX_MARKETING_OAUTH_CLIENT_ID", "").strip()
 YANDEX_OAUTH_CLIENT_SECRET = os.getenv("YANDEX_MARKETING_OAUTH_CLIENT_SECRET", "").strip()
