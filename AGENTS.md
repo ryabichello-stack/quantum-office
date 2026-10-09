@@ -52,3 +52,28 @@ curl -sf http://127.0.0.1:8011/health
 ```
 
 Снаружи: `curl -sf https://a.47z.ru/_ava_outreach/health`
+
+## Cursor Cloud specific instructions
+
+Local Cloud Agent dev does not use production secrets. Postgres 16 listens on `127.0.0.1:5433` (`delno` / `delno` / database `delno`), matching `delno-api` `DATABASE_URL`. Python packages live in `/opt/quantum-office/venv`. `policy-rc.d` blocks `service postgresql`; start the cluster with `pg_ctlcluster`.
+
+Boot services (tmux, idempotent):
+
+| Service | Port | Notes |
+|---------|------|--------|
+| delno-knowledge | 18021 | SQLite brain at `/opt/quantum-office/data/knowledge` |
+| delno-api | 18020 | `MODEL_PROVIDER=stub` so Operator does not call OpenAI |
+| delno-web | 3020 | Cabinet UI. Demo login `owner@dlno.ru` / `demo123456` (seeded on API startup) |
+| delno-admin | 3010 | `/` redirects to `/login` |
+| outreach | 8012 | `OUTREACH_ENABLED=false`. UI token `dev-local-token` |
+| mailer | 8000 | Health only; SMTP and Yandex are unset |
+| text-bot | 8011 | Degraded until `TELEGRAM_BOT_TOKEN` is set. Prompt stub: `/opt/quantum-office/text-bot-config.yaml` |
+
+```bash
+curl -sf http://127.0.0.1:18020/v1/health
+curl -sf http://127.0.0.1:18021/health
+cd delno-api && PYTHONPATH=. /opt/quantum-office/venv/bin/pytest tests -q
+cd delno-knowledge && PYTHONPATH=. /opt/quantum-office/venv/bin/pytest brain_platform/tests/test_security_contracts.py brain_platform/tests/test_tenant_isolation_and_acl.py brain_platform/tests/test_api_acl_smoke.py brain_platform/tests/test_demo_seed.py brain_platform/tests/test_brain_integration.py -q
+```
+
+`tests/test_tenant_legal.py::test_update_tenant_legal_endpoint` fails with current httpx (MagicMock used as a header). The rest of `delno-api` tests pass. Do not point these processes at production hosts.
