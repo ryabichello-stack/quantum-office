@@ -3,6 +3,8 @@
  * Частоты (wsBase) заполняются после доступа к Wordstat/Direct API
  * или ручной выгрузки из https://wordstat.yandex.ru/ (регион: Россия, 225).
  *
+ * Публичный контент: только бренд DELNO. Внутренние имена (AVA и т.п.) не использовать.
+ *
  * Статус API на 2026-10-09:
  * - OAuth: wordstat:api + marketing token OK
  * - api.wordstat.yandex.net: TLS/404 (доступ не активирован)
