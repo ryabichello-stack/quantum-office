@@ -10,6 +10,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Outreach deliverability: один policy/spam bounce (типичный Yandex `554 5.7.1`) больше **не ставит глобальную паузу** ящика. Вместо этого — cool-down ISP получателя на день (`yandex`/`mailru`/…); рассылка на другие домены продолжается. Глобальный stop по policy — только если за день задеты ≥3 разных ISP (или auth-failure).
+
 ### Added
 
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
