@@ -13,9 +13,11 @@
 ### Fixed
 
 - Outreach deliverability: один policy/spam bounce (типичный Yandex `554 5.7.1`) больше **не ставит глобальную паузу** ящика. Вместо этого — cool-down ISP получателя на день (`yandex`/`mailru`/…); рассылка на другие домены продолжается. Глобальный stop по policy — только если за день задеты ≥3 разных ISP (или auth-failure).
+- Oneshot: HTTPS `List-Unsubscribe` + `List-Unsubscribe-Post` (RFC 8058) как у batch.
 
 ### Added
 
+- Outreach deliverability P0–P2: `sending_accounts` (protected domains, marketing gate), `delivery_errors` (идемпотентный analyzer), `dns_auth` (SPF/DKIM/DMARC/DNSBL → UNKNOWN если нет данных), `reputation_guard` (пауза кампании без ротации доменов), consent-поля в `contact_policy`, вкладка UI **Email Health**, аудит `docs/DELIVERABILITY_AUDIT_2026-10-12.md`. Холодный маркетинг с `quantumlabs.ru` блокируется до ACTIVE marketing account.
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
 - Юридический футер + «Отписаться» / List-Unsubscribe в шаблонах; презентация PDF на 1-м письме
 - API `GET/POST /api/packs` (+ apply) и вкладка «Кампания» в UI (Console embed + standalone)

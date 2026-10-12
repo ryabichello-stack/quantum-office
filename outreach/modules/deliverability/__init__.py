@@ -368,9 +368,33 @@ class DeliverabilityStore:
         *,
         email: str,
         raw_reason: str | None,
+        message_id: str = "",
+        outreach_id: str = "",
+        campaign: str = "",
+        account_id: str = "legacy",
+        provider: str = "",
+        from_domain: str = "",
     ) -> BounceClass:
         classified = classify_bounce(raw_reason)
         self.record_bounce_event(email=email, classified=classified, raw=raw_reason)
+        # Delivery Error Analyzer (idempotent)
+        try:
+            from modules.delivery_errors import DeliveryErrorStore
+
+            DeliveryErrorStore(self.db_path).record(
+                email=email,
+                raw=raw_reason,
+                classified=classified,
+                message_id=message_id,
+                outreach_id=outreach_id,
+                account_id=account_id or "legacy",
+                from_domain=from_domain,
+                provider=provider,
+                campaign=campaign,
+                smtp_stage="dsn",
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("delivery_errors.record failed", exc_info=True)
         if classified.suppress:
             self.add_suppression(
                 email,
@@ -384,8 +408,28 @@ class DeliverabilityStore:
                 email,
                 reason=f"bounce:{classified.category}:{classified.reason}",
             )
+            try:
+                from modules.reputation_guard import ReputationGuardStore
+                from modules.sending_accounts import SendingAccountsStore
+
+                ReputationGuardStore(self.db_path).evaluate_after_policy(
+                    campaign=campaign or "default",
+                    sending_accounts=SendingAccountsStore(self.db_path),
+                )
+            except Exception:  # noqa: BLE001
+                logger.debug("reputation_guard evaluate failed", exc_info=True)
         if classified.pause_mailbox:
             self.pause_mailbox(f"bounce:{classified.category}:{classified.reason}")
+            try:
+                from modules.sending_accounts import SendingAccountsStore
+
+                SendingAccountsStore(self.db_path).set_health(
+                    account_id or "legacy",
+                    "PAUSED" if classified.category == "auth" else "WARNING",
+                    detail=f"bounce:{classified.category}:{classified.reason}",
+                )
+            except Exception:  # noqa: BLE001
+                logger.debug("sending account health update failed", exc_info=True)
         else:
             self.apply_stop_rules()
         return classified

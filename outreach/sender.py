@@ -440,6 +440,41 @@ def send_batch(
     if not dry_run and not smtp_configured():
         return {"ok": False, "error": "SMTP not configured (MAIL_*)", "processed": 0}
 
+    # P0: never use protected corporate domain for cold marketing mass sends.
+    if not dry_run:
+        try:
+            from modules.sending_accounts import SendingAccountsStore
+            from modules.reputation_guard import ReputationGuardStore
+
+            sa = SendingAccountsStore()
+            override = _cfg_bool(settings, "MARKETING_ALLOW_PROTECTED_DOMAIN", False)
+            ok_m, why_m, _acc = sa.marketing_send_gate(
+                from_email=mailbox, allow_protected_override=override
+            )
+            if not ok_m:
+                return {
+                    "ok": False,
+                    "error": why_m,
+                    "code": "protected_domain_or_no_marketing_account",
+                    "processed": 0,
+                }
+            pack = _cfg(settings, "OUTREACH_SEQUENCE_PACK", "default") or "default"
+            paused_c, preason = ReputationGuardStore().is_campaign_paused(pack)
+            if paused_c:
+                return {
+                    "ok": False,
+                    "error": f"campaign_paused:{pack}:{preason}",
+                    "code": "campaign_paused",
+                    "processed": 0,
+                }
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("marketing gate failed")
+            return {
+                "ok": False,
+                "error": f"marketing_gate_error:{exc}",
+                "processed": 0,
+            }
+
     sent_today = store.sent_today_count()
     effective_limit = daily_limit
     if deliverability is not None and not dry_run:
@@ -492,7 +527,7 @@ def send_batch(
                         (row.company_id, row.id),
                     ).fetchone()
                 already = other is not None
-            # Contact policy (AVA ↔ email)
+            # Contact policy (AVA ↔ email) + marketing consent
             if row.company_id and not dry_run:
                 try:
                     from modules.policy import ContactPolicyStore
@@ -504,6 +539,20 @@ def send_batch(
                             {"id": row.id, "email": row.email, "reason": f"policy:{why}"}
                         )
                         store.set_status(row.id, "skipped", error=f"policy:{why}")
+                        continue
+                    require_c = _cfg_bool(settings, "MARKETING_REQUIRE_CONSENT", True)
+                    ok_c, why_c = pol.allow_marketing_consent(
+                        row.company_id, require_consent=require_c
+                    )
+                    if not ok_c:
+                        skipped.append(
+                            {
+                                "id": row.id,
+                                "email": row.email,
+                                "reason": why_c,
+                            }
+                        )
+                        store.set_status(row.id, "skipped", error=why_c)
                         continue
                 except Exception as exc:  # noqa: BLE001
                     logger.debug("policy check skipped: %s", exc)
@@ -1082,8 +1131,14 @@ def send_one(
     reply_to = None
     plus_tag = None
     unsub_addr = unsub
+    unsub_url = None
+    unsub_token = None
     if tracking is not None:
-        from modules.tracking import build_tracking_headers
+        from modules.tracking import (
+            build_tracking_headers,
+            make_unsubscribe_token,
+            unsubscribe_url_for,
+        )
 
         hdrs = build_tracking_headers(
             outbox_id=row.id,
@@ -1099,6 +1154,12 @@ def send_one(
         reply_to = hdrs.get("reply_to")
         if hdrs.get("unsubscribe_mailto"):
             unsub_addr = hdrs["unsubscribe_mailto"]
+        try:
+            unsub_token = make_unsubscribe_token(outbox_id=row.id, email=to_email)
+            unsub_url = unsubscribe_url_for(unsub_token, settings)
+        except Exception:  # noqa: BLE001
+            unsub_token = None
+            unsub_url = None
 
     cb_url = _callback_url_for_row(outbox_id=row.id, email=to_email, settings=settings)
     plain, html = _render_letter(
@@ -1107,6 +1168,7 @@ def send_one(
         website=website,
         phone=phone,
         unsubscribe_mailto=unsub_addr,
+        unsubscribe_url=unsub_url,
         plain_template=plain_tpl or None,
         html_template=html_tpl or None,
         settings=settings,
@@ -1158,6 +1220,7 @@ def send_one(
             unsubscribe_mailto=unsub_addr,
             reply_to=reply_to,
             outreach_id=f"oneshot-{row.id}",
+            unsubscribe_url=unsub_url,
             attachments=attach,
         )
         item["message_id"] = message_id
@@ -1170,6 +1233,7 @@ def send_one(
                 plus_tag=plus_tag,
                 subject=subject,
                 open_token=open_token,
+                unsub_token=unsub_token,
             )
         if deliverability is not None:
             deliverability.bump_domain(deliverability.domain_of(to_email))

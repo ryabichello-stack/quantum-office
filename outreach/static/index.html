@@ -68,6 +68,7 @@
       <button type="button" data-tab="inbox">Входящие</button>
       <button type="button" data-tab="clients">Клиенты</button>
       <button type="button" data-tab="report">Отчёт</button>
+      <button type="button" data-tab="health">Email Health</button>
       <button type="button" data-tab="settings">Настройки</button>
     </nav>
 
@@ -638,8 +639,66 @@
           </details>
         </div>
       </section>
+
+      <!-- ========== EMAIL HEALTH / РЕПУТАЦИЯ ========== -->
+      <section id="tab-health" class="panel">
+        <div class="surface task-form">
+          <div class="task-intro">
+            <h2 class="section-title">Email Health / Репутация почты</h2>
+            <p class="muted tight">
+              Отправляющие аккаунты, SPF/DKIM/DMARC, ошибки доставки и паузы кампаний.
+              «Принято SMTP» ≠ попадание во «Входящие».
+            </p>
+          </div>
+          <div id="healthGate" class="muted tight">Загрузка…</div>
+          <div class="stack" style="margin-top:0.75rem">
+            <h3 class="section-title" style="font-size:0.95rem">Protected domains</h3>
+            <pre id="healthProtected" class="code-block" style="white-space:pre-wrap;font-size:0.8rem"></pre>
+            <h3 class="section-title" style="font-size:0.95rem">Sending accounts</h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th><th>Email</th><th>Type</th><th>Health</th>
+                    <th>SPF</th><th>DKIM</th><th>DMARC</th><th>Mkt</th>
+                  </tr>
+                </thead>
+                <tbody id="healthAccountsBody"></tbody>
+              </table>
+            </div>
+            <div class="actions">
+              <button type="button" class="primary" id="healthDnsAudit">Проверить DNS (quantumlabs.ru)</button>
+              <button type="button" class="btn-quiet" id="healthReload">Обновить</button>
+            </div>
+            <pre id="healthDns" class="code-block" style="white-space:pre-wrap;font-size:0.78rem;max-height:220px;overflow:auto"></pre>
+            <h3 class="section-title" style="font-size:0.95rem">Ошибки доставки (сегодня / последние)</h3>
+            <pre id="healthErrorsToday" class="code-block" style="white-space:pre-wrap;font-size:0.8rem"></pre>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Когда</th><th>Email</th><th>Категория</th><th>Код</th><th>Решение</th>
+                  </tr>
+                </thead>
+                <tbody id="healthErrorsBody"></tbody>
+              </table>
+            </div>
+            <h3 class="section-title" style="font-size:0.95rem">Паузы кампаний / инциденты</h3>
+            <pre id="healthPaused" class="code-block" style="white-space:pre-wrap;font-size:0.8rem"></pre>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Когда</th><th>Аккаунт</th><th>Kind</th><th>Detail</th><th>Action</th></tr>
+                </thead>
+                <tbody id="healthIncidentsBody"></tbody>
+              </table>
+            </div>
+            <p class="muted tight" id="healthHints"></p>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
-  <script src="app.js?v=cb-dial1"></script>
+  <script src="app.js?v=email-health1"></script>
 </body>
 </html>

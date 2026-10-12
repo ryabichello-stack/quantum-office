@@ -231,7 +231,15 @@ def check_replies(
 
                                 dstore = DeliverabilityStore()
                                 classified = dstore.handle_bounce(
-                                    email=ev.email, raw_reason=reason
+                                    email=ev.email,
+                                    raw_reason=reason,
+                                    message_id=getattr(ev, "message_id", "") or "",
+                                    outreach_id=str(getattr(ev, "outbox_id", "") or ""),
+                                    campaign=str(
+                                        getattr(ev, "pack", None)
+                                        or getattr(ev, "campaign", None)
+                                        or ""
+                                    ),
                                 )
                                 tstore.record_bounce(
                                     ev.id,
@@ -319,7 +327,10 @@ def check_replies(
                             from modules.deliverability import DeliverabilityStore
 
                             classified = DeliverabilityStore().handle_bounce(
-                                email=ev.email, raw_reason=reason
+                                email=ev.email,
+                                raw_reason=reason,
+                                message_id=getattr(ev, "message_id", "") or "",
+                                outreach_id=str(getattr(ev, "outbox_id", "") or ""),
                             )
                             tstore.record_bounce(
                                 ev.id,
