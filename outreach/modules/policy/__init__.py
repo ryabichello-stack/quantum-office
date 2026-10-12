@@ -67,6 +67,22 @@ class ContactPolicyStore:
                 )
                 """
             )
+            # Consent / legal basis for marketing (ФЗ «О рекламе» art. 18).
+            cols = {
+                r[1] for r in conn.execute("PRAGMA table_info(contact_policy)").fetchall()
+            }
+            for col, decl in (
+                ("consent_status", "TEXT NOT NULL DEFAULT 'unknown'"),
+                ("consent_source", "TEXT NOT NULL DEFAULT ''"),
+                ("consent_timestamp", "TEXT"),
+                ("consent_evidence", "TEXT NOT NULL DEFAULT ''"),
+                ("source_url", "TEXT NOT NULL DEFAULT ''"),
+                ("unsubscribe_status", "TEXT NOT NULL DEFAULT ''"),
+                ("last_delivery_status", "TEXT NOT NULL DEFAULT ''"),
+                ("suppression_reason", "TEXT NOT NULL DEFAULT ''"),
+            ):
+                if col not in cols:
+                    conn.execute(f"ALTER TABLE contact_policy ADD COLUMN {col} {decl}")
 
     def get(self, company_id: str) -> dict[str, Any] | None:
         cid = (company_id or "").strip()
@@ -98,6 +114,14 @@ class ContactPolicyStore:
             "next_allowed_email_at",
             "next_allowed_call_at",
             "primary_email",
+            "consent_status",
+            "consent_source",
+            "consent_timestamp",
+            "consent_evidence",
+            "source_url",
+            "unsubscribe_status",
+            "last_delivery_status",
+            "suppression_reason",
             "updated_at",
         )
         vals = []
@@ -105,6 +129,17 @@ class ContactPolicyStore:
             v = data.get(c)
             if c in ("do_not_email", "do_not_call", "active_deal"):
                 vals.append(1 if v in (True, 1, "1", "true") else 0)
+            elif c == "consent_status":
+                vals.append((v or "unknown"))
+            elif c in (
+                "consent_source",
+                "consent_evidence",
+                "source_url",
+                "unsubscribe_status",
+                "last_delivery_status",
+                "suppression_reason",
+            ):
+                vals.append("" if v is None else v)
             else:
                 vals.append(v)
         with self.connect() as conn:
@@ -123,11 +158,61 @@ class ContactPolicyStore:
                   next_allowed_email_at=COALESCE(excluded.next_allowed_email_at, contact_policy.next_allowed_email_at),
                   next_allowed_call_at=COALESCE(excluded.next_allowed_call_at, contact_policy.next_allowed_call_at),
                   primary_email=COALESCE(excluded.primary_email, contact_policy.primary_email),
+                  consent_status=COALESCE(excluded.consent_status, contact_policy.consent_status),
+                  consent_source=COALESCE(excluded.consent_source, contact_policy.consent_source),
+                  consent_timestamp=COALESCE(excluded.consent_timestamp, contact_policy.consent_timestamp),
+                  consent_evidence=COALESCE(excluded.consent_evidence, contact_policy.consent_evidence),
+                  source_url=COALESCE(excluded.source_url, contact_policy.source_url),
+                  unsubscribe_status=COALESCE(excluded.unsubscribe_status, contact_policy.unsubscribe_status),
+                  last_delivery_status=COALESCE(excluded.last_delivery_status, contact_policy.last_delivery_status),
+                  suppression_reason=COALESCE(excluded.suppression_reason, contact_policy.suppression_reason),
                   updated_at=excluded.updated_at
                 """,
                 vals,
             )
         return self.get(cid) or {}
+
+    def allow_marketing_consent(
+        self,
+        company_id: str,
+        *,
+        require_consent: bool = True,
+    ) -> tuple[bool, str]:
+        """Marketing send gate. Presence in CBR registry ≠ advertising consent."""
+        if not require_consent:
+            return True, "consent_not_required"
+        pol = self.get(company_id)
+        if not pol:
+            return False, "consent:unknown_no_policy_row"
+        status = (pol.get("consent_status") or "unknown").strip().lower()
+        if status == "granted":
+            return True, "consent:granted"
+        if status == "denied":
+            return False, "consent:denied"
+        if (pol.get("unsubscribe_status") or "").lower() in ("unsubscribed", "1", "true"):
+            return False, "consent:unsubscribed"
+        return False, f"consent:{status or 'unknown'}"
+
+    def set_consent(
+        self,
+        company_id: str,
+        *,
+        status: str,
+        source: str = "",
+        evidence: str = "",
+        source_url: str = "",
+    ) -> dict[str, Any]:
+        st = (status or "unknown").strip().lower()
+        if st not in ("unknown", "granted", "denied", "legacy_unverified"):
+            raise ValueError("invalid consent_status")
+        return self.upsert(
+            company_id,
+            consent_status=st,
+            consent_source=(source or "")[:300],
+            consent_evidence=(evidence or "")[:1000],
+            consent_timestamp=_utc_now() if st == "granted" else None,
+            source_url=(source_url or "")[:500],
+        )
 
     def allow_email(
         self,
@@ -175,7 +260,14 @@ class ContactPolicyStore:
     def note_unsubscribe(self, company_id: str) -> None:
         if not company_id:
             return
-        self.upsert(company_id, do_not_email=1, last_reply_at=_utc_now())
+        self.upsert(
+            company_id,
+            do_not_email=1,
+            last_reply_at=_utc_now(),
+            unsubscribe_status="unsubscribed",
+            consent_status="denied",
+            suppression_reason="unsubscribe",
+        )
 
     def note_call(
         self,

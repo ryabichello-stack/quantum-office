@@ -7,6 +7,7 @@
     inbox: "Входящие",
     clients: "Клиенты",
     report: "Отчёт",
+    health: "Email Health",
     settings: "Настройки",
   };
   const hints = {
@@ -17,6 +18,7 @@
     inbox: "Классификация входящих",
     clients: "База Bitrix и обогащение",
     report: "Воронка доставки и чтения",
+    health: "Репутация, DNS, аккаунты и SMTP-ошибки",
     settings: "Лимиты, окно часов и защита ящика",
   };
 
@@ -969,8 +971,83 @@
             .catch(logAction);
         }
         if (tab === "inbox") loadInbox(true).catch(logAction);
+        if (tab === "health") loadEmailHealth().catch(logAction);
       });
     });
+  }
+
+  async function loadEmailHealth() {
+    const st = await api("/status");
+    const gate = st.marketing_gate || {};
+    if ($("healthGate")) {
+      $("healthGate").textContent = gate.ok
+        ? `Маркетинг: OK (account=${gate.account_id || "—"})`
+        : `Маркетинг заблокирован: ${gate.reason || "—"}`;
+    }
+    if ($("healthProtected")) {
+      $("healthProtected").textContent = JSON.stringify(st.protected_domains || [], null, 2);
+    }
+    const accounts = await api("/api/modules/sending_accounts/accounts");
+    if ($("healthAccountsBody")) {
+      $("healthAccountsBody").innerHTML = (accounts.items || [])
+        .map(
+          (a) => `<tr>
+          <td>${escapeHtml(a.account_id || "")}</td>
+          <td>${escapeHtml(a.email || "")}</td>
+          <td>${escapeHtml(a.sending_type || "")}</td>
+          <td>${escapeHtml(a.health_status || "")}</td>
+          <td>${escapeHtml(a.spf_status || "")}</td>
+          <td>${escapeHtml(a.dkim_status || "")}</td>
+          <td>${escapeHtml(a.dmarc_status || "")}</td>
+          <td>${a.marketing_allowed ? "yes" : "no"}</td>
+        </tr>`
+        )
+        .join("");
+    }
+    if ($("healthErrorsToday")) {
+      $("healthErrorsToday").textContent = JSON.stringify(st.delivery_errors_today || {}, null, 2);
+    }
+    const ev = await api("/api/modules/delivery_errors/events?limit=30");
+    if ($("healthErrorsBody")) {
+      $("healthErrorsBody").innerHTML = (ev.items || [])
+        .map(
+          (r) => `<tr>
+          <td>${escapeHtml(r.created_at || "")}</td>
+          <td>${escapeHtml(r.recipient_email || "")}</td>
+          <td>${escapeHtml(r.category || "")}</td>
+          <td>${escapeHtml(r.smtp_code || "")}</td>
+          <td>${escapeHtml(r.decision || "")}</td>
+        </tr>`
+        )
+        .join("");
+    }
+    if ($("healthPaused")) {
+      $("healthPaused").textContent = JSON.stringify(
+        (st.reputation_guard || {}).paused_campaigns || [],
+        null,
+        2
+      );
+    }
+    const inc = await api("/api/modules/sending_accounts/incidents?limit=20");
+    if ($("healthIncidentsBody")) {
+      $("healthIncidentsBody").innerHTML = (inc.items || [])
+        .map(
+          (r) => `<tr>
+          <td>${escapeHtml(r.created_at || "")}</td>
+          <td>${escapeHtml(r.account_id || "")}</td>
+          <td>${escapeHtml(r.kind || "")}</td>
+          <td>${escapeHtml(r.detail || "")}</td>
+          <td>${escapeHtml(r.action || "")}</td>
+        </tr>`
+        )
+        .join("");
+    }
+    if ($("healthHints")) {
+      $("healthHints").textContent =
+        "Холодная рассылка с quantumlabs.ru отключена (protected domain). " +
+        "Для маркетинга нужен отдельный ACTIVE Sending Account. " +
+        "DNS: DMARC сейчас отсутствует — добавить вручную после согласования.";
+    }
   }
 
   function paintPreviewHtml(box, html) {
@@ -1755,6 +1832,22 @@
         logAction(String(e));
       }
     });
+
+    if ($("healthReload")) {
+      $("healthReload").addEventListener("click", () => loadEmailHealth().catch(logAction));
+    }
+    if ($("healthDnsAudit")) {
+      $("healthDnsAudit").addEventListener("click", async () => {
+        try {
+          const d = await api("/api/modules/dns_auth/audit?domain=quantumlabs.ru");
+          if ($("healthDns")) $("healthDns").textContent = JSON.stringify(d, null, 2);
+          // refresh auth statuses on legacy account display
+          await loadEmailHealth();
+        } catch (e) {
+          if ($("healthDns")) $("healthDns").textContent = String(e);
+        }
+      });
+    }
 
     $("antibanSave").addEventListener("click", async () => {
       try {

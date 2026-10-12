@@ -35,6 +35,24 @@ def _today() -> str:
     return date.today().isoformat()
 
 
+# Shared-mailbox families: one policy bounce cools the whole ISP for the day.
+_DOMAIN_FAMILIES: dict[str, tuple[str, ...]] = {
+    "yandex": ("yandex.ru", "ya.ru", "yandex.com", "yandex.kz", "yandex.by", "yandex.ua"),
+    "mailru": ("mail.ru", "inbox.ru", "bk.ru", "list.ru", "internet.ru", "mail.ua"),
+    "gmail": ("gmail.com", "googlemail.com"),
+}
+
+
+def domain_family(domain: str) -> str:
+    d = (domain or "").strip().lower()
+    if not d:
+        return ""
+    for family, members in _DOMAIN_FAMILIES.items():
+        if d in members:
+            return family
+    return d
+
+
 @dataclass
 class GuardDecision:
     allow: bool
@@ -133,6 +151,17 @@ class DeliverabilityStore:
                     company_id TEXT NOT NULL,
                     count INTEGER NOT NULL DEFAULT 0,
                     PRIMARY KEY (day, company_id)
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS domain_cooldown (
+                    day TEXT NOT NULL,
+                    domain_family TEXT NOT NULL,
+                    reason TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (day, domain_family)
                 )
                 """
             )
@@ -247,7 +276,6 @@ class DeliverabilityStore:
         window = int(stats["window"])
         rate = float(stats["hard_rate_pct"])
         today = stats.get("today") or {}
-        policy_today = int(today.get("policy", 0)) + int(today.get("auth", 0))
 
         # Absolute + percentage: avoid pause on tiny samples
         if window >= 20 and hard_n >= 3 and rate >= 3.0:
@@ -255,10 +283,22 @@ class DeliverabilityStore:
             self.pause_mailbox(msg)
             return {"paused": True, "reason": msg, "triggered": True, "stats": stats}
 
-        if policy_today >= 2:
-            msg = f"stop_rule:policy_blocks_today={policy_today}"
+        # Global pause only if several different recipient ISPs hit policy today.
+        # One Yandex spam (even if DSN is re-processed) must not stop the whole mailbox.
+        policy_families = self.policy_domain_families_today()
+        if len(policy_families) >= 3:
+            msg = (
+                "stop_rule:policy_isps_today="
+                f"{len(policy_families)}:{','.join(sorted(policy_families)[:5])}"
+            )
             self.pause_mailbox(msg)
-            return {"paused": True, "reason": msg, "triggered": True, "stats": stats}
+            return {
+                "paused": True,
+                "reason": msg,
+                "triggered": True,
+                "stats": stats,
+                "policy_families": sorted(policy_families),
+            }
 
         if int(today.get("auth", 0)) >= 1:
             msg = "stop_rule:authentication_failure"
@@ -267,22 +307,129 @@ class DeliverabilityStore:
 
         return {"paused": False, "reason": "", "triggered": False, "stats": stats}
 
+    def policy_domain_families_today(self) -> set[str]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT email FROM bounce_events
+                WHERE created_at LIKE ? AND category = 'policy'
+                """,
+                (f"{_today()}%",),
+            ).fetchall()
+        out: set[str] = set()
+        for r in rows:
+            fam = domain_family(self.domain_of(str(r["email"] or "")))
+            if fam:
+                out.add(fam)
+        return out
+
+    def cool_recipient_domain(self, email: str, *, reason: str) -> str:
+        """Skip further sends today to this recipient ISP (e.g. all yandex.ru/ya.ru)."""
+        family = domain_family(self.domain_of(email))
+        if not family:
+            return ""
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO domain_cooldown(day, domain_family, reason, created_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(day, domain_family) DO UPDATE SET
+                    reason = excluded.reason,
+                    created_at = excluded.created_at
+                """,
+                (_today(), family, (reason or "policy")[:500], _utc_now()),
+            )
+        logger.warning(
+            "domain cooldown day=%s family=%s reason=%s (mailbox stays active)",
+            _today(),
+            family,
+            reason,
+        )
+        return family
+
+    def domain_cooldown_reason(self, email: str) -> str | None:
+        family = domain_family(self.domain_of(email))
+        if not family:
+            return None
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT reason FROM domain_cooldown
+                WHERE day = ? AND domain_family = ?
+                """,
+                (_today(), family),
+            ).fetchone()
+        if not row:
+            return None
+        return str(row["reason"] or "policy")
+
     def handle_bounce(
         self,
         *,
         email: str,
         raw_reason: str | None,
+        message_id: str = "",
+        outreach_id: str = "",
+        campaign: str = "",
+        account_id: str = "legacy",
+        provider: str = "",
+        from_domain: str = "",
     ) -> BounceClass:
         classified = classify_bounce(raw_reason)
         self.record_bounce_event(email=email, classified=classified, raw=raw_reason)
+        # Delivery Error Analyzer (idempotent)
+        try:
+            from modules.delivery_errors import DeliveryErrorStore
+
+            DeliveryErrorStore(self.db_path).record(
+                email=email,
+                raw=raw_reason,
+                classified=classified,
+                message_id=message_id,
+                outreach_id=outreach_id,
+                account_id=account_id or "legacy",
+                from_domain=from_domain,
+                provider=provider,
+                campaign=campaign,
+                smtp_stage="dsn",
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("delivery_errors.record failed", exc_info=True)
         if classified.suppress:
             self.add_suppression(
                 email,
                 reason=f"hard_bounce:{classified.reason}",
                 source="imap-dsn",
             )
+        # Policy/spam from one ISP (typical Yandex 554 5.7.1): cool that ISP for today,
+        # keep sending to other domains. Auth failures still pause the mailbox.
+        if classified.category == "policy":
+            self.cool_recipient_domain(
+                email,
+                reason=f"bounce:{classified.category}:{classified.reason}",
+            )
+            try:
+                from modules.reputation_guard import ReputationGuardStore
+                from modules.sending_accounts import SendingAccountsStore
+
+                ReputationGuardStore(self.db_path).evaluate_after_policy(
+                    campaign=campaign or "default",
+                    sending_accounts=SendingAccountsStore(self.db_path),
+                )
+            except Exception:  # noqa: BLE001
+                logger.debug("reputation_guard evaluate failed", exc_info=True)
         if classified.pause_mailbox:
             self.pause_mailbox(f"bounce:{classified.category}:{classified.reason}")
+            try:
+                from modules.sending_accounts import SendingAccountsStore
+
+                SendingAccountsStore(self.db_path).set_health(
+                    account_id or "legacy",
+                    "PAUSED" if classified.category == "auth" else "WARNING",
+                    detail=f"bounce:{classified.category}:{classified.reason}",
+                )
+            except Exception:  # noqa: BLE001
+                logger.debug("sending account health update failed", exc_info=True)
         else:
             self.apply_stop_rules()
         return classified
@@ -432,6 +579,17 @@ class DeliverabilityStore:
                 False, f"mailbox_paused:{pause_reason}", effective, sent_today, domain_n
             )
 
+        cooled = self.domain_cooldown_reason(email)
+        if cooled:
+            fam = domain_family(domain)
+            return GuardDecision(
+                False,
+                f"domain_cooldown:{fam}:{cooled}",
+                effective,
+                sent_today,
+                domain_n,
+            )
+
         reason = self.is_suppressed(email)
         if reason:
             return GuardDecision(False, f"suppressed:{reason}", effective, sent_today, domain_n)
@@ -487,6 +645,14 @@ class DeliverabilityStore:
         if settings is not None:
             oneshot_limit = settings.get_int("ONESHOT_DAILY_LIMIT", 25)
         paused, pause_reason = self.is_paused()
+        with self.connect() as conn:
+            cooled_rows = conn.execute(
+                "SELECT domain_family, reason FROM domain_cooldown WHERE day = ?",
+                (_today(),),
+            ).fetchall()
+        cooled_today = {
+            str(r["domain_family"]): str(r["reason"] or "") for r in cooled_rows
+        }
         return {
             "suppressed": int(supp),
             "domains_touched_today": int(domains),
@@ -502,6 +668,7 @@ class DeliverabilityStore:
             "oneshot_daily_limit": oneshot_limit,
             "mailbox_paused": paused,
             "mailbox_pause_reason": pause_reason,
+            "domain_cooldown_today": cooled_today,
             "bounce_stats": self.bounce_stats(last_n=50),
             "primary_domain_mode": True,
             "note": (

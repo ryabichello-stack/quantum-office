@@ -35,6 +35,10 @@ from modules.verification import VerificationModule
 from modules.sequences import SequencesModule
 from modules.policy import PolicyModule
 from modules.replies import RepliesModule
+from modules.sending_accounts import SendingAccountsModule
+from modules.delivery_errors import DeliveryErrorsModule
+from modules.dns_auth import DnsAuthModule
+from modules.reputation_guard import ReputationGuardModule
 from outbox import OutboxStore
 from reply_watcher import ReplyWatchThread, check_replies, imap_configured
 from runtime_settings import RuntimeSettings
@@ -87,6 +91,10 @@ _verification_mod = VerificationModule()
 _sequences_mod = SequencesModule()
 _policy_mod = PolicyModule()
 _replies_mod = RepliesModule()
+_sending_accounts_mod = SendingAccountsModule()
+_delivery_errors_mod = DeliveryErrorsModule()
+_dns_auth_mod = DnsAuthModule()
+_reputation_guard_mod = ReputationGuardModule()
 _registry.register(_tracking_mod)
 _registry.register(_deliver_mod)
 _registry.register(_runner_mod)
@@ -98,6 +106,10 @@ _registry.register(_verification_mod)
 _registry.register(_sequences_mod)
 _registry.register(_policy_mod)
 _registry.register(_replies_mod)
+_registry.register(_sending_accounts_mod)
+_registry.register(_delivery_errors_mod)
+_registry.register(_dns_auth_mod)
+_registry.register(_reputation_guard_mod)
 _app_ctx: AppContext | None = None
 
 
@@ -222,6 +234,19 @@ def _bitrix_or_none() -> BitrixClient | None:
     return BitrixClient(url)
 
 
+def _marketing_gate_payload(rt: RuntimeSettings) -> dict[str, Any]:
+    ok, why, acc = _sending_accounts_mod.store.marketing_send_gate(
+        allow_protected_override=rt.get_bool("MARKETING_ALLOW_PROTECTED_DOMAIN", False)
+    )
+    return {
+        "ok": ok,
+        "reason": why,
+        "account_id": (acc or {}).get("account_id"),
+        "override": rt.get_bool("MARKETING_ALLOW_PROTECTED_DOMAIN", False),
+        "require_consent": rt.get_bool("MARKETING_REQUIRE_CONSENT", True),
+    }
+
+
 def _status_payload() -> dict[str, Any]:
     store = _store()
     rt = _rt()
@@ -257,9 +282,18 @@ def _status_payload() -> dict[str, Any]:
         "policy": _policy_mod.health(),
         "reply_inbox": _replies_mod.health(),
         "deliverability": _deliver_mod.store.stats(rt, rt.get_int("OUTREACH_DAILY_LIMIT", 15)),
+        "sending_accounts": _sending_accounts_mod.health(),
+        "marketing_gate": _marketing_gate_payload(rt),
+        "delivery_errors_today": _delivery_errors_mod.store.counts_today(),
+        "reputation_guard": {
+            "paused_campaigns": _reputation_guard_mod.store.list_paused(),
+            "thresholds": _reputation_guard_mod.store.thresholds(rt),
+        },
+        "dns_auth_last": _dns_auth_mod.health().get("last"),
         "engagement": _tracking_mod.store.engagement_counts(),
         "warmup_enabled": rt.get_bool("WARMUP_ENABLED", True),
         "primary_mailbox_protection": True,
+        "protected_domains": _sending_accounts_mod.store.list_protected_domains(),
         "run_respect_window": rt.get_bool("RUN_RESPECT_WINDOW", True),
         "schedule_window": {
             "start": rt.get_int("SCHEDULE_WINDOW_START", 10),
