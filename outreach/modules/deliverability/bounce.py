@@ -41,7 +41,8 @@ def classify_bounce(raw: str | None) -> BounceClass:
     low = text.lower()
     enhanced, smtp = _extract_codes(text)
 
-    # Policy / spam blocks first (still pause mailbox)
+    # Policy / spam blocks: cool recipient ISP for the day in handle_bounce.
+    # Do NOT pause the whole mailbox — one Yandex 5.7.1 must not stop Mail.ru/Gmail sends.
     if any(
         k in low
         for k in (
@@ -58,7 +59,7 @@ def classify_bounce(raw: str | None) -> BounceClass:
             code=enhanced or smtp or "",
             suppress=False,
             retry=False,
-            pause_mailbox=True,
+            pause_mailbox=False,
             reason="policy_or_spam_block",
         )
 
@@ -84,7 +85,7 @@ def classify_bounce(raw: str | None) -> BounceClass:
             code=enhanced or smtp or "5.7",
             suppress=False,
             retry=False,
-            pause_mailbox=True,
+            pause_mailbox=False,
             reason="policy_5_7",
         )
 
