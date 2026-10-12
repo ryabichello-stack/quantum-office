@@ -27,11 +27,26 @@ from app.services.widget_flow import (
     widget_next_step,
     WidgetVisitorMismatchError,
 )
-from app.services.widget_security import enforce_widget_rate_limit
+from app.services.widget_security import client_ip_from_request, enforce_widget_rate_limit
 from app.services.tts import synthesize_speech
 from app.services.instant_demo import preview_website
+from app.services import site_analytics as site_analytics_svc
 
 router = APIRouter(prefix="/public", tags=["public"])
+
+
+class PublicAnalyticsHit(BaseModel):
+    site_key: str = Field(default="dlno.ru", max_length=64)
+    session_id: str = Field(min_length=8, max_length=64)
+    path: str = Field(min_length=1, max_length=512)
+    referrer: str | None = Field(default=None, max_length=1000)
+    title: str | None = Field(default=None, max_length=255)
+    utm_source: str | None = Field(default=None, max_length=120)
+    utm_medium: str | None = Field(default=None, max_length=120)
+    utm_campaign: str | None = Field(default=None, max_length=160)
+    event: str = Field(default="pageview", max_length=32)
+    duration_ms: int | None = Field(default=None, ge=0, le=86_400_000)
+    engaged: bool = False
 
 
 class PublicLeadCreate(BaseModel):
@@ -540,3 +555,41 @@ def public_instant_demo_preview(
         if code in ("fetch_failed", "url_unreachable"):
             status = 502
         raise HTTPException(status_code=status, detail=code) from exc
+
+
+@router.post("/analytics/hit")
+def public_analytics_hit(
+    body: PublicAnalyticsHit,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict:
+    """First-party pageview beacon for marketing site (no auth)."""
+    ip = client_ip_from_request(request)
+    if not site_analytics_svc.check_analytics_rate_limit(client_ip=ip):
+        raise HTTPException(status_code=429, detail="rate_limited")
+
+    session_id = site_analytics_svc.normalize_session_id(body.session_id)
+    path = site_analytics_svc.normalize_path(body.path)
+    if not session_id or not path:
+        raise HTTPException(status_code=400, detail="invalid_session_or_path")
+
+    site_key = site_analytics_svc.normalize_site_key(body.site_key)
+    ua = request.headers.get("user-agent")
+    site_analytics_svc.record_hit(
+        db,
+        site_key=site_key,
+        session_id=session_id,
+        path=path,
+        referrer=body.referrer,
+        title=body.title,
+        utm_source=body.utm_source,
+        utm_medium=body.utm_medium,
+        utm_campaign=body.utm_campaign,
+        user_agent=ua,
+        ip_hash=site_analytics_svc.hash_ip(ip),
+        event=body.event,
+        duration_ms=body.duration_ms,
+        engaged=body.engaged,
+    )
+    db.commit()
+    return {"ok": True}

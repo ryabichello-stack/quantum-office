@@ -16,7 +16,7 @@ export default function LoginPage() {
     try {
       const { access_token } = await apiLogin(email, password);
       localStorage.setItem("delno_token", access_token);
-      router.push("/tenants");
+      router.push("/analytics");
     } catch {
       setError("Неверный email или пароль");
     }
@@ -25,7 +25,7 @@ export default function LoginPage() {
   return (
     <main style={{ maxWidth: 420, margin: "80px auto", padding: 24 }}>
       <h1>DELNO Admin</h1>
-      <p style={{ opacity: 0.7 }}>Platform admin — tenants, CMS, health</p>
+      <p style={{ opacity: 0.7 }}>Platform admin — tenants, CMS, статистика сайта</p>
       <form onSubmit={onSubmit} style={{ display: "grid", gap: 12, marginTop: 24 }}>
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" required style={inputStyle} />
         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" required style={inputStyle} />

@@ -20,9 +20,12 @@ export default function TenantsPage() {
 
   return (
     <main style={{ maxWidth: 960, margin: "40px auto", padding: 24 }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
         <h1>Tenants</h1>
-        <Link href="/login" style={{ color: "#93c5fd" }}>Logout</Link>
+        <nav style={{ display: "flex", gap: 16 }}>
+          <Link href="/analytics" style={{ color: "#93c5fd" }}>Статистика</Link>
+          <Link href="/login" style={{ color: "#93c5fd" }}>Logout</Link>
+        </nav>
       </header>
       <section style={{ marginTop: 32 }}>
         <h2>Клиенты</h2>
