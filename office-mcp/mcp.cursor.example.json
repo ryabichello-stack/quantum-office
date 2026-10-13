@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "quantum-office": {
+      "command": "/opt/quantum-office-mcp/scripts/run_cursor_mcp.sh",
+      "env": {
+        "CONSOLE_BASE": "http://127.0.0.1:8013",
+        "CAMPAIGN_BASE": "http://127.0.0.1:8018",
+        "AVA_KNOWLEDGE_BASE": "http://127.0.0.1:8017",
+        "CALENDAR_BASE": "http://127.0.0.1:8014",
+        "OUTREACH_BASE": "http://127.0.0.1:8012",
+        "CONSOLE_TOKEN": "REPLACE_FROM_quantum-console_.env",
+        "WEBHOOK_TOKEN": "REPLACE_FROM_sheets-campaign_or_outreach_.env",
+        "BRAIN_MCP_PRINCIPAL": "service:office-mcp",
+        "BRAIN_MCP_ADMIN": "true",
+        "BRAIN_MCP_USER_ID": "office-mcp",
+        "BRAIN_TENANT_ID": "quantum-labs"
+      }
+    }
+  }
+}
