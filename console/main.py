@@ -2458,34 +2458,24 @@ def api_outbound_dial(
             "Content-Type": "application/json",
         },
     )
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-            payload = json.loads(raw) if raw else {}
-    except urllib.error.HTTPError as e:
-        detail = e.read().decode("utf-8", errors="replace")[:800]
-        raise HTTPException(e.code, f"ARI originate failed: {detail}") from e
-    except urllib.error.URLError as e:
-        raise HTTPException(502, f"ARI unreachable: {e}") from e
 
-    channel_id = payload.get("id")
-    progress: dict[str, Any] | None = None
-    ok = True
-    sip_cause: str | None = None
-    # Parallel SIP sniffer so "обрыв до гудка" shows real 486/480, not guesswork.
-    sniffer: subprocess.Popen[str] | None = None
-    sniffer_out = Path(f"/tmp/qc-sip-{int(time.time())}-{phone[-4:]}.txt")
-    if channel_id and body.wait_progress_sec > 0:
+    # Start SIP sniffer BEFORE originate — 486 often arrives within ~2s of INVITE.
+    sniffer: subprocess.Popen[bytes] | None = None
+    sniffer_pcap = Path(f"/tmp/qc-sip-{int(time.time())}-{phone[-4:]}.pcap")
+    if body.wait_progress_sec > 0:
         try:
             sniffer = subprocess.Popen(
                 [
                     "timeout",
-                    str(max(3, int(body.wait_progress_sec) + 2)),
+                    str(max(8, int(body.wait_progress_sec) + 5)),
                     "tcpdump",
                     "-i",
                     "eth0",
                     "-nn",
-                    "-l",
+                    "-s",
+                    "0",
+                    "-w",
+                    str(sniffer_pcap),
                     "(",
                     "host",
                     "81.88.86.37",
@@ -2498,13 +2488,39 @@ def api_outbound_dial(
                     "port",
                     "5060",
                 ],
-                stdout=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                text=True,
             )
+            time.sleep(0.25)
         except Exception as exc:  # noqa: BLE001
             logger.warning("sip sniffer start failed: %s", exc)
             sniffer = None
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            payload = json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as e:
+        if sniffer is not None:
+            try:
+                sniffer.kill()
+            except Exception:
+                pass
+        detail = e.read().decode("utf-8", errors="replace")[:800]
+        raise HTTPException(e.code, f"ARI originate failed: {detail}") from e
+    except urllib.error.URLError as e:
+        if sniffer is not None:
+            try:
+                sniffer.kill()
+            except Exception:
+                pass
+        raise HTTPException(502, f"ARI unreachable: {e}") from e
+
+    channel_id = payload.get("id")
+    progress: dict[str, Any] | None = None
+    ok = True
+    sip_cause: str | None = None
+    if channel_id and body.wait_progress_sec > 0:
         progress = _wait_ari_progress(
             str(channel_id),
             ari_user=ari_user,
@@ -2515,34 +2531,42 @@ def api_outbound_dial(
             phone=phone,
         )
         ok = bool(progress.get("alive"))
-        if sniffer is not None:
+    if sniffer is not None:
+        try:
+            sniffer.terminate()
+            sniffer.wait(timeout=2)
+        except Exception:
             try:
-                sniffer.terminate()
-                out, _ = sniffer.communicate(timeout=2)
-            except Exception:
-                try:
-                    sniffer.kill()
-                except Exception:
-                    pass
-                out = ""
-            sip_cause = _sip_cause_from_pcap_text(out or "")
-            if sip_cause and progress is not None and not progress.get("alive"):
-                progress["sip_cause"] = sip_cause
-                if "486" in sip_cause:
-                    progress["note"] = (
-                        f"Обрыв до гудка: {sip_cause}. "
-                        "Абонент занят или Mango отклонил до ringback."
-                    )
-                elif "480" in sip_cause:
-                    progress["note"] = (
-                        f"Обрыв до гудка: {sip_cause}. Абонент временно недоступен."
-                    )
-                else:
-                    progress["note"] = f"Обрыв до гудка: {sip_cause}."
-            try:
-                sniffer_out.write_text(out or "", encoding="utf-8")
+                sniffer.kill()
             except Exception:
                 pass
+        out = ""
+        if sniffer_pcap.is_file() and sniffer_pcap.stat().st_size > 0:
+            try:
+                _rc, out = _run(
+                    ["tcpdump", "-r", str(sniffer_pcap), "-nn", "-A"],
+                    timeout=5,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("sip sniffer read failed: %s", exc)
+        sip_cause = _sip_cause_from_pcap_text(out or "")
+        if sip_cause and progress is not None and not progress.get("alive"):
+            progress["sip_cause"] = sip_cause
+            if "486" in sip_cause:
+                progress["note"] = (
+                    f"Обрыв до гудка: {sip_cause}. "
+                    "Абонент занят или Mango отклонил до ringback."
+                )
+            elif "480" in sip_cause:
+                progress["note"] = (
+                    f"Обрыв до гудка: {sip_cause}. Абонент временно недоступен."
+                )
+            else:
+                progress["note"] = f"Обрыв до гудка: {sip_cause}."
+        try:
+            sniffer_pcap.unlink(missing_ok=True)
+        except Exception:
+            pass
     return {
         "ok": ok,
         "mode": "sip_ari",
