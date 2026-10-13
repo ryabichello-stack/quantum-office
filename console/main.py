@@ -511,6 +511,61 @@ def _ari_channel_snapshot(
         return None
 
 
+def _cdr_disposition_for_phone(phone: str, *, since_epoch: float) -> dict[str, Any] | None:
+    """Read last Asterisk CDR row for phone (BUSY/NO ANSWER/…)."""
+    cdr_path = Path("/var/log/asterisk/cdr-csv/Master.csv")
+    if not cdr_path.is_file():
+        return None
+    try:
+        lines = cdr_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        return None
+    phone_digits = re.sub(r"\D+", "", phone or "")
+    best: dict[str, Any] | None = None
+    for line in reversed(lines[-200:]):
+        if phone_digits and phone_digits not in line.replace('"', ""):
+            continue
+        # CSV: ... start, answer, end, duration, billsec, disposition ...
+        parts = [p.strip('"') for p in line.split(",")]
+        if len(parts) < 15:
+            continue
+        disposition = (parts[14] or "").upper()
+        if disposition not in {
+            "BUSY",
+            "NO ANSWER",
+            "NOANSWER",
+            "FAILED",
+            "CONGESTION",
+            "ANSWERED",
+        }:
+            continue
+        best = {
+            "disposition": disposition,
+            "dst": parts[2] if len(parts) > 2 else "",
+            "duration": parts[12] if len(parts) > 12 else "",
+            "uniqueid": parts[16] if len(parts) > 16 else "",
+        }
+        break
+    _ = since_epoch  # reserved for tighter time filtering later
+    return best
+
+
+def _sip_cause_from_pcap_text(text: str) -> str | None:
+    for code, label in (
+        ("486 Busy", "486 Busy Here"),
+        ("480 Temporarily", "480 Temporarily Unavailable"),
+        ("403 Forbidden", "403 Forbidden"),
+        ("404 Not Found", "404 Not Found"),
+        ("487 Request", "487 Request Terminated"),
+        ("180 Ringing", "180 Ringing"),
+        ("183 Session", "183 Session Progress"),
+        ("200 OK", "200 OK"),
+    ):
+        if code in text:
+            return label
+    return None
+
+
 def _wait_ari_progress(
     channel_id: str,
     *,
@@ -519,10 +574,13 @@ def _wait_ari_progress(
     ari_host: str,
     ari_port: str,
     wait_sec: float = 12.0,
+    phone: str | None = None,
 ) -> dict[str, Any]:
     """Poll ARI until channel is up/ringing, gone, or timeout."""
-    deadline = time.time() + max(0.0, wait_sec)
+    started = time.time()
+    deadline = started + max(0.0, wait_sec)
     last: dict[str, Any] | None = None
+    saw_ringing = False
     while time.time() < deadline:
         last = _ari_channel_snapshot(
             channel_id,
@@ -532,22 +590,45 @@ def _wait_ari_progress(
             ari_port=ari_port,
         )
         if last is None:
+            cdr = _cdr_disposition_for_phone(phone or "", since_epoch=started) if phone else None
+            disp = (cdr or {}).get("disposition")
+            if disp == "BUSY":
+                note = (
+                    "Обрыв до гудка: Mango вернул SIP 486 Busy. "
+                    "Абонент занят или ВАТС отклонила до ringback."
+                )
+            elif disp in {"NO ANSWER", "NOANSWER"}:
+                note = "Нет ответа (NO ANSWER). Гудок был, абонент не взял."
+            elif disp == "CONGESTION":
+                note = "Congestion на стороне Mango/PSTN."
+            elif saw_ringing:
+                note = "Был Ringing, затем канал сброшен до ответа."
+            else:
+                note = (
+                    "Обрыв до гудка (канал умер без Ringing). "
+                    "Часто SIP 486 Busy / 480 Unavailable."
+                )
             return {
                 "alive": False,
                 "state": "destroyed",
-                "note": (
-                    "Канал умер до ответа (типично SIP 486 Busy / 480 Unavailable / 403). "
-                    "Мобильный не звонил или линия занята."
-                ),
+                "sip_disposition": disp,
+                "cdr": cdr,
+                "saw_ringing": saw_ringing,
+                "note": note,
             }
         state = str(last.get("state") or "")
-        if state in {"Up", "Ringing", "Ring"}:
-            return {"alive": True, "state": state, "channel": last}
+        if state in {"Ringing", "Ring"}:
+            saw_ringing = True
+            # Keep waiting a bit for Up, but report ringing as success path.
+            return {"alive": True, "state": state, "channel": last, "saw_ringing": True}
+        if state == "Up":
+            return {"alive": True, "state": state, "channel": last, "saw_ringing": saw_ringing}
         time.sleep(0.5)
     state = str((last or {}).get("state") or "unknown")
     return {
         "alive": True,
         "state": state,
+        "saw_ringing": saw_ringing,
         "note": "Канал ещё жив (ожидание ответа PSTN). Успех = мобильный реально звонит.",
         "channel": last,
     }
@@ -2390,7 +2471,40 @@ def api_outbound_dial(
     channel_id = payload.get("id")
     progress: dict[str, Any] | None = None
     ok = True
+    sip_cause: str | None = None
+    # Parallel SIP sniffer so "обрыв до гудка" shows real 486/480, not guesswork.
+    sniffer: subprocess.Popen[str] | None = None
+    sniffer_out = Path(f"/tmp/qc-sip-{int(time.time())}-{phone[-4:]}.txt")
     if channel_id and body.wait_progress_sec > 0:
+        try:
+            sniffer = subprocess.Popen(
+                [
+                    "timeout",
+                    str(max(3, int(body.wait_progress_sec) + 2)),
+                    "tcpdump",
+                    "-i",
+                    "eth0",
+                    "-nn",
+                    "-l",
+                    "(",
+                    "host",
+                    "81.88.86.37",
+                    "or",
+                    "host",
+                    "81.88.86.55",
+                    ")",
+                    "and",
+                    "udp",
+                    "port",
+                    "5060",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("sip sniffer start failed: %s", exc)
+            sniffer = None
         progress = _wait_ari_progress(
             str(channel_id),
             ari_user=ari_user,
@@ -2398,8 +2512,37 @@ def api_outbound_dial(
             ari_host=ari_host,
             ari_port=ari_port,
             wait_sec=float(body.wait_progress_sec),
+            phone=phone,
         )
         ok = bool(progress.get("alive"))
+        if sniffer is not None:
+            try:
+                sniffer.terminate()
+                out, _ = sniffer.communicate(timeout=2)
+            except Exception:
+                try:
+                    sniffer.kill()
+                except Exception:
+                    pass
+                out = ""
+            sip_cause = _sip_cause_from_pcap_text(out or "")
+            if sip_cause and progress is not None and not progress.get("alive"):
+                progress["sip_cause"] = sip_cause
+                if "486" in sip_cause:
+                    progress["note"] = (
+                        f"Обрыв до гудка: {sip_cause}. "
+                        "Абонент занят или Mango отклонил до ringback."
+                    )
+                elif "480" in sip_cause:
+                    progress["note"] = (
+                        f"Обрыв до гудка: {sip_cause}. Абонент временно недоступен."
+                    )
+                else:
+                    progress["note"] = f"Обрыв до гудка: {sip_cause}."
+            try:
+                sniffer_out.write_text(out or "", encoding="utf-8")
+            except Exception:
+                pass
     return {
         "ok": ok,
         "mode": "sip_ari",
@@ -2408,6 +2551,7 @@ def api_outbound_dial(
         "endpoint": endpoint,
         "channel_id": channel_id,
         "state": (progress or {}).get("state") or payload.get("state"),
+        "sip_cause": sip_cause or (progress or {}).get("sip_cause"),
         "progress": progress,
         "context": context,
         "provider": provider,
