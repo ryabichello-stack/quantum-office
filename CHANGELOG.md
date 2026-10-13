@@ -35,6 +35,7 @@
 
 ### Fixed
 
+- Dial: при обрыве до гудка в ответе явный `sip_cause` (например `486 Busy Here`), не маскируем под «ok».
 - Исходящие: SIP signaling биндится на `45.147.178.172` (+ SNAT) — с primary `5.35.86.62` Mango отвечал 486/403 без гудков.
 - Console `POST /api/outbound/dial`: `mode=auto` — Mango callback только если API **live**; иначе SIP/ARI с проверкой жизни канала (`ok:false` если канал сразу умер).
 - Dialplan: extension `12` (Mango callback) → `AI_CONTEXT=outbound` + per-call script из AstDB (не входящий секретарь).
