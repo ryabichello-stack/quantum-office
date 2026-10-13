@@ -22,7 +22,14 @@
 
 - Outreach UI: https://a.47z.ru/_ava_outreach/ui/
 - Пульт: https://a.47z.ru/_quantum_console/
+- Секретарь (TG/Max HTTP): https://a.47z.ru/_ava_secretary/
 - `GET https://a.47z.ru/_ava_outreach/health`
+- Remote MCP API paths (token in app, see `office-mcp/deploy/nginx-office-api.conf.snippet`):
+  - `/_ava_files/` → `:8015` (Mail.ru Cloud)
+  - `/_ava_knowledge/` → `:8017`
+  - `/_ava_calendar/` → `:8014`
+  - `/_ava_conference/` → `:8016`
+  - `/_ava_sheets_campaign/` → `:8018`
 
 ## Secrets (do not commit)
 
