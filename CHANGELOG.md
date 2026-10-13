@@ -12,6 +12,9 @@
 
 ### Added
 
+- `office-mcp/` — полноценный MCP stdio-сервер для office-стека (Grok/Cursor/Claude): телефония in/out, Sheets-кампания, календарь/Телемост, Second Brain, outreach, Telegram/Max, **Mail.ru Облако** (`mailru.list/search/read`); remote HTTPS пример `mcp.remote.example.json`; nginx snippet `deploy/nginx-office-api.conf.snippet` для `/_ava_files|knowledge|calendar|conference|sheets_campaign/`.
+- `office-mcp` HTTP gateway для Grok: `https://a.47z.ru/_office_mcp/` + `OFFICE_MCP_API_KEY` (`POST /tools/call`, `POST /mcp`).
+- `files`: `POST /api/files/read` — чтение текста из Mail.ru Cloud / Yadisk для агентов; text-bot: `/api/messenger/*` + `/api/chat` для MCP.
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
 - Юридический футер + «Отписаться» / List-Unsubscribe в шаблонах; презентация PDF на 1-м письме
 - API `GET/POST /api/packs` (+ apply) и вкладка «Кампания» в UI (Console embed + standalone)
@@ -29,6 +32,14 @@
 - Кампания: загрузка/замена PDF-презентации по отрасли (`/api/packs/{id}/presentation`, хранение в `data/presentations/`)
 - Кампания: разовое тестовое письмо на указанный адрес (сохраняет поля → `/send-one`, с PDF по флажку)
 - Письма: universal callback CTA — inline form + bulletproof кнопка (Gmail) + mailto fallback; one-screen landing
+
+### Fixed
+
+- Dial: при обрыве до гудка в ответе явный `sip_cause` (например `486 Busy Here`), не маскируем под «ok».
+- Исходящие: SIP signaling биндится на `45.147.178.172` (+ SNAT) — с primary `5.35.86.62` Mango отвечал 486/403 без гудков.
+- Console `POST /api/outbound/dial`: `mode=auto` — Mango callback только если API **live**; иначе SIP/ARI с проверкой жизни канала (`ok:false` если канал сразу умер).
+- Dialplan: extension `12` (Mango callback) → `AI_CONTEXT=outbound` + per-call script из AstDB (не входящий секретарь).
+- Status: `outbound.mango_api_live` / `preferred` по живому probe (не по наличию ключей); сейчас API = Service disabled → preferred `sip_pjsip`.
 
 ### Changed
 
