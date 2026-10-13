@@ -1,43 +1,51 @@
 # quantum-office MCP
 
-Полноценный **MCP stdio-сервер** для стека Quantum Labs Office: Grok / Cursor / Claude
-могут ставить исходящие звонки, смотреть транскрипты, крутить Sheets-кампанию,
-календарь, Second Brain и outreach — без прямого HTTP.
+Полноценный **MCP stdio-сервер** для стека Quantum Labs Office.
+Grok / Cursor / Claude управляют телефонией, outreach, календарём, мессенджерами,
+Second Brain и **Mail.ru Облаком** без сырого HTTP.
 
-Паттерн тот же, что у Second Brain MCP (`knowledge/brain_platform/mcp`): JSON-RPC
-поверх stdio, `Content-Length`, **без внешних зависимостей**.
+Паттерн: JSON-RPC + `Content-Length` (как Second Brain MCP), без внешних зависимостей.
 
-## Tools
+## Покрытие
 
-| Tool | Назначение |
-|------|------------|
-| `office.health` | `/health` всех office-сервисов |
-| `office.status` | статус пульта (Asterisk, units, линия) |
-| `line.get` / `line.set` | автолиния входящих |
-| `calls.assign_task` | **главный для sales/Grok**: задача → playbook → dial |
-| `calls.dial` | сырой `POST /api/outbound/dial` |
-| `calls.callback` | Mango callback originate |
-| `calls.list` / `calls.get` | история и полный транскрипт |
-| `calls.list_tools` | каталог in-call tools |
-| `campaign.*` | start/stop/status/preview/results/script |
-| `kb.search` / `kb.get` | Second Brain |
-| `calendar.check` / `suggest` / `create` | CalDAV |
-| `outreach.dashboard` / `status` / `packs` / `outbox` | email outreach |
+| Домен | Tools |
+|-------|--------|
+| Ops | `office.health`, `office.status` |
+| Телефония входящая | `telephony.inbound_line_*`, `telephony.scenario_*` |
+| Телефония исходящая | `telephony.assign_task`, `telephony.dial`, `telephony.callback`, `telephony.calls_*` |
+| Sheets-кампания | `campaign.*` |
+| Second Brain | `kb.search`, `kb.get`, `kb.related`, `kb.find_contact`, `kb.list_threads`, `kb.ingest_status` |
+| Legacy knowledge | `knowledge.query`, `knowledge.topics`, `knowledge.get` |
+| Календарь / Телемост | `calendar.*`, `conference.create` |
+| Telegram / Max | `messenger.*`, `telegram.send`, `max.send` |
+| Outreach email | `outreach.dashboard/outbox/send_*/packs/...` |
+| **Mail.ru Облако** | `mailru.list`, `mailru.search`, `mailru.read`, `mailru.fetch`, `mailru.send`, `mailru.status` |
+| Файлы (общее) | `files.*` (default `source=mailru`) |
+
+### Mail.ru Cloud (данные компаний)
+
+Сервис `ava-files` (`:8015`) ходит в Облако по WebDAV (`MAILRU_WEBDAV_*` в `/opt/ava-files/.env`).
+
+Из MCP:
+
+```json
+{"name":"mailru.list","arguments":{"path":"/"}}
+{"name":"mailru.search","arguments":{"query":"договор","path":"/"}}
+{"name":"mailru.read","arguments":{"path":"/Клиенты/заметка.txt"}}
+```
+
+Текстовые файлы (md/txt/csv/…) читаются в `mailru.read`. PDF/Office — через `mailru.send` (email/Telegram), не как текст.
 
 ### Пример задачи на обзвон
 
 ```json
 {
-  "name": "calls.assign_task",
+  "name": "telephony.assign_task",
   "arguments": {
     "phone": "+79001234567",
     "company": "ООО Пример",
-    "contact_name": "Иван",
     "goal": "найти ЛПР по выплатам и записать на консультацию",
-    "product": "массовые выплаты Quantum Labs",
-    "notes": "Клиент из таблицы ломбардов, интересовался комиссией",
-    "find_lpr": true,
-    "book_meeting": true
+    "find_lpr": true
   }
 }
 ```
@@ -46,37 +54,27 @@
 
 ```bash
 cd office-mcp
-cp .env.example .env   # заполнить CONSOLE_TOKEN / WEBHOOK_TOKEN
+cp .env.example .env   # CONSOLE_TOKEN + WEBHOOK_TOKEN (+ OUTREACH_UI_TOKEN)
 chmod +x scripts/run_cursor_mcp.sh
 ./scripts/run_cursor_mcp.sh
 ```
 
-Или: `PYTHONPATH=. python3 -m quantum_office_mcp`
+Cursor: `mcp.cursor.example.json` → подставить токены. Прод-путь: `/opt/quantum-office-mcp`.
 
-### Cursor
-
-Скопируйте `mcp.cursor.example.json` в MCP-конфиг Cursor и подставьте токены.
-На проде удобно держать код в `/opt/quantum-office-mcp` (или рядом с console).
-
-### Env
+## Env
 
 | Переменная | Зачем |
 |------------|--------|
-| `CONSOLE_TOKEN` | Console API (dial, calls, status, line) |
-| `WEBHOOK_TOKEN` | campaign / calendar / outreach |
-| `CONSOLE_BASE` и др. `*_BASE` | URL сервисов (по умолчанию localhost ports) |
-| `BRAIN_MCP_*` | ACL для Second Brain |
+| `CONSOLE_TOKEN` | dial, calls, line, scenario |
+| `WEBHOOK_TOKEN` | campaign, calendar, conference, files/**mailru**, text-bot |
+| `OUTREACH_UI_TOKEN` | outreach API (можно тем же значением в `WEBHOOK_TOKEN` / `OUTREACH_TOKEN`) |
+| `*_BASE` | URL сервисов (localhost ports по умолчанию) |
+| `BRAIN_MCP_*` | ACL Second Brain |
 
-Секреты только в `.env` на хосте (mode 600), в git не коммитить.
+Секреты Mail.ru WebDAV лежат только в `/opt/ava-files/.env` — MCP их не дублирует.
 
 ## Тесты
 
 ```bash
-cd office-mcp
-PYTHONPATH=. python3 -m pytest tests -q
+cd office-mcp && PYTHONPATH=. python3 -m pytest tests -q
 ```
-
-## Связь с brain MCP
-
-Отдельный `quantum-brain` MCP (`knowledge/`) остаётся для глубокой работы с vault.
-Этот пакет **дублирует** `kb.search` / `kb.get` для удобства одного сервера у sales-бота.

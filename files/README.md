@@ -31,14 +31,31 @@ Telegram:
 }
 ```
 
-Только проверить, что файл читается:
+Только проверить, что файл читается (метаданные):
 
 ```http
 POST /api/files/fetch
 {"source":"repo","path":"mailer/assets/quantum_payouts_presentation_small.pdf"}
 ```
 
-Health: `GET /health`
+Прочитать **текст** (для MCP / агентов, default Mail.ru Cloud):
+
+```http
+POST /api/files/read
+X-Webhook-Token: <WEBHOOK_TOKEN>
+Content-Type: application/json
+
+{"source":"mailru","path":"/Клиенты/заметка.txt","max_chars":50000}
+```
+
+Список / поиск в Облаке Mail.ru:
+
+```http
+POST /api/files/list   {"source":"mailru","path":"/"}
+POST /api/files/search {"source":"mailru","query":"договор","path":"/","limit":40}
+```
+
+Health: `GET /health` (поле `sources.mailru_configured`)
 
 ## Источники
 

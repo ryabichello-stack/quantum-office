@@ -101,7 +101,7 @@ def console_headers() -> dict[str, str]:
 
 
 def webhook_headers(*, also_outreach: bool = False) -> dict[str, str]:
-    token = _env("WEBHOOK_TOKEN") or _env("OUTREACH_TOKEN")
+    token = _env("WEBHOOK_TOKEN") or _env("OUTREACH_TOKEN") or _env("OUTREACH_UI_TOKEN")
     headers: dict[str, str] = {}
     if token:
         headers["X-Webhook-Token"] = token
@@ -129,6 +129,15 @@ def brain_headers() -> dict[str, str]:
     return headers
 
 
+def _with_query(path: str, query: dict[str, Any] | None) -> str:
+    if not query:
+        return path
+    cleaned = {k: v for k, v in query.items() if v is not None and v != ""}
+    if not cleaned:
+        return path
+    return f"{path}?{urllib.parse.urlencode(cleaned)}"
+
+
 def console_request(
     method: str,
     path: str,
@@ -137,14 +146,9 @@ def console_request(
     query: dict[str, Any] | None = None,
     timeout: float = 60.0,
 ) -> dict[str, Any]:
-    qs = ""
-    if query:
-        cleaned = {k: v for k, v in query.items() if v is not None and v != ""}
-        if cleaned:
-            qs = "?" + urllib.parse.urlencode(cleaned)
     return _http(
         method,
-        f"{console_base()}{path}{qs}",
+        f"{console_base()}{_with_query(path, query)}",
         headers=console_headers(),
         body=body,
         timeout=timeout,
@@ -159,14 +163,9 @@ def campaign_request(
     query: dict[str, Any] | None = None,
     timeout: float = 60.0,
 ) -> dict[str, Any]:
-    qs = ""
-    if query:
-        cleaned = {k: v for k, v in query.items() if v is not None and v != ""}
-        if cleaned:
-            qs = "?" + urllib.parse.urlencode(cleaned)
     return _http(
         method,
-        f"{campaign_base()}{path}{qs}",
+        f"{campaign_base()}{_with_query(path, query)}",
         headers=webhook_headers(),
         body=body,
         timeout=timeout,
@@ -179,11 +178,16 @@ def knowledge_request(
     body: dict[str, Any] | None = None,
     *,
     timeout: float = 60.0,
+    use_brain_headers: bool = True,
 ) -> dict[str, Any]:
+    headers = brain_headers() if use_brain_headers else webhook_headers()
+    # Legacy /api/knowledge/* uses webhook token; brain uses principal headers.
+    if path.startswith("/api/knowledge"):
+        headers = webhook_headers()
     return _http(
         method,
         f"{knowledge_base()}{path}",
-        headers=brain_headers(),
+        headers=headers,
         body=body,
         timeout=timeout,
     )
@@ -213,15 +217,58 @@ def outreach_request(
     query: dict[str, Any] | None = None,
     timeout: float = 60.0,
 ) -> dict[str, Any]:
-    qs = ""
-    if query:
-        cleaned = {k: v for k, v in query.items() if v is not None and v != ""}
-        if cleaned:
-            qs = "?" + urllib.parse.urlencode(cleaned)
     return _http(
         method,
-        f"{outreach_base()}{path}{qs}",
+        f"{outreach_base()}{_with_query(path, query)}",
         headers=webhook_headers(also_outreach=True),
+        body=body,
+        timeout=timeout,
+    )
+
+
+def conference_request(
+    method: str,
+    path: str,
+    body: dict[str, Any] | None = None,
+    *,
+    timeout: float = 60.0,
+) -> dict[str, Any]:
+    return _http(
+        method,
+        f"{conference_base()}{path}",
+        headers=webhook_headers(),
+        body=body,
+        timeout=timeout,
+    )
+
+
+def files_request(
+    method: str,
+    path: str,
+    body: dict[str, Any] | None = None,
+    *,
+    timeout: float = 60.0,
+) -> dict[str, Any]:
+    return _http(
+        method,
+        f"{files_base()}{path}",
+        headers=webhook_headers(),
+        body=body,
+        timeout=timeout,
+    )
+
+
+def text_bot_request(
+    method: str,
+    path: str,
+    body: dict[str, Any] | None = None,
+    *,
+    timeout: float = 90.0,
+) -> dict[str, Any]:
+    return _http(
+        method,
+        f"{text_bot_base()}{path}",
+        headers=webhook_headers(),
         body=body,
         timeout=timeout,
     )

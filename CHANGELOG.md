@@ -12,7 +12,8 @@
 
 ### Added
 
-- `office-mcp/` — полноценный MCP stdio-сервер для office-стека (Grok/Cursor/Claude): `calls.assign_task` / `calls.dial`, история звонков, Sheets-кампания, календарь, Second Brain, outreach dashboard; пример конфига `office-mcp/mcp.cursor.example.json`.
+- `office-mcp/` — полноценный MCP stdio-сервер для office-стека (Grok/Cursor/Claude): телефония in/out, Sheets-кампания, календарь/Телемост, Second Brain, outreach, Telegram/Max, **Mail.ru Облако** (`mailru.list/search/read`); пример `office-mcp/mcp.cursor.example.json`.
+- `files`: `POST /api/files/read` — чтение текста из Mail.ru Cloud / Yadisk для агентов; text-bot: `/api/messenger/*` + `/api/chat` для MCP.
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
 - Юридический футер + «Отписаться» / List-Unsubscribe в шаблонах; презентация PDF на 1-м письме
 - API `GET/POST /api/packs` (+ apply) и вкладка «Кампания» в UI (Console embed + standalone)

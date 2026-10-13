@@ -61,6 +61,18 @@ class FileFetchRequest(BaseModel):
     repo: Optional[str] = None
 
 
+class FileReadRequest(BaseModel):
+    """Return file text (or truncated) for MCP / agents — not raw binary dump."""
+
+    source: Literal["local", "repo", "github", "yadisk", "yandex", "mailru"] = Field(
+        default="mailru"
+    )
+    path: str = Field(..., min_length=1, max_length=1000)
+    max_chars: int = Field(default=50000, ge=200, le=200000)
+    ref: Optional[str] = None
+    repo: Optional[str] = None
+
+
 class FileListRequest(BaseModel):
     source: Literal["local", "yadisk", "yandex", "mailru"] = Field(
         default="mailru",
@@ -163,6 +175,72 @@ def files_fetch(
         "content_type": f.content_type,
         "source": f.source,
         "path": f.path,
+    }
+
+
+@app.post("/api/files/read")
+def files_read(
+    req: FileReadRequest,
+    x_webhook_token: Optional[str] = Header(None),
+):
+    """Read file text for agents/MCP (Mail.ru Cloud, Yadisk, local, repo).
+
+    Binary/non-UTF8 files return ok=false with a hint to use files.send instead.
+    """
+    _check_token(x_webhook_token)
+    try:
+        f = sources.fetch(req.source, req.path, ref=req.ref, repo=req.repo)
+    except SourceError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": exc.code, "message": exc.message},
+        ) from exc
+
+    raw = f.content or b""
+    name_l = (f.filename or "").lower()
+    ctype = (f.content_type or "").lower()
+    binary_hint = (
+        b"\x00" in raw[:4096]
+        or raw[:5] == b"%PDF-"
+        or name_l.endswith((".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".zip", ".png", ".jpg", ".jpeg"))
+        or any(x in ctype for x in ("pdf", "msword", "officedocument", "image/", "zip", "octet-stream"))
+    )
+    text: str | None = None
+    if not binary_hint:
+        # UTF-8 then common Windows encodings used in RU office text dumps.
+        for enc in ("utf-8", "utf-8-sig", "cp1251"):
+            try:
+                text = raw.decode(enc)
+                break
+            except UnicodeDecodeError:
+                continue
+    if text is None:
+        return {
+            "ok": False,
+            "error": "binary_or_unsupported_encoding",
+            "message": (
+                "Файл не текстовый (PDF/Office/бинарь). "
+                "Используйте files.send / mailru.send для доставки или OCR вне этого API."
+            ),
+            "filename": f.filename,
+            "bytes": len(raw),
+            "content_type": f.content_type,
+            "source": f.source,
+            "path": f.path,
+        }
+
+    truncated = len(text) > req.max_chars
+    body = text[: req.max_chars]
+    return {
+        "ok": True,
+        "filename": f.filename,
+        "bytes": len(raw),
+        "chars": len(body),
+        "truncated": truncated,
+        "content_type": f.content_type or "text/plain",
+        "source": f.source,
+        "path": f.path,
+        "text": body,
     }
 
 
