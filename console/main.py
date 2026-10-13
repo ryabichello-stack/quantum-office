@@ -551,6 +551,11 @@ def _cdr_disposition_for_phone(phone: str, *, since_epoch: float) -> dict[str, A
 
 
 def _sip_cause_from_pcap_text(text: str) -> str | None:
+    """Pick the most relevant SIP final/early response (ignore OPTIONS keepalive)."""
+    cleaned = "\n".join(
+        ln for ln in (text or "").splitlines() if "keepalive" not in ln.lower()
+    )
+    # Prefer failure / early dialog codes over generic 200 OK (REGISTER etc.).
     for code, label in (
         ("486 Busy", "486 Busy Here"),
         ("480 Temporarily", "480 Temporarily Unavailable"),
@@ -559,10 +564,11 @@ def _sip_cause_from_pcap_text(text: str) -> str | None:
         ("487 Request", "487 Request Terminated"),
         ("180 Ringing", "180 Ringing"),
         ("183 Session", "183 Session Progress"),
-        ("200 OK", "200 OK"),
     ):
-        if code in text:
+        if code in cleaned:
             return label
+    if "SIP/2.0 200 OK" in cleaned and "INVITE" in cleaned:
+        return "200 OK"
     return None
 
 
