@@ -405,6 +405,154 @@ def _mango_api_post(path: str, payload: dict[str, Any]) -> tuple[int, dict[str, 
             return e.code, detail
 
 
+def _mango_api_probe() -> dict[str, Any]:
+    """Live probe of Mango VPBX API (credentials alone are not enough)."""
+    key, salt = _mango_api_creds()
+    if not key or not salt:
+        return {
+            "configured": False,
+            "live": False,
+            "http": None,
+            "error": "missing_creds",
+            "hint": "Set MANGO_VPBX_API_KEY/SALT or mango-api.env",
+        }
+    try:
+        code, resp = _mango_api_post("/config/users/request", {})
+    except HTTPException as exc:
+        return {
+            "configured": True,
+            "live": False,
+            "http": getattr(exc, "status_code", None),
+            "error": str(exc.detail),
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"configured": True, "live": False, "http": None, "error": str(exc)}
+    live = code == 200 and isinstance(resp, dict) and isinstance(resp.get("users"), list)
+    err = None
+    if not live and isinstance(resp, dict):
+        err = resp.get("message") or resp.get("name") or str(resp)[:200]
+    elif not live:
+        err = str(resp)[:200]
+    return {
+        "configured": True,
+        "live": live,
+        "http": code,
+        "error": err,
+        "hint": (
+            None
+            if live
+            else "В ЛК Mango включите API-коннектор (сейчас Service disabled) — иначе callback недоступен."
+        ),
+    }
+
+
+def _preferred_outbound_mode(probe: dict[str, Any] | None = None) -> str:
+    """Prefer Mango API callback only when the API is actually live."""
+    p = probe if probe is not None else _mango_api_probe()
+    if p.get("live"):
+        return "mango_api_callback"
+    return "sip_pjsip"
+
+
+def _astdb_put(family: str, key: str, value: str) -> None:
+    safe = (value or "").replace('"', "").replace("\n", " ")[:2000]
+    _run(["asterisk", "-rx", f'database put {family} {key} "{safe}"'], timeout=5)
+
+
+def _stage_callback_script(
+    *,
+    phone: str,
+    provider: str,
+    script_file_container: str | None,
+    greeting: str | None,
+) -> None:
+    """AstDB bridge so dialplan ext 12 loads per-call script on Mango callback leg."""
+    _astdb_put("quantum", "outbound_phone", phone)
+    _astdb_put("quantum", "outbound_provider", provider or "openai_live_pilot")
+    if script_file_container:
+        _astdb_put("quantum", "outbound_script_file", script_file_container)
+    if greeting:
+        _astdb_put("quantum", "outbound_greeting", greeting[:500])
+
+
+def _ari_basic_auth() -> tuple[str, str, str, str]:
+    ava_env = _read_env_file(AVA_ENV_PATH)
+    ari_user = ava_env.get("ASTERISK_ARI_USERNAME") or "asterisk-ai-voice-agent"
+    ari_pass = ava_env.get("ASTERISK_ARI_PASSWORD") or ""
+    ari_host = ava_env.get("ASTERISK_HOST") or "127.0.0.1"
+    ari_port = ava_env.get("ASTERISK_ARI_PORT") or "8088"
+    if not ari_pass:
+        raise HTTPException(500, "ASTERISK_ARI_PASSWORD missing in AVA .env")
+    return ari_user, ari_pass, ari_host, ari_port
+
+
+def _ari_channel_snapshot(
+    channel_id: str,
+    *,
+    ari_user: str,
+    ari_pass: str,
+    ari_host: str,
+    ari_port: str,
+) -> dict[str, Any] | None:
+    import base64
+
+    url = f"http://{ari_host}:{ari_port}/ari/channels/{urllib.parse.quote(channel_id)}"
+    auth = base64.b64encode(f"{ari_user}:{ari_pass}".encode()).decode()
+    req = urllib.request.Request(url, method="GET", headers={"Authorization": f"Basic {auth}"})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        return {"error": e.code}
+    except Exception:
+        return None
+
+
+def _wait_ari_progress(
+    channel_id: str,
+    *,
+    ari_user: str,
+    ari_pass: str,
+    ari_host: str,
+    ari_port: str,
+    wait_sec: float = 12.0,
+) -> dict[str, Any]:
+    """Poll ARI until channel is up/ringing, gone, or timeout."""
+    deadline = time.time() + max(0.0, wait_sec)
+    last: dict[str, Any] | None = None
+    while time.time() < deadline:
+        last = _ari_channel_snapshot(
+            channel_id,
+            ari_user=ari_user,
+            ari_pass=ari_pass,
+            ari_host=ari_host,
+            ari_port=ari_port,
+        )
+        if last is None:
+            return {
+                "alive": False,
+                "state": "destroyed",
+                "note": (
+                    "Канал умер до ответа (типично SIP 486 Busy / 480 Unavailable / 403). "
+                    "Мобильный не звонил или линия занята."
+                ),
+            }
+        state = str(last.get("state") or "")
+        if state in {"Up", "Ringing", "Ring"}:
+            return {"alive": True, "state": state, "channel": last}
+        time.sleep(0.5)
+    state = str((last or {}).get("state") or "unknown")
+    return {
+        "alive": True,
+        "state": state,
+        "note": "Канал ещё жив (ожидание ответа PSTN). Успех = мобильный реально звонит.",
+        "channel": last,
+    }
+
+
 def _http_ok(url: str, timeout: float = 3.0) -> bool:
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:
@@ -770,6 +918,16 @@ class DialRequest(BaseModel):
     provider: str | None = None
     caller_id_num: str | None = None
     caller_id_name: str | None = None
+    mode: str | None = Field(
+        default="auto",
+        description="auto | mango_api_callback | sip_ari — auto uses live Mango API when available",
+    )
+    wait_progress_sec: float = Field(
+        default=12.0,
+        ge=0.0,
+        le=60.0,
+        description="For sip_ari: seconds to poll channel before returning (0 = fire-and-forget)",
+    )
     # Per-call conversation context (does NOT rewrite global YAML)
     greeting: str | None = Field(
         default=None,
@@ -852,8 +1010,9 @@ def api_status(x_console_token: str | None = Header(default=None)) -> dict[str, 
         rc, out = _run(["systemctl", "is-active", u], timeout=5)
         units[u] = out.strip() or ("inactive" if rc else "unknown")
 
-    mango_key, mango_salt = _mango_api_creds()
-    mango_api_ok = bool(mango_key and mango_salt)
+    mango_probe = _mango_api_probe()
+    mango_api_ok = bool(mango_probe.get("configured"))
+    mango_api_live = bool(mango_probe.get("live"))
     host_raw = os.uname().nodename
     inbound_line = _inbound_line_state()
     # Friendly labels for UI (avoid exposing random VPS hostnames as brand)
@@ -1024,8 +1183,11 @@ def api_status(x_console_token: str | None = Header(default=None)) -> dict[str, 
             "dialplan_amd": amd_dialplan,
             "dial_context": OUTBOUND_DIAL_CONTEXT,
             "mango_api_configured": mango_api_ok,
+            "mango_api_live": mango_api_live,
+            "mango_api": mango_probe,
             "mango_callback_extension": MANGO_CALLBACK_EXTENSION,
-            "preferred": "mango_api_callback" if mango_api_ok else "sip_pjsip",
+            "preferred": _preferred_outbound_mode(mango_probe),
+            "sip_bind_hint": "45.147.178.172:5060 (Beget secondary; required for PSTN)",
         },
         "profiles": {
             "inbound": {
@@ -1998,55 +2160,14 @@ def api_reload_dialplan(x_console_token: str | None = Header(default=None)) -> d
     return {"ok": all(s["ok"] for s in steps), "steps": steps}
 
 
-@app.post("/api/outbound/dial")
-def api_outbound_dial(
+def _prepare_per_call_script(
     body: DialRequest,
-    x_console_token: str | None = Header(default=None),
-) -> dict[str, Any]:
-    """One-shot outbound with optional per-call script/greeting.
-
-    Pass ``script`` + ``greeting`` to override the YAML outbound playbook for THIS
-    call only (no restart, inbound untouched). Transcripts still go to call_history.db.
-    """
-    _require_token(x_console_token)
-    if not OUTBOUND_ENABLED:
-        raise HTTPException(403, "OUTBOUND_ENABLED=false")
-    phone = _normalize_phone(body.phone)
-    context = _normalize_ai_context(body.context or OUTBOUND_AI_CONTEXT)
-    # Resolve provider from the selected profile YAML so dial never borrows inbound settings.
-    try:
-        yaml_ctx = ((_load_yaml().get("contexts") or {}).get(context) or {})
-        yaml_provider = (yaml_ctx.get("provider") or "").strip()
-    except Exception:
-        yaml_provider = ""
-    provider = (
-        (body.provider or "").strip()
-        or yaml_provider
-        or _dedicated_provider_name(context)
-    )
-    cid_num = (body.caller_id_num or OUTBOUND_CALLER_ID_NUM).strip()
-    cid_name = (body.caller_id_name or OUTBOUND_CALLER_ID_NAME).strip()
-
-    ava_env = _read_env_file(AVA_ENV_PATH)
-    ari_user = ava_env.get("ASTERISK_ARI_USERNAME") or "asterisk-ai-voice-agent"
-    ari_pass = ava_env.get("ASTERISK_ARI_PASSWORD") or ""
-    ari_host = ava_env.get("ASTERISK_HOST") or "127.0.0.1"
-    ari_port = ava_env.get("ASTERISK_ARI_PORT") or "8088"
-    if not ari_pass:
-        raise HTTPException(500, "ASTERISK_ARI_PASSWORD missing in AVA .env")
-
-    endpoint = f"PJSIP/{phone}@mango-employee"
-    import base64
+    *,
+    phone: str,
+    context: str,
+) -> tuple[str, str, list[str], bool, str | None, str | None, dict[str, str]]:
+    """Build per-call script files/vars. Returns greeting, script, tools, override, host path, container path, extra channel vars."""
     import uuid
-    from urllib.parse import urlencode
-
-    vars_payload: dict[str, str] = {
-        "AI_CONTEXT": context,
-        "AI_PROVIDER": provider,
-        "AAVA_OUTBOUND": "1",
-        "AAVA_OUTBOUND_PHONE": phone,
-        "AAVA_OUTBOUND_SCENARIO": context,
-    }
 
     per_call_script = (body.script or "").strip()
     per_call_greeting = (body.greeting or "").strip()
@@ -2057,7 +2178,7 @@ def api_outbound_dial(
     want_knowledge = "get_company_knowledge" in per_call_tools or bool(body.use_knowledge)
     script_file_host: str | None = None
     script_file_container: str | None = None
-    # Write per-call payload when any of script/greeting/tools override is present.
+    extra_vars: dict[str, str] = {}
     if per_call_script or per_call_greeting or tools_override:
         if per_call_script:
             per_call_script = _compose_outbound_prompt(
@@ -2081,19 +2202,159 @@ def api_outbound_dial(
             encoding="utf-8",
         )
         script_file_host = str(script_path)
-        # Bind-mount: /root/ava/data → /app/data inside ai_engine
         script_file_container = f"/app/data/call_scripts/{script_id}.json"
-        vars_payload["AAVA_CALL_SCRIPT_FILE"] = script_file_container
+        extra_vars["AAVA_CALL_SCRIPT_FILE"] = script_file_container
         if per_call_greeting:
-            # Small greeting also as channel var (belt & suspenders)
-            vars_payload["AAVA_CALL_GREETING"] = per_call_greeting[:500]
+            extra_vars["AAVA_CALL_GREETING"] = per_call_greeting[:500]
         custom: dict[str, Any] = {
             "__script__": per_call_script,
             "__greeting__": per_call_greeting,
         }
         if tools_override:
             custom["__tools__"] = per_call_tools
-        vars_payload["AAVA_CUSTOM_VARS_JSON"] = json.dumps(custom, ensure_ascii=False)
+        extra_vars["AAVA_CUSTOM_VARS_JSON"] = json.dumps(custom, ensure_ascii=False)
+    return (
+        per_call_greeting,
+        per_call_script,
+        per_call_tools,
+        tools_override,
+        script_file_host,
+        script_file_container,
+        extra_vars,
+    )
+
+
+def _do_mango_callback(
+    *,
+    phone: str,
+    extension: str | None = None,
+    line_number: str | None = None,
+    command_id: str | None = None,
+) -> dict[str, Any]:
+    probe = _mango_api_probe()
+    if not probe.get("live"):
+        return {
+            "ok": False,
+            "mode": "mango_api_callback",
+            "phone": phone,
+            "mango_api": probe,
+            "error": "mango_api_unavailable",
+            "note": probe.get("hint")
+            or "Mango VPBX API недоступен (Service disabled). Исходящие идут через SIP.",
+        }
+    ext = (extension or MANGO_CALLBACK_EXTENSION).strip() or "12"
+    line = (line_number or OUTBOUND_CALLER_ID_NUM).strip() or "79699665899"
+    cmd_id = (command_id or f"qc-{int(time.time())}-{phone[-4:]}").strip()
+    payload = {
+        "command_id": cmd_id,
+        "from": {"extension": ext},
+        "to_number": phone,
+        "line_number": line,
+    }
+    code, resp = _mango_api_post("/commands/callback", payload)
+    result = resp.get("result") if isinstance(resp, dict) else None
+    ok = code == 200 and str(result) in {"1000", "1000.0", 1000}
+    return {
+        "ok": ok,
+        "mode": "mango_api_callback",
+        "http": code,
+        "phone": phone,
+        "extension": ext,
+        "line_number": line,
+        "command_id": cmd_id,
+        "mango": resp,
+        "mango_api": probe,
+        "note": (
+            "Mango сначала звонит на extension 12 (outbound AVA), затем PSTN. "
+            "Успех = мобильный звонит, не только result=1000."
+        ),
+    }
+
+
+@app.post("/api/outbound/dial")
+def api_outbound_dial(
+    body: DialRequest,
+    x_console_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    """One-shot outbound with optional per-call script/greeting.
+
+    ``mode=auto`` (default): Mango API callback when API is live, else SIP/ARI via
+    mango-employee (egress must be 45.147.178.172). Pass ``script`` + ``greeting`` for
+    THIS call only. Transcripts go to call_history.db.
+    """
+    _require_token(x_console_token)
+    if not OUTBOUND_ENABLED:
+        raise HTTPException(403, "OUTBOUND_ENABLED=false")
+    phone = _normalize_phone(body.phone)
+    context = _normalize_ai_context(body.context or OUTBOUND_AI_CONTEXT)
+    try:
+        yaml_ctx = ((_load_yaml().get("contexts") or {}).get(context) or {})
+        yaml_provider = (yaml_ctx.get("provider") or "").strip()
+    except Exception:
+        yaml_provider = ""
+    provider = (
+        (body.provider or "").strip()
+        or yaml_provider
+        or _dedicated_provider_name(context)
+    )
+    cid_num = (body.caller_id_num or OUTBOUND_CALLER_ID_NUM).strip()
+    cid_name = (body.caller_id_name or OUTBOUND_CALLER_ID_NAME).strip()
+    mode = (body.mode or "auto").strip().lower() or "auto"
+    preferred = _preferred_outbound_mode()
+
+    (
+        per_call_greeting,
+        per_call_script,
+        per_call_tools,
+        tools_override,
+        script_file_host,
+        script_file_container,
+        extra_vars,
+    ) = _prepare_per_call_script(body, phone=phone, context=context)
+
+    use_callback = mode in {"mango_api_callback", "callback", "mango"} or (
+        mode == "auto" and preferred == "mango_api_callback"
+    )
+    if use_callback:
+        _stage_callback_script(
+            phone=phone,
+            provider=provider,
+            script_file_container=script_file_container,
+            greeting=per_call_greeting or None,
+        )
+        cb = _do_mango_callback(phone=phone)
+        cb.update(
+            {
+                "context": context,
+                "provider": provider,
+                "per_call_script": bool(per_call_script),
+                "per_call_greeting": bool(per_call_greeting),
+                "per_call_tools": per_call_tools if tools_override else None,
+                "tools_override": tools_override,
+                "script_file": script_file_host,
+                "script_chars": len(per_call_script or ""),
+                "preferred": preferred,
+            }
+        )
+        # auto + API down → fall through to SIP instead of silent fail
+        if cb.get("ok") or mode != "auto":
+            return cb
+        logger.warning("mango callback unavailable in auto mode; falling back to SIP ARI")
+
+    # SIP / ARI path
+    ari_user, ari_pass, ari_host, ari_port = _ari_basic_auth()
+    endpoint = f"PJSIP/{phone}@mango-employee"
+    import base64
+    from urllib.parse import urlencode
+
+    vars_payload: dict[str, str] = {
+        "AI_CONTEXT": context,
+        "AI_PROVIDER": provider,
+        "AAVA_OUTBOUND": "1",
+        "AAVA_OUTBOUND_PHONE": phone,
+        "AAVA_OUTBOUND_SCENARIO": context,
+    }
+    vars_payload.update(extra_vars)
 
     cli_num = cid_num or "79699665899"
     cli_name = cid_name or "Quantum Labs"
@@ -2120,26 +2381,45 @@ def api_outbound_dial(
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
             payload = json.loads(raw) if raw else {}
-            return {
-                "ok": True,
-                "phone": phone,
-                "endpoint": endpoint,
-                "channel_id": payload.get("id"),
-                "state": payload.get("state"),
-                "context": context,
-                "provider": provider,
-                "per_call_script": bool(per_call_script),
-                "per_call_greeting": bool(per_call_greeting),
-                "per_call_tools": per_call_tools if tools_override else None,
-                "tools_override": tools_override,
-                "script_file": script_file_host,
-                "script_chars": len(per_call_script or ""),
-            }
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", errors="replace")[:800]
         raise HTTPException(e.code, f"ARI originate failed: {detail}") from e
     except urllib.error.URLError as e:
         raise HTTPException(502, f"ARI unreachable: {e}") from e
+
+    channel_id = payload.get("id")
+    progress: dict[str, Any] | None = None
+    ok = True
+    if channel_id and body.wait_progress_sec > 0:
+        progress = _wait_ari_progress(
+            str(channel_id),
+            ari_user=ari_user,
+            ari_pass=ari_pass,
+            ari_host=ari_host,
+            ari_port=ari_port,
+            wait_sec=float(body.wait_progress_sec),
+        )
+        ok = bool(progress.get("alive"))
+    return {
+        "ok": ok,
+        "mode": "sip_ari",
+        "preferred": preferred,
+        "phone": phone,
+        "endpoint": endpoint,
+        "channel_id": channel_id,
+        "state": (progress or {}).get("state") or payload.get("state"),
+        "progress": progress,
+        "context": context,
+        "provider": provider,
+        "per_call_script": bool(per_call_script),
+        "per_call_greeting": bool(per_call_greeting),
+        "per_call_tools": per_call_tools if tools_override else None,
+        "tools_override": tools_override,
+        "script_file": script_file_host,
+        "script_chars": len(per_call_script or ""),
+        "note": (progress or {}).get("note")
+        or "SIP через mango-employee с IP 45.147.178.172. Успех = мобильный звонит.",
+    }
 
 
 @app.post("/api/outbound/callback")
@@ -2147,40 +2427,20 @@ def api_outbound_callback(
     body: CallbackRequest,
     x_console_token: str | None = Header(default=None),
 ) -> dict[str, Any]:
-    """Outbound via Mango VPBX API callback (bypasses SIP PSTN 403 on Beget).
+    """Outbound via Mango VPBX API callback (bypasses SIP PSTN issues when API is live).
 
-    Flow: Mango rings extension (Asterisk/AVA answers) → Mango dials PSTN to_number.
+    Flow: Mango rings extension 12 (outbound AVA) → Mango dials PSTN to_number.
     """
     _require_token(x_console_token)
     if not OUTBOUND_ENABLED:
         raise HTTPException(403, "OUTBOUND_ENABLED=false")
     phone = _normalize_phone(body.phone)
-    extension = (body.extension or MANGO_CALLBACK_EXTENSION).strip() or "12"
-    line = (body.line_number or OUTBOUND_CALLER_ID_NUM).strip() or "79699665899"
-    cmd_id = (body.command_id or f"qc-{int(time.time())}-{phone[-4:]}").strip()
-    payload = {
-        "command_id": cmd_id,
-        "from": {"extension": extension},
-        "to_number": phone,
-        "line_number": line,
-    }
-    code, resp = _mango_api_post("/commands/callback", payload)
-    result = resp.get("result") if isinstance(resp, dict) else None
-    ok = code == 200 and str(result) in {"1000", "1000.0", 1000}
-    return {
-        "ok": ok,
-        "mode": "mango_api_callback",
-        "http": code,
-        "phone": phone,
-        "extension": extension,
-        "line_number": line,
-        "command_id": cmd_id,
-        "mango": resp,
-        "note": (
-            "Mango first calls extension (AVA/Asterisk), then PSTN. "
-            "Success = mobile rings, not only result=1000."
-        ),
-    }
+    return _do_mango_callback(
+        phone=phone,
+        extension=body.extension,
+        line_number=body.line_number,
+        command_id=body.command_id,
+    )
 
 
 def _campaign_headers() -> dict[str, str]:

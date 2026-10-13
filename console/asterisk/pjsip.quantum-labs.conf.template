@@ -9,7 +9,8 @@ user_agent=Quantum-AI
 [transport-udp]
 type=transport
 protocol=udp
-bind=0.0.0.0:5060
+; Bind to Mango-unban IP (Beget secondary). Primary 5.35.86.62 egress → 486/403 on PSTN.
+bind=45.147.178.172:5060
 external_media_address=45.147.178.172
 external_signaling_address=45.147.178.172
 

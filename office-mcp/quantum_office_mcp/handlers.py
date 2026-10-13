@@ -44,96 +44,21 @@ def _as_bool(value: Any, default: bool = False) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _preferred_outbound_mode() -> str:
-    """Prod on Beget: SIP PSTN often dies with 403; Mango callback is preferred."""
-    st = console_request("GET", "/api/status", timeout=20)
-    outbound = st.get("outbound") if isinstance(st, dict) else None
-    if isinstance(outbound, dict) and outbound.get("preferred"):
-        return str(outbound["preferred"])
-    return "mango_api_callback"
-
-
-def _apply_outbound_script(greeting: str | None, script: str | None) -> dict[str, Any] | None:
-    """Push per-call playbook into outbound YAML so Mango-callback AVA uses it."""
-    g = (greeting or "").strip()
-    s = (script or "").strip()
-    if not g and not s:
-        return None
-    body: dict[str, Any] = {"restart": False}
-    if g:
-        body["greeting"] = g
-    if s:
-        body["script"] = s
-    # Prefer dedicated outbound script endpoint when both present
-    if g and s:
-        return console_request(
-            "PUT",
-            "/api/outbound/script",
-            {"greeting": g, "script": s, "restart": False},
-            timeout=45,
-        )
-    return console_request(
-        "PUT",
-        "/api/scenario",
-        {"context": "outbound", **body},
-        timeout=45,
-    )
-
-
 def _dial(args: dict[str, Any]) -> dict[str, Any]:
+    """Originate via Console /api/outbound/dial (auto: callback if API live, else SIP)."""
     phone = (args.get("phone") or "").strip()
     if not phone:
         return _tool_result({"ok": False, "error": "phone required"}, is_error=True)
 
-    greeting = (args.get("greeting") or "").strip() or None
-    script = (args.get("script") or "").strip() or None
-    mode = (args.get("mode") or "").strip() or _preferred_outbound_mode()
-    script_apply = _apply_outbound_script(greeting, script)
-
-    # Default / preferred: Mango callback (mobile actually rings on this host).
-    if mode in {"mango_api_callback", "callback", "mango", "auto"}:
-        cb_body: dict[str, Any] = {"phone": phone}
-        for key in ("extension", "line_number", "command_id"):
-            if args.get(key):
-                cb_body[key] = args[key]
-        callback = console_request("POST", "/api/outbound/callback", cb_body, timeout=45)
-        # Also try ARI dial with per-call script as secondary (may fail PSTN on Beget).
-        ari: dict[str, Any] | None = None
-        if _as_bool(args.get("also_ari"), False) or mode == "auto":
-            ari_body: dict[str, Any] = {
-                "phone": phone,
-                "context": args.get("context") or "outbound",
-            }
-            if greeting:
-                ari_body["greeting"] = greeting
-            if script:
-                ari_body["script"] = script
-            if isinstance(args.get("tools"), list):
-                ari_body["tools"] = args["tools"]
-            if "use_knowledge" in args:
-                ari_body["use_knowledge"] = _as_bool(args.get("use_knowledge"))
-            ari = console_request("POST", "/api/outbound/dial", ari_body, timeout=45)
-        return _tool_result(
-            {
-                "ok": bool(callback.get("ok")),
-                "mode": "mango_api_callback",
-                "phone": phone,
-                "script_applied": script_apply,
-                "callback": callback,
-                "ari_dial": ari,
-                "note": (
-                    "На этом сервере PSTN через SIP/ARI часто не дозванивается. "
-                    "Используется Mango callback: сначала внутренний AVA, затем ваш номер."
-                ),
-            }
-        )
-
-    # Explicit SIP/ARI path
-    body: dict[str, Any] = {"phone": phone}
+    body: dict[str, Any] = {
+        "phone": phone,
+        "mode": (args.get("mode") or "auto").strip() or "auto",
+        "context": args.get("context") or "outbound",
+        "wait_progress_sec": float(args.get("wait_progress_sec") or 12),
+    }
     for key in (
         "greeting",
         "script",
-        "context",
         "provider",
         "caller_id_num",
         "caller_id_name",
@@ -144,8 +69,20 @@ def _dial(args: dict[str, Any]) -> dict[str, Any]:
         body["tools"] = args["tools"]
     if "use_knowledge" in args:
         body["use_knowledge"] = _as_bool(args.get("use_knowledge"))
-    dial = console_request("POST", "/api/outbound/dial", body, timeout=45)
-    return _tool_result({"ok": bool(dial.get("ok")), "mode": "sip_ari", "dial": dial})
+    dial = console_request("POST", "/api/outbound/dial", body, timeout=60)
+    return _tool_result(
+        {
+            "ok": bool(dial.get("ok")),
+            "mode": dial.get("mode"),
+            "phone": phone,
+            "dial": dial,
+            "note": dial.get("note")
+            or (
+                "Console dial: auto выбирает Mango callback (если API live) "
+                "или SIP/ARI с IP 45.147.178.172. Успех = мобильный звонит."
+            ),
+        }
+    )
 
 
 def _assign_task(args: dict[str, Any]) -> dict[str, Any]:
@@ -160,9 +97,8 @@ def _assign_task(args: dict[str, Any]) -> dict[str, Any]:
         "tools": built["tools"],
         "use_knowledge": built["use_knowledge"],
         "context": (args.get("context") or "outbound"),
-        "mode": args.get("mode") or "mango_api_callback",
+        "mode": args.get("mode") or "auto",
     }
-    # Reuse _dial logic but unwrap tool envelope
     raw = _dial(dial_args)
     text = raw.get("content", [{}])[0].get("text") or "{}"
     try:

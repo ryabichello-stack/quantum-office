@@ -66,7 +66,13 @@ def test_assign_task_calls_dial(monkeypatch):
         captured["method"] = method
         captured["path"] = path
         captured["body"] = body
-        return {"ok": True, "channel_id": "ch-1", "phone": body["phone"]}
+        return {
+            "ok": True,
+            "mode": "sip_ari",
+            "channel_id": "ch-1",
+            "phone": body["phone"],
+            "note": "test",
+        }
 
     monkeypatch.setattr("quantum_office_mcp.handlers.console_request", fake_console)
     out = call_tool(
@@ -80,8 +86,10 @@ def test_assign_task_calls_dial(monkeypatch):
     payload = json.loads(out["content"][0]["text"])
     assert captured["path"] == "/api/outbound/dial"
     assert captured["body"]["phone"] == "+79001112233"
+    assert captured["body"]["mode"] == "auto"
     assert captured["body"]["script"]
-    assert payload["dial"]["channel_id"] == "ch-1"
+    assert payload["dial"]["dial"]["channel_id"] == "ch-1"
+    assert payload["ok"] is True
 
 
 def test_campaign_start(monkeypatch):
