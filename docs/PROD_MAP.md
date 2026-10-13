@@ -37,6 +37,18 @@
 - `/opt/ava-mailer/yandex_oauth_tokens.json`
 - `/opt/ava-conference/yandex_oauth_tokens.json`
 
+## Postgres (anti-hang)
+
+На проде Postgres один на несколько приложений. Уже случался outage Second Brain:
+`signal` держал 4‑дневный `INSERT` + hourly `ALTER TABLE` → 95 waiting backends → `max_connections` кончились.
+
+Защита (на сервере):
+- `max_connections = 200`
+- `idle_in_transaction_session_timeout = 15min` (global)
+- роль `signal`: `lock_timeout=10s`, `idle_in_transaction_session_timeout=10min`, `statement_timeout=30min`
+- `/opt/signal/.../migrate.py` — каждый ALTER в своей транзакции с `SET LOCAL lock_timeout/statement_timeout` (не стопорит всю очередь)
+- timer `pg-kill-stuck.timer` → `/opt/quantum-office-mcp/scripts/pg_kill_stuck.sh` (убивает non-superuser backends >2h)
+
 ## Do not touch
 
 - `/opt/polyhub` (trading)
