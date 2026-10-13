@@ -113,7 +113,7 @@ def webhook_headers(*, also_outreach: bool = False) -> dict[str, str]:
 
 def brain_headers() -> dict[str, str]:
     headers = {
-        "X-Principal-Id": _env("BRAIN_MCP_PRINCIPAL", "service:office-mcp"),
+        "X-Principal-Id": _env("BRAIN_MCP_PRINCIPAL", "service:cursor-admin"),
         "X-Tenant-Id": _env("BRAIN_TENANT_ID", _env("BRAIN_MCP_TENANT", "quantum-labs")),
     }
     user = _env("BRAIN_MCP_USER_ID")
