@@ -50,6 +50,40 @@ Second Brain и **Mail.ru Облаком** без сырого HTTP.
 }
 ```
 
+## HTTP gateway для Grok (точка доступа + ключ)
+
+Публичный URL:
+
+```text
+https://a.47z.ru/_office_mcp/
+```
+
+Auth (один ключ):
+
+```http
+Authorization: Bearer <OFFICE_MCP_API_KEY>
+```
+
+| Method | Path | Назначение |
+|--------|------|------------|
+| GET | `/health` | без ключа |
+| GET | `/tools` | каталог tools |
+| GET | `/openapi-lite` | компактная схема для LLM |
+| POST | `/tools/call` | `{"name":"mailru.list","arguments":{"path":"/"}}` |
+| POST | `/mcp` | MCP JSON-RPC (initialize / tools/list / tools/call) |
+
+Ключ на проде: `/opt/quantum-office-mcp/.env` → `OFFICE_MCP_API_KEY`  
+Сервис: `quantum-office-mcp-gateway.service` (`:8019`).
+
+Пример:
+
+```bash
+curl -sS https://a.47z.ru/_office_mcp/tools/call \
+  -H "Authorization: Bearer $OFFICE_MCP_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"mailru.list","arguments":{"path":"/"}}'
+```
+
 ## Remote MCP (нет локальных серверов)
 
 MCP-процесс крутится у Cursor/Grok на вашей машине и ходит на **прод по HTTPS**:

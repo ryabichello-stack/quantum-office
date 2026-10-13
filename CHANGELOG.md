@@ -13,6 +13,7 @@
 ### Added
 
 - `office-mcp/` — полноценный MCP stdio-сервер для office-стека (Grok/Cursor/Claude): телефония in/out, Sheets-кампания, календарь/Телемост, Second Brain, outreach, Telegram/Max, **Mail.ru Облако** (`mailru.list/search/read`); remote HTTPS пример `mcp.remote.example.json`; nginx snippet `deploy/nginx-office-api.conf.snippet` для `/_ava_files|knowledge|calendar|conference|sheets_campaign/`.
+- `office-mcp` HTTP gateway для Grok: `https://a.47z.ru/_office_mcp/` + `OFFICE_MCP_API_KEY` (`POST /tools/call`, `POST /mcp`).
 - `files`: `POST /api/files/read` — чтение текста из Mail.ru Cloud / Yadisk для агентов; text-bot: `/api/messenger/*` + `/api/chat` для MCP.
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
 - Юридический футер + «Отписаться» / List-Unsubscribe в шаблонах; презентация PDF на 1-м письме
