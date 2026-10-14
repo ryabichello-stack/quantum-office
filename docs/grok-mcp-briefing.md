@@ -4,8 +4,10 @@
 Это не общий интернет и не «заглушки»: инструменты вызывают **боевые office-сервисы** на `a.47z.ru` (телефония, почта, Облако Mail.ru, календарь Яндекса, Second Brain, outreach).
 
 Ниже — что ты умеешь, какими tools пользоваться, и типичные сценарии.  
-Всего **~83 tools** (gateway `≥0.3.2`, `schema_revision=2026-10-14-messenger-history`).  
+Всего **~84 tools** (gateway `≥0.3.3`, `schema_revision=2026-10-14-kb-legacy-first-replies`).  
 Если в каталоге нет `messenger.history` / `body` у `mailru.send` — **обнови tools catalog** и проверь `GET /health`.  
+`kb.search` сначала берёт markdown (legacy) и **не должен** таймаутиться из‑за Second Brain.  
+Пустые тексты в `outreach.replies` → вызови `outreach.replies_backfill`, потом снова `outreach.replies`.  
 Алиасы (например `calls.dial` = `telephony.dial`) дублируют одно и то же API.
 
 ---
@@ -408,7 +410,8 @@ PDF/DOCX через `mailru.read` не читаются — только send/up
 |---------|---------|----------|
 | «Нет инструмента для письма» | Смотришь только file-mode `mailru.send` | Используй `mail.send` или `mailru.send`+`body` без `path` |
 | `protected_domain` / marketing_ready=false | Нет cold SMTP | Точечные письма через `mail.send` office; batch — после настройки cold |
-| `kb.search` 500 / пусто | PG lock | Повтори или `knowledge.query` / `knowledge.get` |
+| `kb.search` timeout | старый gateway / brain lock | Refresh tools; ожидай `≥0.3.3`; иначе `knowledge.query` mode=`legacy` / `knowledge.get` |
+| `outreach.replies` без текста | старые строки без body | `outreach.replies_backfill` → снова `outreach.replies` |
 | `outreach.sync` 401 | Bitrix REST без подписки | Работай по локальному зеркалу; синку жди починки webhook |
 | Пакет «без текста» | Смотрел только `packs` | Вызови `outreach.pack_get` |
 | Mango 401 Service disabled | API провайдера | Dial через SIP; callback может не работать |

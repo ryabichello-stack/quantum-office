@@ -292,7 +292,10 @@ TOOLS: list[dict[str, Any]] = [
     # ---- second brain / knowledge ----
     {
         "name": "kb.search",
-        "description": "Second Brain hybrid search (FAQ, mail, files, vault) with ACL.",
+        "description": (
+            "Knowledge search: markdown SoT first (always), then Second Brain if fast. "
+            "Does not hang when Postgres ingest locks brain search."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -371,7 +374,10 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "knowledge.query",
-        "description": "Legacy/voice knowledge query (markdown + brain mode).",
+        "description": (
+            "Knowledge query. Default mode=legacy (fast markdown). "
+            "Pass mode=brain only if you need Second Brain."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -379,6 +385,11 @@ TOOLS: list[dict[str, Any]] = [
                 "query": {"type": "string"},
                 "limit": {"type": "integer", "default": 5},
                 "max_chars": {"type": "integer", "default": 4000},
+                "mode": {
+                    "type": "string",
+                    "enum": ["legacy", "brain", "dual_compare"],
+                    "default": "legacy",
+                },
             },
         },
     },
@@ -684,6 +695,23 @@ TOOLS: list[dict[str, Any]] = [
                     "type": "boolean",
                     "default": True,
                     "description": "Include full body_text (default true)",
+                },
+            },
+        },
+    },
+    {
+        "name": "outreach.replies_backfill",
+        "description": (
+            "Re-scan IMAP and fill empty body_text on inbound replies "
+            "(fixes older rows stored without text)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "default": 250,
+                    "description": "How many recent IMAP messages to scan",
                 },
             },
         },

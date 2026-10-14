@@ -249,13 +249,24 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
         q = args.get("query") or ""
         limit = int(args.get("limit") or 8)
         max_chars = int(args.get("max_chars") or 6000)
-        # Legacy first — fast path for Grok (avoids 15–45s PG lock timeouts).
+        # Always hit markdown SoT with mode=legacy first (never waits on PG ingest locks).
         legacy = knowledge_request(
             "POST",
             "/api/knowledge/query",
-            {"topic": q, "limit": min(limit, 5), "max_chars": max_chars},
-            timeout=20.0,
+            {
+                "topic": q,
+                "limit": min(limit, 5),
+                "max_chars": max_chars,
+                "mode": "legacy",
+            },
+            timeout=12.0,
         )
+        legacy_text = ""
+        if isinstance(legacy, dict):
+            legacy_text = str(legacy.get("text") or "")
+            if not legacy_text and isinstance(legacy.get("legacy"), dict):
+                legacy_text = str(legacy["legacy"].get("text") or "")
+        # Optional Second Brain enrichment — short timeout; never block the answer.
         brain = knowledge_request(
             "POST",
             "/api/brain/search",
@@ -265,10 +276,11 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
                 "mode": args.get("mode") or "hybrid",
                 "max_chars": max_chars,
             },
-            timeout=12.0,
+            timeout=4.0,
         )
         brain_ok = (
-            brain.get("ok")
+            isinstance(brain, dict)
+            and brain.get("ok")
             and brain.get("http_status", 200) < 400
             and not brain.get("error")
             and not brain.get("denied")
@@ -276,23 +288,39 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
         )
         if brain_ok:
             brain["source"] = "second_brain"
+            if legacy_text and not brain.get("legacy_text"):
+                brain["legacy_text"] = legacy_text[:2000]
             return _tool_result(brain)
-        # Prefer legacy content when brain is slow/locked/empty.
-        if legacy.get("ok"):
+        if legacy.get("ok") or legacy_text:
             return _tool_result(
                 {
                     "ok": True,
                     "source": "legacy_first",
                     "query": q,
-                    "legacy": legacy.get("legacy") or legacy,
-                    "brain_error": brain.get("error")
-                    or brain.get("reason")
-                    or brain.get("http_status")
-                    or ("timeout" if "timeout" in str(brain.get("error") or "").lower() else None),
-                    "text": ((legacy.get("legacy") or legacy).get("text") if isinstance(legacy.get("legacy") or legacy, dict) else None),
+                    "text": legacy_text or None,
+                    "chars": len(legacy_text),
+                    "topic": legacy.get("topic") if isinstance(legacy, dict) else None,
+                    "topic_id": legacy.get("topic_id") if isinstance(legacy, dict) else None,
+                    "legacy": legacy,
+                    "brain_error": (
+                        (brain or {}).get("error")
+                        or (brain or {}).get("reason")
+                        or (brain or {}).get("denied")
+                        or (brain or {}).get("http_status")
+                    ),
+                    "knowledge_read_mode": "legacy",
                 }
             )
-        return _tool_result(brain if brain else legacy)
+        return _tool_result(
+            brain
+            if brain
+            else {
+                "ok": False,
+                "error": "kb_search_empty",
+                "query": q,
+                "legacy": legacy,
+            }
+        )
 
     if name == "kb.get":
         return _tool_result(
@@ -357,13 +385,16 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
 
     if name == "knowledge.query":
         q = (args.get("query") or args.get("topic") or "").strip()
+        # Default legacy — Grok must not hang when Second Brain PG is locked by ingest.
+        mode = (args.get("mode") or "legacy").strip().lower() or "legacy"
         body = {
             "topic": q,
             "limit": int(args.get("limit") or 5),
             "max_chars": int(args.get("max_chars") or 4000),
+            "mode": mode,
         }
         return _tool_result(
-            knowledge_request("POST", "/api/knowledge/query", body, timeout=120.0)
+            knowledge_request("POST", "/api/knowledge/query", body, timeout=15.0)
         )
 
     if name == "knowledge.topics":
@@ -568,6 +599,16 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
                     "offset": int(args.get("offset") or 0),
                     "full": 1 if _as_bool(args.get("full"), True) else 0,
                 },
+            )
+        )
+
+    if name == "outreach.replies_backfill":
+        return _tool_result(
+            outreach_request(
+                "POST",
+                "/api/replies/backfill",
+                query={"limit": int(args.get("limit") or 250)},
+                timeout=180.0,
             )
         )
 

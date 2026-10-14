@@ -201,3 +201,48 @@ def test_messenger_chats(monkeypatch):
     out = call_tool("messenger.chats", {"channel": "max"})
     payload = json.loads(out["content"][0]["text"])
     assert payload["chats"][0]["session_id"] == "max:1"
+
+
+def test_kb_search_legacy_first(monkeypatch):
+    calls = []
+
+    def fake_knowledge(method, path, body=None, timeout=120.0, use_brain_headers=True):
+        calls.append((path, body, timeout))
+        if path == "/api/knowledge/query":
+            assert body["mode"] == "legacy"
+            assert timeout <= 12.0
+            return {"ok": True, "text": "СБП выплаты", "topic": "СБП", "http_status": 200}
+        if path == "/api/brain/search":
+            return {"ok": False, "error": "timed out", "http_status": 0}
+        return {"ok": False}
+
+    monkeypatch.setattr("quantum_office_mcp.handlers.knowledge_request", fake_knowledge)
+    out = call_tool("kb.search", {"query": "СБП", "limit": 3})
+    payload = json.loads(out["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["source"] == "legacy_first"
+    assert "СБП" in (payload.get("text") or "")
+    assert any(p == "/api/knowledge/query" for p, _, _ in calls)
+
+
+def test_html_body_extract():
+    from email.message import EmailMessage
+
+    # Import from outreach package path
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2] / "outreach"
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from reply_watcher import _plain_body
+
+    msg = EmailMessage()
+    msg["Subject"] = "Re: test"
+    msg.set_content(
+        "<html><body><p>Интересно, давайте созвонимся</p></body></html>",
+        subtype="html",
+        charset="utf-8",
+    )
+    text = _plain_body(msg)
+    assert "созвонимся" in text

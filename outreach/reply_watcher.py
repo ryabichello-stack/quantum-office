@@ -103,25 +103,55 @@ def _message_id(msg: email.message.Message) -> str | None:
     return (m.group(1) if m else mid).strip().lower()
 
 
+def _decode_part_text(part: email.message.Message) -> str:
+    payload = part.get_payload(decode=True) or b""
+    charset = part.get_content_charset() or "utf-8"
+    return payload.decode(charset, errors="replace")
+
+
+def _html_to_text(html: str) -> str:
+    import re
+    from html import unescape
+
+    text = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", html)
+    text = re.sub(r"(?i)<br\s*/?>", "\n", text)
+    text = re.sub(r"(?i)</p>", "\n", text)
+    text = re.sub(r"(?s)<[^>]+>", " ", text)
+    text = unescape(text)
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return text.strip()
+
+
 def _plain_body(msg: email.message.Message, limit: int = 50000) -> str:
     """Extract full plain text for storage / agent reply drafting."""
     return _plain_preview(msg, limit=limit)
 
 
 def _plain_preview(msg: email.message.Message, limit: int = 1200) -> str:
+    """Prefer text/plain; fall back to HTML→text (many replies are HTML-only)."""
+    html_fallback = ""
     if msg.is_multipart():
         for part in msg.walk():
             ctype = part.get_content_type()
             disp = str(part.get("Content-Disposition") or "")
-            if ctype == "text/plain" and "attachment" not in disp.lower():
-                payload = part.get_payload(decode=True) or b""
-                charset = part.get_content_charset() or "utf-8"
-                return payload.decode(charset, errors="replace")[:limit]
-        return ""
-    if msg.get_content_type() == "text/plain":
-        payload = msg.get_payload(decode=True) or b""
-        charset = msg.get_content_charset() or "utf-8"
-        return payload.decode(charset, errors="replace")[:limit]
+            if "attachment" in disp.lower():
+                continue
+            if ctype == "text/plain":
+                text = _decode_part_text(part).strip()
+                if text:
+                    return text[:limit]
+            elif ctype == "text/html" and not html_fallback:
+                html_fallback = _decode_part_text(part)
+    else:
+        ctype = msg.get_content_type()
+        if ctype == "text/plain":
+            return _decode_part_text(msg)[:limit]
+        if ctype == "text/html":
+            html_fallback = _decode_part_text(msg)
+    if html_fallback:
+        return _html_to_text(html_fallback)[:limit]
     return ""
 
 
@@ -170,6 +200,7 @@ def check_replies(
     matched = 0
     scanned = 0
     skipped_seen = 0
+    bodies_filled = 0
     results: list[dict[str, Any]] = []
 
     imap = imaplib.IMAP4_SSL(host, port)
@@ -189,7 +220,19 @@ def check_replies(
             if typ == "OK" and data and data[0]:
                 ids = data[0].split()[-limit:]
         else:
-            ids = ids[-limit:]
+            # Also peek recent ALL so we can backfill empty bodies on already-seen mails.
+            typ_all, data_all = imap.search(None, "ALL")
+            all_ids: list[bytes] = []
+            if typ_all == "OK" and data_all and data_all[0]:
+                all_ids = data_all[0].split()[-max(limit, 80) :]
+            merged: list[bytes] = []
+            seen_nums: set[bytes] = set()
+            for num in list(ids[-limit:]) + all_ids:
+                if num in seen_nums:
+                    continue
+                seen_nums.add(num)
+                merged.append(num)
+            ids = merged[-max(limit, 80) :]
 
         for num in ids:
             typ, fetched = imap.fetch(num, "(RFC822)")
@@ -205,6 +248,19 @@ def check_replies(
                 # synthesize stable id from UID + date
                 mid = f"uid-{num.decode()}-{(msg.get('Date') or '').strip()}".lower()
             if store.inbound_seen(mid):
+                if not store.inbound_has_body(mid):
+                    body_fill = _plain_body(msg)
+                    if body_fill:
+                        store.record_inbound(
+                            message_id=mid,
+                            from_email=_extract_address(msg.get("From")) or "",
+                            subject=_decode_header(msg.get("Subject")) or "",
+                            outbox_id=None,
+                            deal_id=None,
+                            notified=False,
+                            body_text=body_fill,
+                        )
+                        bodies_filled += 1
                 skipped_seen += 1
                 continue
 
@@ -270,6 +326,7 @@ def check_replies(
                                 outbox_id=ev.outbox_id,
                                 deal_id=None,
                                 notified=False,
+                                body_text=_plain_body(msg),
                             )
                             matched += 1
                             results.append(
@@ -280,6 +337,7 @@ def check_replies(
                                     "outbox_id": ev.outbox_id,
                                     "bounce": True,
                                     "bounce_reason": reason,
+                                    "body_text": _plain_body(msg)[:2000],
                                 }
                             )
                             logger.info(
@@ -297,6 +355,7 @@ def check_replies(
                     outbox_id=None,
                     deal_id=None,
                     notified=False,
+                    body_text=_plain_body(msg),
                 )
                 continue
 
@@ -346,6 +405,7 @@ def check_replies(
                             outbox_id=ev.outbox_id,
                             deal_id=None,
                             notified=False,
+                            body_text=_plain_body(msg),
                         )
                         matched += 1
                         results.append(
@@ -403,6 +463,7 @@ def check_replies(
                     outbox_id=None,
                     deal_id=None,
                     notified=False,
+                    body_text=_plain_body(msg),
                 )
                 continue
 
@@ -650,8 +711,19 @@ def check_replies(
         "scanned": scanned,
         "matched": matched,
         "skipped_seen": skipped_seen,
+        "bodies_filled": bodies_filled,
+        "empty_body_remaining": store.count_inbound_empty_body(),
         "results": results,
     }
+
+
+def backfill_inbound_bodies(
+    store: OutboxStore,
+    *,
+    limit: int = 300,
+) -> dict[str, Any]:
+    """Re-scan recent IMAP mail and fill empty inbound_replies.body_text."""
+    return check_replies(store, bitrix=None, limit=max(40, min(int(limit), 500)))
 
 
 class ReplyWatchThread(threading.Thread):

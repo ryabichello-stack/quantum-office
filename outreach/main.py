@@ -856,7 +856,24 @@ def api_replies(
     full: int = Query(default=1, ge=0, le=1),
 ) -> dict[str, Any]:
     items, total = _store().list_inbound(limit=limit, offset=offset, full=bool(full))
-    return {"ok": True, "total": total, "items": items, "full": bool(full)}
+    empty = _store().count_inbound_empty_body()
+    return {
+        "ok": True,
+        "total": total,
+        "items": items,
+        "full": bool(full),
+        "empty_body_count": empty,
+    }
+
+
+@app.post("/api/replies/backfill", dependencies=[Depends(require_ui_auth)])
+def api_replies_backfill(
+    limit: int = Query(default=250, ge=40, le=500),
+) -> dict[str, Any]:
+    """Re-fetch IMAP bodies for inbound rows that were stored without text."""
+    from reply_watcher import backfill_inbound_bodies
+
+    return backfill_inbound_bodies(_store(), limit=limit)
 
 
 class MailSendBody(BaseModel):
