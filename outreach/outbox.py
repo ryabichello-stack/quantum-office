@@ -95,10 +95,19 @@ class OutboxStore:
                     outbox_id INTEGER,
                     deal_id TEXT,
                     notified INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    body_text TEXT,
+                    body_html TEXT
                 )
                 """
             )
+            inbound_cols = {
+                r[1] for r in conn.execute("PRAGMA table_info(inbound_replies)").fetchall()
+            }
+            if "body_text" not in inbound_cols:
+                conn.execute("ALTER TABLE inbound_replies ADD COLUMN body_text TEXT")
+            if "body_html" not in inbound_cols:
+                conn.execute("ALTER TABLE inbound_replies ADD COLUMN body_html TEXT")
             # Lightweight migrations for DBs created before company/deal columns.
             cols = {r[1] for r in conn.execute("PRAGMA table_info(outbox)").fetchall()}
             if "company_id" not in cols:
@@ -408,6 +417,8 @@ class OutboxStore:
         outbox_id: int | None,
         deal_id: str | None,
         notified: bool,
+        body_text: str | None = None,
+        body_html: str | None = None,
     ) -> bool:
         """Insert inbound Message-ID. Returns False if already known."""
         now = _utc_now()
@@ -415,8 +426,9 @@ class OutboxStore:
             cur = conn.execute(
                 """
                 INSERT OR IGNORE INTO inbound_replies
-                    (message_id, from_email, subject, outbox_id, deal_id, notified, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (message_id, from_email, subject, outbox_id, deal_id, notified,
+                     created_at, body_text, body_html)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     message_id,
@@ -426,9 +438,28 @@ class OutboxStore:
                     deal_id,
                     1 if notified else 0,
                     now,
+                    (body_text or "")[:50000] if body_text else None,
+                    (body_html or "")[:80000] if body_html else None,
                 ),
             )
-            return bool(cur.rowcount)
+            if cur.rowcount:
+                return True
+            # Refresh body if a prior insert had empty text
+            if body_text:
+                conn.execute(
+                    """
+                    UPDATE inbound_replies
+                    SET body_text = COALESCE(NULLIF(body_text, ''), ?),
+                        body_html = COALESCE(NULLIF(body_html, ''), ?)
+                    WHERE message_id = ?
+                    """,
+                    (
+                        (body_text or "")[:50000],
+                        (body_html or "")[:80000] if body_html else None,
+                        message_id,
+                    ),
+                )
+            return False
 
     def _row(self, r: sqlite3.Row) -> OutboxRow:
         keys = set(r.keys())
@@ -540,7 +571,9 @@ class OutboxStore:
             for r in rows
         ]
 
-    def list_inbound(self, *, limit: int = 50, offset: int = 0) -> tuple[list[dict[str, Any]], int]:
+    def list_inbound(
+        self, *, limit: int = 50, offset: int = 0, full: bool = True
+    ) -> tuple[list[dict[str, Any]], int]:
         with self.connect() as conn:
             total = conn.execute("SELECT COUNT(*) AS n FROM inbound_replies").fetchone()["n"]
             rows = conn.execute(
@@ -553,16 +586,23 @@ class OutboxStore:
             ).fetchall()
         items = []
         for r in rows:
-            items.append(
-                {
-                    "id": int(r["id"]),
-                    "message_id": r["message_id"],
-                    "from_email": r["from_email"],
-                    "subject": r["subject"],
-                    "outbox_id": r["outbox_id"],
-                    "deal_id": r["deal_id"],
-                    "notified": bool(r["notified"]),
-                    "created_at": r["created_at"],
-                }
-            )
+            keys = set(r.keys())
+            body = str(r["body_text"]) if "body_text" in keys and r["body_text"] else ""
+            item: dict[str, Any] = {
+                "id": int(r["id"]),
+                "message_id": r["message_id"],
+                "from_email": r["from_email"],
+                "subject": r["subject"],
+                "outbox_id": r["outbox_id"],
+                "deal_id": r["deal_id"],
+                "notified": bool(r["notified"]),
+                "created_at": r["created_at"],
+                "preview": (body[:400] if body else ""),
+            }
+            if full:
+                item["body"] = body
+                item["body_text"] = body
+                if "body_html" in keys and r["body_html"]:
+                    item["body_html"] = r["body_html"]
+            items.append(item)
         return items, int(total)

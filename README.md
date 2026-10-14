@@ -13,8 +13,10 @@ Quantum Labs office stack (не Polyhub trading).
 | Телемост | `conference/` | `/opt/ava-conference` | 8016 |
 | Файлы | `files/` | `/opt/ava-files` | 8015 |
 | Обзвон Sheets | `sheets-campaign/` | `/opt/ava-sheets-campaign` | 8018 |
+| MCP (Grok/Cursor) | `office-mcp/` | `/opt/quantum-office-mcp` (опц.) | stdio |
 
 - Пульт: https://a.47z.ru/_quantum_console/
+- Office MCP: [`office-mcp/README.md`](office-mcp/README.md)
 - Outreach UI: https://a.47z.ru/_ava_outreach/ui/
 - Журнал версий: [`CHANGELOG.md`](CHANGELOG.md)
 - Как работать с git/PR: [`CONTRIBUTING.md`](CONTRIBUTING.md)

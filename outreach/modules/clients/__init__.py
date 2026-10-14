@@ -495,6 +495,59 @@ class ClientsStore:
                 ),
             )
 
+    def lookup_by_email(self, email: str) -> dict[str, Any] | None:
+        """Return client_emails row for exact email (Bitrix mirror dedup)."""
+        em = normalize_email(email)
+        if not em:
+            return None
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT email, source, bitrix_id, display_name, company_bitrix_id, active, synced_at
+                FROM client_emails
+                WHERE lower(email) = lower(?)
+                LIMIT 1
+                """,
+                (em,),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "email": row["email"],
+            "source": row["source"],
+            "bitrix_id": row["bitrix_id"],
+            "display_name": row["display_name"],
+            "company_bitrix_id": row["company_bitrix_id"],
+            "active": bool(row["active"]),
+            "synced_at": row["synced_at"],
+        }
+
+    def lookup_by_company(self, title: str, *, limit: int = 5) -> list[dict[str, Any]]:
+        q = (title or "").strip()
+        if len(q) < 2:
+            return []
+        like = f"%{q.lower()}%"
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT bitrix_id, title, primary_email, inn
+                FROM companies
+                WHERE lower(title) LIKE ?
+                ORDER BY title ASC
+                LIMIT ?
+                """,
+                (like, limit),
+            ).fetchall()
+        return [
+            {
+                "bitrix_id": r["bitrix_id"],
+                "title": r["title"],
+                "primary_email": r["primary_email"],
+                "inn": r["inn"] if "inn" in r.keys() else None,
+            }
+            for r in rows
+        ]
+
     def last_sync(self) -> dict[str, Any] | None:
         with self.connect() as conn:
             row = conn.execute(

@@ -103,6 +103,11 @@ def _message_id(msg: email.message.Message) -> str | None:
     return (m.group(1) if m else mid).strip().lower()
 
 
+def _plain_body(msg: email.message.Message, limit: int = 50000) -> str:
+    """Extract full plain text for storage / agent reply drafting."""
+    return _plain_preview(msg, limit=limit)
+
+
 def _plain_preview(msg: email.message.Message, limit: int = 1200) -> str:
     if msg.is_multipart():
         for part in msg.walk():
@@ -420,7 +425,8 @@ def check_replies(
                 pass
 
             subject = _decode_header(msg.get("Subject")) or "(без темы)"
-            preview = _plain_preview(msg)
+            body_full = _plain_body(msg)
+            preview = body_full[:1200] if body_full else _plain_preview(msg)
             from modules.replies.classify import classify_reply
 
             classified = classify_reply(subject=subject, body=preview, msg=msg)
@@ -434,6 +440,9 @@ def check_replies(
                 "company_title": row.contact_name,
                 "classification": classified.classification,
                 "classification_confidence": classified.confidence,
+                "body": body_full,
+                "body_text": body_full,
+                "preview": preview[:400],
             }
 
             # Stop sequence / policy on actionable classes
@@ -625,6 +634,7 @@ def check_replies(
                 outbox_id=row.id,
                 deal_id=row.deal_id,
                 notified=notified_ok,
+                body_text=body_full,
             )
             matched += 1
             results.append(item)

@@ -268,18 +268,49 @@ def knowledge_get(
     req: KnowledgeGetRequest,
     x_webhook_token: Optional[str] = Header(None),
 ):
+    """Resolve by section id/title OR catalog topic id (e.g. audience)."""
     _check_token(x_webhook_token)
     sec = store.get_section(req.id)
-    if not sec:
-        return {"ok": False, "error": "not_found", "id": req.id, "text": ""}
-    return {
-        "ok": True,
-        "id": sec.id,
-        "title": sec.title,
-        "source": sec.source,
-        "text": sec.text,
-        "chars": len(sec.text),
-    }
+    if sec:
+        return {
+            "ok": True,
+            "id": sec.id,
+            "title": sec.title,
+            "source": sec.source,
+            "text": sec.text,
+            "chars": len(sec.text),
+            "kind": "section",
+        }
+    # Topic catalog ids (audience, faq, …) are not section slugs — expand match patterns.
+    topic = store.resolve_topic(req.id)
+    if topic:
+        sections = store.sections_for_topic(topic)
+        if sections:
+            parts = [f"## {s.title}\n\n{s.text}" for s in sections]
+            text = "\n\n".join(parts)
+            max_chars = 12000
+            if len(text) > max_chars:
+                text = text[: max_chars - 1] + "…"
+            return {
+                "ok": True,
+                "id": topic.id,
+                "title": topic.title,
+                "source": "topic:" + topic.id,
+                "text": text,
+                "chars": len(text),
+                "kind": "topic",
+                "sections": [{"id": s.id, "title": s.title} for s in sections],
+            }
+        # Topic known but no markdown sections loaded yet — still not a hard miss for agents.
+        return {
+            "ok": False,
+            "error": "topic_empty",
+            "id": topic.id,
+            "title": topic.title,
+            "text": "",
+            "kind": "topic",
+        }
+    return {"ok": False, "error": "not_found", "id": req.id, "text": ""}
 
 
 @app.post("/api/knowledge/reload")

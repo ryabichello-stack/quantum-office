@@ -111,11 +111,22 @@ class PgSearchRepository:
         params: list[Any] = [tsq, principal.tenant_id, zones, tsq, *acl_params, limit]
         try:
             with self.conn.cursor() as cur:
+                # Avoid MCP 500s when ingest/vacuum holds locks (prod lock_timeout=15s).
+                cur.execute("SET LOCAL lock_timeout = '3s'")
+                cur.execute("SET LOCAL statement_timeout = '20s'")
                 cur.execute(sql, params)
                 return list(cur.fetchall())
-        except Exception:
+        except Exception as exc:
             # Failed statement aborts the txn; must rollback before ILIKE fallback.
             self._rollback_quietly()
+            name = type(exc).__name__
+            msg = str(exc).lower()
+            lockish = (
+                "LockNotAvailable" in name
+                or "lock timeout" in msg
+                or "canceling statement due to lock" in msg
+                or "statement timeout" in msg
+            )
             like = f"%{q}%"
             sql_like = f"""
             SELECT c.chunk_id, c.document_id, c.tenant_id, c.visibility, c.text,
@@ -139,6 +150,8 @@ class PgSearchRepository:
             """
             try:
                 with self.conn.cursor() as cur:
+                    cur.execute("SET LOCAL lock_timeout = '3s'")
+                    cur.execute("SET LOCAL statement_timeout = '15s'")
                     cur.execute(
                         sql_like,
                         [principal.tenant_id, zones, like, like, *acl_params, limit],
@@ -146,6 +159,9 @@ class PgSearchRepository:
                     return list(cur.fetchall())
             except Exception:
                 self._rollback_quietly()
+                if lockish:
+                    # Soft-fail for agents: empty hits instead of HTTP 500.
+                    return []
                 raise
 
     def search_semantic(
