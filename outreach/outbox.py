@@ -408,6 +408,38 @@ class OutboxStore:
             ).fetchone()
         return row is not None
 
+    def inbound_has_body(self, message_id: str) -> bool:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT body_text FROM inbound_replies
+                WHERE message_id = ?
+                """,
+                (message_id,),
+            ).fetchone()
+        if not row:
+            return False
+        keys = set(row.keys())
+        if "body_text" not in keys:
+            return False
+        return bool(str(row["body_text"] or "").strip())
+
+    def count_inbound_empty_body(self) -> int:
+        with self.connect() as conn:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(inbound_replies)")}
+            if "body_text" not in cols:
+                return int(
+                    conn.execute("SELECT COUNT(*) AS n FROM inbound_replies").fetchone()["n"]
+                )
+            return int(
+                conn.execute(
+                    """
+                    SELECT COUNT(*) AS n FROM inbound_replies
+                    WHERE body_text IS NULL OR TRIM(body_text) = ''
+                    """
+                ).fetchone()["n"]
+            )
+
     def record_inbound(
         self,
         *,

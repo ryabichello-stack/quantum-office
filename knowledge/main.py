@@ -72,8 +72,13 @@ class KnowledgeQueryRequest(BaseModel):
     topic: str = Field(default="", description="Free-text topic / question in Russian")
     topic_id: str = Field(default="", description="Catalog id from /api/knowledge/topics")
     q: str = Field(default="", description="Alias of topic")
+    query: str = Field(default="", description="Alias of topic (MCP/Grok)")
     limit: int = Field(default=4, ge=1, le=8)
     max_chars: int = Field(default=4500, ge=500, le=12000)
+    mode: str = Field(
+        default="",
+        description="Override KNOWLEDGE_READ_MODE for this call: legacy|brain|dual_compare",
+    )
 
 
 class KnowledgeGetRequest(BaseModel):
@@ -81,7 +86,7 @@ class KnowledgeGetRequest(BaseModel):
 
 
 def _resolve_query(req: KnowledgeQueryRequest) -> tuple[str, str]:
-    topic = (req.topic or req.q or "").strip()
+    topic = (req.topic or req.q or req.query or "").strip()
     tid = (req.topic_id or "").strip()
     if topic:
         return topic, tid
@@ -103,52 +108,77 @@ def _legacy_search(req: KnowledgeQueryRequest) -> dict[str, Any]:
     )
 
 
-def _brain_voice_retrieve(topic: str, *, limit: int, max_chars: int) -> dict[str, Any]:
+def _brain_voice_retrieve_inner(topic: str, *, limit: int, max_chars: int) -> dict[str, Any]:
     """Faq-safe Second Brain retrieve for voice (assistant-safe principal)."""
-    try:
-        from brain_platform.db.factory import get_brain_repo
-        from brain_platform.search.engine import BrainSearch
-        from brain_platform.security.acl import Principal
+    from brain_platform.db.factory import get_brain_repo
+    from brain_platform.search.engine import BrainSearch
+    from brain_platform.security.acl import Principal
 
-        principal = Principal(
-            principal_id=BRAIN_VOICE_PRINCIPAL,
-            tenant_id=os.getenv("BRAIN_TENANT_ID", "quantum-labs"),
+    principal = Principal(
+        principal_id=BRAIN_VOICE_PRINCIPAL,
+        tenant_id=os.getenv("BRAIN_TENANT_ID", "quantum-labs"),
+    )
+    result = BrainSearch(get_brain_repo()).retrieve(
+        principal,
+        topic,
+        limit=limit,
+        max_chars=max_chars,
+        mode=BRAIN_VOICE_SEARCH_MODE,
+        purpose="voice-knowledge",
+    )
+    # Strip graph footer noise for voice brevity if present
+    text = result.get("text") or ""
+    if "## Связанные сущности [graph]" in text:
+        text = text.split("## Связанные сущности [graph]", 1)[0].rstrip()
+    matches = []
+    for m in result.get("matches") or []:
+        # Defense: never surface mail/restricted types to voice path even if ACL slips
+        if (m.get("type") or "") in ("email", "mail", "thread"):
+            continue
+        matches.append(
+            {
+                "title": m.get("title"),
+                "type": m.get("type"),
+                "citation": m.get("citation"),
+                "score": m.get("score"),
+                "id": m.get("document_id"),
+            }
         )
-        result = BrainSearch(get_brain_repo()).retrieve(
-            principal,
-            topic,
-            limit=limit,
-            max_chars=max_chars,
-            mode=BRAIN_VOICE_SEARCH_MODE,
-            purpose="voice-knowledge",
-        )
-        # Strip graph footer noise for voice brevity if present
-        text = result.get("text") or ""
-        if "## Связанные сущности [graph]" in text:
-            text = text.split("## Связанные сущности [graph]", 1)[0].rstrip()
-        matches = []
-        for m in result.get("matches") or []:
-            # Defense: never surface mail/restricted types to voice path even if ACL slips
-            if (m.get("type") or "") in ("email", "mail", "thread"):
-                continue
-            matches.append(
-                {
-                    "title": m.get("title"),
-                    "type": m.get("type"),
-                    "citation": m.get("citation"),
-                    "score": m.get("score"),
-                    "id": m.get("document_id"),
-                }
+    return {
+        "ok": bool(result.get("ok")) and not result.get("denied"),
+        "text": text,
+        "chars": len(text),
+        "citations": result.get("citations") or [],
+        "matches": matches,
+        "principal_id": BRAIN_VOICE_PRINCIPAL,
+        "search_mode": result.get("search_mode"),
+        "denied": bool(result.get("denied")),
+    }
+
+
+def _brain_voice_retrieve(topic: str, *, limit: int, max_chars: int) -> dict[str, Any]:
+    """Soft-timeout wrapper — never block MCP/voice when PG is locked by ingest."""
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+
+    timeout_s = float(os.getenv("BRAIN_VOICE_TIMEOUT_SECONDS", "4") or "4")
+    timeout_s = max(1.0, min(timeout_s, 20.0))
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            fut = pool.submit(
+                _brain_voice_retrieve_inner,
+                topic,
+                limit=limit,
+                max_chars=max_chars,
             )
+            return fut.result(timeout=timeout_s)
+    except FuturesTimeout:
+        logger.warning("brain voice retrieve timed out after %.1fs topic=%r", timeout_s, topic[:80])
         return {
-            "ok": bool(result.get("ok")) and not result.get("denied"),
-            "text": text,
-            "chars": len(text),
-            "citations": result.get("citations") or [],
-            "matches": matches,
-            "principal_id": BRAIN_VOICE_PRINCIPAL,
-            "search_mode": result.get("search_mode"),
-            "denied": bool(result.get("denied")),
+            "ok": False,
+            "error": f"brain_timeout_{timeout_s:.0f}s",
+            "text": "",
+            "chars": 0,
+            "matches": [],
         }
     except Exception as exc:  # noqa: BLE001
         logger.exception("brain voice retrieve failed")
@@ -196,7 +226,15 @@ def knowledge_query(
         limit=req.limit,
         max_chars=req.max_chars,
     )
-    mode = KNOWLEDGE_READ_MODE
+    mode_override = (req.mode or "").strip().lower()
+    mode = mode_override if mode_override in {"legacy", "brain", "dual_compare"} else KNOWLEDGE_READ_MODE
+
+    if mode == "legacy" or not topic:
+        out = dict(legacy)
+        out["knowledge_read_mode"] = "legacy"
+        out["source"] = out.get("source") or "legacy"
+        out["via"] = "ava-knowledge-legacy"
+        return out
 
     if mode == "brain" and BRAIN_ENABLED and topic:
         brain = _brain_voice_retrieve(

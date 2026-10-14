@@ -122,6 +122,7 @@ def health() -> dict[str, Any]:
             "mailru.send_text_body": True,
             "mailru.send_path_optional": True,
             "kb.search_legacy_fallback": True,
+            "kb.search_mode_legacy_first": True,
             "messenger.history": True,
             "messenger.chats": True,
             "messenger.messages_max": True,
@@ -129,9 +130,8 @@ def health() -> dict[str, Any]:
         "endpoints": ["/health", "/tools", "/tools/call", "/mcp", "/openapi-lite"],
         "note": (
             "Refresh tools catalog if schemas look stale. "
-            "Expect version>=0.3.2 and schema_revision=2026-10-14-messenger-history. "
-            "Messenger: messenger.chats / history / send; Max native: messenger.messages; "
-            "company knowledge: kb.search."
+            "Expect version>=0.3.3 and schema_revision=2026-10-14-kb-legacy-first-replies. "
+            "kb.search uses markdown legacy first (no PG hang); brain optional ≤4s."
         ),
     }
 

@@ -29,6 +29,19 @@ def connect_postgres(url: str | None = None):
     if not dsn:
         raise RuntimeError("BRAIN_DATABASE_URL is not set")
     conn = psycopg.connect(dsn, row_factory=dict_row, autocommit=False)
+    # Fail fast under ingest locks — MCP/voice fall back to legacy markdown.
+    lock_ms = int(os.getenv("BRAIN_PG_LOCK_TIMEOUT_MS", "3000") or "3000")
+    stmt_ms = int(os.getenv("BRAIN_PG_STATEMENT_TIMEOUT_MS", "8000") or "8000")
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SET lock_timeout = %s", (f"{max(500, lock_ms)}ms",))
+            cur.execute("SET statement_timeout = %s", (f"{max(1000, stmt_ms)}ms",))
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
     return conn
 
 

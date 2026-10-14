@@ -10,10 +10,16 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- MCP `kb.search` / `knowledge.query`: больше не висят на PG-локах Second Brain — сначала `mode=legacy` (markdown), brain опционально ≤4s; в knowledge soft-timeout + `lock_timeout`/`statement_timeout` на Postgres.
+- Outreach `inbound_replies`: сохраняется `body_text` (в т.ч. HTML→text); `POST /api/replies/backfill` + MCP `outreach.replies_backfill` дозаполняет пустые тела.
+
 ### Added
 
 - Text-bot / MCP: чтение и отправка Telegram/Max — `GET /api/messenger/{status,chats,history,messages}`, `POST /api/messenger/send`; tools `messenger.chats`, `messenger.history`, `messenger.messages`, `telegram.history`, `max.history`. Gateway `0.3.2` / `schema_revision=2026-10-14-messenger-history`.
 - Text-bot: синхронизация полноценного секретаря (каналы Max/Business/WhatsApp/VK, owner alerts) в git; stub `max_client` убран.
+- MCP gateway `0.3.3` / `schema_revision=2026-10-14-kb-legacy-first-replies`.
 
 ### Fixed
 
