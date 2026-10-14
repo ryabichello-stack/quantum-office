@@ -6,6 +6,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import secrets
 import sys
 from contextlib import asynccontextmanager
@@ -35,10 +36,20 @@ from modules.verification import VerificationModule
 from modules.sequences import SequencesModule
 from modules.policy import PolicyModule
 from modules.replies import RepliesModule
+from modules.sending_accounts import SendingAccountsModule
+from modules.dns_auth import DnsAuthModule
 from outbox import OutboxStore
 from reply_watcher import ReplyWatchThread, check_replies, imap_configured
 from runtime_settings import RuntimeSettings
-from sender import send_batch, send_one, smtp_configured
+from sender import (
+    cold_smtp_configured,
+    resolve_smtp_profile,
+    send_batch,
+    send_email,
+    send_one,
+    smtp_configured,
+)
+from leads_import import check_lead_dup, import_leads
 from sync import sync_companies
 from templates import (
     DEFAULT_HTML,
@@ -87,6 +98,8 @@ _verification_mod = VerificationModule()
 _sequences_mod = SequencesModule()
 _policy_mod = PolicyModule()
 _replies_mod = RepliesModule()
+_sending_accounts_mod = SendingAccountsModule()
+_dns_auth_mod = DnsAuthModule()
 _registry.register(_tracking_mod)
 _registry.register(_deliver_mod)
 _registry.register(_runner_mod)
@@ -98,6 +111,8 @@ _registry.register(_verification_mod)
 _registry.register(_sequences_mod)
 _registry.register(_policy_mod)
 _registry.register(_replies_mod)
+_registry.register(_sending_accounts_mod)
+_registry.register(_dns_auth_mod)
 _app_ctx: AppContext | None = None
 
 
@@ -256,6 +271,9 @@ def _status_payload() -> dict[str, Any]:
         "sequences": _sequences_mod.health(),
         "policy": _policy_mod.health(),
         "reply_inbox": _replies_mod.health(),
+        "sending_accounts": _sending_accounts_mod.health(),
+        "dns_auth": _dns_auth_mod.health(),
+        "cold_smtp_configured": cold_smtp_configured(),
         "deliverability": _deliver_mod.store.stats(rt, rt.get_int("OUTREACH_DAILY_LIMIT", 15)),
         "engagement": _tracking_mod.store.engagement_counts(),
         "warmup_enabled": rt.get_bool("WARMUP_ENABLED", True),
@@ -835,9 +853,131 @@ def api_outbox_patch(row_id: int, body: StatusBody) -> dict[str, Any]:
 def api_replies(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    full: int = Query(default=1, ge=0, le=1),
 ) -> dict[str, Any]:
-    items, total = _store().list_inbound(limit=limit, offset=offset)
-    return {"ok": True, "total": total, "items": items}
+    items, total = _store().list_inbound(limit=limit, offset=offset, full=bool(full))
+    return {"ok": True, "total": total, "items": items, "full": bool(full)}
+
+
+class MailSendBody(BaseModel):
+    to: str = Field(..., min_length=3)
+    subject: str = Field(..., min_length=1)
+    body: str | None = None
+    html: str | None = None
+    cc: str | None = None
+    reply_to: str | None = None
+    mailbox: str = "office"
+
+
+@app.post("/api/mail/send", dependencies=[Depends(require_ui_auth)])
+def api_mail_send(body: MailSendBody) -> dict[str, Any]:
+    """Send a regular (warm/cold) email — not the mass-outreach queue."""
+    to = (body.to or "").strip()
+    if "@" not in to:
+        raise HTTPException(status_code=400, detail="valid to email required")
+    plain = (body.body or "").strip()
+    html = (body.html or "").strip()
+    if not plain and not html:
+        raise HTTPException(status_code=400, detail="body or html required")
+    if not plain:
+        plain = re.sub(r"<[^>]+>", " ", html)
+        plain = re.sub(r"\s+", " ", plain).strip()
+    if not html:
+        from html import escape
+
+        html = "<html><body><pre style='font-family:sans-serif;white-space:pre-wrap'>" + escape(plain) + "</pre></body></html>"
+    mailbox = (body.mailbox or "office").strip() or "office"
+    try:
+        profile = resolve_smtp_profile(mailbox)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    unsub = profile["user"]
+    try:
+        mid = send_email(
+            to=to,
+            subject=body.subject.strip(),
+            plain=plain,
+            html=html,
+            unsubscribe_mailto=unsub,
+            reply_to=body.reply_to,
+            mailbox=mailbox,
+            cc=body.cc,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("mail.send failed")
+        raise HTTPException(status_code=500, detail=str(exc)[:500]) from exc
+    return {
+        "ok": True,
+        "message_id": mid,
+        "from": profile["user"],
+        "mailbox": profile.get("mailbox_key") or mailbox,
+        "to": to,
+        "cc": body.cc,
+        "subject": body.subject.strip(),
+    }
+
+
+class LeadsImportBody(BaseModel):
+    csv: str = Field(..., min_length=1)
+    pack_id: str | None = None
+    queue: bool = True
+    skip_duplicates: bool = True
+    apply_pack: bool = False
+
+
+@app.post("/api/leads/import", dependencies=[Depends(require_ui_auth)])
+def api_leads_import(body: LeadsImportBody) -> dict[str, Any]:
+    result = import_leads(
+        csv_text=body.csv,
+        outbox=_store(),
+        clients=_clients_mod.store,
+        pack_id=body.pack_id,
+        queue=body.queue,
+        skip_duplicates=body.skip_duplicates,
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error") or "import failed")
+    applied = None
+    pack_to_apply = body.pack_id or result.get("suggested_pack_id")
+    if body.apply_pack and pack_to_apply:
+        from content.pack_drafts import pack_letters_payload
+        from content.packs import get_pack
+
+        pack = get_pack(str(pack_to_apply))
+        if pack:
+            payload = pack_letters_payload(pack)
+            # Apply step-1 templates into runtime settings (same as pack apply)
+            updates = {}
+            if payload.get("subject"):
+                updates["OUTREACH_SUBJECT"] = payload["subject"]
+            if payload.get("plain"):
+                updates["OUTREACH_TEMPLATE_PLAIN"] = payload["plain"]
+            if payload.get("html"):
+                updates["OUTREACH_TEMPLATE_HTML"] = payload["html"]
+            if updates:
+                _rt().set_many(updates)
+            applied = {"pack_id": pack["id"], "updated": sorted(updates.keys())}
+        else:
+            applied = {"pack_id": pack_to_apply, "error": "pack_not_found"}
+    result["pack_applied"] = applied
+    return result
+
+
+class LeadCheckBody(BaseModel):
+    email: str | None = None
+    company: str | None = None
+
+
+@app.post("/api/leads/check", dependencies=[Depends(require_ui_auth)])
+def api_leads_check(body: LeadCheckBody) -> dict[str, Any]:
+    if not body.email and not body.company:
+        raise HTTPException(status_code=400, detail="email or company required")
+    return check_lead_dup(
+        email=body.email or "",
+        company=body.company or "",
+        outbox=_store(),
+        clients=_clients_mod.store,
+    )
 
 
 @app.get("/api/settings", dependencies=[Depends(require_ui_auth)])

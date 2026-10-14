@@ -7,12 +7,37 @@ DEST="/opt/quantum-console"
 SERVICE="quantum-console.service"
 AVA_EXT_SRC="${SRC_DIR}/asterisk/extensions.quantum-labs.conf"
 AVA_EXT_DST="/root/ava/config/asterisk/extensions.quantum-labs.conf"
+AVA_PJSIP_TMPL="${SRC_DIR}/asterisk/pjsip.quantum-labs.conf.template"
+AVA_PJSIP_DST="/root/ava/config/asterisk/pjsip.quantum-labs.conf"
+SNAT_SRC="${SRC_DIR}/scripts/mango-snat.sh"
 
 echo "==> sync console → ${DEST}"
 mkdir -p "${DEST}"
 rsync -a --delete \
   --exclude venv --exclude .env --exclude '__pycache__' \
   "${SRC_DIR}/" "${DEST}/"
+
+echo "==> Mango SIP SNAT (egress 45.147.178.172)"
+if [ -f "${SNAT_SRC}" ]; then
+  install -m 700 "${SNAT_SRC}" /etc/iptables-mango-snat.sh
+  /etc/iptables-mango-snat.sh || true
+  if [ ! -f /etc/systemd/system/mango-snat.service ]; then
+    cat > /etc/systemd/system/mango-snat.service <<'UNIT'
+[Unit]
+Description=SNAT Mango SIP/RTP via 45.147.178.172
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/etc/iptables-mango-snat.sh
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target
+UNIT
+    systemctl daemon-reload
+    systemctl enable --now mango-snat.service || true
+  fi
+fi
 
 if [ ! -d "${DEST}/venv" ]; then
   python3 -m venv "${DEST}/venv"
@@ -41,6 +66,21 @@ if [ -f "${AVA_EXT_SRC}" ]; then
     chown asterisk:asterisk /etc/asterisk/extensions.conf 2>/dev/null || true
     asterisk -rx "dialplan reload" || true
   fi
+fi
+
+echo "==> ensure PJSIP transport binds to 45.147.178.172"
+if [ -f "${AVA_PJSIP_DST}" ]; then
+  if grep -qE '^bind=0\.0\.0\.0:5060' "${AVA_PJSIP_DST}"; then
+    sed -i 's/^bind=0\.0\.0\.0:5060/bind=45.147.178.172:5060/' "${AVA_PJSIP_DST}"
+  fi
+  if ! grep -qE '^bind=45\.147\.178\.172:5060' /etc/asterisk/pjsip.conf 2>/dev/null; then
+    if grep -qE '^bind=0\.0\.0\.0:5060' /etc/asterisk/pjsip.conf 2>/dev/null; then
+      sed -i 's/^bind=0\.0\.0\.0:5060/bind=45.147.178.172:5060/' /etc/asterisk/pjsip.conf
+      echo "NOTE: pjsip bind changed — restart asterisk to apply transport"
+    fi
+  fi
+elif [ -f "${AVA_PJSIP_TMPL}" ]; then
+  echo "PJSIP live file missing; template at ${AVA_PJSIP_TMPL} (manual review before copy)"
 fi
 
 echo "==> enable AVA outbound env (generic Asterisk + Local)"
