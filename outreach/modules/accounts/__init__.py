@@ -222,18 +222,45 @@ class AccountStore:
             ).fetchone()
         return dict(row) if row else None
 
-    def upsert_account_from_company(self, company: dict[str, Any]) -> dict[str, Any]:
-        """Upsert Account from clients.companies row (or company_card company dict)."""
+    def upsert_account_from_company(
+        self,
+        company: dict[str, Any],
+        *,
+        lifecycle: str | None = None,
+        auto_enrich: bool = True,
+    ) -> dict[str, Any]:
+        """Upsert Account from clients.companies row (or company_card company dict).
+
+        Existing bitrix-linked accounts keep their lifecycle (and still get field
+        refresh). New accounts default to NEW; with auto_enrich=True they move to
+        ENRICHED when inn/timezone/director is present. Pass lifecycle=... and
+        auto_enrich=False to force a status for backfill (e.g. sync → NEW).
+        """
         bid = str(company.get("bitrix_id") or company.get("id") or "").strip()
         title = (company.get("title") or company.get("legal_name") or "").strip()
         now = _utc_now()
         existing = self.get_account_by_bitrix(bid) if bid else None
-        lifecycle = existing["lifecycle_status"] if existing else "NEW"
-        # Enrichment signal
-        if lifecycle == "NEW" and (
-            company.get("inn") or company.get("timezone") or company.get("director_name")
+        if existing:
+            life = existing["lifecycle_status"]
+        elif lifecycle:
+            life = (lifecycle or "NEW").strip().upper()
+            if life not in LIFECYCLE:
+                raise ValueError(f"invalid lifecycle_status: {life}")
+        else:
+            life = "NEW"
+        # Enrichment signal (only for brand-new NEW accounts)
+        if (
+            not existing
+            and auto_enrich
+            and life == "NEW"
+            and (
+                company.get("inn")
+                or company.get("timezone")
+                or company.get("director_name")
+            )
         ):
-            lifecycle = "ENRICHED"
+            life = "ENRICHED"
+        lifecycle = life
         aid = existing["id"] if existing else _new_id()
         with self.connect() as conn:
             conn.execute(
@@ -988,21 +1015,53 @@ class AccountStore:
             "suggested_reply": draft,
         }
 
-    def sync_from_clients(self, *, limit: int = 500) -> dict[str, Any]:
-        """Backfill accounts from clients.companies."""
+    def sync_from_clients(
+        self,
+        *,
+        limit: int = 500,
+        lifecycle_for_new: str = "NEW",
+        skip_existing: bool = True,
+    ) -> dict[str, Any]:
+        """Backfill accounts from clients.companies (Bitrix mirror).
+
+        By default inserts missing companies as NEW and does not touch accounts
+        that already have the same bitrix_company_id (no duplicate / no stage
+        overwrite). Set skip_existing=False to refresh fields via upsert.
+        """
         from modules.clients import ClientsStore
 
+        life = (lifecycle_for_new or "NEW").strip().upper()
+        if life not in LIFECYCLE:
+            raise ValueError(f"invalid lifecycle_for_new: {life}")
+
         clients = ClientsStore()
-        n = 0
+        created = 0
+        skipped = 0
         with clients.connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM companies ORDER BY updated_at DESC LIMIT ?",
-                (max(1, min(limit, 5000)),),
+                (max(1, min(int(limit), 5000)),),
             ).fetchall()
         for r in rows:
-            self.upsert_account_from_company(dict(r))
-            n += 1
-        return {"ok": True, "upserted": n}
+            company = dict(r)
+            bid = str(company.get("bitrix_id") or company.get("id") or "").strip()
+            if skip_existing and bid and self.get_account_by_bitrix(bid):
+                skipped += 1
+                continue
+            self.upsert_account_from_company(
+                company,
+                lifecycle=life,
+                auto_enrich=False,
+            )
+            created += 1
+        return {
+            "ok": True,
+            "upserted": created,
+            "created": created,
+            "skipped": skipped,
+            "scanned": len(rows),
+            "lifecycle_for_new": life,
+        }
 
 
 def suggest_next_action(
@@ -1335,8 +1394,19 @@ class AccountsModule:
             return {"ok": True, "account": acc}
 
         @router.post("/sync-from-clients")
-        def sync(limit: int = Query(500, ge=1, le=5000)) -> dict[str, Any]:
-            return self.store.sync_from_clients(limit=limit)
+        def sync(
+            limit: int = Query(5000, ge=1, le=5000),
+            lifecycle_for_new: str = Query("NEW"),
+            skip_existing: bool = Query(True),
+        ) -> dict[str, Any]:
+            try:
+                return self.store.sync_from_clients(
+                    limit=limit,
+                    lifecycle_for_new=lifecycle_for_new,
+                    skip_existing=skip_existing,
+                )
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
 
         class ResolveBody(BaseModel):
             email: str | None = None
