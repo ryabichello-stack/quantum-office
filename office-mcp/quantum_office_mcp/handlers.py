@@ -266,7 +266,23 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
             legacy_text = str(legacy.get("text") or "")
             if not legacy_text and isinstance(legacy.get("legacy"), dict):
                 legacy_text = str(legacy["legacy"].get("text") or "")
-        # Optional Second Brain enrichment — short timeout; never block the answer.
+        # If markdown SoT already answered — return immediately (do not wait on PG locks).
+        if legacy.get("ok") or legacy_text:
+            return _tool_result(
+                {
+                    "ok": True,
+                    "source": "legacy_first",
+                    "query": q,
+                    "text": legacy_text or None,
+                    "chars": len(legacy_text),
+                    "topic": legacy.get("topic") if isinstance(legacy, dict) else None,
+                    "topic_id": legacy.get("topic_id") if isinstance(legacy, dict) else None,
+                    "legacy": legacy,
+                    "knowledge_read_mode": "legacy",
+                    "note": "Second Brain skipped when legacy has content (avoids ingest lock timeouts).",
+                }
+            )
+        # Legacy empty — try Second Brain with a short timeout.
         brain = knowledge_request(
             "POST",
             "/api/brain/search",
@@ -288,37 +304,19 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
         )
         if brain_ok:
             brain["source"] = "second_brain"
-            if legacy_text and not brain.get("legacy_text"):
-                brain["legacy_text"] = legacy_text[:2000]
             return _tool_result(brain)
-        if legacy.get("ok") or legacy_text:
-            return _tool_result(
-                {
-                    "ok": True,
-                    "source": "legacy_first",
-                    "query": q,
-                    "text": legacy_text or None,
-                    "chars": len(legacy_text),
-                    "topic": legacy.get("topic") if isinstance(legacy, dict) else None,
-                    "topic_id": legacy.get("topic_id") if isinstance(legacy, dict) else None,
-                    "legacy": legacy,
-                    "brain_error": (
-                        (brain or {}).get("error")
-                        or (brain or {}).get("reason")
-                        or (brain or {}).get("denied")
-                        or (brain or {}).get("http_status")
-                    ),
-                    "knowledge_read_mode": "legacy",
-                }
-            )
         return _tool_result(
-            brain
-            if brain
-            else {
+            {
                 "ok": False,
                 "error": "kb_search_empty",
                 "query": q,
                 "legacy": legacy,
+                "brain_error": (
+                    (brain or {}).get("error")
+                    or (brain or {}).get("reason")
+                    or (brain or {}).get("denied")
+                    or (brain or {}).get("http_status")
+                ),
             }
         )
 

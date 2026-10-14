@@ -213,7 +213,7 @@ def test_kb_search_legacy_first(monkeypatch):
             assert timeout <= 12.0
             return {"ok": True, "text": "СБП выплаты", "topic": "СБП", "http_status": 200}
         if path == "/api/brain/search":
-            return {"ok": False, "error": "timed out", "http_status": 0}
+            raise AssertionError("brain must not be called when legacy has text")
         return {"ok": False}
 
     monkeypatch.setattr("quantum_office_mcp.handlers.knowledge_request", fake_knowledge)
@@ -222,7 +222,7 @@ def test_kb_search_legacy_first(monkeypatch):
     assert payload["ok"] is True
     assert payload["source"] == "legacy_first"
     assert "СБП" in (payload.get("text") or "")
-    assert any(p == "/api/knowledge/query" for p, _, _ in calls)
+    assert [p for p, _, _ in calls] == ["/api/knowledge/query"]
 
 
 def test_html_body_extract():
