@@ -1,4 +1,4 @@
-"""SQLite conversation history per Telegram chat."""
+"""SQLite conversation history per session (channel:user_id)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 import sqlite3
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 _lock = threading.Lock()
 
@@ -39,12 +39,170 @@ def init_db(db_path: Path) -> None:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_chat_messages_chat_id ON chat_messages(chat_id)"
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS session_meta (
+                    chat_id TEXT PRIMARY KEY,
+                    scenario TEXT,
+                    sticky INTEGER DEFAULT 0,
+                    acl_role TEXT,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            # Migrate older DBs that lack acl_role
+            cols = {
+                str(r[1])
+                for r in conn.execute("PRAGMA table_info(session_meta)").fetchall()
+            }
+            if "acl_role" not in cols:
+                conn.execute("ALTER TABLE session_meta ADD COLUMN acl_role TEXT")
             conn.commit()
         finally:
             conn.close()
 
 
-def load_messages(db_path: Path, chat_id: str, *, limit: int = 24) -> list[dict[str, Any]]:
+def get_session_meta(db_path: Path, chat_id: str) -> dict[str, Any]:
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            row = conn.execute(
+                "SELECT scenario, sticky, acl_role FROM session_meta WHERE chat_id = ?",
+                (str(chat_id),),
+            ).fetchone()
+        finally:
+            conn.close()
+    if not row:
+        return {"scenario": None, "sticky": False, "acl_role": None}
+    return {
+        "scenario": row["scenario"],
+        "sticky": bool(row["sticky"]),
+        "acl_role": (row["acl_role"] or None),
+    }
+
+
+def set_session_acl_role(db_path: Path, chat_id: str, acl_role: Optional[str]) -> None:
+    """Persist unlocked role override (e.g. trainee). None clears it."""
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            existing = conn.execute(
+                "SELECT scenario, sticky FROM session_meta WHERE chat_id = ?",
+                (str(chat_id),),
+            ).fetchone()
+            scenario = existing["scenario"] if existing else None
+            sticky = int(existing["sticky"] or 0) if existing else 0
+            if acl_role is None and scenario is None and not sticky:
+                conn.execute("DELETE FROM session_meta WHERE chat_id = ?", (str(chat_id),))
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO session_meta (chat_id, scenario, sticky, acl_role, updated_at)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(chat_id) DO UPDATE SET
+                      acl_role=excluded.acl_role,
+                      updated_at=CURRENT_TIMESTAMP
+                    """,
+                    (str(chat_id), scenario, sticky, acl_role),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def set_session_scenario(
+    db_path: Path,
+    chat_id: str,
+    scenario: Optional[str],
+    *,
+    sticky: bool = False,
+) -> None:
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            existing = conn.execute(
+                "SELECT acl_role FROM session_meta WHERE chat_id = ?",
+                (str(chat_id),),
+            ).fetchone()
+            acl_role = existing["acl_role"] if existing else None
+            if scenario is None and not sticky and not acl_role:
+                conn.execute("DELETE FROM session_meta WHERE chat_id = ?", (str(chat_id),))
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO session_meta (chat_id, scenario, sticky, acl_role, updated_at)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(chat_id) DO UPDATE SET
+                      scenario=excluded.scenario,
+                      sticky=excluded.sticky,
+                      updated_at=CURRENT_TIMESTAMP
+                    """,
+                    (str(chat_id), scenario, 1 if sticky else 0, acl_role),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def clear_chat(db_path: Path, chat_id: str) -> None:
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            conn.execute("DELETE FROM chat_messages WHERE chat_id = ?", (str(chat_id),))
+            # keep sticky scenario preference across /reset
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def _sanitize_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop orphan tool rows / incomplete tool rounds (OpenAI rejects them)."""
+    out: list[dict[str, Any]] = []
+    pending_ids: set[str] = set()
+
+    def _drop_incomplete_round() -> None:
+        nonlocal pending_ids
+        while out:
+            last = out[-1]
+            role = last.get("role")
+            if role == "tool" or (role == "assistant" and last.get("tool_calls")):
+                out.pop()
+                if role == "assistant" and last.get("tool_calls"):
+                    break
+                continue
+            break
+        pending_ids.clear()
+
+    for msg in messages:
+        role = msg.get("role")
+        if role == "tool":
+            tcid = str(msg.get("tool_call_id") or "")
+            if tcid and tcid in pending_ids:
+                out.append(msg)
+                pending_ids.discard(tcid)
+            continue
+
+        if role == "assistant" and msg.get("tool_calls"):
+            if pending_ids:
+                _drop_incomplete_round()
+            pending_ids = {
+                str(tc.get("id") or "")
+                for tc in (msg.get("tool_calls") or [])
+                if isinstance(tc, dict) and tc.get("id")
+            }
+            out.append(msg)
+            continue
+
+        if pending_ids:
+            _drop_incomplete_round()
+        out.append(msg)
+
+    if pending_ids:
+        _drop_incomplete_round()
+    return out
+
+
+def load_messages(db_path: Path, chat_id: str, *, limit: int = 40) -> list[dict[str, Any]]:
     with _lock:
         conn = _connect(db_path)
         try:
@@ -73,6 +231,120 @@ def load_messages(db_path: Path, chat_id: str, *, limit: int = 24) -> list[dict[
         if row["name"]:
             msg["name"] = row["name"]
         out.append(msg)
+    return _sanitize_messages(out)
+
+
+def load_history(
+    db_path: Path,
+    chat_id: str,
+    *,
+    limit: int = 40,
+    include_tools: bool = False,
+) -> list[dict[str, Any]]:
+    """History for MCP/API: includes created_at; tool rows optional."""
+    want = max(1, min(int(limit), 200))
+    # Over-fetch when hiding tool rounds so user/assistant turns still fill `limit`.
+    fetch_n = want if include_tools else min(800, max(want * 6, want))
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            rows = conn.execute(
+                """
+                SELECT id, role, content, tool_calls, tool_call_id, name, created_at
+                FROM chat_messages
+                WHERE chat_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (str(chat_id), int(fetch_n)),
+            ).fetchall()
+        finally:
+            conn.close()
+
+    out: list[dict[str, Any]] = []
+    for row in reversed(rows):
+        role = str(row["role"] or "")
+        if not include_tools and role == "tool":
+            continue
+        msg: dict[str, Any] = {
+            "id": row["id"],
+            "role": role,
+            "created_at": row["created_at"],
+        }
+        if row["content"]:
+            msg["content"] = row["content"]
+        if include_tools and row["tool_calls"]:
+            msg["tool_calls"] = json.loads(row["tool_calls"])
+        if include_tools and row["tool_call_id"]:
+            msg["tool_call_id"] = row["tool_call_id"]
+        if include_tools and row["name"]:
+            msg["name"] = row["name"]
+        # Skip empty assistant tool-call shells when tools hidden
+        if not include_tools and not msg.get("content") and role == "assistant":
+            continue
+        out.append(msg)
+    if len(out) > want:
+        out = out[-want:]
+    return out
+
+
+def list_sessions(
+    db_path: Path,
+    *,
+    channel: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """List recent dialogue sessions (channel:user_id) with last activity."""
+    lim = max(1, min(int(limit), 200))
+    prefix = f"{channel.strip().lower()}:" if channel else None
+    with _lock:
+        conn = _connect(db_path)
+        try:
+            rows = conn.execute(
+                """
+                SELECT chat_id,
+                       COUNT(*) AS message_count,
+                       MAX(id) AS last_id,
+                       MAX(created_at) AS last_at
+                FROM chat_messages
+                GROUP BY chat_id
+                ORDER BY last_id DESC
+                LIMIT ?
+                """,
+                (lim * 4 if prefix else lim,),
+            ).fetchall()
+            meta_rows = {
+                str(r["chat_id"]): r
+                for r in conn.execute(
+                    "SELECT chat_id, scenario, acl_role FROM session_meta"
+                ).fetchall()
+            }
+        finally:
+            conn.close()
+
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        sid = str(row["chat_id"] or "")
+        if prefix and not sid.startswith(prefix):
+            continue
+        channel_name = ""
+        user_id = sid
+        if ":" in sid:
+            channel_name, user_id = sid.split(":", 1)
+        meta = meta_rows.get(sid) or {}
+        out.append(
+            {
+                "session_id": sid,
+                "channel": channel_name or None,
+                "user_id": user_id,
+                "message_count": int(row["message_count"] or 0),
+                "last_at": row["last_at"],
+                "scenario": meta["scenario"] if meta else None,
+                "acl_role": meta["acl_role"] if meta else None,
+            }
+        )
+        if len(out) >= lim:
+            break
     return out
 
 
@@ -95,16 +367,6 @@ def append_message(db_path: Path, chat_id: str, message: dict[str, Any]) -> None
                     message.get("name"),
                 ),
             )
-            conn.commit()
-        finally:
-            conn.close()
-
-
-def clear_chat(db_path: Path, chat_id: str) -> None:
-    with _lock:
-        conn = _connect(db_path)
-        try:
-            conn.execute("DELETE FROM chat_messages WHERE chat_id = ?", (str(chat_id),))
             conn.commit()
         finally:
             conn.close()

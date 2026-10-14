@@ -468,6 +468,69 @@ TOOLS: list[dict[str, Any]] = [
         "inputSchema": {"type": "object", "properties": {}},
     },
     {
+        "name": "messenger.chats",
+        "description": (
+            "List recent Telegram/Max/API dialogue sessions "
+            "(session_id like telegram:123 or max:456)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "channel": {
+                    "type": "string",
+                    "description": "Filter: telegram|max|telegram_business|api|…",
+                },
+                "limit": {"type": "integer", "default": 50},
+            },
+        },
+    },
+    {
+        "name": "messenger.history",
+        "description": (
+            "Read conversation history for a session (local secretary DB). "
+            "Pass session_id OR channel+user_id/chat_id. "
+            "For Telegram this is what the bot saw/sent — not full TG cloud history. "
+            "For company knowledge use kb.search / knowledge.query."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {
+                    "type": "string",
+                    "description": "e.g. telegram:963782 or max:12239171",
+                },
+                "channel": {"type": "string"},
+                "user_id": {"type": "string"},
+                "chat_id": {"type": "string"},
+                "limit": {"type": "integer", "default": 40},
+                "include_tools": {"type": "boolean", "default": False},
+            },
+        },
+    },
+    {
+        "name": "messenger.messages",
+        "description": (
+            "Native Max chat messages via Max API GET /messages "
+            "(bot must be chat admin with read_all_messages). "
+            "For Telegram use messenger.history."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "channel": {
+                    "type": "string",
+                    "enum": ["max"],
+                    "default": "max",
+                },
+                "chat_id": {"type": "string"},
+                "message_ids": {"type": "string"},
+                "count": {"type": "integer", "default": 50},
+                "from_ts": {"type": "integer"},
+                "to_ts": {"type": "integer"},
+            },
+        },
+    },
+    {
         "name": "messenger.send",
         "description": "Send outbound message via Telegram or Max.",
         "inputSchema": {
@@ -475,18 +538,27 @@ TOOLS: list[dict[str, Any]] = [
             "properties": {
                 "channel": {
                     "type": "string",
-                    "enum": ["telegram", "max", "tg"],
+                    "enum": ["telegram", "max", "tg", "telegram_business"],
                 },
                 "text": {"type": "string"},
                 "chat_id": {"type": "string"},
                 "user_id": {"type": "string"},
+                "business_connection_id": {"type": "string"},
+                "record_history": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Save outbound text into session history",
+                },
             },
             "required": ["channel", "text"],
         },
     },
     {
         "name": "messenger.chat",
-        "description": "Talk to the AI secretary over HTTP (any channel id).",
+        "description": (
+            "Talk to the AI secretary over HTTP (uses Second Brain / company knowledge). "
+            "Any channel id; for raw send without secretary use messenger.send."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -523,6 +595,19 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "telegram.history",
+        "description": "Alias: messenger.history with channel=telegram.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "user_id": {"type": "string"},
+                "chat_id": {"type": "string"},
+                "session_id": {"type": "string"},
+                "limit": {"type": "integer", "default": 40},
+            },
+        },
+    },
+    {
         "name": "max.send",
         "description": "Alias: send Max messenger message.",
         "inputSchema": {
@@ -533,6 +618,22 @@ TOOLS: list[dict[str, Any]] = [
                 "text": {"type": "string"},
             },
             "required": ["text"],
+        },
+    },
+    {
+        "name": "max.history",
+        "description": (
+            "Alias: session history for Max (messenger.history channel=max). "
+            "For native Max API messages use messenger.messages."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "user_id": {"type": "string"},
+                "chat_id": {"type": "string"},
+                "session_id": {"type": "string"},
+                "limit": {"type": "integer", "default": 40},
+            },
         },
     },
     # ---- outreach ----

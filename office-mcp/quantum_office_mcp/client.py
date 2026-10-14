@@ -283,11 +283,12 @@ def text_bot_request(
     path: str,
     body: dict[str, Any] | None = None,
     *,
+    query: dict[str, Any] | None = None,
     timeout: float = 90.0,
 ) -> dict[str, Any]:
     return _http(
         method,
-        f"{text_bot_base()}{path}",
+        f"{text_bot_base()}{_with_query(path, query)}",
         headers=webhook_headers(),
         body=body,
         timeout=timeout,

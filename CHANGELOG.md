@@ -10,6 +10,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- Text-bot / MCP: чтение и отправка Telegram/Max — `GET /api/messenger/{status,chats,history,messages}`, `POST /api/messenger/send`; tools `messenger.chats`, `messenger.history`, `messenger.messages`, `telegram.history`, `max.history`. Gateway `0.3.2` / `schema_revision=2026-10-14-messenger-history`.
+- Text-bot: синхронизация полноценного секретаря (каналы Max/Business/WhatsApp/VK, owner alerts) в git; stub `max_client` убран.
+
 ### Fixed
 
 - MCP gateway `0.3.1` + `schema_revision`: Grok/Cursor могут проверить, что каталог tools не stale; `/health` явно флагает `mailru.send_text_body`.

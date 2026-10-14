@@ -17,7 +17,7 @@ Second Brain и **Mail.ru Облаком** без сырого HTTP.
 | Second Brain | `kb.search`, `kb.get`, `kb.related`, `kb.find_contact`, `kb.list_threads`, `kb.ingest_status` |
 | Legacy knowledge | `knowledge.query`, `knowledge.topics`, `knowledge.get` |
 | Календарь / Телемост | `calendar.*`, `conference.create` |
-| Telegram / Max | `messenger.*`, `telegram.send`, `max.send` |
+| Telegram / Max | `messenger.status/chats/history/messages/send/chat`, `telegram.send|history`, `max.send|history` |
 | Outreach email | `outreach.dashboard/outbox/send_*/packs/...` |
 | **Mail.ru Облако** | `mailru.list`, `mailru.search`, `mailru.read`, `mailru.fetch`, `mailru.send`, `mailru.status` |
 | Файлы (общее) | `files.*` (default `source=mailru`) |
