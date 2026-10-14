@@ -389,7 +389,10 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "knowledge.get",
-        "description": "Get legacy knowledge section by id.",
+        "description": (
+            "Get legacy knowledge by section id OR catalog topic id "
+            "(e.g. audience, faq, payouts)."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {"id": {"type": "string"}},
@@ -570,12 +573,17 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "outreach.replies",
-        "description": "List inbound email replies detected by outreach.",
+        "description": "List inbound email replies with full body text (for drafting answers).",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "limit": {"type": "integer", "default": 50},
                 "offset": {"type": "integer", "default": 0},
+                "full": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Include full body_text (default true)",
+                },
             },
         },
     },
@@ -822,6 +830,78 @@ TOOLS: list[dict[str, Any]] = [
                 "subject": {"type": "string"},
             },
             "required": ["path", "via", "to"],
+        },
+    },
+    {
+        "name": "mail.send",
+        "description": (
+            "Send a regular email (text/html). Use mailbox=office for warm replies "
+            "(office@quantumlabs.ru) or mailbox=cold for marketing domain when configured."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "to": {"type": "string"},
+                "cc": {"type": "string"},
+                "subject": {"type": "string"},
+                "body": {"type": "string", "description": "Plain text body"},
+                "html": {"type": "string"},
+                "reply_to": {"type": "string"},
+                "from": {
+                    "type": "string",
+                    "description": "Mailbox key: office | cold | full email if allowed",
+                },
+                "mailbox": {
+                    "type": "string",
+                    "description": "Alias of from: office | cold",
+                },
+            },
+            "required": ["to", "subject"],
+        },
+    },
+    {
+        "name": "outreach.leads_import",
+        "description": (
+            "Import leads CSV into outreach outbox. Columns: company, segment, website, "
+            "email, phone, contact_name (LPR), source. Dedups against Bitrix clients + outbox. "
+            "Segments map to packs: agents_fintech, agents_1c, agents_accounting, construction, "
+            "blogger_agencies, agri, rental (+ lombards/mfo/…)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "csv": {"type": "string", "description": "CSV text (header row required)"},
+                "pack_id": {
+                    "type": "string",
+                    "description": "Optional pack/segment to apply after import",
+                },
+                "queue": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Enqueue as pending outbox rows",
+                },
+                "apply_pack": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Also apply pack templates to campaign settings",
+                },
+                "skip_duplicates": {
+                    "type": "boolean",
+                    "default": True,
+                },
+            },
+            "required": ["csv"],
+        },
+    },
+    {
+        "name": "outreach.lead_check",
+        "description": "Check email/company against Bitrix clients mirror and outreach history (dedup).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "email": {"type": "string"},
+                "company": {"type": "string"},
+            },
         },
     },
 ]

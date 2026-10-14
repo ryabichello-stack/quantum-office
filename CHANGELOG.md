@@ -12,6 +12,13 @@
 
 ### Added
 
+- Outreach MCP: `mail.send` + `POST /api/mail/send` — обычные письма (text/html, cc, reply_to, mailbox=office|cold); холодный ящик через `OUTREACH_COLD_MAIL_*` (не `quantumlabs.ru`).
+- Outreach: модуль `sending_accounts` + gate на `send_batch`/`send_one` — cold marketing только с ACTIVE marketing-аккаунта; `office@` остаётся для тёплой переписки.
+- Outreach: `POST /api/leads/import` / `leads/check` + MCP `outreach.leads_import` / `lead_check` — CSV (компания, сегмент, сайт, email, телефон, ЛПР, источник) с дедупом по Bitrix clients + истории outbox.
+- Outreach packs: `agents_fintech`, `agents_1c`, `agents_accounting`, `construction`, `blogger_agencies`, `agri`, `rental`.
+- Replies: полный `body_text` в `/api/replies` и `check_replies` (для разбора ответов ассистентом).
+- Knowledge: `knowledge.get("audience")` и другие catalog topic id резолвятся в секции темы (раньше `not_found`).
+- MCP: `OUTREACH_UI_TOKEN` предпочитается над `WEBHOOK_TOKEN` для outreach API; таймауты `kb.search` / `knowledge.query` = 120s.
 - `office-mcp/` — полноценный MCP stdio-сервер для office-стека (Grok/Cursor/Claude): телефония in/out, Sheets-кампания, календарь/Телемост, Second Brain, outreach, Telegram/Max, **Mail.ru Облако** (`mailru.list/search/read`); remote HTTPS пример `mcp.remote.example.json`; nginx snippet `deploy/nginx-office-api.conf.snippet` для `/_ava_files|knowledge|calendar|conference|sheets_campaign/`.
 - `office-mcp` HTTP gateway для Grok: `https://a.47z.ru/_office_mcp/` + `OFFICE_MCP_API_KEY` (`POST /tools/call`, `POST /mcp`).
 - `files`: `POST /api/files/read` — чтение текста из Mail.ru Cloud / Yadisk для агентов; text-bot: `/api/messenger/*` + `/api/chat` для MCP.

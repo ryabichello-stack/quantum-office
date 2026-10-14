@@ -101,7 +101,24 @@ def console_headers() -> dict[str, str]:
 
 
 def webhook_headers(*, also_outreach: bool = False) -> dict[str, str]:
-    token = _env("WEBHOOK_TOKEN") or _env("OUTREACH_TOKEN") or _env("OUTREACH_UI_TOKEN")
+    """Headers for office webhooks.
+
+    Outreach UI auth accepts only ``OUTREACH_UI_TOKEN``. Prefer it (then
+    ``OUTREACH_TOKEN``) over the shared ``WEBHOOK_TOKEN``, which is a different
+    secret on prod and otherwise causes 401 on dashboard/packs/settings.
+    """
+    if also_outreach:
+        token = (
+            _env("OUTREACH_UI_TOKEN")
+            or _env("OUTREACH_TOKEN")
+            or _env("WEBHOOK_TOKEN")
+        )
+    else:
+        token = (
+            _env("WEBHOOK_TOKEN")
+            or _env("OUTREACH_TOKEN")
+            or _env("OUTREACH_UI_TOKEN")
+        )
     headers: dict[str, str] = {}
     if token:
         headers["X-Webhook-Token"] = token
@@ -177,13 +194,16 @@ def knowledge_request(
     path: str,
     body: dict[str, Any] | None = None,
     *,
-    timeout: float = 60.0,
+    timeout: float = 120.0,
     use_brain_headers: bool = True,
 ) -> dict[str, Any]:
     headers = brain_headers() if use_brain_headers else webhook_headers()
     # Legacy /api/knowledge/* uses webhook token; brain uses principal headers.
     if path.startswith("/api/knowledge"):
         headers = webhook_headers()
+    # Brain hybrid search is heavier — default 120s (was 60, timed out for MCP).
+    if path.startswith("/api/brain") and timeout < 120.0:
+        timeout = 120.0
     return _http(
         method,
         f"{knowledge_base()}{path}",
@@ -215,7 +235,7 @@ def outreach_request(
     body: dict[str, Any] | None = None,
     *,
     query: dict[str, Any] | None = None,
-    timeout: float = 60.0,
+    timeout: float = 90.0,
 ) -> dict[str, Any]:
     return _http(
         method,
@@ -224,6 +244,7 @@ def outreach_request(
         body=body,
         timeout=timeout,
     )
+
 
 
 def conference_request(
