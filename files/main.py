@@ -7,6 +7,7 @@ Does not own Bitrix outreach, Asterisk, or Polyhub trading.
 
 from __future__ import annotations
 
+import base64
 import logging
 import os
 from typing import Literal, Optional
@@ -86,6 +87,32 @@ class FileSearchRequest(BaseModel):
     query: str = Field(..., min_length=2, max_length=200, description="Substring in name/path")
     path: str = Field(default="/", max_length=1000, description="Start folder for search")
     limit: int = Field(default=40, ge=1, le=100)
+
+
+class FileUploadRequest(BaseModel):
+    """Save a file onto cloud disk (default Mail.ru Облако)."""
+
+    source: Literal["mailru"] = Field(default="mailru")
+    path: str = Field(
+        ...,
+        min_length=2,
+        max_length=1000,
+        description="Full cloud path including filename, e.g. /MCP/notes/memo.txt",
+    )
+    text: Optional[str] = Field(
+        default=None,
+        description="UTF-8 text body (for .txt/.md/.csv/.json)",
+    )
+    content_base64: Optional[str] = Field(
+        default=None,
+        description="Base64-encoded binary content (PDF/Office/images)",
+    )
+    content_type: Optional[str] = Field(default=None, max_length=200)
+    overwrite: bool = Field(default=True)
+    ensure_parents: bool = Field(
+        default=True,
+        description="Create parent folders via WebDAV MKCOL if missing",
+    )
 
 
 @app.get("/health")
@@ -242,6 +269,54 @@ def files_read(
         "path": f.path,
         "text": body,
     }
+
+
+@app.post("/api/files/upload")
+def files_upload(
+    req: FileUploadRequest,
+    x_webhook_token: Optional[str] = Header(None),
+):
+    """Upload text or base64 bytes to Mail.ru Cloud (agent save-to-disk)."""
+    _check_token(x_webhook_token)
+    if not req.text and not req.content_base64:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "empty_content", "message": "Provide text or content_base64"},
+        )
+    if req.text is not None and req.content_base64:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "ambiguous_content",
+                "message": "Provide either text or content_base64, not both",
+            },
+        )
+    try:
+        if req.content_base64:
+            raw = base64.b64decode(req.content_base64, validate=False)
+        else:
+            raw = (req.text or "").encode("utf-8")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "bad_base64", "message": str(exc)[:200]},
+        ) from exc
+    try:
+        result = sources.upload_file(
+            req.source,
+            req.path,
+            raw,
+            content_type=req.content_type,
+            overwrite=req.overwrite,
+            ensure_parents=req.ensure_parents,
+        )
+    except SourceError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": exc.code, "message": exc.message},
+        ) from exc
+    result["message"] = f"Сохранено в Облако: {result.get('path')}"
+    return result
 
 
 @app.post("/api/files/send")

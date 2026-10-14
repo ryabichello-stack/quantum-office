@@ -21,6 +21,10 @@ def test_tools_registered():
     assert "messenger.send" in names
     assert "mailru.read" in names
     assert "files.read" in names
+    assert "files.upload" in names
+    assert "mailru.upload" in names
+    assert "files.send" in names
+    assert "calendar.create" in names
     assert "conference.create" in names
 
 

@@ -754,7 +754,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "files.send",
-        "description": "Fetch file and send via email or Telegram.",
+        "description": "Fetch file from cloud/local and send via email or Telegram.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -768,6 +768,27 @@ TOOLS: list[dict[str, Any]] = [
                 "repo": {"type": "string"},
             },
             "required": ["path", "via", "to"],
+        },
+    },
+    {
+        "name": "files.upload",
+        "description": (
+            "Save a file TO Mail.ru Облако (company cloud disk). "
+            "Use text= for UTF-8 notes or content_base64= for binary (PDF/Office). "
+            "Path must include filename, e.g. /MCP/notes/memo.txt"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "text": {"type": "string"},
+                "content_base64": {"type": "string"},
+                "content_type": {"type": "string"},
+                "source": {"type": "string", "default": "mailru"},
+                "overwrite": {"type": "boolean", "default": True},
+                "ensure_parents": {"type": "boolean", "default": True},
+            },
+            "required": ["path"],
         },
     },
     {
@@ -830,6 +851,25 @@ TOOLS: list[dict[str, Any]] = [
                 "subject": {"type": "string"},
             },
             "required": ["path", "via", "to"],
+        },
+    },
+    {
+        "name": "mailru.upload",
+        "description": (
+            "Alias of files.upload — save text/base64 file to Mail.ru Облако "
+            "(company cloud disk)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "text": {"type": "string"},
+                "content_base64": {"type": "string"},
+                "content_type": {"type": "string"},
+                "overwrite": {"type": "boolean", "default": True},
+                "ensure_parents": {"type": "boolean", "default": True},
+            },
+            "required": ["path"],
         },
     },
     {

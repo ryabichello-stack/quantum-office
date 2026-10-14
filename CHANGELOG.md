@@ -12,6 +12,7 @@
 
 ### Added
 
+- Files/MCP: `files.upload` / `mailru.upload` + `POST /api/files/upload` — сохранение файлов на Mail.ru Облако (text или base64); ассистент может писать на корпоративный диск, не только читать/отправлять.
 - Outreach MCP: `mail.send` + `POST /api/mail/send` — обычные письма (text/html, cc, reply_to, mailbox=office|cold); холодный ящик через `OUTREACH_COLD_MAIL_*` (не `quantumlabs.ru`).
 - Outreach: модуль `sending_accounts` + gate на `send_batch`/`send_one` — cold marketing только с ACTIVE marketing-аккаунта; `office@` остаётся для тёплой переписки.
 - Outreach: `POST /api/leads/import` / `leads/check` + MCP `outreach.leads_import` / `lead_check` — CSV (компания, сегмент, сайт, email, телефон, ЛПР, источник) с дедупом по Bitrix clients + истории outbox.

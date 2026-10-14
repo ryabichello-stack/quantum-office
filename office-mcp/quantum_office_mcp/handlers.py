@@ -595,6 +595,21 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
                 body[key] = args[key]
         return _tool_result(files_request("POST", "/api/files/send", body))
 
+    if name in {"files.upload", "mailru.upload"}:
+        body = {
+            "source": "mailru" if name.startswith("mailru.") else (args.get("source") or "mailru"),
+            "path": args.get("path"),
+            "overwrite": _as_bool(args.get("overwrite"), True),
+            "ensure_parents": _as_bool(args.get("ensure_parents"), True),
+        }
+        if args.get("text") is not None:
+            body["text"] = args["text"]
+        if args.get("content_base64") is not None:
+            body["content_base64"] = args["content_base64"]
+        if args.get("content_type") is not None:
+            body["content_type"] = args["content_type"]
+        return _tool_result(files_request("POST", "/api/files/upload", body, timeout=180.0))
+
     if name == "mail.send":
         body = {
             "to": args.get("to"),

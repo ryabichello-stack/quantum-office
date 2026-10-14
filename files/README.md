@@ -53,6 +53,8 @@ Content-Type: application/json
 ```http
 POST /api/files/list   {"source":"mailru","path":"/"}
 POST /api/files/search {"source":"mailru","query":"договор","path":"/","limit":40}
+POST /api/files/upload {"source":"mailru","path":"/MCP/note.txt","text":"..."}
+POST /api/files/upload {"source":"mailru","path":"/MCP/doc.pdf","content_base64":"..."}
 ```
 
 Health: `GET /health` (поле `sources.mailru_configured`)

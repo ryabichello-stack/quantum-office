@@ -210,6 +210,154 @@ def fetch_mailru(path: str) -> FetchedFile:
     )
 
 
+def _mailru_mkcol(dir_path: str) -> None:
+    """Create a single directory via WebDAV MKCOL (ignore if already exists)."""
+    clean = _normalize_dir_path(dir_path)
+    if clean == "/":
+        return
+    url = _mailru_url(clean)
+    req = urllib.request.Request(
+        url,
+        data=b"",
+        method="MKCOL",
+        headers={
+            "Authorization": _mailru_auth_header(),
+            "User-Agent": "ava-files/mailru-webdav",
+            "Content-Length": "0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            resp.read()
+    except urllib.error.HTTPError as exc:
+        # 405/409/301 often mean directory already exists
+        if exc.code in (201, 405, 409, 301, 302):
+            return
+        if exc.code == 405:
+            return
+        body = exc.read().decode("utf-8", errors="replace")[:300]
+        # Some Mail.ru builds return 405 for existing collection
+        if exc.code in (400, 403) and "exist" in body.lower():
+            return
+        raise SourceError("mailru_mkcol_error", f"Mail.ru MKCOL {exc.code}: {body}") from exc
+
+
+def ensure_mailru_parents(file_path: str) -> None:
+    """Create parent folders for path (e.g. /MCP/notes/a.txt → /MCP, /MCP/notes)."""
+    clean = file_path if file_path.startswith("/") else f"/{file_path}"
+    parent = str(Path(clean).parent)
+    if parent in ("", ".", "/"):
+        return
+    parts = [p for p in parent.split("/") if p]
+    cur = ""
+    for part in parts:
+        cur = f"{cur}/{part}"
+        _mailru_mkcol(cur)
+
+
+def upload_mailru(
+    path: str,
+    content: bytes,
+    *,
+    content_type: str | None = None,
+    overwrite: bool = True,
+    ensure_parents: bool = True,
+) -> dict:
+    """Upload bytes to Mail.ru Cloud via WebDAV PUT. Returns path metadata."""
+    if not (MAILRU_WEBDAV_USER and MAILRU_WEBDAV_PASSWORD):
+        raise SourceError(
+            "mailru_not_configured",
+            "Set MAILRU_WEBDAV_USER/PASSWORD (or MAIL_USERNAME/MAIL_PASSWORD) in .env",
+        )
+    clean = path if path.startswith("/") else f"/{path}"
+    if clean.endswith("/") or not Path(clean).name:
+        raise SourceError("invalid_path", "upload path must include a filename")
+    if ".." in Path(clean).parts:
+        raise SourceError("path_not_allowed", "path traversal denied")
+    data = _read_limited(content or b"", clean)
+    if ensure_parents:
+        try:
+            ensure_mailru_parents(clean)
+        except SourceError as exc:
+            logger.warning("ensure parents skipped: %s %s", exc.code, exc.message)
+    if not overwrite:
+        head = urllib.request.Request(
+            _mailru_url(clean),
+            method="HEAD",
+            headers={
+                "Authorization": _mailru_auth_header(),
+                "User-Agent": "ava-files/mailru-webdav",
+            },
+        )
+        try:
+            with urllib.request.urlopen(head, timeout=30) as resp:
+                resp.read()
+            raise SourceError("already_exists", f"file already exists: {clean}")
+        except urllib.error.HTTPError as exc:
+            if exc.code in (404, 410, 405):
+                pass  # missing or HEAD unsupported → allow PUT
+            elif exc.code >= 500:
+                body = exc.read().decode("utf-8", errors="replace")[:200]
+                raise SourceError(
+                    "mailru_http_error", f"Mail.ru HEAD {exc.code}: {body}"
+                ) from exc
+            else:
+                # 200-range already raised; other client errors → treat as exists
+                raise SourceError("already_exists", f"file already exists: {clean}") from exc
+    ctype = (content_type or _guess_type(Path(clean).name)).strip() or "application/octet-stream"
+    req = urllib.request.Request(
+        _mailru_url(clean),
+        data=data,
+        method="PUT",
+        headers={
+            "Authorization": _mailru_auth_header(),
+            "User-Agent": "ava-files/mailru-webdav",
+            "Content-Type": ctype,
+            "Content-Length": str(len(data)),
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            status = getattr(resp, "status", 201)
+            resp.read()
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")[:400]
+        raise SourceError("mailru_http_error", f"Mail.ru PUT {exc.code}: {body}") from exc
+    except Exception as exc:
+        raise SourceError("mailru_error", str(exc)) from exc
+    return {
+        "ok": True,
+        "source": "mailru",
+        "path": clean,
+        "filename": Path(clean).name,
+        "bytes": len(data),
+        "content_type": ctype,
+        "account": MAILRU_WEBDAV_USER,
+        "http_status": int(status) if isinstance(status, int) else 201,
+    }
+
+
+def upload_file(
+    source: str,
+    path: str,
+    content: bytes,
+    *,
+    content_type: str | None = None,
+    overwrite: bool = True,
+    ensure_parents: bool = True,
+) -> dict:
+    source = (source or "mailru").strip().lower()
+    if source in ("mailru", "mailru_disk", "cloud_mail"):
+        return upload_mailru(
+            path,
+            content,
+            content_type=content_type,
+            overwrite=overwrite,
+            ensure_parents=ensure_parents,
+        )
+    raise SourceError("unknown_source", f"upload unsupported for source: {source}")
+
+
 def _normalize_dir_path(path: str) -> str:
     clean = (path or "/").strip() or "/"
     if not clean.startswith("/"):
