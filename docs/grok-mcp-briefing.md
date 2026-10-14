@@ -4,7 +4,9 @@
 Это не общий интернет и не «заглушки»: инструменты вызывают **боевые office-сервисы** на `a.47z.ru` (телефония, почта, Облако Mail.ru, календарь Яндекса, Second Brain, outreach).
 
 Ниже — что ты умеешь, какими tools пользоваться, и типичные сценарии.  
-Всего ~78 tools. Алиасы (например `calls.dial` = `telephony.dial`) дублируют одно и то же API.
+Всего **~83 tools** (gateway `≥0.3.2`, `schema_revision=2026-10-14-messenger-history`).  
+Если в каталоге нет `messenger.history` / `body` у `mailru.send` — **обнови tools catalog** и проверь `GET /health`.  
+Алиасы (например `calls.dial` = `telephony.dial`) дублируют одно и то же API.
 
 ---
 
@@ -375,6 +377,17 @@ PDF/DOCX через `mailru.read` не читаются — только send/up
 2. `telephony.assign_task`  
 3. Позже `telephony.calls_get` — итог разговора  
 
+### G. «Прочитай переписку в Telegram/Max и ответь»
+
+1. `messenger.status` — убедись, что канал жив  
+2. `messenger.chats` (фильтр `channel=telegram|max|telegram_business`) — найди `session_id`  
+3. `messenger.history` session_id=`telegram:…` или `max:…` — прочитай диалог  
+4. При необходимости факты о продукте: `kb.search` / `knowledge.query`  
+5. Ответ человеку: `messenger.send` / `telegram.send` / `max.send`  
+   (или `messenger.chat` — если нужен ответ **секретаря с KB**, а не сырая отправка)
+
+Для Max-группы, где бот админ: дополнительно `messenger.messages` chat_id=… (нативный API).
+
 ---
 
 ## Правила безопасности и качества
@@ -399,6 +412,8 @@ PDF/DOCX через `mailru.read` не читаются — только send/up
 | `outreach.sync` 401 | Bitrix REST без подписки | Работай по локальному зеркалу; синку жди починки webhook |
 | Пакет «без текста» | Смотрел только `packs` | Вызови `outreach.pack_get` |
 | Mango 401 Service disabled | API провайдера | Dial через SIP; callback может не работать |
+| Нет `messenger.history` / `path` обязателен у mailru | Stale catalog | Refresh tools; `/health` → version≥0.3.2 |
+| `messenger.status` 404 | Старый text-bot | На проде должны быть `/api/messenger/*` |
 
 ---
 
@@ -415,6 +430,10 @@ PDF/DOCX через `mailru.read` не читаются — только send/up
 Outreach пакет     → outreach.pack_get → leads_import → send_*
 Ответ на письмо    → outreach.replies → mail.send (office)
 Звонок             → telephony.assign_task
+TG/Max список      → messenger.chats
+TG/Max читать      → messenger.history (Max native: messenger.messages)
+TG/Max отправить   → messenger.send / telegram.send / max.send
+Секретарь+KB       → messenger.chat
 Здоровье стека     → office.health
 ```
 
