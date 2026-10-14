@@ -222,18 +222,45 @@ class AccountStore:
             ).fetchone()
         return dict(row) if row else None
 
-    def upsert_account_from_company(self, company: dict[str, Any]) -> dict[str, Any]:
-        """Upsert Account from clients.companies row (or company_card company dict)."""
+    def upsert_account_from_company(
+        self,
+        company: dict[str, Any],
+        *,
+        lifecycle: str | None = None,
+        auto_enrich: bool = True,
+    ) -> dict[str, Any]:
+        """Upsert Account from clients.companies row (or company_card company dict).
+
+        Existing bitrix-linked accounts keep their lifecycle (and still get field
+        refresh). New accounts default to NEW; with auto_enrich=True they move to
+        ENRICHED when inn/timezone/director is present. Pass lifecycle=... and
+        auto_enrich=False to force a status for backfill (e.g. sync → NEW).
+        """
         bid = str(company.get("bitrix_id") or company.get("id") or "").strip()
         title = (company.get("title") or company.get("legal_name") or "").strip()
         now = _utc_now()
         existing = self.get_account_by_bitrix(bid) if bid else None
-        lifecycle = existing["lifecycle_status"] if existing else "NEW"
-        # Enrichment signal
-        if lifecycle == "NEW" and (
-            company.get("inn") or company.get("timezone") or company.get("director_name")
+        if existing:
+            life = existing["lifecycle_status"]
+        elif lifecycle:
+            life = (lifecycle or "NEW").strip().upper()
+            if life not in LIFECYCLE:
+                raise ValueError(f"invalid lifecycle_status: {life}")
+        else:
+            life = "NEW"
+        # Enrichment signal (only for brand-new NEW accounts)
+        if (
+            not existing
+            and auto_enrich
+            and life == "NEW"
+            and (
+                company.get("inn")
+                or company.get("timezone")
+                or company.get("director_name")
+            )
         ):
-            lifecycle = "ENRICHED"
+            life = "ENRICHED"
+        lifecycle = life
         aid = existing["id"] if existing else _new_id()
         with self.connect() as conn:
             conn.execute(
@@ -292,34 +319,213 @@ class AccountStore:
             )
         return self.get_account(account_id)
 
-    def list_accounts(self, *, q: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
-        limit = max(1, min(int(limit), 200))
-        with self.connect() as conn:
-            if q:
-                like = f"%{q.strip().lower()}%"
-                rows = conn.execute(
+    def upsert_manual(
+        self,
+        *,
+        name: str,
+        email: str | None = None,
+        phone: str | None = None,
+        inn: str | None = None,
+        domain: str | None = None,
+        region: str | None = None,
+        city: str | None = None,
+        lifecycle_status: str = "NEW",
+        contact_name: str = "",
+        source: str = "mcp",
+        note: str = "",
+        bitrix_company_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Create or update a local CRM account (mini-CRM for Grok/MCP)."""
+        title = (name or "").strip()
+        if not title:
+            raise ValueError("name_required")
+        life = (lifecycle_status or "NEW").strip().upper()
+        if life not in LIFECYCLE:
+            raise ValueError(f"invalid lifecycle_status: {life}")
+        em = normalize_email(email)
+        bid = (bitrix_company_id or "").strip() or None
+        inn_s = (inn or "").strip() or None
+        domain_s = (domain or "").strip().lower() or None
+        if domain_s and "://" in domain_s:
+            domain_s = domain_s.split("://", 1)[1].split("/", 1)[0]
+        if not domain_s and em and "@" in em:
+            domain_s = em.split("@", 1)[1]
+
+        existing = None
+        if bid:
+            existing = self.get_account_by_bitrix(bid)
+        if not existing and inn_s:
+            with self.connect() as conn:
+                row = conn.execute(
                     """
                     SELECT * FROM accounts
-                    WHERE tenant_id = ?
-                      AND (
-                        lower(legal_name) LIKE ?
-                        OR lower(brand_name) LIKE ?
-                        OR inn LIKE ?
-                        OR bitrix_company_id LIKE ?
-                      )
-                    ORDER BY updated_at DESC LIMIT ?
+                    WHERE tenant_id = ? AND inn = ?
+                    ORDER BY updated_at DESC LIMIT 1
                     """,
-                    (self.tenant_id, like, like, like, like, limit),
-                ).fetchall()
-            else:
-                rows = conn.execute(
+                    (self.tenant_id, inn_s),
+                ).fetchone()
+            existing = dict(row) if row else None
+        if not existing and em:
+            with self.connect() as conn:
+                row = conn.execute(
                     """
-                    SELECT * FROM accounts WHERE tenant_id = ?
-                    ORDER BY updated_at DESC LIMIT ?
+                    SELECT a.* FROM accounts a
+                    JOIN contact_points cp ON cp.account_id = a.id
+                    WHERE a.tenant_id = ? AND cp.type = 'email' AND cp.value = ?
+                    LIMIT 1
                     """,
-                    (self.tenant_id, limit),
-                ).fetchall()
+                    (self.tenant_id, em),
+                ).fetchone()
+            existing = dict(row) if row else None
+        if not existing:
+            with self.connect() as conn:
+                row = conn.execute(
+                    """
+                    SELECT * FROM accounts
+                    WHERE tenant_id = ? AND lower(legal_name) = lower(?)
+                    ORDER BY updated_at DESC LIMIT 1
+                    """,
+                    (self.tenant_id, title),
+                ).fetchone()
+            existing = dict(row) if row else None
+
+        now = _utc_now()
+        aid = existing["id"] if existing else _new_id()
+        meta: dict[str, Any] = {}
+        if existing and existing.get("metadata_json"):
+            try:
+                meta = json.loads(existing["metadata_json"] or "{}")
+            except Exception:
+                meta = {}
+        meta.update({"source": source or "mcp", "updated_via": "crm.upsert"})
+        if note:
+            notes = list(meta.get("notes") or [])
+            notes.append({"at": now, "text": note[:2000]})
+            meta["notes"] = notes[-20:]
+
+        if existing and life == "NEW":
+            life = existing.get("lifecycle_status") or life
+
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO accounts(
+                    id, tenant_id, bitrix_company_id, legal_name, brand_name, inn,
+                    domain, region, city, timezone, lifecycle_status,
+                    metadata_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    legal_name=excluded.legal_name,
+                    brand_name=excluded.brand_name,
+                    inn=COALESCE(excluded.inn, accounts.inn),
+                    domain=COALESCE(excluded.domain, accounts.domain),
+                    region=COALESCE(excluded.region, accounts.region),
+                    city=COALESCE(excluded.city, accounts.city),
+                    bitrix_company_id=COALESCE(excluded.bitrix_company_id, accounts.bitrix_company_id),
+                    lifecycle_status=excluded.lifecycle_status,
+                    metadata_json=excluded.metadata_json,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    aid,
+                    self.tenant_id,
+                    bid or (existing.get("bitrix_company_id") if existing else None),
+                    title,
+                    title,
+                    inn_s,
+                    domain_s,
+                    region,
+                    city,
+                    existing.get("timezone") if existing else None,
+                    life,
+                    json.dumps(meta, ensure_ascii=False),
+                    existing["created_at"] if existing else now,
+                    now,
+                ),
+            )
+
+        person = self.ensure_person(
+            full_name=contact_name or title,
+            email=em,
+            phone=phone,
+            account_id=aid,
+            title="",
+        )
+        lead_status = life if life in {"NEW", "ENRICHED", "REPLIED", "INTERESTED"} else "NEW"
+        lead = self.upsert_lead(
+            account_id=aid,
+            person_id=(person or {}).get("id"),
+            source=source or "mcp",
+            status=lead_status,
+            product="",
+        )
+        self.emit_event(
+            event_type="crm.account_upserted",
+            source=source or "mcp",
+            channel="api",
+            account_id=aid,
+            person_id=(person or {}).get("id"),
+            payload={"name": title, "email": em, "lifecycle": life},
+        )
+        acc = self.get_account(aid)
+        assert acc
+        return {
+            "account": acc,
+            "person": person,
+            "lead": lead,
+            "created": existing is None,
+        }
+
+    def list_accounts(
+        self,
+        *,
+        q: str | None = None,
+        lifecycle: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit), 200))
+        life = (lifecycle or "").strip().upper() or None
+        if life and life not in LIFECYCLE:
+            raise ValueError(f"invalid lifecycle_status: {life}")
+        with self.connect() as conn:
+            clauses = ["tenant_id = ?"]
+            params: list[Any] = [self.tenant_id]
+            if life:
+                clauses.append("lifecycle_status = ?")
+                params.append(life)
+            if q:
+                like = f"%{q.strip().lower()}%"
+                clauses.append(
+                    "("
+                    "lower(legal_name) LIKE ? OR lower(brand_name) LIKE ? "
+                    "OR ifnull(inn,'') LIKE ? OR ifnull(bitrix_company_id,'') LIKE ? "
+                    "OR ifnull(domain,'') LIKE ?"
+                    ")"
+                )
+                params.extend([like, like, like, like, like])
+            params.append(limit)
+            sql = f"""
+                SELECT * FROM accounts
+                WHERE {' AND '.join(clauses)}
+                ORDER BY updated_at DESC LIMIT ?
+            """
+            rows = conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
+
+    def funnel_counts(self) -> dict[str, int]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT lifecycle_status, COUNT(*) AS n
+                FROM accounts WHERE tenant_id = ?
+                GROUP BY lifecycle_status
+                """,
+                (self.tenant_id,),
+            ).fetchall()
+        out = {k: 0 for k in LIFECYCLE}
+        for r in rows:
+            out[str(r["lifecycle_status"])] = int(r["n"])
+        return out
 
     # --- people / contact points ---
 
@@ -809,21 +1015,53 @@ class AccountStore:
             "suggested_reply": draft,
         }
 
-    def sync_from_clients(self, *, limit: int = 500) -> dict[str, Any]:
-        """Backfill accounts from clients.companies."""
+    def sync_from_clients(
+        self,
+        *,
+        limit: int = 500,
+        lifecycle_for_new: str = "NEW",
+        skip_existing: bool = True,
+    ) -> dict[str, Any]:
+        """Backfill accounts from clients.companies (Bitrix mirror).
+
+        By default inserts missing companies as NEW and does not touch accounts
+        that already have the same bitrix_company_id (no duplicate / no stage
+        overwrite). Set skip_existing=False to refresh fields via upsert.
+        """
         from modules.clients import ClientsStore
 
+        life = (lifecycle_for_new or "NEW").strip().upper()
+        if life not in LIFECYCLE:
+            raise ValueError(f"invalid lifecycle_for_new: {life}")
+
         clients = ClientsStore()
-        n = 0
+        created = 0
+        skipped = 0
         with clients.connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM companies ORDER BY updated_at DESC LIMIT ?",
-                (max(1, min(limit, 5000)),),
+                (max(1, min(int(limit), 5000)),),
             ).fetchall()
         for r in rows:
-            self.upsert_account_from_company(dict(r))
-            n += 1
-        return {"ok": True, "upserted": n}
+            company = dict(r)
+            bid = str(company.get("bitrix_id") or company.get("id") or "").strip()
+            if skip_existing and bid and self.get_account_by_bitrix(bid):
+                skipped += 1
+                continue
+            self.upsert_account_from_company(
+                company,
+                lifecycle=life,
+                auto_enrich=False,
+            )
+            created += 1
+        return {
+            "ok": True,
+            "upserted": created,
+            "created": created,
+            "skipped": skipped,
+            "scanned": len(rows),
+            "lifecycle_for_new": life,
+        }
 
 
 def suggest_next_action(
@@ -985,7 +1223,7 @@ def classify_to_lifecycle(classification: str | None) -> str | None:
 
 class AccountsModule:
     name = "accounts"
-    version = "0.1.0"
+    version = "0.2.0"
 
     def __init__(self) -> None:
         self.store = AccountStore()
@@ -1037,9 +1275,64 @@ class AccountsModule:
 
         @router.get("")
         def list_accounts(
-            q: str | None = None, limit: int = Query(50, ge=1, le=200)
+            q: str | None = None,
+            lifecycle: str | None = None,
+            limit: int = Query(50, ge=1, le=200),
         ) -> dict[str, Any]:
-            return {"ok": True, "items": self.store.list_accounts(q=q, limit=limit)}
+            try:
+                items = self.store.list_accounts(q=q, lifecycle=lifecycle, limit=limit)
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            return {
+                "ok": True,
+                "items": items,
+                "count": len(items),
+                "funnel": self.store.funnel_counts(),
+                "lifecycle_values": list(LIFECYCLE),
+            }
+
+        class UpsertBody(BaseModel):
+            name: str = Field(..., min_length=1, max_length=400)
+            email: str | None = None
+            phone: str | None = None
+            inn: str | None = None
+            domain: str | None = None
+            region: str | None = None
+            city: str | None = None
+            contact_name: str = ""
+            lifecycle_status: str = "NEW"
+            source: str = "mcp"
+            note: str = ""
+            bitrix_company_id: str | None = None
+
+        @router.post("")
+        def upsert_account(body: UpsertBody) -> dict[str, Any]:
+            try:
+                out = self.store.upsert_manual(
+                    name=body.name,
+                    email=body.email,
+                    phone=body.phone,
+                    inn=body.inn,
+                    domain=body.domain,
+                    region=body.region,
+                    city=body.city,
+                    contact_name=body.contact_name,
+                    lifecycle_status=body.lifecycle_status,
+                    source=body.source or "mcp",
+                    note=body.note,
+                    bitrix_company_id=body.bitrix_company_id,
+                )
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            return {"ok": True, **out}
+
+        @router.get("/meta/funnel")
+        def funnel() -> dict[str, Any]:
+            return {
+                "ok": True,
+                "funnel": self.store.funnel_counts(),
+                "lifecycle_values": list(LIFECYCLE),
+            }
 
         @router.get("/meta/events")
         def events(
@@ -1101,8 +1394,19 @@ class AccountsModule:
             return {"ok": True, "account": acc}
 
         @router.post("/sync-from-clients")
-        def sync(limit: int = Query(500, ge=1, le=5000)) -> dict[str, Any]:
-            return self.store.sync_from_clients(limit=limit)
+        def sync(
+            limit: int = Query(5000, ge=1, le=5000),
+            lifecycle_for_new: str = Query("NEW"),
+            skip_existing: bool = Query(True),
+        ) -> dict[str, Any]:
+            try:
+                return self.store.sync_from_clients(
+                    limit=limit,
+                    lifecycle_for_new=lifecycle_for_new,
+                    skip_existing=skip_existing,
+                )
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
 
         class ResolveBody(BaseModel):
             email: str | None = None
@@ -1163,6 +1467,7 @@ class AccountsModule:
                 "ok": True,
                 "account": acc,
                 "timeline": self.store.timeline(account_id, limit=30),
+                "lifecycle_values": list(LIFECYCLE),
             }
 
         class LifecycleBody(BaseModel):

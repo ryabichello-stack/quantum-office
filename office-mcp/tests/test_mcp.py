@@ -203,6 +203,40 @@ def test_messenger_chats(monkeypatch):
     assert payload["chats"][0]["session_id"] == "max:1"
 
 
+def test_crm_company_upsert(monkeypatch):
+    def fake_outreach(method, path, body=None, query=None, timeout=90.0):
+        assert method == "POST"
+        assert path == "/api/modules/accounts"
+        assert body["name"] == "ООО Тест"
+        assert body["lifecycle_status"] == "INTERESTED"
+        return {
+            "ok": True,
+            "created": True,
+            "account": {"id": "acc-1", "legal_name": "ООО Тест", "lifecycle_status": "INTERESTED"},
+        }
+
+    monkeypatch.setattr("quantum_office_mcp.handlers.outreach_request", fake_outreach)
+    out = call_tool(
+        "crm.company_upsert",
+        {"name": "ООО Тест", "email": "a@test.ru", "lifecycle_status": "INTERESTED"},
+    )
+    payload = json.loads(out["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["account"]["id"] == "acc-1"
+
+
+def test_crm_lifecycle_set(monkeypatch):
+    def fake_outreach(method, path, body=None, query=None, timeout=90.0):
+        assert path == "/api/modules/accounts/acc-1/lifecycle"
+        assert body["status"] == "MEETING_BOOKED"
+        return {"ok": True, "account": {"id": "acc-1", "lifecycle_status": "MEETING_BOOKED"}}
+
+    monkeypatch.setattr("quantum_office_mcp.handlers.outreach_request", fake_outreach)
+    out = call_tool("crm.lifecycle_set", {"account_id": "acc-1", "status": "MEETING_BOOKED"})
+    payload = json.loads(out["content"][0]["text"])
+    assert payload["account"]["lifecycle_status"] == "MEETING_BOOKED"
+
+
 def test_kb_search_legacy_first(monkeypatch):
     calls = []
 

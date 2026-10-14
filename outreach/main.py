@@ -36,6 +36,7 @@ from modules.verification import VerificationModule
 from modules.sequences import SequencesModule
 from modules.policy import PolicyModule
 from modules.replies import RepliesModule
+from modules.accounts import AccountsModule
 from modules.sending_accounts import SendingAccountsModule
 from modules.dns_auth import DnsAuthModule
 from outbox import OutboxStore
@@ -98,6 +99,7 @@ _verification_mod = VerificationModule()
 _sequences_mod = SequencesModule()
 _policy_mod = PolicyModule()
 _replies_mod = RepliesModule()
+_accounts_mod = AccountsModule()
 _sending_accounts_mod = SendingAccountsModule()
 _dns_auth_mod = DnsAuthModule()
 _registry.register(_tracking_mod)
@@ -111,6 +113,7 @@ _registry.register(_verification_mod)
 _registry.register(_sequences_mod)
 _registry.register(_policy_mod)
 _registry.register(_replies_mod)
+_registry.register(_accounts_mod)
 _registry.register(_sending_accounts_mod)
 _registry.register(_dns_auth_mod)
 _app_ctx: AppContext | None = None
@@ -271,6 +274,7 @@ def _status_payload() -> dict[str, Any]:
         "sequences": _sequences_mod.health(),
         "policy": _policy_mod.health(),
         "reply_inbox": _replies_mod.health(),
+        "accounts": _accounts_mod.health(),
         "sending_accounts": _sending_accounts_mod.health(),
         "dns_auth": _dns_auth_mod.health(),
         "cold_smtp_configured": cold_smtp_configured(),

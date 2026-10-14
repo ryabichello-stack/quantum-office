@@ -126,12 +126,13 @@ def health() -> dict[str, Any]:
             "messenger.history": True,
             "messenger.chats": True,
             "messenger.messages_max": True,
+            "crm.mini": True,
         },
         "endpoints": ["/health", "/tools", "/tools/call", "/mcp", "/openapi-lite"],
         "note": (
             "Refresh tools catalog if schemas look stale. "
-            "Expect version>=0.3.3 and schema_revision=2026-10-14-kb-legacy-first-replies. "
-            "kb.search uses markdown legacy first (no PG hang); brain optional ≤4s."
+            "Expect version>=0.3.4 and schema_revision=2026-10-14-mini-crm. "
+            "Mini-CRM: crm.company_upsert / crm.lifecycle_set / crm.companies / crm.funnel."
         ),
     }
 
