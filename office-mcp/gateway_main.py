@@ -122,11 +122,16 @@ def health() -> dict[str, Any]:
             "mailru.send_text_body": True,
             "mailru.send_path_optional": True,
             "kb.search_legacy_fallback": True,
+            "messenger.history": True,
+            "messenger.chats": True,
+            "messenger.messages_max": True,
         },
         "endpoints": ["/health", "/tools", "/tools/call", "/mcp", "/openapi-lite"],
         "note": (
-            "If mailru.send schema lacks body / requires path — refresh tools catalog. "
-            "Expect version>=0.3.1 and schema_revision=2026-10-14-mailru-body-kb-fallback."
+            "Refresh tools catalog if schemas look stale. "
+            "Expect version>=0.3.2 and schema_revision=2026-10-14-messenger-history. "
+            "Messenger: messenger.chats / history / send; Max native: messenger.messages; "
+            "company knowledge: kb.search."
         ),
     }
 

@@ -162,7 +162,7 @@ def test_mailru_read(monkeypatch):
 
 
 def test_messenger_send(monkeypatch):
-    def fake_tb(method, path, body=None, timeout=90.0):
+    def fake_tb(method, path, body=None, query=None, timeout=90.0):
         assert path == "/api/messenger/send"
         assert body["channel"] == "telegram"
         return {"ok": True, "channel": "telegram"}
@@ -171,3 +171,33 @@ def test_messenger_send(monkeypatch):
     out = call_tool("telegram.send", {"chat_id": "1", "text": "привет"})
     payload = json.loads(out["content"][0]["text"])
     assert payload["ok"] is True
+
+
+def test_messenger_history(monkeypatch):
+    def fake_tb(method, path, body=None, query=None, timeout=90.0):
+        assert method == "GET"
+        assert path == "/api/messenger/history"
+        assert query["channel"] == "telegram"
+        assert query["user_id"] == "963782"
+        return {
+            "ok": True,
+            "session_id": "telegram:963782",
+            "messages": [{"role": "user", "content": "привет"}],
+        }
+
+    monkeypatch.setattr("quantum_office_mcp.handlers.text_bot_request", fake_tb)
+    out = call_tool("telegram.history", {"user_id": "963782", "limit": 10})
+    payload = json.loads(out["content"][0]["text"])
+    assert payload["session_id"] == "telegram:963782"
+
+
+def test_messenger_chats(monkeypatch):
+    def fake_tb(method, path, body=None, query=None, timeout=90.0):
+        assert path == "/api/messenger/chats"
+        assert query["channel"] == "max"
+        return {"ok": True, "chats": [{"session_id": "max:1"}]}
+
+    monkeypatch.setattr("quantum_office_mcp.handlers.text_bot_request", fake_tb)
+    out = call_tool("messenger.chats", {"channel": "max"})
+    payload = json.loads(out["content"][0]["text"])
+    assert payload["chats"][0]["session_id"] == "max:1"

@@ -310,11 +310,20 @@ PDF/DOCX через `mailru.read` не читаются — только send/up
 
 | Tool | Назначение |
 |------|------------|
-| `messenger.status` | что настроено |
-| `messenger.send` | отправить в `telegram` или `max` |
-| `telegram.send` / `max.send` | алиасы |
-| `messenger.chat` | диалог с HTTP-секретарём |
+| `messenger.status` | что настроено (TG / Business / Max) |
+| `messenger.chats` | список сессий (`telegram:…`, `max:…`, `telegram_business:…`) |
+| `messenger.history` | **читать переписку** сессии (локальная БД секретаря) |
+| `telegram.history` / `max.history` | алиасы history |
+| `messenger.messages` | нативные сообщения Max API (`GET /messages`, нужен admin) |
+| `messenger.send` | отправить в `telegram` / `max` / `telegram_business` |
+| `telegram.send` / `max.send` | алиасы send |
+| `messenger.chat` | диалог с HTTP-секретарём (**с доступом к базе знаний**) |
 | `messenger.chat_reset` | сброс сессии |
+
+**Важно:**
+- Telegram Bot API не отдаёт полную облачную историю — `messenger.history` = то, что видел/писал бот (и outbound через MCP).
+- Max: `messenger.history` = сессии секретаря; `messenger.messages` = нативный Max API (бот-админ + `read_all_messages`).
+- Общая база знаний компании — отдельно: `kb.search` / `knowledge.query` (и через `messenger.chat` секретарь сам ходит в KB).
 
 ---
 

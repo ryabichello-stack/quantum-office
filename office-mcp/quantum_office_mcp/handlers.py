@@ -122,7 +122,9 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
         "line.get": "telephony.inbound_line_get",
         "line.set": "telephony.inbound_line_set",
         "telegram.send": "messenger.telegram_send",
+        "telegram.history": "messenger.telegram_history",
         "max.send": "messenger.max_send",
+        "max.history": "messenger.max_history",
     }
     name = aliases.get(name, name)
 
@@ -417,12 +419,69 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
     if name == "messenger.status":
         return _tool_result(text_bot_request("GET", "/api/messenger/status"))
 
+    if name == "messenger.chats":
+        return _tool_result(
+            text_bot_request(
+                "GET",
+                "/api/messenger/chats",
+                query={
+                    "channel": args.get("channel"),
+                    "limit": int(args.get("limit") or 50),
+                },
+            )
+        )
+
+    if name in {
+        "messenger.history",
+        "messenger.telegram_history",
+        "messenger.max_history",
+    }:
+        channel = args.get("channel")
+        if name == "messenger.telegram_history":
+            channel = channel or "telegram"
+        if name == "messenger.max_history":
+            channel = channel or "max"
+        return _tool_result(
+            text_bot_request(
+                "GET",
+                "/api/messenger/history",
+                query={
+                    "session_id": args.get("session_id"),
+                    "channel": channel,
+                    "user_id": args.get("user_id"),
+                    "chat_id": args.get("chat_id"),
+                    "limit": int(args.get("limit") or 40),
+                    "include_tools": (
+                        "true" if args.get("include_tools") else "false"
+                    ),
+                },
+            )
+        )
+
+    if name == "messenger.messages":
+        return _tool_result(
+            text_bot_request(
+                "GET",
+                "/api/messenger/messages",
+                query={
+                    "channel": args.get("channel") or "max",
+                    "chat_id": args.get("chat_id"),
+                    "message_ids": args.get("message_ids"),
+                    "count": int(args.get("count") or 50),
+                    "from_ts": args.get("from_ts"),
+                    "to_ts": args.get("to_ts"),
+                },
+            )
+        )
+
     if name == "messenger.send":
         body = {
             "channel": args.get("channel"),
             "text": args.get("text"),
             "chat_id": args.get("chat_id"),
             "user_id": args.get("user_id"),
+            "business_connection_id": args.get("business_connection_id"),
+            "record_history": args.get("record_history", True),
         }
         return _tool_result(text_bot_request("POST", "/api/messenger/send", body))
 
