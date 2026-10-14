@@ -242,6 +242,9 @@ def load_history(
     include_tools: bool = False,
 ) -> list[dict[str, Any]]:
     """History for MCP/API: includes created_at; tool rows optional."""
+    want = max(1, min(int(limit), 200))
+    # Over-fetch when hiding tool rounds so user/assistant turns still fill `limit`.
+    fetch_n = want if include_tools else min(800, max(want * 6, want))
     with _lock:
         conn = _connect(db_path)
         try:
@@ -253,7 +256,7 @@ def load_history(
                 ORDER BY id DESC
                 LIMIT ?
                 """,
-                (str(chat_id), int(limit)),
+                (str(chat_id), int(fetch_n)),
             ).fetchall()
         finally:
             conn.close()
@@ -280,6 +283,8 @@ def load_history(
         if not include_tools and not msg.get("content") and role == "assistant":
             continue
         out.append(msg)
+    if len(out) > want:
+        out = out[-want:]
     return out
 
 
