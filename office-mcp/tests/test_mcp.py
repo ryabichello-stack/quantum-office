@@ -20,12 +20,37 @@ def test_tools_registered():
     assert "outreach.dashboard" in names
     assert "messenger.send" in names
     assert "mailru.read" in names
+    assert "mail.send" in names
     assert "files.read" in names
     assert "files.upload" in names
     assert "mailru.upload" in names
     assert "files.send" in names
     assert "calendar.create" in names
     assert "conference.create" in names
+
+
+def test_mailru_send_text_routes_to_mail_send(monkeypatch):
+    captured: dict = {}
+
+    def fake_outreach(method, path, body=None, query=None, timeout=60.0):
+        captured["method"] = method
+        captured["path"] = path
+        captured["body"] = body
+        return {"ok": True, "message_id": "mid-1", "from": "office@quantumlabs.ru"}
+
+    monkeypatch.setattr("quantum_office_mcp.handlers.outreach_request", fake_outreach)
+    out = call_tool(
+        "mailru.send",
+        {
+            "to": "a@example.com",
+            "subject": "Hi",
+            "body": "Plain text letter",
+        },
+    )
+    assert out.get("isError") is not True
+    assert captured["path"] == "/api/mail/send"
+    assert captured["body"]["body"] == "Plain text letter"
+    assert captured["body"]["mailbox"] == "office"
 
 
 def test_initialize_and_list_tools():

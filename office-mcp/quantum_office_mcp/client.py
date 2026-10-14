@@ -201,9 +201,8 @@ def knowledge_request(
     # Legacy /api/knowledge/* uses webhook token; brain uses principal headers.
     if path.startswith("/api/knowledge"):
         headers = webhook_headers()
-    # Brain hybrid search is heavier — default 120s (was 60, timed out for MCP).
-    if path.startswith("/api/brain") and timeout < 120.0:
-        timeout = 120.0
+    # Brain search: keep caller timeout (lock_timeout on PG is ~3–15s).
+    # Do not force 120s — that blocked MCP agents from legacy fallback.
     return _http(
         method,
         f"{knowledge_base()}{path}",

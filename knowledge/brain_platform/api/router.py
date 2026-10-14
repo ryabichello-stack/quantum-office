@@ -138,13 +138,27 @@ def brain_search(
     principal = _principal(
         x_principal_id, x_tenant_id, x_groups, x_user_id, x_admin, req.tenant_id
     )
-    return get_search().retrieve(
-        principal,
-        req.query,
-        limit=req.limit,
-        max_chars=req.max_chars,
-        mode=req.mode,
-    )
+    try:
+        return get_search().retrieve(
+            principal,
+            req.query,
+            limit=req.limit,
+            max_chars=req.max_chars,
+            mode=req.mode,
+        )
+    except Exception as exc:  # noqa: BLE001
+        # Never 500 MCP agents on PG lock/timeout — return soft empty + reason.
+        return {
+            "ok": False,
+            "text": "",
+            "chars": 0,
+            "matches": [],
+            "denied": False,
+            "error": type(exc).__name__,
+            "reason": str(exc)[:300],
+            "search_mode": req.mode,
+            "fallback_hint": "knowledge.query",
+        }
 
 
 @router.post("/get")

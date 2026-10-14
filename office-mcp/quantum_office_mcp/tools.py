@@ -603,12 +603,15 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "outreach.packs",
-        "description": "List industry email packs.",
+        "description": (
+            "List industry email packs (id, subject, plain_preview). "
+            "For FULL letter plain/html/steps call outreach.pack_get."
+        ),
         "inputSchema": {"type": "object", "properties": {}},
     },
     {
         "name": "outreach.pack_get",
-        "description": "Get one pack by id.",
+        "description": "Get one pack by id with full letter plain/html for all steps.",
         "inputSchema": {
             "type": "object",
             "properties": {"pack_id": {"type": "string"}},
@@ -840,17 +843,39 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "mailru.send",
-        "description": "Send a Mail.ru Cloud file via email or Telegram.",
+        "description": (
+            "Send email/Telegram. TWO modes: "
+            "(1) file from Mail.ru Cloud — pass path+via+to; "
+            "(2) plain text letter — pass to+subject+body (no path) via office@ SMTP. "
+            "Prefer mail.send for text-only; this alias exists so agents that only see mailru.* still work."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "path": {"type": "string"},
-                "via": {"type": "string", "enum": ["email", "telegram", "mail", "tg"]},
+                "path": {
+                    "type": "string",
+                    "description": "Cloud file path (omit for text-only email)",
+                },
+                "via": {
+                    "type": "string",
+                    "enum": ["email", "telegram", "mail", "tg"],
+                    "default": "email",
+                },
                 "to": {"type": "string"},
                 "caption": {"type": "string"},
-                "subject": {"type": "string"},
+                "subject": {"type": "string", "description": "Email subject (required for text mode)"},
+                "body": {
+                    "type": "string",
+                    "description": "Plain text body for text-only email (no path)",
+                },
+                "html": {"type": "string"},
+                "mailbox": {
+                    "type": "string",
+                    "description": "office | cold for text mode",
+                    "default": "office",
+                },
             },
-            "required": ["path", "via", "to"],
+            "required": ["to"],
         },
     },
     {
@@ -875,8 +900,9 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "mail.send",
         "description": (
-            "Send a regular email (text/html). Use mailbox=office for warm replies "
-            "(office@quantumlabs.ru) or mailbox=cold for marketing domain when configured."
+            "PRIMARY tool for plain text/html email (not a cloud file). "
+            "mailbox=office → office@quantumlabs.ru; mailbox=cold when OUTREACH_COLD_* configured. "
+            "Alias: mailru.send with to+subject+body and no path."
         ),
         "inputSchema": {
             "type": "object",

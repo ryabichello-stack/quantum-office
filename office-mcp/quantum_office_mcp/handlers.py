@@ -244,19 +244,49 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
         return _tool_result(campaign_request("PUT", "/api/campaign/script", body))
 
     if name == "kb.search":
-        return _tool_result(
-            knowledge_request(
-                "POST",
-                "/api/brain/search",
-                {
-                    "query": args.get("query") or "",
-                    "limit": int(args.get("limit") or 8),
-                    "mode": args.get("mode") or "hybrid",
-                    "max_chars": int(args.get("max_chars") or 6000),
-                },
-                timeout=120.0,
+        q = args.get("query") or ""
+        limit = int(args.get("limit") or 8)
+        max_chars = int(args.get("max_chars") or 6000)
+        brain = knowledge_request(
+            "POST",
+            "/api/brain/search",
+            {
+                "query": q,
+                "limit": limit,
+                "mode": args.get("mode") or "hybrid",
+                "max_chars": max_chars,
+            },
+            timeout=45.0,
+        )
+        # PG lock/timeout or soft-fail → legacy markdown knowledge (always works).
+        brain_bad = (
+            not brain.get("ok")
+            or brain.get("http_status", 200) >= 400
+            or brain.get("error")
+            or (
+                not (brain.get("matches") or brain.get("text"))
+                and brain.get("reason")
+                and brain.get("reason") != "deny_all"
             )
         )
+        if brain_bad and not brain.get("denied"):
+            legacy = knowledge_request(
+                "POST",
+                "/api/knowledge/query",
+                {"topic": q, "limit": min(limit, 5), "max_chars": max_chars},
+                timeout=30.0,
+            )
+            return _tool_result(
+                {
+                    "ok": bool(legacy.get("ok")),
+                    "source": "legacy_fallback",
+                    "brain_error": brain.get("error") or brain.get("reason") or brain.get("http_status"),
+                    "query": q,
+                    "legacy": legacy.get("legacy") or legacy,
+                    "brain": brain,
+                }
+            )
+        return _tool_result(brain)
 
     if name == "kb.get":
         return _tool_result(
@@ -584,15 +614,43 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
         return _tool_result(files_request("POST", "/api/files/read", body))
 
     if name in {"files.send", "mailru.send"}:
+        path = (args.get("path") or "").strip()
+        body_text = args.get("body") or args.get("text")
+        # Text-only email: no cloud path → warm SMTP via outreach mail.send
+        if not path and body_text and (args.get("via") in (None, "", "email", "mail") or name == "mailru.send"):
+            mail_body = {
+                "to": args.get("to"),
+                "subject": args.get("subject") or "Сообщение Quantum Labs",
+                "body": body_text,
+                "mailbox": (args.get("mailbox") or args.get("from") or "office"),
+            }
+            if args.get("html") is not None:
+                mail_body["html"] = args["html"]
+            if args.get("cc") is not None:
+                mail_body["cc"] = args["cc"]
+            if args.get("reply_to") is not None:
+                mail_body["reply_to"] = args["reply_to"]
+            return _tool_result(outreach_request("POST", "/api/mail/send", mail_body))
+        if not path:
+            return _tool_result(
+                {
+                    "ok": False,
+                    "error": "path_or_body_required",
+                    "message": "Укажите path (файл с Облака) или body+subject (текстовое письмо).",
+                },
+                is_error=True,
+            )
         body = {
             "source": "mailru" if name.startswith("mailru.") else (args.get("source") or "mailru"),
-            "path": args.get("path"),
-            "via": args.get("via"),
+            "path": path,
+            "via": args.get("via") or "email",
             "to": args.get("to"),
         }
         for key in ("caption", "subject", "ref", "repo"):
             if args.get(key) is not None:
                 body[key] = args[key]
+        if body_text and not body.get("caption"):
+            body["caption"] = body_text
         return _tool_result(files_request("POST", "/api/files/send", body))
 
     if name in {"files.upload", "mailru.upload"}:

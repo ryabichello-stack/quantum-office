@@ -1097,15 +1097,24 @@ PACKS: dict[str, dict[str, Any]] = {
 def list_packs() -> list[dict[str, Any]]:
     out = []
     for p in PACKS.values():
+        steps = list(p.get("steps") or [])
+        step1 = steps[0] if steps else {}
+        plain = str(step1.get("plain") or "")
+        preview = plain.replace("{greeting}", "").replace("{signature}", "").strip()
+        preview = " ".join(preview.split())[:220]
         out.append(
             {
                 "id": p["id"],
                 "title": p["title"],
                 "short": p["short"],
                 "audience": p["audience"],
-                "steps": len(p["steps"]),
+                "steps": len(steps),
+                "subject": step1.get("subject") or "",
+                "plain_preview": preview,
+                "has_letter_text": bool(plain.strip()),
                 "attach_presentation_default": bool(p.get("attach_presentation_default")),
                 "presentation": p.get("presentation") or "quantum_payouts_presentation_small.pdf",
+                "hint": "Full letter text: outreach.pack_get({pack_id})",
             }
         )
     return out

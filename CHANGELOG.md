@@ -10,6 +10,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- MCP: `mailru.send` принимает `subject`+`body` без `path` → текстовое письмо через `office@` (раньше только файл с Облака; ассистенты не находили `mail.send`).
+- MCP `kb.search`: при PG lock/timeout — soft-fail + fallback на `knowledge.query`; brain `/search` больше не отдаёт голый 500.
+- Outreach `GET /api/packs`: в списке есть `subject` / `plain_preview` (текст был только в `pack_get`).
+
 ### Added
 
 - Files/MCP: `files.upload` / `mailru.upload` + `POST /api/files/upload` — сохранение файлов на Mail.ru Облако (text или base64); ассистент может писать на корпоративный диск, не только читать/отправлять.
