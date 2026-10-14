@@ -175,12 +175,79 @@ def _cfg_int(settings: Any, key: str, default: int) -> int:
         return default
 
 
-def smtp_configured() -> bool:
+def office_smtp_configured() -> bool:
     return bool(
         os.getenv("MAIL_SMTP_HOST")
         and os.getenv("MAIL_USERNAME")
         and os.getenv("MAIL_PASSWORD")
     )
+
+
+def smtp_configured() -> bool:
+    """True if office and/or cold SMTP credentials are present."""
+    return office_smtp_configured() or cold_smtp_configured()
+
+
+def cold_smtp_configured() -> bool:
+    user = (
+        os.getenv("OUTREACH_COLD_MAIL_USERNAME")
+        or os.getenv("OUTREACH_COLD_SMTP_USER")
+        or ""
+    ).strip()
+    password = os.getenv("OUTREACH_COLD_MAIL_PASSWORD") or ""
+    return bool(user and password and "@" in user)
+
+
+def resolve_smtp_profile(mailbox: str = "office") -> dict[str, str]:
+    """Return SMTP settings for office (warm) or cold (marketing) mailbox."""
+    key = (mailbox or "office").strip().lower()
+    if key in {"cold", "marketing", "outreach"} or (
+        "@" in key and key.split("@")[-1] not in {"quantumlabs.ru"}
+    ):
+        if not cold_smtp_configured():
+            raise RuntimeError(
+                "cold mailbox not configured — set OUTREACH_COLD_MAIL_USERNAME/PASSWORD"
+            )
+        user = (
+            os.getenv("OUTREACH_COLD_MAIL_USERNAME")
+            or os.getenv("OUTREACH_COLD_SMTP_USER")
+            or ""
+        ).strip()
+        if "@" in key and key != user:
+            # explicit from email must match configured cold user
+            if key != user.lower():
+                raise RuntimeError(f"from {key} is not the configured cold mailbox {user}")
+        return {
+            "host": (os.getenv("OUTREACH_COLD_SMTP_HOST") or "smtp.mail.ru").strip(),
+            "port": (os.getenv("OUTREACH_COLD_SMTP_PORT") or "465").strip(),
+            "user": user,
+            "password": os.getenv("OUTREACH_COLD_MAIL_PASSWORD") or "",
+            "from_name": (
+                os.getenv("OUTREACH_COLD_MAIL_FROM_NAME")
+                or os.getenv("MAIL_FROM_NAME")
+                or "Quantum Labs"
+            ).strip(),
+            "reply_to": (
+                os.getenv("OUTREACH_COLD_REPLY_TO")
+                or os.getenv("MAIL_REPLY_TO")
+                or os.getenv("MAIL_USERNAME")
+                or user
+            ).strip(),
+            "mailbox_key": "cold",
+        }
+    # office / corporate / warm
+    user = (os.getenv("MAIL_USERNAME") or "").strip()
+    if not user or not os.getenv("MAIL_PASSWORD"):
+        raise RuntimeError("office SMTP not configured (MAIL_*)")
+    return {
+        "host": (os.getenv("MAIL_SMTP_HOST") or "smtp.mail.ru").strip(),
+        "port": (os.getenv("MAIL_SMTP_PORT") or "465").strip(),
+        "user": user,
+        "password": os.getenv("MAIL_PASSWORD") or "",
+        "from_name": (os.getenv("MAIL_FROM_NAME") or "Quantum Labs").strip(),
+        "reply_to": (os.getenv("MAIL_REPLY_TO") or user).strip(),
+        "mailbox_key": "office",
+    }
 
 
 def send_email(
@@ -195,18 +262,27 @@ def send_email(
     message_id: str | None = None,
     unsubscribe_url: str | None = None,
     attachments: list[Path] | None = None,
+    mailbox: str = "auto",
+    cc: str | None = None,
 ) -> str:
     """Send one message. Returns Message-ID (without angle brackets).
 
     If message_id is provided (pre-claim), reuse it for SMTP idempotency.
     Optional PDF/file attachments use multipart/mixed wrapping alternative body.
+
+    ``mailbox``: ``auto`` uses cold SMTP when configured (marketing), else office;
+    ``office`` / ``cold`` force profile.
     """
-    host = os.getenv("MAIL_SMTP_HOST", "").strip()
-    port = int(os.getenv("MAIL_SMTP_PORT", "465"))
-    user = os.getenv("MAIL_USERNAME", "").strip()
-    password = os.getenv("MAIL_PASSWORD", "")
-    from_name = os.getenv("MAIL_FROM_NAME", "Quantum Labs").strip()
-    default_reply = os.getenv("MAIL_REPLY_TO", user).strip() or user
+    if mailbox in ("auto", "", None):
+        profile = resolve_smtp_profile("cold" if cold_smtp_configured() else "office")
+    else:
+        profile = resolve_smtp_profile(str(mailbox))
+    host = profile["host"]
+    port = int(profile["port"] or "465")
+    user = profile["user"]
+    password = profile["password"]
+    from_name = profile["from_name"]
+    default_reply = profile["reply_to"] or user
     reply = (reply_to or default_reply).strip()
     timeout = float(os.getenv("MAIL_SMTP_TIMEOUT_SECONDS", "20"))
     domain = user.split("@")[-1] if "@" in user else "localhost"
@@ -245,6 +321,8 @@ def send_email(
 
     msg["From"] = formataddr((from_name, user))
     msg["To"] = to
+    if cc and str(cc).strip():
+        msg["Cc"] = str(cc).strip()
     msg["Subject"] = subject
     msg["Reply-To"] = reply
     msg["Message-ID"] = mid_header
@@ -266,7 +344,14 @@ def send_email(
 
 
 def make_outbound_message_id() -> str:
-    user = os.getenv("MAIL_USERNAME", "").strip()
+    if cold_smtp_configured():
+        user = (
+            os.getenv("OUTREACH_COLD_MAIL_USERNAME")
+            or os.getenv("OUTREACH_COLD_SMTP_USER")
+            or ""
+        ).strip()
+    else:
+        user = os.getenv("MAIL_USERNAME", "").strip()
     domain = user.split("@")[-1] if "@" in user else "localhost"
     return make_msgid(domain=domain).strip().strip("<>")
 
@@ -404,12 +489,6 @@ def send_batch(
     company = _cfg(settings, "OUTREACH_COMPANY_NAME", "Quantum Labs")
     website = _cfg(settings, "OUTREACH_WEBSITE", "https://quantumlabs.ru")
     phone = _cfg(settings, "OUTREACH_CONTACT_PHONE", "")
-    mailbox = os.getenv("MAIL_USERNAME") or "office@quantumlabs.ru"
-    unsub = (
-        _cfg(settings, "OUTREACH_UNSUBSCRIBE_MAILTO", "")
-        or mailbox
-        or "office@quantumlabs.ru"
-    )
     plain_tpl = _cfg(settings, "OUTREACH_TEMPLATE_PLAIN", "")
     html_tpl = _cfg(settings, "OUTREACH_TEMPLATE_HTML", "")
     plus_reply = _cfg_bool(settings, "TRACKING_PLUS_REPLY_TO", False)
@@ -438,7 +517,58 @@ def send_batch(
             "processed": 0,
         }
     if not dry_run and not smtp_configured():
-        return {"ok": False, "error": "SMTP not configured (MAIL_*)", "processed": 0}
+        return {
+            "ok": False,
+            "error": "SMTP not configured (MAIL_* or OUTREACH_COLD_MAIL_*)",
+            "processed": 0,
+        }
+
+    # Cold marketing gate: refuse mass send from protected corporate domain.
+    send_mailbox = "auto"
+    marketing_account: dict[str, Any] | None = None
+    if not dry_run:
+        try:
+            from modules.sending_accounts import SendingAccountsStore
+
+            sa = SendingAccountsStore()
+            sa.init_db()
+            sa.ensure_defaults()
+            ok_gate, why_gate, marketing_account = sa.marketing_send_gate()
+            if not ok_gate:
+                return {
+                    "ok": False,
+                    "error": why_gate,
+                    "processed": 0,
+                    "marketing_ready": False,
+                }
+            send_mailbox = "cold" if cold_smtp_configured() else "auto"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("sending_accounts gate skipped: %s", exc)
+            if not cold_smtp_configured():
+                return {
+                    "ok": False,
+                    "error": (
+                        "protected_domain:quantumlabs.ru — configure OUTREACH_COLD_MAIL_* "
+                        "on a non-corporate domain before send_batch"
+                    ),
+                    "processed": 0,
+                }
+
+    if marketing_account and marketing_account.get("email"):
+        mailbox = str(marketing_account["email"])
+    elif cold_smtp_configured():
+        mailbox = (
+            os.getenv("OUTREACH_COLD_MAIL_USERNAME")
+            or os.getenv("OUTREACH_COLD_SMTP_USER")
+            or ""
+        ).strip()
+    else:
+        mailbox = os.getenv("MAIL_USERNAME") or "office@quantumlabs.ru"
+    unsub = (
+        _cfg(settings, "OUTREACH_UNSUBSCRIBE_MAILTO", "")
+        or mailbox
+        or "office@quantumlabs.ru"
+    )
 
     sent_today = store.sent_today_count()
     effective_limit = daily_limit
@@ -635,6 +765,7 @@ def send_batch(
                         message_id=pre_mid,
                         unsubscribe_url=unsub_url,
                         attachments=attach,
+                        mailbox=send_mailbox,
                     )
                     if attach:
                         item["attached"] = [p.name for p in attach]
@@ -1060,13 +1191,54 @@ def send_one(
             }
 
     if not dry_run and not smtp_configured():
-        return {"ok": False, "error": "SMTP not configured (MAIL_*)", "processed": 0}
+        return {
+            "ok": False,
+            "error": "SMTP not configured (MAIL_* or OUTREACH_COLD_MAIL_*)",
+            "processed": 0,
+        }
+
+    # Prefer cold marketing mailbox for outreach send_one when configured.
+    send_mailbox = "office"
+    marketing_account: dict[str, Any] | None = None
+    if not dry_run:
+        try:
+            from modules.sending_accounts import SendingAccountsStore
+
+            sa = SendingAccountsStore()
+            sa.init_db()
+            sa.ensure_defaults()
+            ok_gate, why_gate, marketing_account = sa.marketing_send_gate()
+            if ok_gate and cold_smtp_configured():
+                send_mailbox = "cold"
+            elif not ok_gate and cold_smtp_configured():
+                return {
+                    "ok": False,
+                    "error": why_gate,
+                    "processed": 0,
+                    "marketing_ready": False,
+                }
+            elif not ok_gate:
+                # No cold account: still allow oneshot from office for warm tests,
+                # but surface the gate reason so agents know mass send is blocked.
+                logger.info("send_one using office mailbox; marketing gate: %s", why_gate)
+                send_mailbox = "office"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("sending_accounts gate skipped on send_one: %s", exc)
+            send_mailbox = "cold" if cold_smtp_configured() else "office"
 
     subject = _cfg(settings, "OUTREACH_SUBJECT", "Сотрудничество — Quantum Labs")
     company = _cfg(settings, "OUTREACH_COMPANY_NAME", "Quantum Labs")
     website = _cfg(settings, "OUTREACH_WEBSITE", "https://quantumlabs.ru")
     phone = _cfg(settings, "OUTREACH_CONTACT_PHONE", "")
-    mailbox = os.getenv("MAIL_USERNAME") or "office@quantumlabs.ru"
+    if send_mailbox == "cold" and cold_smtp_configured():
+        mailbox = (
+            (marketing_account or {}).get("email")
+            or os.getenv("OUTREACH_COLD_MAIL_USERNAME")
+            or os.getenv("OUTREACH_COLD_SMTP_USER")
+            or ""
+        ).strip()
+    else:
+        mailbox = os.getenv("MAIL_USERNAME") or "office@quantumlabs.ru"
     unsub = (
         _cfg(settings, "OUTREACH_UNSUBSCRIBE_MAILTO", "")
         or mailbox
@@ -1159,6 +1331,7 @@ def send_one(
             reply_to=reply_to,
             outreach_id=f"oneshot-{row.id}",
             attachments=attach,
+            mailbox=send_mailbox,
         )
         item["message_id"] = message_id
         if tracking is not None:

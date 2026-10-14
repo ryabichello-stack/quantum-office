@@ -124,7 +124,8 @@ PYTHONPATH=. python3 -m quantum_office_mcp
 |------------|--------|
 | `CONSOLE_TOKEN` | dial, calls, line, scenario |
 | `WEBHOOK_TOKEN` | campaign, calendar, conference, files/**mailru**, text-bot |
-| `OUTREACH_UI_TOKEN` | outreach API (можно тем же значением в `WEBHOOK_TOKEN` / `OUTREACH_TOKEN`) |
+| `OUTREACH_UI_TOKEN` | **обязателен** для `outreach.*` и `mail.send` (значение из `/opt/ava-outreach/.env`; не подменять `WEBHOOK_TOKEN`) |
+| `OUTREACH_TOKEN` | fallback-алиас `OUTREACH_UI_TOKEN` |
 | `*_BASE` | URL сервисов (localhost ports по умолчанию) |
 | `BRAIN_MCP_*` | ACL Second Brain |
 

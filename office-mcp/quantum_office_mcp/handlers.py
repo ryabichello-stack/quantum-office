@@ -254,6 +254,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
                     "mode": args.get("mode") or "hybrid",
                     "max_chars": int(args.get("max_chars") or 6000),
                 },
+                timeout=120.0,
             )
         )
 
@@ -325,7 +326,9 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
             "limit": int(args.get("limit") or 5),
             "max_chars": int(args.get("max_chars") or 4000),
         }
-        return _tool_result(knowledge_request("POST", "/api/knowledge/query", body))
+        return _tool_result(
+            knowledge_request("POST", "/api/knowledge/query", body, timeout=120.0)
+        )
 
     if name == "knowledge.topics":
         return _tool_result(knowledge_request("GET", "/api/knowledge/topics"))
@@ -470,6 +473,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
                 query={
                     "limit": int(args.get("limit") or 50),
                     "offset": int(args.get("offset") or 0),
+                    "full": 1 if _as_bool(args.get("full"), True) else 0,
                 },
             )
         )
@@ -590,5 +594,35 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
             if args.get(key) is not None:
                 body[key] = args[key]
         return _tool_result(files_request("POST", "/api/files/send", body))
+
+    if name == "mail.send":
+        body = {
+            "to": args.get("to"),
+            "subject": args.get("subject"),
+        }
+        for key in ("cc", "body", "html", "reply_to"):
+            if args.get(key) is not None:
+                body[key] = args[key]
+        mailbox = (args.get("mailbox") or args.get("from") or "office").strip()
+        body["mailbox"] = mailbox
+        return _tool_result(outreach_request("POST", "/api/mail/send", body))
+
+    if name == "outreach.leads_import":
+        body = {
+            "csv": args.get("csv") or "",
+            "queue": _as_bool(args.get("queue"), True),
+            "apply_pack": _as_bool(args.get("apply_pack"), False),
+            "skip_duplicates": _as_bool(args.get("skip_duplicates"), True),
+        }
+        if args.get("pack_id"):
+            body["pack_id"] = args["pack_id"]
+        return _tool_result(outreach_request("POST", "/api/leads/import", body, timeout=120.0))
+
+    if name == "outreach.lead_check":
+        body = {}
+        for key in ("email", "company"):
+            if args.get(key):
+                body[key] = args[key]
+        return _tool_result(outreach_request("POST", "/api/leads/check", body))
 
     return _tool_result(f"unknown tool: {name}", is_error=True)
