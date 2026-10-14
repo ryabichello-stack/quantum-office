@@ -10,6 +10,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Mini-CRM для Grok/MCP: модуль `accounts` зарегистрирован; `POST/GET /api/modules/accounts`, funnel, `lifecycle`. Tools: `crm.company_upsert`, `crm.companies`, `crm.company_get`, `crm.lifecycle_set`, `crm.funnel`, `crm.suggest_next`. Gateway `0.3.4`.
+
 ### Fixed
 
 - MCP `kb.search` / `knowledge.query`: больше не висят на PG-локах Second Brain — сначала `mode=legacy` (markdown), brain опционально ≤4s; в knowledge soft-timeout + `lock_timeout`/`statement_timeout` на Postgres.

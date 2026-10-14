@@ -1102,4 +1102,93 @@ TOOLS: list[dict[str, Any]] = [
             },
         },
     },
+    # ---- mini-CRM (local accounts funnel) ----
+    {
+        "name": "crm.funnel",
+        "description": (
+            "Mini-CRM funnel counts by lifecycle: NEW, ENRICHED, IN_SEQUENCE, REPLIED, "
+            "INTERESTED, MEETING_BOOKED, DISQUALIFIED, NO_RESPONSE, BLACKLISTED."
+        ),
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "crm.companies",
+        "description": "List/search mini-CRM companies (local accounts). Filter by q and/or lifecycle.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "q": {"type": "string", "description": "Search name/inn/domain"},
+                "lifecycle": {
+                    "type": "string",
+                    "description": "NEW|ENRICHED|IN_SEQUENCE|REPLIED|INTERESTED|MEETING_BOOKED|…",
+                },
+                "limit": {"type": "integer", "default": 50},
+            },
+        },
+    },
+    {
+        "name": "crm.company_get",
+        "description": "Get one mini-CRM company by account_id + timeline.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"account_id": {"type": "string"}},
+            "required": ["account_id"],
+        },
+    },
+    {
+        "name": "crm.company_upsert",
+        "description": (
+            "Add or update a company in mini-CRM (local SoT). Dedups by name/email/inn. "
+            "Optional lifecycle_status and note."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "email": {"type": "string"},
+                "phone": {"type": "string"},
+                "inn": {"type": "string"},
+                "domain": {"type": "string"},
+                "region": {"type": "string"},
+                "city": {"type": "string"},
+                "contact_name": {"type": "string"},
+                "lifecycle_status": {
+                    "type": "string",
+                    "default": "NEW",
+                    "description": "Funnel stage",
+                },
+                "note": {"type": "string"},
+                "source": {"type": "string", "default": "mcp"},
+                "bitrix_company_id": {"type": "string"},
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "crm.lifecycle_set",
+        "description": (
+            "Set company funnel stage. Values: NEW, ENRICHED, IN_SEQUENCE, REPLIED, "
+            "INTERESTED, MEETING_BOOKED, DISQUALIFIED, NO_RESPONSE, BLACKLISTED."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "account_id": {"type": "string"},
+                "status": {"type": "string"},
+            },
+            "required": ["account_id", "status"],
+        },
+    },
+    {
+        "name": "crm.suggest_next",
+        "description": "Suggest next action for a lifecycle / reply classification.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "lifecycle": {"type": "string"},
+                "classification": {"type": "string"},
+                "lead_status": {"type": "string"},
+            },
+        },
+    },
 ]

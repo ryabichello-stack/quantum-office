@@ -666,6 +666,74 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
             outreach_request("POST", "/api/modules/clients/rebuild-outbox", {})
         )
 
+    if name == "crm.funnel":
+        return _tool_result(outreach_request("GET", "/api/modules/accounts/meta/funnel"))
+
+    if name == "crm.companies":
+        return _tool_result(
+            outreach_request(
+                "GET",
+                "/api/modules/accounts",
+                query={
+                    "q": args.get("q"),
+                    "lifecycle": args.get("lifecycle"),
+                    "limit": int(args.get("limit") or 50),
+                },
+            )
+        )
+
+    if name == "crm.company_get":
+        aid = (args.get("account_id") or "").strip()
+        if not aid:
+            return _tool_result({"ok": False, "error": "account_id_required"}, is_error=True)
+        return _tool_result(outreach_request("GET", f"/api/modules/accounts/{aid}"))
+
+    if name == "crm.company_upsert":
+        body = {
+            "name": args.get("name"),
+            "email": args.get("email"),
+            "phone": args.get("phone"),
+            "inn": args.get("inn"),
+            "domain": args.get("domain"),
+            "region": args.get("region"),
+            "city": args.get("city"),
+            "contact_name": args.get("contact_name") or "",
+            "lifecycle_status": args.get("lifecycle_status") or "NEW",
+            "note": args.get("note") or "",
+            "source": args.get("source") or "mcp",
+            "bitrix_company_id": args.get("bitrix_company_id"),
+        }
+        return _tool_result(outreach_request("POST", "/api/modules/accounts", body))
+
+    if name == "crm.lifecycle_set":
+        aid = (args.get("account_id") or "").strip()
+        status = (args.get("status") or "").strip()
+        if not aid or not status:
+            return _tool_result(
+                {"ok": False, "error": "account_id_and_status_required"},
+                is_error=True,
+            )
+        return _tool_result(
+            outreach_request(
+                "POST",
+                f"/api/modules/accounts/{aid}/lifecycle",
+                {"status": status},
+            )
+        )
+
+    if name == "crm.suggest_next":
+        return _tool_result(
+            outreach_request(
+                "GET",
+                "/api/modules/accounts/meta/suggest-next",
+                query={
+                    "lifecycle": args.get("lifecycle"),
+                    "classification": args.get("classification"),
+                    "lead_status": args.get("lead_status"),
+                },
+            )
+        )
+
     if name in {"files.status", "mailru.status"}:
         return _tool_result(health_probe(files_base()))
 
