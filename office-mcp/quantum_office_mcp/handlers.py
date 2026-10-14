@@ -247,6 +247,13 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
         q = args.get("query") or ""
         limit = int(args.get("limit") or 8)
         max_chars = int(args.get("max_chars") or 6000)
+        # Legacy first — fast path for Grok (avoids 15–45s PG lock timeouts).
+        legacy = knowledge_request(
+            "POST",
+            "/api/knowledge/query",
+            {"topic": q, "limit": min(limit, 5), "max_chars": max_chars},
+            timeout=20.0,
+        )
         brain = knowledge_request(
             "POST",
             "/api/brain/search",
@@ -256,37 +263,34 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
                 "mode": args.get("mode") or "hybrid",
                 "max_chars": max_chars,
             },
-            timeout=45.0,
+            timeout=12.0,
         )
-        # PG lock/timeout or soft-fail → legacy markdown knowledge (always works).
-        brain_bad = (
-            not brain.get("ok")
-            or brain.get("http_status", 200) >= 400
-            or brain.get("error")
-            or (
-                not (brain.get("matches") or brain.get("text"))
-                and brain.get("reason")
-                and brain.get("reason") != "deny_all"
-            )
+        brain_ok = (
+            brain.get("ok")
+            and brain.get("http_status", 200) < 400
+            and not brain.get("error")
+            and not brain.get("denied")
+            and bool(brain.get("matches") or brain.get("text"))
         )
-        if brain_bad and not brain.get("denied"):
-            legacy = knowledge_request(
-                "POST",
-                "/api/knowledge/query",
-                {"topic": q, "limit": min(limit, 5), "max_chars": max_chars},
-                timeout=30.0,
-            )
+        if brain_ok:
+            brain["source"] = "second_brain"
+            return _tool_result(brain)
+        # Prefer legacy content when brain is slow/locked/empty.
+        if legacy.get("ok"):
             return _tool_result(
                 {
-                    "ok": bool(legacy.get("ok")),
-                    "source": "legacy_fallback",
-                    "brain_error": brain.get("error") or brain.get("reason") or brain.get("http_status"),
+                    "ok": True,
+                    "source": "legacy_first",
                     "query": q,
                     "legacy": legacy.get("legacy") or legacy,
-                    "brain": brain,
+                    "brain_error": brain.get("error")
+                    or brain.get("reason")
+                    or brain.get("http_status")
+                    or ("timeout" if "timeout" in str(brain.get("error") or "").lower() else None),
+                    "text": ((legacy.get("legacy") or legacy).get("text") if isinstance(legacy.get("legacy") or legacy, dict) else None),
                 }
             )
-        return _tool_result(brain)
+        return _tool_result(brain if brain else legacy)
 
     if name == "kb.get":
         return _tool_result(
@@ -616,34 +620,49 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
     if name in {"files.send", "mailru.send"}:
         path = (args.get("path") or "").strip()
         body_text = args.get("body") or args.get("text")
-        # Text-only email: no cloud path → warm SMTP via outreach mail.send
-        if not path and body_text and (args.get("via") in (None, "", "email", "mail") or name == "mailru.send"):
+        via = args.get("via")
+        # Treat "/", "." or path without filename extension as "no file"
+        path_name = path.rstrip("/").split("/")[-1] if path else ""
+        looks_like_file = bool(path_name) and ("." in path_name) and path not in {"/", ".", "./"}
+        text_mode = bool(body_text) and via not in ("telegram", "tg") and (
+            not looks_like_file or name == "mailru.send" and not looks_like_file
+        )
+        # mailru.send + body → always text SMTP unless a real cloud file path is given
+        if name == "mailru.send" and body_text and via not in ("telegram", "tg") and not looks_like_file:
+            text_mode = True
+        if text_mode:
             mail_body = {
                 "to": args.get("to"),
                 "subject": args.get("subject") or "Сообщение Quantum Labs",
                 "body": body_text,
                 "mailbox": (args.get("mailbox") or args.get("from") or "office"),
             }
-            if args.get("html") is not None:
-                mail_body["html"] = args["html"]
-            if args.get("cc") is not None:
-                mail_body["cc"] = args["cc"]
-            if args.get("reply_to") is not None:
-                mail_body["reply_to"] = args["reply_to"]
+            for key in ("html", "cc", "reply_to"):
+                if args.get(key) is not None:
+                    mail_body[key] = args[key]
             return _tool_result(outreach_request("POST", "/api/mail/send", mail_body))
-        if not path:
+        if not looks_like_file:
             return _tool_result(
                 {
                     "ok": False,
                     "error": "path_or_body_required",
-                    "message": "Укажите path (файл с Облака) или body+subject (текстовое письмо).",
+                    "message": (
+                        "Текстовое письмо: to + subject + body (без path). "
+                        "Файл с Облака: path=/Папка/file.pdf + via + to. "
+                        "Или используйте mail.send."
+                    ),
+                    "schema_hint": {
+                        "text_email": {"to": "...", "subject": "...", "body": "..."},
+                        "cloud_file": {"path": "/file.pdf", "via": "email", "to": "..."},
+                        "preferred_text_tool": "mail.send",
+                    },
                 },
                 is_error=True,
             )
         body = {
             "source": "mailru" if name.startswith("mailru.") else (args.get("source") or "mailru"),
             "path": path,
-            "via": args.get("via") or "email",
+            "via": via or "email",
             "to": args.get("to"),
         }
         for key in ("caption", "subject", "ref", "repo"):

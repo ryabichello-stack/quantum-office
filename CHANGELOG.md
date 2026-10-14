@@ -12,8 +12,9 @@
 
 ### Fixed
 
-- MCP: `mailru.send` принимает `subject`+`body` без `path` → текстовое письмо через `office@` (раньше только файл с Облака; ассистенты не находили `mail.send`).
-- MCP `kb.search`: при PG lock/timeout — soft-fail + fallback на `knowledge.query`; brain `/search` больше не отдаёт голый 500.
+- MCP gateway `0.3.1` + `schema_revision`: Grok/Cursor могут проверить, что каталог tools не stale; `/health` явно флагает `mailru.send_text_body`.
+- MCP: `mailru.send` принимает `subject`+`body` без `path` → текстовое письмо через `office@` (не ходить в WebDAV); path без расширения больше не уходит в Облако.
+- MCP `kb.search`: сначала быстрый `knowledge.query`, потом brain (короткий timeout) — меньше таймаутов у Grok.
 - Outreach `GET /api/packs`: в списке есть `subject` / `plain_preview` (текст был только в `pack_get`).
 
 ### Added

@@ -31,7 +31,7 @@ import sys
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from quantum_office_mcp import __version__
+from quantum_office_mcp import SCHEMA_REVISION, __version__
 from quantum_office_mcp.handlers import call_tool
 from quantum_office_mcp.tools import TOOLS
 
@@ -114,9 +114,20 @@ def health() -> dict[str, Any]:
         "ok": True,
         "service": "quantum-office-mcp-gateway",
         "version": __version__,
+        "schema_revision": SCHEMA_REVISION,
         "tools": len(TOOLS),
         "auth_configured": bool(API_KEY),
+        "capabilities": {
+            "mail.send": True,
+            "mailru.send_text_body": True,
+            "mailru.send_path_optional": True,
+            "kb.search_legacy_fallback": True,
+        },
         "endpoints": ["/health", "/tools", "/tools/call", "/mcp", "/openapi-lite"],
+        "note": (
+            "If mailru.send schema lacks body / requires path — refresh tools catalog. "
+            "Expect version>=0.3.1 and schema_revision=2026-10-14-mailru-body-kb-fallback."
+        ),
     }
 
 
@@ -127,7 +138,13 @@ def list_tools(
     x_office_mcp_key: Optional[str] = Header(default=None, alias="X-Office-Mcp-Key"),
 ) -> dict[str, Any]:
     _require_key(authorization, x_api_key, x_office_mcp_key)
-    return {"ok": True, "count": len(TOOLS), "tools": TOOLS}
+    return {
+        "ok": True,
+        "version": __version__,
+        "schema_revision": SCHEMA_REVISION,
+        "count": len(TOOLS),
+        "tools": TOOLS,
+    }
 
 
 @app.get("/openapi-lite")
@@ -141,6 +158,8 @@ def openapi_lite(
     return {
         "ok": True,
         "service": "quantum-office",
+        "version": __version__,
+        "schema_revision": SCHEMA_REVISION,
         "auth": "Authorization: Bearer <OFFICE_MCP_API_KEY>",
         "call": "POST /tools/call",
         "tools": [

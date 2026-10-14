@@ -844,31 +844,34 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "mailru.send",
         "description": (
-            "Send email/Telegram. TWO modes: "
-            "(1) file from Mail.ru Cloud — pass path+via+to; "
-            "(2) plain text letter — pass to+subject+body (no path) via office@ SMTP. "
-            "Prefer mail.send for text-only; this alias exists so agents that only see mailru.* still work."
+            "EMAIL / Telegram. TEXT LETTER (preferred for plain mail): "
+            "arguments {to, subject, body} — path MUST be omitted; sends via office@ SMTP. "
+            "CLOUD FILE: {path:'/file.pdf', via:'email'|'telegram', to}. "
+            "Also see mail.send for text-only. Schema revision includes body; path is NOT required."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
+                "to": {"type": "string", "description": "Recipient email or Telegram chat id"},
+                "subject": {
+                    "type": "string",
+                    "description": "Email subject (use with body for text letter)",
+                },
+                "body": {
+                    "type": "string",
+                    "description": "Plain text letter body. If set and path omitted → SMTP text email.",
+                },
+                "html": {"type": "string", "description": "Optional HTML body for text letter"},
                 "path": {
                     "type": "string",
-                    "description": "Cloud file path (omit for text-only email)",
+                    "description": "OPTIONAL. Cloud file path WITH extension (e.g. /doc.pdf). Omit for text letter.",
                 },
                 "via": {
                     "type": "string",
                     "enum": ["email", "telegram", "mail", "tg"],
                     "default": "email",
                 },
-                "to": {"type": "string"},
                 "caption": {"type": "string"},
-                "subject": {"type": "string", "description": "Email subject (required for text mode)"},
-                "body": {
-                    "type": "string",
-                    "description": "Plain text body for text-only email (no path)",
-                },
-                "html": {"type": "string"},
                 "mailbox": {
                     "type": "string",
                     "description": "office | cold for text mode",
