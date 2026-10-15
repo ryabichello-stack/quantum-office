@@ -122,6 +122,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
         "line.get": "telephony.inbound_line_get",
         "line.set": "telephony.inbound_line_set",
         "telegram.send": "messenger.telegram_send",
+        "telegram.channel_publish": "messenger.channel_publish",
         "telegram.history": "messenger.telegram_history",
         "max.send": "messenger.max_send",
         "max.history": "messenger.max_history",
@@ -501,6 +502,18 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
                     "to_ts": args.get("to_ts"),
                 },
             )
+        )
+
+    if name == "messenger.channel_publish":
+        body = {
+            "text": args.get("text"),
+            "channel_id": args.get("channel_id"),
+            "parse_mode": args.get("parse_mode"),
+            "disable_notification": args.get("disable_notification", False),
+            "disable_web_page_preview": args.get("disable_web_page_preview", False),
+        }
+        return _tool_result(
+            text_bot_request("POST", "/api/messenger/channel/publish", body)
         )
 
     if name == "messenger.send":

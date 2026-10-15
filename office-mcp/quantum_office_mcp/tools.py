@@ -593,6 +593,49 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "messenger.channel_publish",
+        "description": (
+            "Publish a news post to the company Telegram channel "
+            "(default TELEGRAM_CHANNEL_ID, e.g. @ai_v_shtate). "
+            "Bot must be channel admin with Post messages."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "Post body (max 4096)"},
+                "channel_id": {
+                    "type": "string",
+                    "description": "Optional override (@name or -100…)",
+                },
+                "parse_mode": {
+                    "type": "string",
+                    "enum": ["HTML", "Markdown", "MarkdownV2"],
+                },
+                "disable_notification": {"type": "boolean", "default": False},
+                "disable_web_page_preview": {"type": "boolean", "default": False},
+            },
+            "required": ["text"],
+        },
+    },
+    {
+        "name": "telegram.channel_publish",
+        "description": "Alias: messenger.channel_publish — post to news Telegram channel.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string"},
+                "channel_id": {"type": "string"},
+                "parse_mode": {
+                    "type": "string",
+                    "enum": ["HTML", "Markdown", "MarkdownV2"],
+                },
+                "disable_notification": {"type": "boolean", "default": False},
+                "disable_web_page_preview": {"type": "boolean", "default": False},
+            },
+            "required": ["text"],
+        },
+    },
+    {
         "name": "telegram.send",
         "description": "Alias: send Telegram message.",
         "inputSchema": {

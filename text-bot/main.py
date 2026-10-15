@@ -37,6 +37,8 @@ logger = logging.getLogger("ava-text-bot")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_BUSINESS_BOT_TOKEN = os.getenv("TELEGRAM_BUSINESS_BOT_TOKEN", "").strip()
+TELEGRAM_CHANNEL_BOT_TOKEN = os.getenv("TELEGRAM_CHANNEL_BOT_TOKEN", "").strip()
+TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "").strip()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip()
 AVA_MAILER_BASE = os.getenv("AVA_MAILER_BASE", "http://127.0.0.1:8000").strip()
@@ -164,17 +166,23 @@ def api_messenger_status(x_webhook_token: Optional[str] = Header(None)) -> dict[
                 TELEGRAM_BOT_TOKEN and _poll_thread and _poll_thread.is_alive()
             ),
         },
+        "telegram_channel": {
+            "configured": bool(TELEGRAM_CHANNEL_BOT_TOKEN and TELEGRAM_CHANNEL_ID),
+            "channel_id": TELEGRAM_CHANNEL_ID or None,
+        },
         "telegram_business": biz,
         "max": max_messenger.status(),
         "api_auth_required": bool(WEBHOOK_TOKEN),
         "capabilities": {
             "send": True,
+            "channel_publish": bool(TELEGRAM_CHANNEL_BOT_TOKEN and TELEGRAM_CHANNEL_ID),
             "session_history": True,
             "list_chats": True,
             "max_native_messages": True,
             "note": (
                 "Telegram history = local secretary sessions (bot cannot scrape full TG history). "
-                "Max native GET /messages needs admin + read_all_messages."
+                "Max native GET /messages needs admin + read_all_messages. "
+                "News channel: POST /api/messenger/channel/publish."
             ),
         },
     }
@@ -368,6 +376,64 @@ def api_messenger_send(
         }
 
     raise HTTPException(status_code=400, detail="channel must be telegram|max|telegram_business")
+
+
+class ChannelPublishRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=4096)
+    channel_id: Optional[str] = Field(
+        default=None,
+        description="Override TELEGRAM_CHANNEL_ID (@name or -100…)",
+    )
+    parse_mode: Optional[str] = Field(
+        default=None,
+        description="HTML | Markdown | MarkdownV2 (optional)",
+    )
+    disable_notification: bool = False
+    disable_web_page_preview: bool = False
+
+
+@app.post("/api/messenger/channel/publish")
+def api_messenger_channel_publish(
+    req: ChannelPublishRequest,
+    x_webhook_token: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    """Publish a news post to the configured Telegram channel (bot must be admin)."""
+    _check_api_token(x_webhook_token)
+    token = TELEGRAM_CHANNEL_BOT_TOKEN or TELEGRAM_BOT_TOKEN
+    chat = (req.channel_id or TELEGRAM_CHANNEL_ID or "").strip()
+    text = (req.text or "").strip()
+    if not token:
+        raise HTTPException(status_code=503, detail="telegram_channel_not_configured")
+    if not chat:
+        raise HTTPException(status_code=400, detail="channel_id_required")
+    if not text:
+        raise HTTPException(status_code=400, detail="text_required")
+
+    payload: dict[str, Any] = {
+        "chat_id": chat,
+        "text": text[:4096],
+        "disable_notification": bool(req.disable_notification),
+        "disable_web_page_preview": bool(req.disable_web_page_preview),
+    }
+    pm = (req.parse_mode or "").strip()
+    if pm:
+        payload["parse_mode"] = pm
+
+    try:
+        raw = _tg_post("sendMessage", payload, token=token, timeout=20.0)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=502, detail=f"telegram_channel_publish_failed: {exc}"
+        ) from exc
+
+    result = raw.get("result") if isinstance(raw, dict) else None
+    message_id = result.get("message_id") if isinstance(result, dict) else None
+    return {
+        "ok": bool(raw.get("ok")) if isinstance(raw, dict) else True,
+        "channel_id": chat,
+        "message_id": message_id,
+        "result": result,
+    }
 
 
 # --------------------
@@ -941,6 +1007,10 @@ def health() -> dict[str, Any]:
         "role": "quantum-labs-secretary",
         "telegram_configured": bool(TELEGRAM_BOT_TOKEN),
         "telegram_business_bot_configured": bool(TELEGRAM_BUSINESS_BOT_TOKEN),
+        "telegram_channel_configured": bool(
+            TELEGRAM_CHANNEL_BOT_TOKEN and TELEGRAM_CHANNEL_ID
+        ),
+        "telegram_channel_id": TELEGRAM_CHANNEL_ID or None,
         "telegram_business": biz,
         "voice_stt": voice_stt.enabled(),
         "owner_alerts": owner_alerts.status(),
@@ -966,6 +1036,7 @@ def health() -> dict[str, Any]:
             "/api/messenger/history",
             "/api/messenger/messages",
             "/api/messenger/send",
+            "/api/messenger/channel/publish",
             "/webhooks/whatsapp",
             "/webhooks/max",
             "/webhooks/vk",

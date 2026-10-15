@@ -12,6 +12,7 @@
 
 ### Added
 
+- Telegram news channel: `POST /api/messenger/channel/publish` + MCP `messenger.channel_publish` / `telegram.channel_publish` (env `TELEGRAM_CHANNEL_BOT_TOKEN` + `TELEGRAM_CHANNEL_ID`, default `@ai_v_shtate`). Gateway `0.3.5`.
 - Mini-CRM для Grok/MCP: модуль `accounts` зарегистрирован; `POST/GET /api/modules/accounts`, funnel, `lifecycle`. Tools: `crm.company_upsert`, `crm.companies`, `crm.company_get`, `crm.lifecycle_set`, `crm.funnel`, `crm.suggest_next`. Gateway `0.3.4`.
 - Accounts: `POST /api/modules/accounts/sync-from-clients` — полный бэкфилл из `clients.db` (зеркало Bitrix): новые компании со статусом `NEW`, уже существующие по `bitrix_company_id` не трогаются (без дублей и без сброса ENRICHED).
 
