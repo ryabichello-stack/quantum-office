@@ -208,14 +208,18 @@ def rewrite_text(source: str, *, openai_api_key: str, model: str) -> str:
     src = (source or "").strip()
     if not src:
         return ""
-    resp = client.chat.completions.create(
-        model=model or "gpt-4.1-mini",
-        messages=[
+    kwargs: dict = {
+        "model": model or "gpt-4.1-mini",
+        "messages": [
             {"role": "system", "content": REWRITE_SYSTEM},
             {"role": "user", "content": src[:6000]},
         ],
-        temperature=0.7,
-    )
+    }
+    # gpt-5* / some mini models reject custom temperature
+    model_l = (model or "").lower()
+    if not model_l.startswith("gpt-5"):
+        kwargs["temperature"] = 0.7
+    resp = client.chat.completions.create(**kwargs)
     out = (resp.choices[0].message.content or "").strip()
     out = re.sub(r"^```(?:\w+)?\n|\n```$", "", out).strip()
     if (out.startswith("«") and out.endswith("»")) or (
