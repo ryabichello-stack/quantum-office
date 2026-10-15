@@ -61,17 +61,35 @@ def channel_link(channel_id: str | None = None) -> str:
     return custom
 
 
+def html_escape(s: str) -> str:
+    return (
+        (s or "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
 def signature(channel_id: str | None = None) -> str:
-    """Footer like typical Telegram channels: name + link."""
+    """HTML footer with clickable subscribe link (parse_mode=HTML)."""
     raw = (os.getenv("TELEGRAM_CURATE_SIGNATURE") or "").strip()
     if raw:
         return raw.replace("\\n", "\n")
-    ch = (channel_id or default_channel_id() or "@epoch_z").strip()
-    link = channel_link(ch)
+    link = channel_link(channel_id) or "https://t.me/epoch_z"
     name = (os.getenv("TELEGRAM_CURATE_CHANNEL_TITLE") or "Заметки эпохи").strip()
-    if link:
-        return f"\n\n—\n{name}\n{link}"
-    return f"\n\n—\n{name}"
+    return (
+        "\n\n—\n"
+        f'Подпишитесь на канал <a href="{html_escape(link)}">{html_escape(name)}</a>'
+    )
+
+
+def compose_post_html(body: str, *, channel_id: str | None = None) -> str:
+    """Escape body + append HTML signature. Ready for parse_mode=HTML."""
+    body_esc = html_escape((body or "").rstrip())
+    sig = signature(channel_id)
+    if "Подпишитесь на канал" in body_esc or "t.me/epoch_z" in body_esc:
+        return body_esc
+    return f"{body_esc}{sig}"
 
 
 def confirm_required() -> bool:
@@ -230,16 +248,8 @@ def rewrite_text(source: str, *, openai_api_key: str, model: str) -> str:
 
 
 def apply_signature(body: str, *, channel_id: str | None = None) -> str:
-    sig = signature(channel_id)
-    body = (body or "").rstrip()
-    if not sig:
-        return body
-    link = channel_link(channel_id)
-    if link and link in body:
-        return body
-    if "Заметки эпохи" in body and (not link or link in body):
-        return body
-    return f"{body}{sig}"
+    """Backward-compatible alias → HTML post with clickable footer."""
+    return compose_post_html(body, channel_id=channel_id)
 
 
 TgPostFn = Callable[..., dict[str, Any]]
@@ -474,7 +484,13 @@ def _publish_native(
         if len(full) <= caption_limit:
             raw = tg_post(
                 method,
-                {"chat_id": channel, file_field: file_id, "caption": full},
+                {
+                    "chat_id": channel,
+                    file_field: file_id,
+                    "caption": full,
+                    "parse_mode": "HTML",
+                    "disable_web_page_preview": True,
+                },
                 token=bot_token(),
                 timeout=60.0,
             )
@@ -495,7 +511,12 @@ def _publish_native(
         mid = (raw.get("result") or {}).get("message_id")
         raw2 = tg_post(
             "sendMessage",
-            {"chat_id": channel, "text": full[:4096]},
+            {
+                "chat_id": channel,
+                "text": full[:4096],
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True,
+            },
             token=bot_token(),
             timeout=20.0,
         )
@@ -518,7 +539,12 @@ def _publish_native(
 
     raw = tg_post(
         "sendMessage",
-        {"chat_id": channel, "text": full[:4096]},
+        {
+            "chat_id": channel,
+            "text": full[:4096],
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        },
         token=bot_token(),
         timeout=20.0,
     )
