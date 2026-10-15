@@ -29,6 +29,7 @@ from scenarios import looks_like_outbound_request
 from secretary import secretary
 import owner_alerts
 import voice_stt
+import channel_curate
 
 load_dotenv()
 
@@ -49,6 +50,7 @@ TG_HANDLE_WORKERS = max(1, int(os.getenv("TELEGRAM_HANDLE_WORKERS", "4")))
 app = FastAPI(title="Quantum Labs Secretary", version="0.3.0")
 _poll_thread: threading.Thread | None = None
 _business_poll_thread: threading.Thread | None = None
+_curate_poll_thread: threading.Thread | None = None
 _stop_event = threading.Event()
 _update_pool = ThreadPoolExecutor(
     max_workers=TG_HANDLE_WORKERS, thread_name_prefix="tg-handle"
@@ -170,6 +172,7 @@ def api_messenger_status(x_webhook_token: Optional[str] = Header(None)) -> dict[
             "configured": bool(TELEGRAM_CHANNEL_BOT_TOKEN and TELEGRAM_CHANNEL_ID),
             "channel_id": TELEGRAM_CHANNEL_ID or None,
         },
+        "telegram_curate": channel_curate.status(),
         "telegram_business": biz,
         "max": max_messenger.status(),
         "api_auth_required": bool(WEBHOOK_TOKEN),
@@ -878,7 +881,26 @@ def _handle_update_safe(update: dict[str, Any], *, token: str | None = None) -> 
         logger.exception("update failed: %s", update.get("update_id"))
 
 
-def poll_loop(*, token: str, name: str, allow_direct_messages: bool = True) -> None:
+def _handle_curate_update_safe(update: dict[str, Any]) -> None:
+    try:
+        channel_curate.handle_update(
+            update,
+            tg_post=_tg_post,
+            openai_api_key=OPENAI_API_KEY,
+            model=OPENAI_MODEL,
+        )
+    except Exception:
+        logger.exception("curate update failed: %s", update.get("update_id"))
+
+
+def poll_loop(
+    *,
+    token: str,
+    name: str,
+    allow_direct_messages: bool = True,
+    allowed_updates: list[str] | None = None,
+    on_update=None,
+) -> None:
     offset: int | None = None
     logger.info("Telegram poll loop started name=%s workers=%s", name, TG_HANDLE_WORKERS)
     try:
@@ -892,13 +914,18 @@ def poll_loop(*, token: str, name: str, allow_direct_messages: bool = True) -> N
     except Exception:
         logger.exception("deleteWebhook failed name=%s", name)
 
-    allowed = [
-        "business_connection",
-        "business_message",
-        "edited_business_message",
-    ]
-    if allow_direct_messages:
-        allowed.insert(0, "message")
+    if allowed_updates is not None:
+        allowed = list(allowed_updates)
+    else:
+        allowed = [
+            "business_connection",
+            "business_message",
+            "edited_business_message",
+        ]
+        if allow_direct_messages:
+            allowed.insert(0, "message")
+
+    handler = on_update or (lambda upd: _handle_update_safe(upd, token=token))
 
     while not _stop_event.is_set():
         if not token:
@@ -915,7 +942,7 @@ def poll_loop(*, token: str, name: str, allow_direct_messages: bool = True) -> N
                 continue
             for upd in out.get("result") or []:
                 offset = int(upd.get("update_id", 0)) + 1
-                _update_pool.submit(_handle_update_safe, upd, token=token)
+                _update_pool.submit(handler, upd)
         except urllib.error.URLError as exc:
             logger.warning("poll error name=%s: %s", name, exc)
             time.sleep(3)
@@ -927,7 +954,7 @@ def poll_loop(*, token: str, name: str, allow_direct_messages: bool = True) -> N
 
 @app.on_event("startup")
 def on_startup() -> None:
-    global _poll_thread, _business_poll_thread
+    global _poll_thread, _business_poll_thread, _curate_poll_thread
     secretary.startup(OPENAI_API_KEY)
     telegram_business.load_connections()
     if TELEGRAM_BOT_TOKEN:
@@ -967,6 +994,36 @@ def on_startup() -> None:
             logger.info("telegram business token same as personal — single poller")
     else:
         logger.warning("TELEGRAM_BUSINESS_BOT_TOKEN missing — connect commercial bot later")
+
+    # News curate bot (forward → rewrite → @epoch_z): separate token poller
+    curate_tok = TELEGRAM_CHANNEL_BOT_TOKEN
+    if channel_curate.enabled() and curate_tok:
+        same_personal = curate_tok == TELEGRAM_BOT_TOKEN
+        same_business = bool(TELEGRAM_BUSINESS_BOT_TOKEN) and curate_tok == TELEGRAM_BUSINESS_BOT_TOKEN
+        if same_personal or same_business:
+            logger.warning(
+                "TELEGRAM_CHANNEL_BOT_TOKEN coincides with secretary bot — "
+                "curate poller skipped (use a dedicated channel bot token)"
+            )
+        else:
+            _curate_poll_thread = threading.Thread(
+                target=poll_loop,
+                kwargs={
+                    "token": curate_tok,
+                    "name": "channel-curate",
+                    "allowed_updates": ["message", "callback_query"],
+                    "on_update": _handle_curate_update_safe,
+                },
+                name="telegram-curate-poll",
+                daemon=True,
+            )
+            _curate_poll_thread.start()
+            logger.info(
+                "telegram channel curate poller enabled target=%s",
+                channel_curate.target_channel(),
+            )
+    else:
+        logger.info("channel curate poller off")
 
     ch = channel_status()
     biz = telegram_business.status()
@@ -1011,6 +1068,7 @@ def health() -> dict[str, Any]:
             TELEGRAM_CHANNEL_BOT_TOKEN and TELEGRAM_CHANNEL_ID
         ),
         "telegram_channel_id": TELEGRAM_CHANNEL_ID or None,
+        "telegram_curate": channel_curate.status(),
         "telegram_business": biz,
         "voice_stt": voice_stt.enabled(),
         "owner_alerts": owner_alerts.status(),
