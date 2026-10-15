@@ -79,7 +79,7 @@ def signature(channel_id: str | None = None) -> str:
     name = (os.getenv("TELEGRAM_CURATE_CHANNEL_TITLE") or "Заметки эпохи").strip()
     return (
         "\n\n—\n"
-        f'📢 <a href="{html_escape(link)}"><u>{html_escape(name)}</u></a>'
+        f'📣 <a href="{html_escape(link)}"><u>{html_escape(name)}</u></a>'
     )
 
 
