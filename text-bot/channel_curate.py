@@ -71,23 +71,22 @@ def html_escape(s: str) -> str:
 
 
 def signature(channel_id: str | None = None) -> str:
-    """HTML footer with clickable subscribe link (parse_mode=HTML)."""
+    """HTML footer: whole phrase is one clickable link."""
     raw = (os.getenv("TELEGRAM_CURATE_SIGNATURE") or "").strip()
     if raw:
         return raw.replace("\\n", "\n")
     link = channel_link(channel_id) or "https://t.me/epoch_z"
     name = (os.getenv("TELEGRAM_CURATE_CHANNEL_TITLE") or "Заметки эпохи").strip()
+    phrase = f"Подписывайтесь на {name}"
     return (
         "\n\n—\n"
-        f'Подпишитесь на канал <a href="{html_escape(link)}">{html_escape(name)}</a>'
+        f'<a href="{html_escape(link)}">{html_escape(phrase)}</a>'
     )
-
-
 def compose_post_html(body: str, *, channel_id: str | None = None) -> str:
     """Escape body + append HTML signature. Ready for parse_mode=HTML."""
     body_esc = html_escape((body or "").rstrip())
     sig = signature(channel_id)
-    if "Подпишитесь на канал" in body_esc or "t.me/epoch_z" in body_esc:
+    if "Подписывайтесь на" in body_esc or "t.me/epoch_z" in body_esc:
         return body_esc
     return f"{body_esc}{sig}"
 
