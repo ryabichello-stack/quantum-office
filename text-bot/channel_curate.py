@@ -238,9 +238,19 @@ def rewrite_text(source: str, *, openai_api_key: str, model: str) -> str:
     return out or src
 
 
+def compose_post_html(body: str, *, channel_id: str | None = None) -> str:
+    """Escape body + append HTML signature (parse_mode=HTML)."""
+    body_esc = html_escape((body or "").rstrip())
+    sig = signature(channel_id)
+    if "📣" in body_esc or "t.me/epoch_z" in body_esc:
+        return body_esc
+    return f"{body_esc}{sig}"
+
+
 def apply_signature(body: str, *, channel_id: str | None = None) -> str:
-    """Backward-compatible alias → HTML post with clickable footer."""
+    """Append channel footer with clickable 📣 Заметки эпохи."""
     return compose_post_html(body, channel_id=channel_id)
+
 
 
 TgPostFn = Callable[..., dict[str, Any]]
