@@ -78,7 +78,7 @@ def signature(channel_id: str | None = None) -> str:
     link = channel_link(channel_id) or "https://t.me/epoch_z"
     name = (os.getenv("TELEGRAM_CURATE_CHANNEL_TITLE") or "Заметки эпохи").strip()
     return (
-        "\n\n—\n"
+        "\n\n"
         f'📣 <a href="{html_escape(link)}">{html_escape(name)}</a>'
     )
 
