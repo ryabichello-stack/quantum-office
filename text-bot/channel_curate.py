@@ -19,14 +19,33 @@ logger = logging.getLogger("ava-text-bot.channel_curate")
 DATA_DIR = Path(os.getenv("DATA_DIR", "/opt/ava-text-bot/data"))
 STATE_PATH = DATA_DIR / "channel_curate.json"
 
-REWRITE_SYSTEM = (
-    "Ты редактор авторского Telegram-канала.\n"
-    "Перепиши исходный пост на русском: сохрани факты и смысл, слегка освежи формулировки,\n"
-    "убери чужие призывы подписаться / рекламу / водяные ссылки на чужие каналы.\n"
-    "Не выдумывай фактов. Не добавляй эмодзи сверх меры (0–2 уместны).\n"
-    "Не добавляй подпись канала и ссылки — их приклеит система.\n"
-    "Верни ТОЛЬКО текст поста без кавычек и без пояснений."
-)
+REWRITE_SYSTEM = """Ты старший копирайтер авторского Telegram-канала «Заметки эпохи».
+Задача: переписать исходный пост так, чтобы его было удобно читать в Telegram.
+
+СМЫСЛ:
+• Сохрани факты и смысл, слегка освежи формулировки.
+• Не выдумывай цифры, имена, даты и детали.
+• Убери чужие призывы подписаться, рекламу, водяные ссылки на другие каналы.
+• Не добавляй подпись канала и ссылку на нас — их приклеит система.
+
+СТРУКТУРА (копирайтинг для Telegram):
+1) Первая строка — сильный заголовок/хук: сразу понятно, о чём речь.
+   Оформи заголовок жирным: <b>…</b>
+2) Короткий лид (1–2 предложения) — суть.
+3) Дальше — воздух: короткие абзацы (1–3 строки), пустая строка между блоками.
+4) Если есть перечисления, шаги, плюсы/минусы, факты — сделай список:
+   каждая строка с «• » (теги <ul>/<li> в Telegram не работают).
+5) Ключевые слова и цифры выделяй <b>…</b> или <i>…</i>.
+6) В конце можно одну спокойную мысль-вывод (без агрессивного CTA).
+
+ОФОРМЛЕНИЕ (Telegram HTML):
+• Разрешены ТОЛЬКО теги: <b> <i> <u> <s> <code> <a href="">
+• Не используй Markdown (**bold**, _italic_) — только HTML-теги.
+• Не используй заголовки #, цитаты >, таблицы.
+• Эмодзи — умеренно (0–3), только если помогают сканировать текст.
+• Без стены текста: лучше короче и яснее.
+
+Верни ТОЛЬКО готовый текст поста (HTML), без кавычек, без пояснений и без ```."""
 
 
 def enabled() -> bool:
@@ -69,9 +88,83 @@ def html_escape(s: str) -> str:
         .replace(">", "&gt;")
     )
 
+def _md_to_telegram_html(text: str) -> str:
+    """Convert leftover Markdown emphasis to Telegram HTML."""
+    s = text or ""
+    s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s, flags=re.S)
+    s = re.sub(r"__(.+?)__", r"<b>\1</b>", s, flags=re.S)
+    s = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"<i>\1</i>", s, flags=re.S)
+    s = re.sub(
+        r"(?<![A-Za-z0-9_])_(?!_)(.+?)(?<!_)_(?![A-Za-z0-9_])",
+        r"<i>\1</i>",
+        s,
+        flags=re.S,
+    )
+    s = re.sub(r"(?m)^\s*[-*]\s+", "• ", s)
+    s = re.sub(r"(?m)^\s*\d+[.)]\s+", "• ", s)
+    return s
+
+
+_ALLOWED_TG_TAGS = {
+    "b",
+    "strong",
+    "i",
+    "em",
+    "u",
+    "ins",
+    "s",
+    "strike",
+    "del",
+    "code",
+    "pre",
+    "a",
+    "tg-spoiler",
+}
+
+
+def sanitize_telegram_html(text: str) -> str:
+    """Keep safe Telegram HTML tags; escape everything else."""
+    s = _md_to_telegram_html((text or "").strip())
+    s = s.replace("<strong>", "<b>").replace("</strong>", "</b>")
+    s = s.replace("<em>", "<i>").replace("</em>", "</i>")
+
+    tokens: list[str] = []
+
+    def protect(tag_html: str, name: str) -> str:
+        name = name.lower()
+        # Leave unknown/invalid tags as raw text — final html_escape handles them once.
+        if name not in _ALLOWED_TG_TAGS:
+            return tag_html
+        low = tag_html.lower()
+        if name == "a" and not low.startswith("</"):
+            if not re.match(
+                r'^<a\s+href="(https?://[^"]+|tg://[^"]+)">$',
+                tag_html,
+                flags=re.I,
+            ):
+                return tag_html
+        tokens.append(tag_html)
+        return f"\x00TG{len(tokens) - 1}\x00"
+
+    def repl(m: re.Match[str]) -> str:
+        return protect(m.group(0), m.group(1))
+
+    s = re.sub(r"</?([a-zA-Z0-9\-]+)(?:\s+[^>]*)?>", repl, s)
+    parts = re.split(r"(\x00TG\d+\x00)", s)
+    out: list[str] = []
+    for part in parts:
+        tm = re.match(r"\x00TG(\d+)\x00", part or "")
+        if tm:
+            out.append(tokens[int(tm.group(1))])
+        else:
+            out.append(html_escape(part))
+    return "".join(out)
+
+
+
 
 def signature(channel_id: str | None = None) -> str:
-    """HTML footer: megaphone + underlined clickable channel name."""
+    """HTML footer: megaphone + clickable channel name."""
     raw = (os.getenv("TELEGRAM_CURATE_SIGNATURE") or "").strip()
     if raw:
         return raw.replace("\\n", "\n")
@@ -239,12 +332,12 @@ def rewrite_text(source: str, *, openai_api_key: str, model: str) -> str:
 
 
 def compose_post_html(body: str, *, channel_id: str | None = None) -> str:
-    """Escape body + append HTML signature (parse_mode=HTML)."""
-    body_esc = html_escape((body or "").rstrip())
+    """Sanitize Telegram HTML body + append clickable footer."""
+    body_html = sanitize_telegram_html((body or "").rstrip())
     sig = signature(channel_id)
-    if "📣" in body_esc or "t.me/epoch_z" in body_esc:
-        return body_esc
-    return f"{body_esc}{sig}"
+    if "📣" in body_html or "t.me/epoch_z" in body_html:
+        return body_html
+    return f"{body_html}{sig}"
 
 
 def apply_signature(body: str, *, channel_id: str | None = None) -> str:
