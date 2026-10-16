@@ -280,3 +280,16 @@ def test_html_body_extract():
     )
     text = _plain_body(msg)
     assert "созвонимся" in text
+
+
+def test_messenger_channel_publish(monkeypatch):
+    def fake_tb(method, path, body=None, query=None, timeout=90.0):
+        assert path == "/api/messenger/channel/publish"
+        assert body["text"].startswith("Новость")
+        return {"ok": True, "channel_id": "@ai_v_shtate", "message_id": 42}
+
+    monkeypatch.setattr("quantum_office_mcp.handlers.text_bot_request", fake_tb)
+    out = call_tool("telegram.channel_publish", {"text": "Новость: тест"})
+    payload = json.loads(out["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["message_id"] == 42

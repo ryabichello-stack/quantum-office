@@ -29,6 +29,7 @@ from scenarios import looks_like_outbound_request
 from secretary import secretary
 import owner_alerts
 import voice_stt
+import channel_curate
 
 load_dotenv()
 
@@ -37,6 +38,8 @@ logger = logging.getLogger("ava-text-bot")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_BUSINESS_BOT_TOKEN = os.getenv("TELEGRAM_BUSINESS_BOT_TOKEN", "").strip()
+TELEGRAM_CHANNEL_BOT_TOKEN = os.getenv("TELEGRAM_CHANNEL_BOT_TOKEN", "").strip()
+TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "").strip()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip()
 AVA_MAILER_BASE = os.getenv("AVA_MAILER_BASE", "http://127.0.0.1:8000").strip()
@@ -47,6 +50,7 @@ TG_HANDLE_WORKERS = max(1, int(os.getenv("TELEGRAM_HANDLE_WORKERS", "4")))
 app = FastAPI(title="Quantum Labs Secretary", version="0.3.0")
 _poll_thread: threading.Thread | None = None
 _business_poll_thread: threading.Thread | None = None
+_curate_poll_thread: threading.Thread | None = None
 _stop_event = threading.Event()
 _update_pool = ThreadPoolExecutor(
     max_workers=TG_HANDLE_WORKERS, thread_name_prefix="tg-handle"
@@ -164,17 +168,24 @@ def api_messenger_status(x_webhook_token: Optional[str] = Header(None)) -> dict[
                 TELEGRAM_BOT_TOKEN and _poll_thread and _poll_thread.is_alive()
             ),
         },
+        "telegram_channel": {
+            "configured": bool(TELEGRAM_CHANNEL_BOT_TOKEN and TELEGRAM_CHANNEL_ID),
+            "channel_id": TELEGRAM_CHANNEL_ID or None,
+        },
+        "telegram_curate": channel_curate.status(),
         "telegram_business": biz,
         "max": max_messenger.status(),
         "api_auth_required": bool(WEBHOOK_TOKEN),
         "capabilities": {
             "send": True,
+            "channel_publish": bool(TELEGRAM_CHANNEL_BOT_TOKEN and TELEGRAM_CHANNEL_ID),
             "session_history": True,
             "list_chats": True,
             "max_native_messages": True,
             "note": (
                 "Telegram history = local secretary sessions (bot cannot scrape full TG history). "
-                "Max native GET /messages needs admin + read_all_messages."
+                "Max native GET /messages needs admin + read_all_messages. "
+                "News channel: POST /api/messenger/channel/publish."
             ),
         },
     }
@@ -368,6 +379,64 @@ def api_messenger_send(
         }
 
     raise HTTPException(status_code=400, detail="channel must be telegram|max|telegram_business")
+
+
+class ChannelPublishRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=4096)
+    channel_id: Optional[str] = Field(
+        default=None,
+        description="Override TELEGRAM_CHANNEL_ID (@name or -100…)",
+    )
+    parse_mode: Optional[str] = Field(
+        default=None,
+        description="HTML | Markdown | MarkdownV2 (optional)",
+    )
+    disable_notification: bool = False
+    disable_web_page_preview: bool = False
+
+
+@app.post("/api/messenger/channel/publish")
+def api_messenger_channel_publish(
+    req: ChannelPublishRequest,
+    x_webhook_token: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    """Publish a news post to the configured Telegram channel (bot must be admin)."""
+    _check_api_token(x_webhook_token)
+    token = TELEGRAM_CHANNEL_BOT_TOKEN or TELEGRAM_BOT_TOKEN
+    chat = (req.channel_id or TELEGRAM_CHANNEL_ID or "").strip()
+    text = (req.text or "").strip()
+    if not token:
+        raise HTTPException(status_code=503, detail="telegram_channel_not_configured")
+    if not chat:
+        raise HTTPException(status_code=400, detail="channel_id_required")
+    if not text:
+        raise HTTPException(status_code=400, detail="text_required")
+
+    payload: dict[str, Any] = {
+        "chat_id": chat,
+        "text": text[:4096],
+        "disable_notification": bool(req.disable_notification),
+        "disable_web_page_preview": bool(req.disable_web_page_preview),
+    }
+    pm = (req.parse_mode or "").strip()
+    if pm:
+        payload["parse_mode"] = pm
+
+    try:
+        raw = _tg_post("sendMessage", payload, token=token, timeout=20.0)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=502, detail=f"telegram_channel_publish_failed: {exc}"
+        ) from exc
+
+    result = raw.get("result") if isinstance(raw, dict) else None
+    message_id = result.get("message_id") if isinstance(result, dict) else None
+    return {
+        "ok": bool(raw.get("ok")) if isinstance(raw, dict) else True,
+        "channel_id": chat,
+        "message_id": message_id,
+        "result": result,
+    }
 
 
 # --------------------
@@ -812,7 +881,26 @@ def _handle_update_safe(update: dict[str, Any], *, token: str | None = None) -> 
         logger.exception("update failed: %s", update.get("update_id"))
 
 
-def poll_loop(*, token: str, name: str, allow_direct_messages: bool = True) -> None:
+def _handle_curate_update_safe(update: dict[str, Any]) -> None:
+    try:
+        channel_curate.handle_update(
+            update,
+            tg_post=_tg_post,
+            openai_api_key=OPENAI_API_KEY,
+            model=OPENAI_MODEL,
+        )
+    except Exception:
+        logger.exception("curate update failed: %s", update.get("update_id"))
+
+
+def poll_loop(
+    *,
+    token: str,
+    name: str,
+    allow_direct_messages: bool = True,
+    allowed_updates: list[str] | None = None,
+    on_update=None,
+) -> None:
     offset: int | None = None
     logger.info("Telegram poll loop started name=%s workers=%s", name, TG_HANDLE_WORKERS)
     try:
@@ -826,13 +914,18 @@ def poll_loop(*, token: str, name: str, allow_direct_messages: bool = True) -> N
     except Exception:
         logger.exception("deleteWebhook failed name=%s", name)
 
-    allowed = [
-        "business_connection",
-        "business_message",
-        "edited_business_message",
-    ]
-    if allow_direct_messages:
-        allowed.insert(0, "message")
+    if allowed_updates is not None:
+        allowed = list(allowed_updates)
+    else:
+        allowed = [
+            "business_connection",
+            "business_message",
+            "edited_business_message",
+        ]
+        if allow_direct_messages:
+            allowed.insert(0, "message")
+
+    handler = on_update or (lambda upd: _handle_update_safe(upd, token=token))
 
     while not _stop_event.is_set():
         if not token:
@@ -849,7 +942,7 @@ def poll_loop(*, token: str, name: str, allow_direct_messages: bool = True) -> N
                 continue
             for upd in out.get("result") or []:
                 offset = int(upd.get("update_id", 0)) + 1
-                _update_pool.submit(_handle_update_safe, upd, token=token)
+                _update_pool.submit(handler, upd)
         except urllib.error.URLError as exc:
             logger.warning("poll error name=%s: %s", name, exc)
             time.sleep(3)
@@ -861,7 +954,7 @@ def poll_loop(*, token: str, name: str, allow_direct_messages: bool = True) -> N
 
 @app.on_event("startup")
 def on_startup() -> None:
-    global _poll_thread, _business_poll_thread
+    global _poll_thread, _business_poll_thread, _curate_poll_thread
     secretary.startup(OPENAI_API_KEY)
     telegram_business.load_connections()
     if TELEGRAM_BOT_TOKEN:
@@ -902,6 +995,36 @@ def on_startup() -> None:
     else:
         logger.warning("TELEGRAM_BUSINESS_BOT_TOKEN missing — connect commercial bot later")
 
+    # News curate bot (forward → rewrite → @epoch_z): separate token poller
+    curate_tok = TELEGRAM_CHANNEL_BOT_TOKEN
+    if channel_curate.enabled() and curate_tok:
+        same_personal = curate_tok == TELEGRAM_BOT_TOKEN
+        same_business = bool(TELEGRAM_BUSINESS_BOT_TOKEN) and curate_tok == TELEGRAM_BUSINESS_BOT_TOKEN
+        if same_personal or same_business:
+            logger.warning(
+                "TELEGRAM_CHANNEL_BOT_TOKEN coincides with secretary bot — "
+                "curate poller skipped (use a dedicated channel bot token)"
+            )
+        else:
+            _curate_poll_thread = threading.Thread(
+                target=poll_loop,
+                kwargs={
+                    "token": curate_tok,
+                    "name": "channel-curate",
+                    "allowed_updates": ["message", "callback_query"],
+                    "on_update": _handle_curate_update_safe,
+                },
+                name="telegram-curate-poll",
+                daemon=True,
+            )
+            _curate_poll_thread.start()
+            logger.info(
+                "telegram channel curate poller enabled target=%s",
+                channel_curate.target_channel(),
+            )
+    else:
+        logger.info("channel curate poller off")
+
     ch = channel_status()
     biz = telegram_business.status()
     logger.info(
@@ -941,6 +1064,11 @@ def health() -> dict[str, Any]:
         "role": "quantum-labs-secretary",
         "telegram_configured": bool(TELEGRAM_BOT_TOKEN),
         "telegram_business_bot_configured": bool(TELEGRAM_BUSINESS_BOT_TOKEN),
+        "telegram_channel_configured": bool(
+            TELEGRAM_CHANNEL_BOT_TOKEN and TELEGRAM_CHANNEL_ID
+        ),
+        "telegram_channel_id": TELEGRAM_CHANNEL_ID or None,
+        "telegram_curate": channel_curate.status(),
         "telegram_business": biz,
         "voice_stt": voice_stt.enabled(),
         "owner_alerts": owner_alerts.status(),
@@ -966,6 +1094,7 @@ def health() -> dict[str, Any]:
             "/api/messenger/history",
             "/api/messenger/messages",
             "/api/messenger/send",
+            "/api/messenger/channel/publish",
             "/webhooks/whatsapp",
             "/webhooks/max",
             "/webhooks/vk",

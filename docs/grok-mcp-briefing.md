@@ -4,9 +4,10 @@
 Это не общий интернет и не «заглушки»: инструменты вызывают **боевые office-сервисы** на `a.47z.ru` (телефония, почта, Облако Mail.ru, календарь Яндекса, Second Brain, outreach).
 
 Ниже — что ты умеешь, какими tools пользоваться, и типичные сценарии.  
-Всего **~90 tools** (gateway `≥0.3.4`, `schema_revision=2026-10-14-mini-crm`).  
+Всего **~92 tools** (gateway `≥0.3.5`, `schema_revision=2026-10-15-tg-channel-publish`).  
 Если в каталоге нет `messenger.history` / `crm.company_upsert` — **обнови tools catalog** и проверь `GET /health`.  
-`kb.search` сначала берёт markdown (legacy) и **не должен** таймаутиться из‑за Second Brain.  
+`kb.search` сначала берёт markdown (legacy) и **не должен** таймаутиться из‑за Second Brain.
+**Канал новостей:** `messenger.channel_publish` → `@ai_v_shtate`.  
 Пустые тексты в `outreach.replies` → вызови `outreach.replies_backfill`, потом снова `outreach.replies`.  
 **Mini-CRM:** `crm.company_upsert` → `crm.lifecycle_set` → `crm.companies` / `crm.funnel`.  
 Алиасы (например `calls.dial` = `telephony.dial`) дублируют одно и то же API.
