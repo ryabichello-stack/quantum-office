@@ -127,6 +127,7 @@ def health() -> dict[str, Any]:
             "messenger.chats": True,
             "messenger.messages_max": True,
             "crm.mini": True,
+            "messenger.channel_publish": True,
         },
         "endpoints": ["/health", "/tools", "/tools/call", "/mcp", "/openapi-lite"],
         "note": (
