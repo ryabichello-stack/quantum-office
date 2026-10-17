@@ -11,6 +11,8 @@ import json
 import logging
 import os
 import re
+import threading
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -18,6 +20,11 @@ logger = logging.getLogger("ava-text-bot.channel_curate")
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "/opt/ava-text-bot/data"))
 STATE_PATH = DATA_DIR / "channel_curate.json"
+
+_MEDIA_GROUP_LOCK = threading.Lock()
+_MEDIA_GROUPS: dict[str, dict[str, Any]] = {}
+_MEDIA_GROUP_TIMERS: dict[str, threading.Timer] = {}
+MEDIA_GROUP_WAIT_S = float(os.getenv("TELEGRAM_CURATE_ALBUM_WAIT_S", "1.6"))
 
 REWRITE_SYSTEM = """Ты старший копирайтер авторского Telegram-канала «Заметки эпохи».
 Задача: переписать исходный пост так, чтобы его было удобно читать в Telegram.
@@ -236,6 +243,28 @@ def status() -> dict[str, Any]:
     }
 
 
+def extract_media_item(message: dict[str, Any]) -> dict[str, Any] | None:
+    """One InputMedia* item for sendMediaGroup (photo/video)."""
+    photos = message.get("photo") or []
+    if isinstance(photos, list) and photos:
+        last = photos[-1] if isinstance(photos[-1], dict) else None
+        if last and last.get("file_id"):
+            return {"type": "photo", "media": last["file_id"]}
+
+    video = message.get("video") or {}
+    if isinstance(video, dict) and video.get("file_id"):
+        return {"type": "video", "media": video["file_id"]}
+
+    document = message.get("document") or {}
+    if isinstance(document, dict) and document.get("file_id"):
+        mime = str(document.get("mime_type") or "")
+        if mime.startswith("video/"):
+            return {"type": "video", "media": document["file_id"]}
+        if mime.startswith("image/"):
+            return {"type": "photo", "media": document["file_id"]}
+    return None
+
+
 def extract_post(message: dict[str, Any]) -> dict[str, Any]:
     """Text/caption + media file_ids. Never use forwardMessage — re-send as new posts."""
     text = str(message.get("text") or message.get("caption") or "").strip()
@@ -244,17 +273,14 @@ def extract_post(message: dict[str, Any]) -> dict[str, Any]:
     animation_file_id = None
     document_file_id = None
     media_kind = None
+    media_group_id = str(message.get("media_group_id") or "").strip() or None
 
-    photos = message.get("photo") or []
-    if isinstance(photos, list) and photos:
-        last = photos[-1] if isinstance(photos[-1], dict) else None
-        if last and last.get("file_id"):
-            photo_file_id = last.get("file_id")
-            media_kind = "photo"
-
-    video = message.get("video") or {}
-    if isinstance(video, dict) and video.get("file_id"):
-        video_file_id = video.get("file_id")
+    item = extract_media_item(message)
+    if item and item["type"] == "photo":
+        photo_file_id = item["media"]
+        media_kind = "photo"
+    elif item and item["type"] == "video":
+        video_file_id = item["media"]
         media_kind = "video"
 
     animation = message.get("animation") or {}
@@ -262,16 +288,32 @@ def extract_post(message: dict[str, Any]) -> dict[str, Any]:
         animation_file_id = animation.get("file_id")
         media_kind = "animation"
 
-    # video sent as document (common)
     document = message.get("document") or {}
     if isinstance(document, dict) and document.get("file_id"):
         mime = str(document.get("mime_type") or "")
-        if mime.startswith("video/") and not video_file_id:
-            video_file_id = document.get("file_id")
-            media_kind = "video"
-        elif not media_kind:
-            document_file_id = document.get("file_id")
-            media_kind = "document"
+        if not media_kind:
+            if mime.startswith("video/"):
+                video_file_id = document.get("file_id")
+                media_kind = "video"
+            elif mime.startswith("image/"):
+                photo_file_id = document.get("file_id")
+                media_kind = "photo"
+            else:
+                document_file_id = document.get("file_id")
+                media_kind = "document"
+
+    # single-photo path if extract_media_item already set kinds above; keep animation
+    photos = message.get("photo") or []
+    if not photo_file_id and isinstance(photos, list) and photos:
+        last = photos[-1] if isinstance(photos[-1], dict) else None
+        if last and last.get("file_id"):
+            photo_file_id = last.get("file_id")
+            media_kind = media_kind or "photo"
+
+    video = message.get("video") or {}
+    if not video_file_id and isinstance(video, dict) and video.get("file_id"):
+        video_file_id = video.get("file_id")
+        media_kind = media_kind or "video"
 
     forward_from = None
     if message.get("forward_from_chat"):
@@ -293,6 +335,9 @@ def extract_post(message: dict[str, Any]) -> dict[str, Any]:
         "animation_file_id": animation_file_id,
         "document_file_id": document_file_id,
         "media_kind": media_kind,
+        "media_group_id": media_group_id,
+        "message_id": message.get("message_id"),
+        "media_item": item,
         "forward_from": forward_from,
         "is_forward": bool(
             message.get("forward_date")
@@ -349,6 +394,247 @@ def apply_signature(body: str, *, channel_id: str | None = None) -> str:
 TgPostFn = Callable[..., dict[str, Any]]
 
 
+
+def _queue_album_piece(
+    *,
+    media_group_id: str,
+    message: dict[str, Any],
+    chat_id: Any,
+    tg_post: "TgPostFn",
+    openai_api_key: str,
+    model: str,
+) -> None:
+    """Buffer album parts; flush one sendMediaGroup after a short quiet period."""
+    post = extract_post(message)
+    item = post.get("media_item") or extract_media_item(message)
+    if not item:
+        # no usable media in this piece — ignore for album
+        return
+
+    with _MEDIA_GROUP_LOCK:
+        bucket = _MEDIA_GROUPS.setdefault(
+            media_group_id,
+            {
+                "chat_id": chat_id,
+                "pieces": [],
+                "texts": [],
+                "tg_post": tg_post,
+                "openai_api_key": openai_api_key,
+                "model": model,
+            },
+        )
+        bucket["pieces"].append(
+            {
+                "message_id": int(message.get("message_id") or 0),
+                "item": item,
+                "text": post.get("text") or "",
+            }
+        )
+        if post.get("text"):
+            bucket["texts"].append(post["text"])
+
+        old = _MEDIA_GROUP_TIMERS.pop(media_group_id, None)
+        if old is not None:
+            try:
+                old.cancel()
+            except Exception:
+                pass
+
+        timer = threading.Timer(
+            MEDIA_GROUP_WAIT_S,
+            _flush_album,
+            kwargs={"media_group_id": media_group_id},
+        )
+        timer.daemon = True
+        _MEDIA_GROUP_TIMERS[media_group_id] = timer
+        timer.start()
+
+    # lightweight ack once
+    try:
+        tg_post(
+            "sendChatAction",
+            {"chat_id": chat_id, "action": "typing"},
+            token=bot_token(),
+            timeout=10.0,
+        )
+    except Exception:
+        pass
+
+
+def _flush_album(*, media_group_id: str) -> None:
+    with _MEDIA_GROUP_LOCK:
+        bucket = _MEDIA_GROUPS.pop(media_group_id, None)
+        _MEDIA_GROUP_TIMERS.pop(media_group_id, None)
+    if not bucket:
+        return
+
+    tg_post = bucket["tg_post"]
+    chat_id = bucket["chat_id"]
+    openai_api_key = bucket["openai_api_key"]
+    model = bucket["model"]
+    pieces = sorted(bucket.get("pieces") or [], key=lambda p: p.get("message_id") or 0)
+    # dedupe by file_id keep order
+    seen: set[str] = set()
+    media_items: list[dict[str, Any]] = []
+    for piece in pieces:
+        item = dict(piece.get("item") or {})
+        mid = str(item.get("media") or "")
+        if not mid or mid in seen:
+            continue
+        seen.add(mid)
+        media_items.append(item)
+        if len(media_items) >= 10:  # Telegram limit
+            break
+
+    if not media_items:
+        return
+
+    source = ""
+    for piece in pieces:
+        if piece.get("text"):
+            source = str(piece["text"])
+            break
+    if not source:
+        for txt in bucket.get("texts") or []:
+            if txt:
+                source = str(txt)
+                break
+
+    channel = target_channel()
+    if not channel:
+        tg_post(
+            "sendMessage",
+            {"chat_id": chat_id, "text": "Сначала укажите канал: /channel @epoch_z"},
+            token=bot_token(),
+            timeout=20.0,
+        )
+        return
+
+    rewritten = ""
+    if source:
+        if not openai_api_key:
+            tg_post(
+                "sendMessage",
+                {"chat_id": chat_id, "text": "OPENAI_API_KEY не настроен на сервере."},
+                token=bot_token(),
+                timeout=20.0,
+            )
+            return
+        try:
+            rewritten = rewrite_text(
+                source, openai_api_key=openai_api_key, model=model
+            )
+        except Exception as exc:
+            logger.exception("album rewrite failed")
+            tg_post(
+                "sendMessage",
+                {"chat_id": chat_id, "text": f"Не смог переписать: {exc}"},
+                token=bot_token(),
+                timeout=20.0,
+            )
+            return
+
+    body = (rewritten or source or "").rstrip()
+    final = apply_signature(body if body else " ", channel_id=channel)
+
+    try:
+        pub = _publish_album(
+            tg_post,
+            channel=channel,
+            text=final,
+            media_items=media_items,
+        )
+        mid = pub.get("message_id")
+        n = pub.get("count") or len(media_items)
+        tg_post(
+            "sendMessage",
+            {
+                "chat_id": chat_id,
+                "text": (
+                    f"Готово → {channel}"
+                    + (f" #{mid}" if mid else "")
+                    + f" (альбом {n} файл.)"
+                ),
+            },
+            token=bot_token(),
+            timeout=20.0,
+        )
+    except Exception as exc:
+        logger.exception("album publish failed")
+        tg_post(
+            "sendMessage",
+            {"chat_id": chat_id, "text": f"Ошибка публикации альбома: {exc}"},
+            token=bot_token(),
+            timeout=20.0,
+        )
+
+
+def _publish_album(
+    tg_post: "TgPostFn",
+    *,
+    channel: str,
+    text: str,
+    media_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Publish photo/video carousel as one native album (sendMediaGroup)."""
+    if not media_items:
+        raise RuntimeError("empty_album")
+    if len(media_items) == 1:
+        only = media_items[0]
+        post = {
+            "photo_file_id": only["media"] if only.get("type") == "photo" else None,
+            "video_file_id": only["media"] if only.get("type") == "video" else None,
+            "animation_file_id": None,
+            "document_file_id": None,
+        }
+        return _publish_native(tg_post, channel=channel, text=text, post=post)
+
+    caption_limit = 1024
+    full = text or ""
+    media_payload: list[dict[str, Any]] = []
+    for i, item in enumerate(media_items):
+        entry = {"type": item["type"], "media": item["media"]}
+        if i == 0 and full and len(full) <= caption_limit:
+            entry["caption"] = full
+            entry["parse_mode"] = "HTML"
+        media_payload.append(entry)
+
+    raw = tg_post(
+        "sendMediaGroup",
+        {"chat_id": channel, "media": media_payload},
+        token=bot_token(),
+        timeout=120.0,
+    )
+    if not raw.get("ok"):
+        raise RuntimeError(raw.get("description") or str(raw))
+    results = raw.get("result") or []
+    first = results[0] if results else {}
+    mid = first.get("message_id") if isinstance(first, dict) else None
+
+    # Caption did not fit on first item — send text as follow-up native message
+    if full and len(full) > caption_limit:
+        raw2 = tg_post(
+            "sendMessage",
+            {
+                "chat_id": channel,
+                "text": full[:4096],
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True,
+            },
+            token=bot_token(),
+            timeout=20.0,
+        )
+        if not raw2.get("ok"):
+            raise RuntimeError(raw2.get("description") or str(raw2))
+
+    return {
+        "message_id": mid,
+        "kind": f"album:{len(media_items)}",
+        "count": len(media_items),
+        "result": first,
+    }
+
+
 def handle_owner_message(
     message: dict[str, Any],
     *,
@@ -388,7 +674,7 @@ def handle_owner_message(
                 "chat_id": chat_id,
                 "text": (
                     "Лента «Заметки эпохи»\n\n"
-                    "Перешлите сюда пост (текст / фото / видео) — "
+                    "Перешлите сюда пост (текст / фото / видео / карусель) — "
                     "сразу перепишу и опубликую в канал как обычное сообщение "
                     "(не репост), с подписью и ссылкой.\n\n"
                     f"Канал: {ch}\n"
@@ -459,6 +745,19 @@ def handle_owner_message(
             },
             token=bot_token(),
             timeout=20.0,
+        )
+        return
+
+    # Album / carousel: collect pieces, publish as one sendMediaGroup
+    mgid = str(message.get("media_group_id") or "").strip()
+    if mgid:
+        _queue_album_piece(
+            media_group_id=mgid,
+            message=message,
+            chat_id=chat_id,
+            tg_post=tg_post,
+            openai_api_key=openai_api_key,
+            model=model,
         )
         return
 

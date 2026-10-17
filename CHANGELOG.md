@@ -12,6 +12,7 @@
 
 ### Added
 
+- Curate: карусели (media group) публикуются одним `sendMediaGroup`, а не отдельными сообщениями на каждый файл.
 - Curate rewrite: копирайтерская вёрстка для Telegram — `<b>`-заголовок, воздух, списки «•», аккуратные акценты; HTML санитизация вместо полного escape.
 - Text-bot curate: пересылка боту `AIContentGPTBot` → сразу рерайт и нативный пост в `@epoch_z` (фото/видео/текст через sendPhoto/sendVideo, не forward) + подпись «Заметки эпохи» со ссылкой `https://t.me/epoch_z` (`TELEGRAM_CURATE_CONFIRM=false`).
 - Telegram news channel: `POST /api/messenger/channel/publish` + MCP `messenger.channel_publish` / `telegram.channel_publish` (env `TELEGRAM_CHANNEL_BOT_TOKEN` + `TELEGRAM_CHANNEL_ID`, default `@ai_v_shtate`). Gateway `0.3.5`.
