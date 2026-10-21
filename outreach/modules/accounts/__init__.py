@@ -718,8 +718,10 @@ class AccountStore:
             if life:
                 clauses.append("lifecycle_status = ?")
                 params.append(life)
-            if q:
-                like = f"%{q.strip().lower()}%"
+            q_raw = (q or "").strip()
+            # SQLite lower()/LIKE are ASCII-only for case — filter Cyrillic in Python.
+            if q_raw and all(ord(c) < 128 for c in q_raw):
+                like = f"%{q_raw.casefold()}%"
                 clauses.append(
                     "("
                     "lower(legal_name) LIKE ? OR lower(brand_name) LIKE ? "
@@ -728,14 +730,39 @@ class AccountStore:
                     ")"
                 )
                 params.extend([like, like, like, like, like])
-            params.append(limit)
-            sql = f"""
-                SELECT * FROM accounts
-                WHERE {' AND '.join(clauses)}
-                ORDER BY updated_at DESC LIMIT ?
-            """
-            rows = conn.execute(sql, params).fetchall()
-        return [self._enrich_account(dict(r)) for r in rows]
+                params.append(limit)
+                sql = f"""
+                    SELECT * FROM accounts
+                    WHERE {' AND '.join(clauses)}
+                    ORDER BY updated_at DESC LIMIT ?
+                """
+                rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+            elif q_raw:
+                sql = f"""
+                    SELECT * FROM accounts
+                    WHERE {' AND '.join(clauses)}
+                    ORDER BY updated_at DESC
+                """
+                rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+                qf = q_raw.casefold()
+                rows = [
+                    r
+                    for r in rows
+                    if qf in (r.get("legal_name") or "").casefold()
+                    or qf in (r.get("brand_name") or "").casefold()
+                    or qf in (r.get("inn") or "").casefold()
+                    or qf in (r.get("bitrix_company_id") or "").casefold()
+                    or qf in (r.get("domain") or "").casefold()
+                ][:limit]
+            else:
+                params.append(limit)
+                sql = f"""
+                    SELECT * FROM accounts
+                    WHERE {' AND '.join(clauses)}
+                    ORDER BY updated_at DESC LIMIT ?
+                """
+                rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+        return [self._enrich_account(r) for r in rows]
 
     def funnel_counts(self) -> dict[str, int]:
         with self.connect() as conn:

@@ -46,6 +46,13 @@ def test_upsert_and_lifecycle(tmp_path: Path) -> None:
     assert funnel["MEETING_BOOKED"] >= 1
 
 
+def test_list_accounts_cyrillic_search(tmp_path: Path) -> None:
+    store = AccountStore(db_path=tmp_path / "modules.db")
+    store.upsert_manual(name='ООО "Центральный ломбард"', create_lead=False, source="test")
+    found = store.list_accounts(q="центральный", limit=10)
+    assert any("Центральный" in a["legal_name"] for a in found)
+
+
 def test_additional_phones_on_card_no_dupe_contact_lead(tmp_path: Path) -> None:
     """Extra numbers beyond registry land on company card; re-enrich is idempotent."""
     store = AccountStore(db_path=tmp_path / "modules.db")
