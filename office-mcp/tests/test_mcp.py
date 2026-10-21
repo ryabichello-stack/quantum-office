@@ -209,16 +209,29 @@ def test_crm_company_upsert(monkeypatch):
         assert path == "/api/modules/accounts"
         assert body["name"] == "ООО Тест"
         assert body["lifecycle_status"] == "INTERESTED"
+        assert body["additional_phones"] == ["79001112233"]
+        assert body["create_lead"] is False
         return {
             "ok": True,
             "created": True,
-            "account": {"id": "acc-1", "legal_name": "ООО Тест", "lifecycle_status": "INTERESTED"},
+            "account": {
+                "id": "acc-1",
+                "legal_name": "ООО Тест",
+                "lifecycle_status": "INTERESTED",
+                "additional_phones": ["79001112233"],
+            },
         }
 
     monkeypatch.setattr("quantum_office_mcp.handlers.outreach_request", fake_outreach)
     out = call_tool(
         "crm.company_upsert",
-        {"name": "ООО Тест", "email": "a@test.ru", "lifecycle_status": "INTERESTED"},
+        {
+            "name": "ООО Тест",
+            "email": "a@test.ru",
+            "lifecycle_status": "INTERESTED",
+            "additional_phones": ["79001112233"],
+            "create_lead": False,
+        },
     )
     payload = json.loads(out["content"][0]["text"])
     assert payload["ok"] is True

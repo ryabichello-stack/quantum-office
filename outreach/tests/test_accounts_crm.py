@@ -24,6 +24,7 @@ def test_upsert_and_lifecycle(tmp_path: Path) -> None:
     acc = out["account"]
     assert acc["legal_name"] == "ООО Тест CRM"
     assert acc["lifecycle_status"] in LIFECYCLE
+    assert acc["primary_phone"] == "79990001122"
     aid = acc["id"]
 
     again = store.upsert_manual(
@@ -43,6 +44,64 @@ def test_upsert_and_lifecycle(tmp_path: Path) -> None:
     assert any(a["id"] == aid for a in listed)
     funnel = store.funnel_counts()
     assert funnel["MEETING_BOOKED"] >= 1
+
+
+def test_additional_phones_on_card_no_dupe_contact_lead(tmp_path: Path) -> None:
+    """Extra numbers beyond registry land on company card; re-enrich is idempotent."""
+    store = AccountStore(db_path=tmp_path / "modules.db")
+    first = store.upsert_manual(
+        name="Центральный ломбард",
+        phone="74951234567",  # registry / primary on create
+        contact_name="Петров Пётр",
+        lifecycle_status="ENRICHED",
+        source="test",
+    )
+    aid = first["account"]["id"]
+    person_id = first["person"]["id"]
+    lead_id = first["lead"]["id"]
+    assert first["account"]["primary_phone"] == "74951234567"
+    assert first["account"]["additional_phones"] == []
+
+    # Enrich: found reception number — must NOT replace primary, NOT new person/lead
+    second = store.upsert_manual(
+        name="Центральный ломбард",
+        phone="79001112233",  # legacy MCP: lone phone on existing = additional
+        contact_name="Петров Пётр",
+        lifecycle_status="ENRICHED",
+        source="test",
+    )
+    assert second["created"] is False
+    acc = second["account"]
+    assert acc["id"] == aid
+    assert acc["primary_phone"] == "74951234567"
+    assert "79001112233" in acc["additional_phones"]
+    assert second["person"]["id"] == person_id
+    assert second["lead"]["id"] == lead_id
+
+    third = store.upsert_manual(
+        name="Центральный ломбард",
+        additional_phones=["79001112233", "79005556677"],
+        create_lead=False,
+        source="test",
+    )
+    assert third["lead"] is None
+    assert set(third["account"]["additional_phones"]) >= {"79001112233", "79005556677"}
+    assert third["account"]["primary_phone"] == "74951234567"
+    assert len(store.list_people_for_account(aid)) == 1
+    assert len(store.list_leads_for_account(aid)) == 1
+
+    # Simulate prior spam: force a second person+lead, then dedupe
+    spam = store.ensure_person(
+        full_name="Центральный ломбард", account_id=aid, title=""
+    )
+    store.upsert_lead(
+        account_id=aid, person_id=spam["id"], source="test-spam", status="NEW"
+    )
+    cleaned = store.dedupe_account_people_leads(aid)
+    assert cleaned["ok"] is True
+    assert cleaned["removed_people"] >= 1
+    assert len(cleaned["people"]) == 1
+    assert cleaned["people"][0]["id"] == person_id
 
 
 def test_sync_from_clients_new_skips_existing(tmp_path: Path) -> None:
