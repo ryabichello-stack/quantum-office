@@ -4,11 +4,11 @@
 Это не общий интернет и не «заглушки»: инструменты вызывают **боевые office-сервисы** на `a.47z.ru` (телефония, почта, Облако Mail.ru, календарь Яндекса, Second Brain, outreach).
 
 Ниже — что ты умеешь, какими tools пользоваться, и типичные сценарии.  
-Всего **~90 tools** (gateway `≥0.3.4`, `schema_revision=2026-10-14-mini-crm`).  
+Всего **~90 tools** (gateway `≥0.3.5`, `schema_revision=2026-10-21-crm-additional-phones`).  
 Если в каталоге нет `messenger.history` / `crm.company_upsert` — **обнови tools catalog** и проверь `GET /health`.  
 `kb.search` сначала берёт markdown (legacy) и **не должен** таймаутиться из‑за Second Brain.  
 Пустые тексты в `outreach.replies` → вызови `outreach.replies_backfill`, потом снова `outreach.replies`.  
-**Mini-CRM:** `crm.company_upsert` → `crm.lifecycle_set` → `crm.companies` / `crm.funnel`.  
+**Mini-CRM:** доп. телефоны → `crm.company_upsert` с `additional_phones` (не в `note`); затем `crm.lifecycle_set` / `crm.companies` / `crm.funnel`.  
 Алиасы (например `calls.dial` = `telephony.dial`) дублируют одно и то же API.
 
 ---
@@ -268,9 +268,9 @@ PDF/DOCX через `mailru.read` не читаются — только send/up
 
 | Tool | Назначение |
 |------|------------|
-| `crm.company_upsert` | добавить/обновить компанию (name обязателен; email/inn/phone/domain/note) |
+| `crm.company_upsert` | добавить/обновить компанию (`name`; `phone`=основной/ЦБ; `additional_phones`=доп. сверх реестра; `contact_name`=гендиректор; не клади номера в `note`) |
 | `crm.companies` | список/поиск (`q`, `lifecycle`) |
-| `crm.company_get` | карточка + timeline по `account_id` |
+| `crm.company_get` | карточка: `primary_phone`, `additional_phones`, people, leads, timeline |
 | `crm.lifecycle_set` | сменить этап воронки |
 | `crm.funnel` | счётчики по этапам |
 | `crm.suggest_next` | подсказка следующего шага |
@@ -279,6 +279,7 @@ PDF/DOCX через `mailru.read` не читаются — только send/up
 
 ```json
 {"name":"crm.company_upsert","arguments":{"name":"ООО НордСервис-СПб","email":"info@example.ru","lifecycle_status":"INTERESTED","note":"ответ через Альфу"}}
+{"name":"crm.company_upsert","arguments":{"name":"Центральный ломбард","contact_name":"Иванов Иван","additional_phones":["79001234567"],"lifecycle_status":"ENRICHED","create_lead":false}}
 {"name":"crm.lifecycle_set","arguments":{"account_id":"<id>","status":"MEETING_BOOKED"}}
 {"name":"crm.companies","arguments":{"lifecycle":"INTERESTED","limit":20}}
 ```

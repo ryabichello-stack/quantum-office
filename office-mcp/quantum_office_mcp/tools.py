@@ -1139,19 +1139,34 @@ TOOLS: list[dict[str, Any]] = [
         "name": "crm.company_upsert",
         "description": (
             "Add or update a company in mini-CRM (local SoT). Dedups by name/email/inn. "
-            "Optional lifecycle_status and note."
+            "phone = registry/primary; additional_phones = extra numbers beyond ЦБ "
+            "(reception/accounting/checko) — stored on the company card, not in note. "
+            "On an existing company a lone phone is treated as additional. "
+            "Does not spawn duplicate contacts/leads on re-enrich. "
+            "Optional lifecycle_status, note, create_lead."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "name": {"type": "string"},
                 "email": {"type": "string"},
-                "phone": {"type": "string"},
+                "phone": {
+                    "type": "string",
+                    "description": "Primary/registry phone (ЦБ/Bitrix). On existing company without additional_phones, treated as additional.",
+                },
+                "additional_phones": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Extra phones beyond registry (append on company card).",
+                },
                 "inn": {"type": "string"},
                 "domain": {"type": "string"},
                 "region": {"type": "string"},
                 "city": {"type": "string"},
-                "contact_name": {"type": "string"},
+                "contact_name": {
+                    "type": "string",
+                    "description": "LPR / гендиректор (ЕГРЮЛ). Idempotent person.",
+                },
                 "lifecycle_status": {
                     "type": "string",
                     "default": "NEW",
@@ -1160,6 +1175,11 @@ TOOLS: list[dict[str, Any]] = [
                 "note": {"type": "string"},
                 "source": {"type": "string", "default": "mcp"},
                 "bitrix_company_id": {"type": "string"},
+                "create_lead": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Create/update one open lead per account+source. False for phone-only enrich.",
+                },
             },
             "required": ["name"],
         },

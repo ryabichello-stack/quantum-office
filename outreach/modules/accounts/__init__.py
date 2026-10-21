@@ -53,6 +53,25 @@ def normalize_name(name: str | None) -> str:
     return raw
 
 
+_PHONE_DIGITS_RE = re.compile(r"\D+")
+
+
+def normalize_phone(value: str | None) -> str | None:
+    """Digits-only phone; RU 10-digit / 8… → 7XXXXXXXXXX."""
+    if value is None:
+        return None
+    digits = _PHONE_DIGITS_RE.sub("", str(value).strip())
+    if len(digits) < 10:
+        return None
+    if len(digits) == 10 and digits[0] == "9":
+        digits = "7" + digits
+    if len(digits) == 11 and digits[0] == "8":
+        digits = "7" + digits[1:]
+    if len(digits) < 10:
+        return None
+    return digits
+
+
 class AccountStore:
     def __init__(self, db_path: Path | None = None, *, tenant_id: str = DEFAULT_TENANT) -> None:
         self.db_path = Path(db_path or MODULES_DB)
@@ -206,7 +225,76 @@ class AccountStore:
                 "SELECT * FROM accounts WHERE id = ? AND tenant_id = ?",
                 (account_id, self.tenant_id),
             ).fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        return self._enrich_account(dict(row))
+
+    def _enrich_account(self, acc: dict[str, Any]) -> dict[str, Any]:
+        """Attach phones/emails for company card.
+
+        Distinguishes registry/primary phone from additional numbers found
+        outside ЦБ (checko/rusprofile/reception/accounting).
+        """
+        aid = acc.get("id")
+        emails: list[str] = []
+        seen_e: set[str] = set()
+        meta: dict[str, Any] = {}
+        try:
+            meta = json.loads(acc.get("metadata_json") or "{}")
+        except Exception:
+            meta = {}
+
+        primary = normalize_phone(meta.get("primary_phone"))
+        additional: list[str] = []
+        seen_add: set[str] = set()
+        for p in meta.get("additional_phones") or meta.get("phones") or []:
+            n = normalize_phone(str(p))
+            if n and n != primary and n not in seen_add:
+                seen_add.add(n)
+                additional.append(n)
+
+        if aid:
+            with self.connect() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT type, value, source FROM contact_points
+                    WHERE tenant_id = ? AND account_id = ?
+                    ORDER BY updated_at DESC
+                    """,
+                    (self.tenant_id, aid),
+                ).fetchall()
+            for r in rows:
+                if r["type"] == "phone":
+                    n = normalize_phone(r["value"]) or str(r["value"]).strip()
+                    if not n:
+                        continue
+                    src = (r["source"] or "").strip().lower()
+                    if src in {"primary", "registry", "cbr", "bitrix"} and not primary:
+                        primary = n
+                    elif n != primary and n not in seen_add:
+                        seen_add.add(n)
+                        additional.append(n)
+                elif r["type"] == "email":
+                    em = normalize_email(r["value"])
+                    if em and em not in seen_e:
+                        seen_e.add(em)
+                        emails.append(em)
+
+        phones: list[str] = []
+        if primary:
+            phones.append(primary)
+        for n in additional:
+            if n not in phones:
+                phones.append(n)
+
+        acc["primary_phone"] = primary
+        acc["additional_phones"] = additional
+        acc["phones"] = phones
+        acc["emails"] = emails
+        # Convenience: phone = primary if set, else first additional
+        acc["phone"] = primary or (additional[0] if additional else None)
+        acc["email"] = emails[0] if emails else None
+        return acc
 
     def get_account_by_bitrix(self, bitrix_company_id: str) -> dict[str, Any] | None:
         bid = (bitrix_company_id or "").strip()
@@ -220,7 +308,7 @@ class AccountStore:
                 """,
                 (self.tenant_id, bid),
             ).fetchone()
-        return dict(row) if row else None
+        return self._enrich_account(dict(row)) if row else None
 
     def upsert_account_from_company(
         self,
@@ -319,12 +407,31 @@ class AccountStore:
             )
         return self.get_account(account_id)
 
+    def _normalize_phone_list(self, values: Any) -> list[str]:
+        if values is None:
+            return []
+        if isinstance(values, str):
+            raw_items = re.split(r"[,;]+", values)
+        elif isinstance(values, (list, tuple)):
+            raw_items = list(values)
+        else:
+            raw_items = [values]
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in raw_items:
+            n = normalize_phone(str(item) if item is not None else None)
+            if n and n not in seen:
+                seen.add(n)
+                out.append(n)
+        return out
+
     def upsert_manual(
         self,
         *,
         name: str,
         email: str | None = None,
         phone: str | None = None,
+        additional_phones: list[str] | str | None = None,
         inn: str | None = None,
         domain: str | None = None,
         region: str | None = None,
@@ -334,8 +441,16 @@ class AccountStore:
         source: str = "mcp",
         note: str = "",
         bitrix_company_id: str | None = None,
+        create_lead: bool = True,
     ) -> dict[str, Any]:
-        """Create or update a local CRM account (mini-CRM for Grok/MCP)."""
+        """Create or update a local CRM account (mini-CRM for Grok/MCP).
+
+        - ``phone`` — основной (реестр ЦБ / Bitrix); не затирается доп. номерами.
+        - ``additional_phones`` — доп. номера сверх реестра (приёмная, бухгалтерия,
+          checko/rusprofile); копятся на карточке компании, не в заметке.
+        - Person только при contact_name/email (идемпотентно).
+        - Один open lead на account+source.
+        """
         title = (name or "").strip()
         if not title:
             raise ValueError("name_required")
@@ -343,6 +458,12 @@ class AccountStore:
         if life not in LIFECYCLE:
             raise ValueError(f"invalid lifecycle_status: {life}")
         em = normalize_email(email)
+        primary_n = normalize_phone(phone)
+        add_phones = self._normalize_phone_list(additional_phones)
+        # Legacy: MCP bots often put the found extra number into `phone`.
+        # If primary already exists on the account and the new phone differs,
+        # treat the new value as additional (do not replace registry primary).
+        contact = (contact_name or "").strip()
         bid = (bitrix_company_id or "").strip() or None
         inn_s = (inn or "").strip() or None
         domain_s = (domain or "").strip().lower() or None
@@ -377,6 +498,24 @@ class AccountStore:
                     (self.tenant_id, em),
                 ).fetchone()
             existing = dict(row) if row else None
+        lookup_phones = list(add_phones)
+        if primary_n:
+            lookup_phones.append(primary_n)
+        if not existing and lookup_phones:
+            for cand in lookup_phones:
+                with self.connect() as conn:
+                    row = conn.execute(
+                        """
+                        SELECT a.* FROM accounts a
+                        JOIN contact_points cp ON cp.account_id = a.id
+                        WHERE a.tenant_id = ? AND cp.type = 'phone' AND cp.value = ?
+                        LIMIT 1
+                        """,
+                        (self.tenant_id, cand),
+                    ).fetchone()
+                if row:
+                    existing = dict(row)
+                    break
         if not existing:
             with self.connect() as conn:
                 row = conn.execute(
@@ -398,6 +537,46 @@ class AccountStore:
             except Exception:
                 meta = {}
         meta.update({"source": source or "mcp", "updated_via": "crm.upsert"})
+
+        existing_primary = normalize_phone(meta.get("primary_phone"))
+        # Enrich via MCP usually passes a found *extra* number in `phone`.
+        # On an existing company card that must not become/replace the registry primary.
+        explicit_additional = additional_phones is not None and (
+            (isinstance(additional_phones, str) and additional_phones.strip())
+            or (isinstance(additional_phones, (list, tuple)) and len(additional_phones) > 0)
+        )
+        if existing is not None and primary_n and not explicit_additional:
+            if not existing_primary or primary_n != existing_primary:
+                if primary_n not in add_phones:
+                    add_phones.append(primary_n)
+                primary_n = existing_primary  # keep registry primary (or None)
+        elif (
+            existing is not None
+            and existing_primary
+            and primary_n
+            and primary_n != existing_primary
+        ):
+            if primary_n not in add_phones:
+                add_phones.append(primary_n)
+            primary_n = existing_primary
+        if primary_n:
+            meta["primary_phone"] = primary_n
+        elif existing_primary:
+            primary_n = existing_primary
+
+        add_meta = self._normalize_phone_list(meta.get("additional_phones") or [])
+        # Migrate legacy metadata.phones into additional
+        for p in self._normalize_phone_list(meta.get("phones") or []):
+            if p != primary_n and p not in add_meta:
+                add_meta.append(p)
+        for p in add_phones:
+            if p != primary_n and p not in add_meta:
+                add_meta.append(p)
+        meta["additional_phones"] = add_meta[-30:]
+        meta.pop("phones", None)
+
+        if contact:
+            meta["director_name"] = contact
         if note:
             notes = list(meta.get("notes") or [])
             notes.append({"at": now, "text": note[:2000]})
@@ -444,28 +623,74 @@ class AccountStore:
                 ),
             )
 
-        person = self.ensure_person(
-            full_name=contact_name or title,
-            email=em,
-            phone=phone,
-            account_id=aid,
-            title="",
+        # Company-level phones on the card (not notes, not a fake person)
+        if primary_n:
+            self._upsert_contact_point(
+                person_id=None,
+                account_id=aid,
+                type_="phone",
+                value=primary_n,
+                source="primary",
+            )
+        for p in add_meta:
+            self._upsert_contact_point(
+                person_id=None,
+                account_id=aid,
+                type_="phone",
+                value=p,
+                source="additional",
+            )
+        if em:
+            self._upsert_contact_point(
+                person_id=None,
+                account_id=aid,
+                type_="email",
+                value=em,
+                source="mcp",
+            )
+
+        person: dict[str, Any] | None = None
+        # Do not invent a person from company title / additional phone alone.
+        if contact or em:
+            person = self.ensure_person(
+                full_name=contact or (em.split("@")[0] if em else ""),
+                email=em,
+                phone=None,  # доп. номера компании ≠ личный телефон ЛПР
+                account_id=aid,
+                title="Гендиректор" if contact else "",
+            )
+        elif primary_n:
+            person = self.find_person_by_phone(primary_n)
+
+        # Pure enrich of additional phones on an existing company: no new lead
+        only_extra_phones = (
+            existing is not None and bool(add_phones) and not em and not contact
         )
-        lead_status = life if life in {"NEW", "ENRICHED", "REPLIED", "INTERESTED"} else "NEW"
-        lead = self.upsert_lead(
-            account_id=aid,
-            person_id=(person or {}).get("id"),
-            source=source or "mcp",
-            status=lead_status,
-            product="",
-        )
+        lead = None
+        if create_lead and not only_extra_phones:
+            lead_status = (
+                life if life in {"NEW", "ENRICHED", "REPLIED", "INTERESTED"} else "NEW"
+            )
+            lead = self.upsert_lead(
+                account_id=aid,
+                person_id=(person or {}).get("id"),
+                source=source or "mcp",
+                status=lead_status,
+                product="",
+            )
         self.emit_event(
             event_type="crm.account_upserted",
             source=source or "mcp",
             channel="api",
             account_id=aid,
-            person_id=(person or {}).get("id"),
-            payload={"name": title, "email": em, "lifecycle": life},
+            person_id=(person or {}).get("id") if person else None,
+            payload={
+                "name": title,
+                "email": em,
+                "primary_phone": primary_n,
+                "additional_phones": add_meta,
+                "lifecycle": life,
+            },
         )
         acc = self.get_account(aid)
         assert acc
@@ -493,8 +718,10 @@ class AccountStore:
             if life:
                 clauses.append("lifecycle_status = ?")
                 params.append(life)
-            if q:
-                like = f"%{q.strip().lower()}%"
+            q_raw = (q or "").strip()
+            # SQLite lower()/LIKE are ASCII-only for case — filter Cyrillic in Python.
+            if q_raw and all(ord(c) < 128 for c in q_raw):
+                like = f"%{q_raw.casefold()}%"
                 clauses.append(
                     "("
                     "lower(legal_name) LIKE ? OR lower(brand_name) LIKE ? "
@@ -503,14 +730,39 @@ class AccountStore:
                     ")"
                 )
                 params.extend([like, like, like, like, like])
-            params.append(limit)
-            sql = f"""
-                SELECT * FROM accounts
-                WHERE {' AND '.join(clauses)}
-                ORDER BY updated_at DESC LIMIT ?
-            """
-            rows = conn.execute(sql, params).fetchall()
-        return [dict(r) for r in rows]
+                params.append(limit)
+                sql = f"""
+                    SELECT * FROM accounts
+                    WHERE {' AND '.join(clauses)}
+                    ORDER BY updated_at DESC LIMIT ?
+                """
+                rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+            elif q_raw:
+                sql = f"""
+                    SELECT * FROM accounts
+                    WHERE {' AND '.join(clauses)}
+                    ORDER BY updated_at DESC
+                """
+                rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+                qf = q_raw.casefold()
+                rows = [
+                    r
+                    for r in rows
+                    if qf in (r.get("legal_name") or "").casefold()
+                    or qf in (r.get("brand_name") or "").casefold()
+                    or qf in (r.get("inn") or "").casefold()
+                    or qf in (r.get("bitrix_company_id") or "").casefold()
+                    or qf in (r.get("domain") or "").casefold()
+                ][:limit]
+            else:
+                params.append(limit)
+                sql = f"""
+                    SELECT * FROM accounts
+                    WHERE {' AND '.join(clauses)}
+                    ORDER BY updated_at DESC LIMIT ?
+                """
+                rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+        return [self._enrich_account(r) for r in rows]
 
     def funnel_counts(self) -> dict[str, int]:
         with self.connect() as conn:
@@ -545,6 +797,43 @@ class AccountStore:
             ).fetchone()
         return dict(row) if row else None
 
+    def find_person_by_phone(self, phone: str | None) -> dict[str, Any] | None:
+        phone_n = normalize_phone(phone)
+        if not phone_n:
+            return None
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT p.* FROM people p
+                JOIN contact_points cp ON cp.person_id = p.id
+                WHERE p.tenant_id = ? AND cp.type = 'phone' AND cp.value = ?
+                LIMIT 1
+                """,
+                (self.tenant_id, phone_n),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def find_person_by_account_name(
+        self, account_id: str | None, full_name: str | None
+    ) -> dict[str, Any] | None:
+        aid = (account_id or "").strip()
+        norm = normalize_name(full_name)
+        if not aid or not norm:
+            return None
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT p.* FROM people p
+                JOIN employments e ON e.person_id = p.id AND e.is_current = 1
+                WHERE p.tenant_id = ?
+                  AND e.account_id = ?
+                  AND p.normalized_name = ?
+                ORDER BY p.updated_at DESC LIMIT 1
+                """,
+                (self.tenant_id, aid, norm),
+            ).fetchone()
+        return dict(row) if row else None
+
     def ensure_person(
         self,
         *,
@@ -555,7 +844,12 @@ class AccountStore:
         title: str = "",
     ) -> dict[str, Any]:
         em = normalize_email(email)
+        phone_n = normalize_phone(phone)
         existing = self.find_person_by_email(em) if em else None
+        if not existing and phone_n:
+            existing = self.find_person_by_phone(phone_n)
+        if not existing and account_id and full_name:
+            existing = self.find_person_by_account_name(account_id, full_name)
         now = _utc_now()
         if existing:
             pid = existing["id"]
@@ -581,9 +875,13 @@ class AccountStore:
                     (
                         pid,
                         self.tenant_id,
-                        (full_name or "").strip() or (em.split("@")[0] if em else ""),
-                        normalize_name(full_name) or normalize_name(em),
-                        0.6 if em else 0.4,
+                        (full_name or "").strip()
+                        or (em.split("@")[0] if em else "")
+                        or (phone_n or ""),
+                        normalize_name(full_name)
+                        or normalize_name(em)
+                        or normalize_name(phone_n),
+                        0.6 if (em or phone_n) else 0.4,
                         now,
                         now,
                     ),
@@ -592,12 +890,12 @@ class AccountStore:
             self._upsert_contact_point(
                 person_id=pid, account_id=account_id, type_="email", value=em
             )
-        if phone:
+        if phone_n:
             self._upsert_contact_point(
                 person_id=pid,
                 account_id=account_id,
                 type_="phone",
-                value=re.sub(r"\s+", "", phone.strip()),
+                value=phone_n,
             )
         if account_id:
             self._ensure_employment(person_id=pid, account_id=account_id, title=title)
@@ -620,27 +918,38 @@ class AccountStore:
         account_id: str | None,
         type_: str,
         value: str,
+        source: str = "resolve",
     ) -> None:
         now = _utc_now()
+        src = (source or "resolve").strip() or "resolve"
         with self.connect() as conn:
             row = conn.execute(
                 """
-                SELECT id FROM contact_points
+                SELECT id, source FROM contact_points
                 WHERE tenant_id = ? AND type = ? AND value = ?
                 """,
                 (self.tenant_id, type_, value),
             ).fetchone()
             if row:
+                # Do not downgrade primary → additional on re-touch
+                keep_src = row["source"] or src
+                if keep_src in {"primary", "registry", "cbr", "bitrix"}:
+                    src = keep_src
+                elif src in {"primary", "registry", "cbr", "bitrix"}:
+                    pass  # upgrade to primary
+                else:
+                    src = keep_src or src
                 conn.execute(
                     """
                     UPDATE contact_points
                     SET person_id = COALESCE(?, person_id),
                         account_id = COALESCE(?, account_id),
+                        source = ?,
                         last_used_at = ?,
                         updated_at = ?
                     WHERE id = ?
                     """,
-                    (person_id, account_id, now, now, row["id"]),
+                    (person_id, account_id, src, now, now, row["id"]),
                 )
             else:
                 conn.execute(
@@ -649,7 +958,7 @@ class AccountStore:
                         id, tenant_id, person_id, account_id, type, value,
                         display_value, verification_status, source,
                         created_at, updated_at, last_used_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'unknown', 'resolve', ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'unknown', ?, ?, ?, ?)
                     """,
                     (
                         _new_id(),
@@ -659,6 +968,7 @@ class AccountStore:
                         type_,
                         value,
                         value,
+                        src,
                         now,
                         now,
                         now,
@@ -702,21 +1012,33 @@ class AccountStore:
         score: float | None = None,
     ) -> dict[str, Any]:
         now = _utc_now()
-        # Prefer existing open lead for same account+person+source
+        # Prefer existing open lead for same account+source (any person), so
+        # re-enrichment does not spawn a new lead when person was recreated.
         with self.connect() as conn:
             row = None
-            if account_id or person_id:
+            if account_id:
                 row = conn.execute(
                     """
                     SELECT * FROM leads
                     WHERE tenant_id = ?
-                      AND IFNULL(account_id,'') = IFNULL(?, '')
-                      AND IFNULL(person_id,'') = IFNULL(?, '')
+                      AND account_id = ?
                       AND source = ?
                       AND status NOT IN ('WON','LOST','BLACKLISTED')
                     ORDER BY updated_at DESC LIMIT 1
                     """,
-                    (self.tenant_id, account_id, person_id, source),
+                    (self.tenant_id, account_id, source),
+                ).fetchone()
+            if not row and person_id:
+                row = conn.execute(
+                    """
+                    SELECT * FROM leads
+                    WHERE tenant_id = ?
+                      AND person_id = ?
+                      AND source = ?
+                      AND status NOT IN ('WON','LOST','BLACKLISTED')
+                    ORDER BY updated_at DESC LIMIT 1
+                    """,
+                    (self.tenant_id, person_id, source),
                 ).fetchone()
             if row:
                 lid = row["id"]
@@ -724,12 +1046,14 @@ class AccountStore:
                     """
                     UPDATE leads SET
                         status = ?,
+                        person_id = COALESCE(?, person_id),
+                        account_id = COALESCE(?, account_id),
                         bitrix_deal_id = COALESCE(?, bitrix_deal_id),
                         score = COALESCE(?, score),
                         updated_at = ?
                     WHERE id = ?
                     """,
-                    (status, bitrix_deal_id, score, now, lid),
+                    (status, person_id, account_id, bitrix_deal_id, score, now, lid),
                 )
             else:
                 lid = _new_id()
@@ -850,6 +1174,145 @@ class AccountStore:
             for e in self.list_events(limit=limit * 2)
             if e.get("account_id") == account_id
         ][:limit]
+
+    def list_people_for_account(self, account_id: str) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT p.*, e.title AS employment_title
+                FROM people p
+                JOIN employments e ON e.person_id = p.id AND e.is_current = 1
+                WHERE p.tenant_id = ? AND e.account_id = ?
+                ORDER BY p.updated_at DESC
+                """,
+                (self.tenant_id, account_id),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_leads_for_account(self, account_id: str) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM leads
+                WHERE tenant_id = ? AND account_id = ?
+                ORDER BY updated_at DESC
+                """,
+                (self.tenant_id, account_id),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def account_card(self, account_id: str) -> dict[str, Any] | None:
+        acc = self.get_account(account_id)
+        if not acc:
+            return None
+        return {
+            "account": acc,
+            "phones": acc.get("phones") or [],
+            "emails": acc.get("emails") or [],
+            "people": self.list_people_for_account(account_id),
+            "leads": self.list_leads_for_account(account_id),
+            "timeline": self.timeline(account_id, limit=30),
+        }
+
+    def dedupe_account_people_leads(self, account_id: str) -> dict[str, Any]:
+        """Collapse duplicate people/leads on one company (e.g. test enrich spam).
+
+        Keeps the oldest open lead per source and the oldest person per
+        normalized_name (or company-titled clones without email/phone stay
+        only one). Extra leads/people/employments are deleted.
+        """
+        aid = (account_id or "").strip()
+        if not aid or not self.get_account(aid):
+            return {"ok": False, "error": "account_not_found"}
+
+        removed_leads = 0
+        removed_people = 0
+        acc_row = self.get_account(aid) or {}
+        company_norm = normalize_name(
+            acc_row.get("legal_name") or acc_row.get("brand_name") or ""
+        )
+        with self.connect() as conn:
+            leads = conn.execute(
+                """
+                SELECT * FROM leads
+                WHERE tenant_id = ? AND account_id = ?
+                  AND status NOT IN ('WON','LOST','BLACKLISTED')
+                ORDER BY created_at ASC
+                """,
+                (self.tenant_id, aid),
+            ).fetchall()
+            keep_by_source: dict[str, str] = {}
+            drop_lead_ids: list[str] = []
+            for row in leads:
+                src = str(row["source"] or "")
+                if src not in keep_by_source:
+                    keep_by_source[src] = row["id"]
+                else:
+                    drop_lead_ids.append(row["id"])
+            for lid in drop_lead_ids:
+                conn.execute("DELETE FROM leads WHERE id = ?", (lid,))
+                removed_leads += 1
+
+            people = conn.execute(
+                """
+                SELECT p.* FROM people p
+                JOIN employments e ON e.person_id = p.id AND e.is_current = 1
+                WHERE p.tenant_id = ? AND e.account_id = ?
+                ORDER BY p.created_at ASC
+                """,
+                (self.tenant_id, aid),
+            ).fetchall()
+            keep_by_name: dict[str, str] = {}
+            drop_people: list[str] = []
+            for row in people:
+                key = (row["normalized_name"] or "").strip() or row["id"]
+                # Drop clones named like the company (bot put company title as contact)
+                if company_norm and key == company_norm:
+                    drop_people.append(row["id"])
+                    continue
+                if key not in keep_by_name:
+                    keep_by_name[key] = row["id"]
+                else:
+                    drop_people.append(row["id"])
+            for pid in drop_people:
+                conn.execute(
+                    "DELETE FROM employments WHERE person_id = ? AND account_id = ?",
+                    (pid, aid),
+                )
+                # Detach contact points from person but keep account linkage
+                conn.execute(
+                    """
+                    UPDATE contact_points SET person_id = NULL
+                    WHERE person_id = ? AND account_id = ?
+                    """,
+                    (pid, aid),
+                )
+                # Drop person if no other employments
+                other = conn.execute(
+                    "SELECT 1 FROM employments WHERE person_id = ? LIMIT 1",
+                    (pid,),
+                ).fetchone()
+                if not other:
+                    conn.execute(
+                        "UPDATE contact_points SET person_id = NULL WHERE person_id = ?",
+                        (pid,),
+                    )
+                    conn.execute(
+                        "UPDATE leads SET person_id = NULL WHERE person_id = ?",
+                        (pid,),
+                    )
+                    conn.execute("DELETE FROM people WHERE id = ?", (pid,))
+                    removed_people += 1
+
+        return {
+            "ok": True,
+            "account_id": aid,
+            "removed_leads": removed_leads,
+            "removed_people": removed_people,
+            "people": self.list_people_for_account(aid),
+            "leads": self.list_leads_for_account(aid),
+            "account": self.get_account(aid),
+        }
 
     # --- resolve helpers (Slice A) ---
 
@@ -1295,6 +1758,7 @@ class AccountsModule:
             name: str = Field(..., min_length=1, max_length=400)
             email: str | None = None
             phone: str | None = None
+            additional_phones: list[str] | str | None = None
             inn: str | None = None
             domain: str | None = None
             region: str | None = None
@@ -1304,6 +1768,7 @@ class AccountsModule:
             source: str = "mcp"
             note: str = ""
             bitrix_company_id: str | None = None
+            create_lead: bool = True
 
         @router.post("")
         def upsert_account(body: UpsertBody) -> dict[str, Any]:
@@ -1312,6 +1777,7 @@ class AccountsModule:
                     name=body.name,
                     email=body.email,
                     phone=body.phone,
+                    additional_phones=body.additional_phones,
                     inn=body.inn,
                     domain=body.domain,
                     region=body.region,
@@ -1321,6 +1787,7 @@ class AccountsModule:
                     source=body.source or "mcp",
                     note=body.note,
                     bitrix_company_id=body.bitrix_company_id,
+                    create_lead=body.create_lead,
                 )
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
@@ -1458,17 +1925,30 @@ class AccountsModule:
 
         @router.get("/{account_id}")
         def get_account(account_id: str) -> dict[str, Any]:
-            if account_id in {"meta", "health", "by-bitrix", "sync-from-clients"}:
+            if account_id in {
+                "meta",
+                "health",
+                "by-bitrix",
+                "sync-from-clients",
+            }:
                 raise HTTPException(404, "not_found")
-            acc = self.store.get_account(account_id)
-            if not acc:
+            card = self.store.account_card(account_id)
+            if not card:
                 raise HTTPException(404, "account_not_found")
             return {
                 "ok": True,
-                "account": acc,
-                "timeline": self.store.timeline(account_id, limit=30),
+                **card,
                 "lifecycle_values": list(LIFECYCLE),
             }
+
+        @router.post("/{account_id}/dedupe")
+        def dedupe_account(account_id: str) -> dict[str, Any]:
+            if account_id in {"meta", "health", "by-bitrix", "sync-from-clients"}:
+                raise HTTPException(404, "not_found")
+            out = self.store.dedupe_account_people_leads(account_id)
+            if not out.get("ok"):
+                raise HTTPException(404, out.get("error") or "account_not_found")
+            return out
 
         class LifecycleBody(BaseModel):
             status: str = Field(..., min_length=2, max_length=40)

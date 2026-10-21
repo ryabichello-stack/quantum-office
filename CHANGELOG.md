@@ -10,6 +10,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Mini-CRM / MCP `crm.company_upsert`: **дополнительные телефоны** (сверх реестра ЦБ) пишутся в карточку компании (`additional_phones` + contact_points), а не в заметку; основной (`phone` / `primary_phone`) не затирается. На существующей компании одиночный `phone` из MCP считается доп. номером. Повторный enrich не плодит контакты/лиды (person по email/телефону/account+ФИО; один open lead на account+source). `crm.company_get` отдаёт `phones` / `additional_phones` / people / leads. `POST .../dedupe` для тестовых дублей. Gateway `0.3.5` / `schema_revision=2026-10-21-crm-additional-phones`.
+
 ### Added
 
 - Mini-CRM для Grok/MCP: модуль `accounts` зарегистрирован; `POST/GET /api/modules/accounts`, funnel, `lifecycle`. Tools: `crm.company_upsert`, `crm.companies`, `crm.company_get`, `crm.lifecycle_set`, `crm.funnel`, `crm.suggest_next`. Gateway `0.3.4`.

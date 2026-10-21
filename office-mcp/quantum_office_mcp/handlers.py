@@ -693,6 +693,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
             "name": args.get("name"),
             "email": args.get("email"),
             "phone": args.get("phone"),
+            "additional_phones": args.get("additional_phones"),
             "inn": args.get("inn"),
             "domain": args.get("domain"),
             "region": args.get("region"),
@@ -702,6 +703,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
             "note": args.get("note") or "",
             "source": args.get("source") or "mcp",
             "bitrix_company_id": args.get("bitrix_company_id"),
+            "create_lead": args.get("create_lead", True),
         }
         return _tool_result(outreach_request("POST", "/api/modules/accounts", body))
 
