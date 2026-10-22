@@ -277,141 +277,18 @@ def patch_provider() -> str:
 
 
 def patch_live_provider() -> str:
-    """Skip Live greeting kick when engine already played local Asterisk greeting."""
+    """Deprecated: wrong-voice local Playback removed. Use patch_live_warm_pool.py."""
     if not LIVE_PROVIDER.is_file():
         return f"skip live: missing {LIVE_PROVIDER}"
     text = LIVE_PROVIDER.read_text(encoding="utf-8")
-    if f"{MARKER}_LIVE_SKIP" in text:
-        return "live already patched"
-
-    old_greet_block = '''        greeting = (
-            self._context.get("greeting") or getattr(self.config, "greeting", None) or ""
-        ).strip()
-        if greeting:
-            instructions = (
-                f"{instructions}\\n\\n"
-                f"Сразу после соединения коротко поприветствуй одной фразой (без длинной паузы в начале), "
-                f"затем слушай собеседника и отвечай. Текст приветствия: {greeting}"
-            ).strip()'''
-
-    new_greet_block = f'''        greeting = (
-            self._context.get("greeting") or getattr(self.config, "greeting", None) or ""
-        ).strip()
-        # {MARKER}_LIVE_SKIP: local ARI Playback already spoke; do not instruct Live to greet again.
-        local_greeting_played = bool(self._context.get("local_greeting_played"))
-        if greeting and not local_greeting_played:
-            instructions = (
-                f"{{instructions}}\\n\\n"
-                f"Сразу после соединения коротко поприветствуй одной фразой (без длинной паузы в начале), "
-                f"затем слушай собеседника и отвечай. Текст приветствия: {{greeting}}"
-            ).strip()
-        elif local_greeting_played:
-            instructions = (
-                f"{{instructions}}\\n\\n"
-                "Приветствие уже прозвучало абоненту по телефону. "
-                "НЕ повторяй приветствие. Сразу слушай собеседника и отвечай."
-            ).strip()'''
-
-    if old_greet_block not in text:
-        return "live: greeting instructions needle missing"
-    text = text.replace(old_greet_block, new_greet_block, 1)
-
-    old_kick = '''        # Live does not reliably auto-greet on answer. Kick with instructions.append
-        # (+ commentary.append). Do NOT use bare response.create — that stalls Live.
-        if greeting:
-            try:
-                greet_instr = (
-                    "Speak first immediately in Russian before the caller says anything. "
-                    "Do not wait for the caller. Say exactly this greeting once, then pause "
-                    f"and listen: {greeting}"
-                )
-                await self._send_json(
-                    {
-                        "type": "session.instructions.append",
-                        "event_id": f"greet-instr-{call_id}",
-                        "delegation_id": None,
-                        "content": greet_instr,
-                    }
-                )
-                await self._send_json(
-                    {
-                        "type": "session.commentary.append",
-                        "event_id": f"greet-kick-{call_id}",
-                        "delegation_id": None,
-                        "content": (
-                            "Begin speaking the greeting now. "
-                            f"Say exactly: {greeting}"
-                        ),
-                    }
-                )
-                logger.info(
-                    "OpenAI Live greeting kick sent",
-                    extra={"call_id": call_id, "greeting_chars": len(greeting)},
-                )
-            except Exception:
-                logger.warning(
-                    "OpenAI Live greeting kick failed",
-                    extra={"call_id": call_id},
-                    exc_info=True,
-                )'''
-
-    new_kick = f'''        # Live does not reliably auto-greet on answer. Kick with instructions.append
-        # (+ commentary.append). Do NOT use bare response.create — that stalls Live.
-        # {MARKER}_LIVE_SKIP: when local ARI Playback already greeted, skip the kick
-        # (Live WS connect is ~6s — that was the post-answer silence).
-        if greeting and not local_greeting_played:
-            try:
-                greet_instr = (
-                    "Speak first immediately in Russian before the caller says anything. "
-                    "Do not wait for the caller. Say exactly this greeting once, then pause "
-                    f"and listen: {{greeting}}"
-                )
-                await self._send_json(
-                    {{
-                        "type": "session.instructions.append",
-                        "event_id": f"greet-instr-{{call_id}}",
-                        "delegation_id": None,
-                        "content": greet_instr,
-                    }}
-                )
-                await self._send_json(
-                    {{
-                        "type": "session.commentary.append",
-                        "event_id": f"greet-kick-{{call_id}}",
-                        "delegation_id": None,
-                        "content": (
-                            "Begin speaking the greeting now. "
-                            f"Say exactly: {{greeting}}"
-                        ),
-                    }}
-                )
-                logger.info(
-                    "OpenAI Live greeting kick sent",
-                    extra={{"call_id": call_id, "greeting_chars": len(greeting)}},
-                )
-            except Exception:
-                logger.warning(
-                    "OpenAI Live greeting kick failed",
-                    extra={{"call_id": call_id}},
-                    exc_info=True,
-                )
-        elif local_greeting_played:
-            logger.info(
-                "LOCAL_GREETING_SKIP_LIVE_KICK",
-                extra={{
-                    "call_id": call_id,
-                    "greeting_chars": len(greeting or ""),
-                    "ts": time.time(),
-                }},
-            )'''
-
-    if old_kick not in text:
-        return "live: greeting kick needle missing"
-    text = text.replace(old_kick, new_kick, 1)
-
-    _backup(LIVE_PROVIDER)
-    LIVE_PROVIDER.write_text(text, encoding="utf-8")
-    return "live patched"
+    # Strip any leftover LOCAL_SKIP from earlier mistaken patch
+    if "LOCAL_GREETING_SKIP" in text or "local_greeting_played" in text:
+        bak = LIVE_PROVIDER.with_suffix(LIVE_PROVIDER.suffix + ".bak-greeting-latency")
+        if bak.is_file():
+            LIVE_PROVIDER.write_text(bak.read_text(encoding="utf-8"), encoding="utf-8")
+            return "live restored (removed wrong-voice skip)"
+        return "live: has local_skip leftovers, no bak"
+    return "live ok (warm pool is separate script)"
 
 
 def patch_engine() -> str:
@@ -420,137 +297,51 @@ def patch_engine() -> str:
     text = ENGINE.read_text(encoding="utf-8")
     results: list[str] = []
 
-    # --- A) Instant local ARI Playback right after caller joins bridge ---
-    if f"{MARKER}_LOCAL" not in text:
-        needle_local = '''            logger.info("🎯 HYBRID ARI - Step 3: ✅ Caller added to bridge", 
-                       channel_id=caller_channel_id, 
-                       bridge_id=bridge_id)
-            self.bridges[caller_channel_id] = bridge_id
-            
-            # Create CallSession and store in SessionStore'''
-        insert_local = f'''            logger.info("🎯 HYBRID ARI - Step 3: ✅ Caller added to bridge", 
-                       channel_id=caller_channel_id, 
-                       bridge_id=bridge_id)
-            self.bridges[caller_channel_id] = bridge_id
+    # Strip mistaken local Playback blocks if present (different voice).
+    text2, n = re.subn(
+        r"\n            # QUANTUM_GREETING_LATENCY_LOCAL:.*?\n            # Create CallSession and store in SessionStore",
+        "\n            # Create CallSession and store in SessionStore",
+        text,
+        count=1,
+        flags=re.S,
+    )
+    if n:
+        text = text2
+        results.append("stripped LOCAL play")
+    text2, n = re.subn(
+        r"\n            # QUANTUM_GREETING_LATENCY_HIST:.*?\n            # Read called_number:",
+        "\n            # Read called_number:",
+        text,
+        count=1,
+        flags=re.S,
+    )
+    if n:
+        text = text2
+        results.append("stripped HIST")
+    # Strip LOCAL_FLAG if present
+    flag_block = (
+        '                            if getattr(self, "_local_greeting_played", {}).pop(session.call_id, False):\n'
+        '                                session.provider_overrides["local_greeting_played"] = True  # QUANTUM_GREETING_LATENCY_LOCAL_FLAG\n'
+        '                                logger.info(\n'
+        '                                    "LOCAL_GREETING_FLAG",\n'
+        '                                    call_id=session.call_id,\n'
+        '                                )\n'
+    )
+    if flag_block in text:
+        text = text.replace(flag_block, "", 1)
+        results.append("stripped LOCAL_FLAG")
+    text2, n = re.subn(
+        r"\n                        # QUANTUM_GREETING_LATENCY_LOCAL_CTX:.*?\n                            overrides\[\"local_greeting_played\"\] = True\n",
+        "\n",
+        text,
+        count=1,
+        flags=re.S,
+    )
+    if n:
+        text = text2
+        results.append("stripped LOCAL_CTX")
 
-            # {MARKER}_LOCAL: play cached greeting NOW (before Live WS ~6s).
-            # openai_live skips its own greeting kick when local_greeting_played is set.
-            try:
-                import os as _os_greet
-                import time as _time_greet
-                _media = (
-                    _os_greet.getenv("AVA_LOCAL_GREETING_URI", "sound:custom/ql_secretary_hello")
-                    or ""
-                ).strip()
-                _prov_hint = ""
-                try:
-                    _resp_p = await self.ari_client.send_command(
-                        "GET",
-                        f"channels/{{caller_channel_id}}/variable",
-                        params={{"variable": "AI_PROVIDER"}},
-                        tolerate_statuses=[404],
-                    )
-                    if isinstance(_resp_p, dict):
-                        _prov_hint = (_resp_p.get("value") or "").strip()
-                except Exception:
-                    _prov_hint = ""
-                _default_p = str(getattr(self.config, "default_provider", "") or "")
-                _is_live = "live" in (_prov_hint or _default_p).lower()
-                if _media and _is_live:
-                    if not hasattr(self, "_local_greeting_played"):
-                        self._local_greeting_played = {{}}
-                    self._local_greeting_played[caller_channel_id] = True
-                    logger.info(
-                        "LOCAL_GREETING_PLAY",
-                        call_id=caller_channel_id,
-                        media_uri=_media,
-                        provider_hint=_prov_hint or _default_p,
-                        ts=_time_greet.time(),
-                    )
-                    asyncio.create_task(
-                        self.ari_client.play_sound(caller_channel_id, _media),
-                        name=f"local-greeting-{{caller_channel_id}}",
-                    )
-            except Exception:
-                logger.debug(
-                    "Local greeting playback kickoff failed",
-                    call_id=caller_channel_id,
-                    exc_info=True,
-                )
-            
-            # Create CallSession and store in SessionStore'''
-        if needle_local not in text:
-            results.append("engine: local greeting needle missing")
-        else:
-            text = text.replace(needle_local, insert_local, 1)
-            results.append("engine local play inserted")
-    else:
-        results.append("engine local already patched")
-
-    # --- B) Stamp local_greeting_played onto provider_overrides when greeting stored ---
-    if f"{MARKER}_LOCAL_FLAG" not in text:
-        state_needle = (
-            'session.provider_overrides["greeting"] = greeting_to_apply\n'
-            f'                            session.conversation_state = "greeting"  # {MARKER}_STATE'
-        )
-        state_needle_alt = 'session.provider_overrides["greeting"] = greeting_to_apply'
-        stamp = f'''session.provider_overrides["greeting"] = greeting_to_apply
-                            session.conversation_state = "greeting"  # {MARKER}_STATE
-                            if getattr(self, "_local_greeting_played", {{}}).pop(session.call_id, False):
-                                session.provider_overrides["local_greeting_played"] = True  # {MARKER}_LOCAL_FLAG
-                                logger.info(
-                                    "LOCAL_GREETING_FLAG",
-                                    call_id=session.call_id,
-                                )'''
-        if state_needle in text:
-            text = text.replace(state_needle, stamp, 1)
-            results.append("engine local flag stamped")
-        elif state_needle_alt in text and f"{MARKER}_LOCAL_FLAG" not in text:
-            text = text.replace(
-                state_needle_alt,
-                stamp,
-                1,
-            )
-            results.append("engine local flag stamped (alt)")
-        else:
-            results.append("engine: local flag needle missing")
-    else:
-        results.append("engine local flag already patched")
-
-    # --- C) Pass local_greeting_played into provider_context ---
-    if f"{MARKER}_LOCAL_CTX" not in text:
-        ctx_needle = '''                        if isinstance(greeting_override, str) and greeting_override.strip():
-                            provider_context["greeting"] = greeting_override
-                        elif hasattr(context_config, 'greeting') and context_config.greeting:
-                            provider_context['greeting'] = context_config.greeting'''
-        # There may be two similar blocks; patch the last occurrence used before start_session.
-        ctx_insert = f'''                        if isinstance(greeting_override, str) and greeting_override.strip():
-                            provider_context["greeting"] = greeting_override
-                        elif hasattr(context_config, 'greeting') and context_config.greeting:
-                            provider_context['greeting'] = context_config.greeting
-                        # {MARKER}_LOCAL_CTX: prefer override, else pending dict from early Playback
-                        _local_played = bool(overrides.get("local_greeting_played"))
-                        if not _local_played:
-                            _local_played = bool(
-                                getattr(self, "_local_greeting_played", {{}}).pop(call_id, False)
-                            )
-                        if _local_played:
-                            provider_context["local_greeting_played"] = True
-                            overrides["local_greeting_played"] = True'''
-        if ctx_needle not in text:
-            results.append("engine: local ctx needle missing")
-        else:
-            # Only the final greeting assignment block (before start_session) — last match.
-            idx = text.rfind(ctx_needle)
-            if idx < 0:
-                results.append("engine: local ctx needle missing")
-            else:
-                text = text[:idx] + ctx_insert + text[idx + len(ctx_needle) :]
-                results.append("engine local ctx passed")
-    else:
-        results.append("engine local ctx already patched")
-
-    # --- D) Pre-warm Live WS parallel with AudioSocket ---
+    # --- Pre-warm Live WS parallel with AudioSocket (fallback if warm pool empty) ---
     if f"{MARKER}_PREWARM" not in text:
         needle = '''            else:
                 logger.info("🎯 HYBRID ARI - Step 5: Originating AudioSocket channel", channel_id=caller_channel_id)
@@ -676,6 +467,23 @@ def main() -> int:
         patch_engine(),
         patch_yaml(),
     ]
+    # Same Cedar voice, ≤1.5s: idle Live warm pool (see patch_live_warm_pool.py)
+    warm_script = Path(__file__).resolve().parent / "patch_live_warm_pool.py"
+    if warm_script.is_file():
+        import subprocess
+
+        warm = subprocess.run(
+            [sys.executable, str(warm_script)],
+            capture_output=True,
+            text=True,
+        )
+        results.append(
+            "warm_pool: " + (warm.stdout or warm.stderr or f"exit {warm.returncode}").strip()
+        )
+        if warm.returncode != 0:
+            for line in results:
+                print(line)
+            return 1
     for line in results:
         print(line)
     if any(

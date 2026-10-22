@@ -6,50 +6,36 @@
 
 Пример `call_id=1792675305.0` (2026-10-22): answer→greeting **14.25 s**, barge-in в ту же мс.
 
-## Где теряется время (после Answer / Stasis)
+## Где теряется время
 
 | # | Этап | Оценка |
 |---|------|--------|
-| 1 | AudioSocket bridge → только потом старт realtime | 0.3–1 s |
-| 2 | OpenAI WS + `session.created` + `session.update` ACK | 1–5 s (+ reconnect на `gpt-live-1`) |
-| 3 | TTS greeting (`response.create`) | 1–5 s |
-| 4 | Streaming jitter buffer (было **950 ms**) | ~1 s |
+| 1 | Холодный OpenAI Live `connect` + `session.started` | ~1.9–6 s (на звонке event-loop часто раздувает до 6s+) |
+| 2 | TTS greeting (`commentary.append` kick) | 0.3–1.5 s |
+| 3 | Streaming jitter (было **950 ms**) | ~1 s |
 
-Per-call script load (ARI vars + JSON) — десятки–сотни ms, не главный вклад.
+## Неверный путь (откатили)
 
-## Почему рвётся приветствие
+Локальный ARI Playback `ql_secretary_hello` — звук был **другим голосом**, не Cedar Live. Убрано.
 
-Провайдер `openai_live_pilot` в **GA**: `server_vad` с `create_response=true` / `interrupt_response=true`.  
-`_send_explicit_greeting` отключал VAD только в Beta; в GA «Алло» сразу резало первую фразу.  
-Локальный `barge_in.initial_protection_ms=200` почти не защищал, если `conversation_state != greeting`.
+## Правильный фикс
 
-## Фикс (`console/scripts/patch_greeting_latency.py`)
+1. **Live warm pool** (`console/scripts/patch_live_warm_pool.py`): в простое держим один готовый Live WS (`LIVE_WARM_READY`). На answer — `LIVE_WARM_ADOPT` + greeting kick **тем же Cedar**. Цель answer→greeting ≤ **1.5 s**.
+2. **Pre-warm fallback**: kickoff provider параллельно AudioSocket, если слот пуст.
+3. YAML: `jitter_buffer_ms: 120`, `greeting_protection_ms: 8000`.
+4. GA VAD mute на `openai_realtime` (если путь realtime).
+5. Метрика: `GET /api/outbound/greeting-latency`.
 
-1. **Локальный ARI Playback** `sound:custom/ql_secretary_hello` сразу после добавления caller в bridge (до Live WS ~6s). Env: `AVA_LOCAL_GREETING_URI`.
-2. **`openai_live`**: при `local_greeting_played` — не кикает greeting (`LOCAL_GREETING_SKIP_LIVE_KICK`).
-3. **GA VAD mute** на время greeting (openai_realtime), restore после `response.done`.
-4. **Pre-warm**: kickoff Live/realtime WS параллельно с originate AudioSocket.
-5. YAML: `jitter_buffer_ms: 120`, `greeting_protection_ms: 8000`, `initial_protection_ms: 2000`.
-6. `conversation_state=greeting` при per-call greeting.
-7. Метрика: `GET /api/outbound/greeting-latency`.
+Env: `AVA_LIVE_WARM=1` (по умолчанию). `0` — выключить пул.
 
 Деплой: `bash console/scripts/install_prod.sh` (патч + recreate `ai_engine`).
 
-После патча в логах: `LOCAL_GREETING_PLAY` → сразу звук; `Connecting OpenAI Live` параллельно; `LOCAL_GREETING_SKIP_LIVE_KICK`.
+Логи успеха: `LIVE_WARM_READY` → на звонке `LIVE_WARM_USED` / `LIVE_WARM_ADOPT` → `OpenAI Live greeting kick sent` за доли секунды.
 
-## Baseline (до патча)
+## Baseline (до)
 
-| call_id | answer→greeting | greet→«алло» |
-|---------|----------------:|-------------:|
-| 1792675305.0 | 14.25 s | 0.002 s |
-| 1792675422.4 | 5.67 s | 0.807 s |
-| 1792592489.16 | 8.85 s | 0.040 s |
-
-**Цель после:** answer→greeting ≤ **1.2 s**, short barge-in не режет первую фразу.
-
-Проверка после 3 тестовых звонков:
-
-```bash
-curl -sH "X-Console-Token: $CONSOLE_TOKEN" \
-  'http://127.0.0.1:8013/api/outbound/greeting-latency?limit=3'
-```
+| call_id | answer→greeting |
+|---------|----------------:|
+| 1792675305.0 | 14.25 s |
+| 1792675422.4 | 5.67 s |
+| 1792682975.8 | 9.33 s (после pre-warm без warm-pool) |

@@ -68,6 +68,7 @@ if [ -d /root/ava ]; then
   python3 "${SRC_DIR}/scripts/patch_per_call_script.py" || true
   python3 "${SRC_DIR}/scripts/patch_per_call_tools.py" || true
   python3 "${SRC_DIR}/scripts/patch_greeting_latency.py" || true
+  python3 "${SRC_DIR}/scripts/patch_live_warm_pool.py" || true
 fi
 
 install -m 644 "${SRC_DIR}/quantum-console.service" "/etc/systemd/system/${SERVICE}"

@@ -12,7 +12,7 @@
 
 ### Fixed
 
-- AVA outbound greeting latency / barge-in: после ответа абонента тишина 6–14s и обрыв «Алло». Патч `console/scripts/patch_greeting_latency.py` — **мгновенный ARI Playback** `ql_secretary_hello` (обход ~6s Live WS), skip greeting kick в `openai_live`, GA VAD mute, pre-warm WS параллельно AudioSocket, jitter 950→120ms, `greeting_protection_ms=8000`. Метрика `GET /api/outbound/greeting-latency`. Docs: `docs/ava-greeting-latency.md`. Baseline до: 14.25 / 5.67 / 8.85 s; после pre-warm без local play ещё ~9.3 s.
+- AVA outbound greeting latency / barge-in: тишина 6–14s после ответа. **Live warm pool** (`patch_live_warm_pool.py`) — idle Cedar session, на answer только kick (цель ≤1.5s, тот же голос). Ошибочный локальный WAV чужим голосом откатили. Также: pre-warm fallback, jitter 120ms, `greeting_protection_ms=8000`, метрика `GET /api/outbound/greeting-latency`. Docs: `docs/ava-greeting-latency.md`.
 
 ### Added
 
