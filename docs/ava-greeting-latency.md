@@ -25,13 +25,17 @@ Per-call script load (ARI vars + JSON) — десятки–сотни ms, не 
 
 ## Фикс (`console/scripts/patch_greeting_latency.py`)
 
-1. **GA VAD mute** на время greeting (`create_response`/`interrupt_response=false`), restore после `response.done`.
-2. **Pre-warm**: kickoff realtime WS параллельно с originate AudioSocket.
-3. YAML: `jitter_buffer_ms: 120`, `greeting_protection_ms: 8000`, `initial_protection_ms: 2000`.
-4. `conversation_state=greeting` при per-call greeting.
-5. Метрика: `GET /api/outbound/greeting-latency`.
+1. **Локальный ARI Playback** `sound:custom/ql_secretary_hello` сразу после добавления caller в bridge (до Live WS ~6s). Env: `AVA_LOCAL_GREETING_URI`.
+2. **`openai_live`**: при `local_greeting_played` — не кикает greeting (`LOCAL_GREETING_SKIP_LIVE_KICK`).
+3. **GA VAD mute** на время greeting (openai_realtime), restore после `response.done`.
+4. **Pre-warm**: kickoff Live/realtime WS параллельно с originate AudioSocket.
+5. YAML: `jitter_buffer_ms: 120`, `greeting_protection_ms: 8000`, `initial_protection_ms: 2000`.
+6. `conversation_state=greeting` при per-call greeting.
+7. Метрика: `GET /api/outbound/greeting-latency`.
 
 Деплой: `bash console/scripts/install_prod.sh` (патч + recreate `ai_engine`).
+
+После патча в логах: `LOCAL_GREETING_PLAY` → сразу звук; `Connecting OpenAI Live` параллельно; `LOCAL_GREETING_SKIP_LIVE_KICK`.
 
 ## Baseline (до патча)
 
