@@ -2,40 +2,22 @@
 
 ## Симптом
 
-После снятия трубки несколько секунд тишины, затем приветствие рвётся коротким «Алло»/«Приём».
+После снятия трубки несколько секунд тишины (раньше 6–14s).
 
-Пример `call_id=1792675305.0` (2026-10-22): answer→greeting **14.25 s**, barge-in в ту же мс.
+## Фикс (прод, проверено)
 
-## Где теряется время
+**Live warm pool** — idle Cedar-сессия готова до ответа; на answer только adopt + greeting kick.
 
-| # | Этап | Оценка |
-|---|------|--------|
-| 1 | Холодный OpenAI Live `connect` + `session.started` | ~1.9–6 s (на звонке event-loop часто раздувает до 6s+) |
-| 2 | TTS greeting (`commentary.append` kick) | 0.3–1.5 s |
-| 3 | Streaming jitter (было **950 ms**) | ~1 s |
+Чужой WAV (`ql_secretary_hello`) **откатили**.
 
-## Неверный путь (откатили)
+| Проверка | call_id | answer→first audio | warm |
+|----------|---------|-------------------:|------|
+| baseline | 1792682975.8 | ~9.3 s | cold |
+| warm #1 | 1792684347.24 | **~1.77 s** | `LIVE_WARM_USED` |
+| warm #2 | 1792684466.28 | **~0.90 s** | `LIVE_WARM_USED` |
 
-Локальный ARI Playback `ql_secretary_hello` — звук был **другим голосом**, не Cedar Live. Убрано.
+Цель ≤1.5s: warm #2 в норме; #1 чуть выше из‑за TTS Live. Пользователь на #1: «задержка хорошая».
 
-## Правильный фикс
+Скрипты: `patch_live_warm_pool.py`, `harden_live_warm_pool.py`. Env `AVA_LIVE_WARM=1`.
 
-1. **Live warm pool** (`console/scripts/patch_live_warm_pool.py`): в простое держим один готовый Live WS (`LIVE_WARM_READY`). На answer — `LIVE_WARM_ADOPT` + greeting kick **тем же Cedar**. Цель answer→greeting ≤ **1.5 s**.
-2. **Pre-warm fallback**: kickoff provider параллельно AudioSocket, если слот пуст.
-3. YAML: `jitter_buffer_ms: 120`, `greeting_protection_ms: 8000`.
-4. GA VAD mute на `openai_realtime` (если путь realtime).
-5. Метрика: `GET /api/outbound/greeting-latency`.
-
-Env: `AVA_LIVE_WARM=1` (по умолчанию). `0` — выключить пул.
-
-Деплой: `bash console/scripts/install_prod.sh` (патч + recreate `ai_engine`).
-
-Логи успеха: `LIVE_WARM_READY` → на звонке `LIVE_WARM_USED` / `LIVE_WARM_ADOPT` → `OpenAI Live greeting kick sent` за доли секунды.
-
-## Baseline (до)
-
-| call_id | answer→greeting |
-|---------|----------------:|
-| 1792675305.0 | 14.25 s |
-| 1792675422.4 | 5.67 s |
-| 1792682975.8 | 9.33 s (после pre-warm без warm-pool) |
+Логи успеха: `LIVE_WARM_READY` → `GREETING_PREWARM_SKIP_WARM` → `LIVE_WARM_USED` → first audio <1.5s.

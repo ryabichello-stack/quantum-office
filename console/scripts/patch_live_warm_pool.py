@@ -397,6 +397,7 @@ def patch_engine() -> str:
         "        self._live_warm_slot = None\n"
         "        self._live_warm_task = None\n"
         "        self._live_warm_lock = asyncio.Lock()\n"
+        "        self._live_warm_refilling = False\n"
     )
     text = text.replace(init_needle, init_insert, 1)
     results.append("engine init")
@@ -509,17 +510,31 @@ def patch_engine() -> str:
         async with self._live_warm_lock:
             if getattr(self, "_live_warm_slot", None) is not None:
                 return
+            if getattr(self, "_live_warm_refilling", False):
+                return
+            self._live_warm_refilling = True
         factory = None
         for name in ("openai_live_pilot", "openai_live"):
             factory = self.provider_factories.get(name)
             if factory:
                 break
         if not factory:
+            self._live_warm_refilling = False
             return
         try:
             prov = factory()
-            # Prefer outbound hangup tool so adopt has a sane default allowlist.
-            warm_ctx = {{"tools": ["hangup_call"]}}
+            # Match inbound tool surface (outbound uses hangup subset).
+            warm_ctx = {{
+                "tools": [
+                    "check_calendar",
+                    "create_calendar_event",
+                    "send_welcome_email",
+                    "send_email",
+                    "create_conference",
+                    "get_company_knowledge",
+                    "hangup_call",
+                ]
+            }}
             await prov.warm_start(warm_ctx)
             async with self._live_warm_lock:
                 if getattr(self, "_live_warm_slot", None) is None:
@@ -528,6 +543,8 @@ def patch_engine() -> str:
                     await prov.stop_session()
         except Exception:
             logger.warning("LIVE_WARM_REFILL_FAILED", exc_info=True)
+        finally:
+            self._live_warm_refilling = False
 
     async def _live_warm_supervisor(self) -> None:
         """{MARKER}: keep one warm Live session ready."""
