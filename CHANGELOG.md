@@ -10,6 +10,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- AVA outbound greeting latency / barge-in: после ответа абонента тишина 6–14s и обрыв «Алло». Патч `console/scripts/patch_greeting_latency.py` — GA VAD mute на greeting, pre-warm realtime параллельно AudioSocket, jitter 950→120ms, `greeting_protection_ms=8000`. Метрика `GET /api/outbound/greeting-latency`. Docs: `docs/ava-greeting-latency.md`. Baseline до: 14.25 / 5.67 / 8.85 s.
+
 ### Added
 
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
