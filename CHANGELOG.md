@@ -12,7 +12,7 @@
 
 ### Fixed
 
-- AVA outbound greeting latency / barge-in: тишина 6–14s после ответа. **Live warm pool** (`patch_live_warm_pool.py`) — idle Cedar session, на answer только kick (цель ≤1.5s, тот же голос). Ошибочный локальный WAV чужим голосом откатили. Также: pre-warm fallback, jitter 120ms, `greeting_protection_ms=8000`, метрика `GET /api/outbound/greeting-latency`. Docs: `docs/ava-greeting-latency.md`.
+- AVA outbound greeting latency / barge-in: тишина 6–14s после ответа. **Live warm keepalive** + **VPN proxy** (`AVA_OPENAI_PROXY` → Minsk): idle `session.start` + paced mic silence, на answer только greeting kick (Cedar, цель ≤1.5s). Без mic keepalive Live отдавал ~20s цифровой тишины; silent-fallback wait+cold reconnect раздувал задержку до ~15s — убран. Офлайн-пробы 1.18/0.85/1.42s. Ошибочный локальный WAV чужим голосом откатили. Также: jitter 120ms, `greeting_protection_ms=8000`, метрика `GET /api/outbound/greeting-latency`. Docs: `docs/ava-greeting-latency.md`.
 
 ### Added
 
