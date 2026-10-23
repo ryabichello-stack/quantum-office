@@ -76,6 +76,20 @@ if [ -d /root/ava ]; then
   python3 "${SRC_DIR}/scripts/harden_live_cost_guard.py" || true
   # Cedar = male voice → masculine Russian self-reference («понял», not «поняла»)
   python3 "${SRC_DIR}/scripts/patch_male_voice_identity.py" || true
+  # Ring-time Live prewarm (≤1.5s answer→voice) — NOT 24/7 idle warm
+  python3 "${SRC_DIR}/scripts/patch_live_dial_prewarm.py" || true
+  if [ -f /root/ava/.env ]; then
+    grep -q '^AVA_LIVE_DIAL_PREWARM=' /root/ava/.env \
+      && sed -i 's/^AVA_LIVE_DIAL_PREWARM=.*/AVA_LIVE_DIAL_PREWARM=1/' /root/ava/.env \
+      || echo 'AVA_LIVE_DIAL_PREWARM=1' >> /root/ava/.env
+    # Keep idle warm OFF
+    grep -q '^AVA_LIVE_WARM=' /root/ava/.env \
+      && sed -i 's/^AVA_LIVE_WARM=.*/AVA_LIVE_WARM=0/' /root/ava/.env \
+      || echo 'AVA_LIVE_WARM=0' >> /root/ava/.env
+    grep -q '^AVA_LIVE_WARM_COST_OK=' /root/ava/.env \
+      && sed -i 's/^AVA_LIVE_WARM_COST_OK=.*/AVA_LIVE_WARM_COST_OK=0/' /root/ava/.env \
+      || echo 'AVA_LIVE_WARM_COST_OK=0' >> /root/ava/.env
+  fi
   # Force env safe defaults (never leave paid idle Live on)
   if [ -f /root/ava/.env ]; then
     grep -q '^AVA_LIVE_WARM=' /root/ava/.env \

@@ -14,22 +14,24 @@
 
 ## Стоп-кран по деньгам (обязательно)
 
-Idle OpenAI Live (warm pool + mic keepalive) **жжёт кредиты даже без звонков**. После инцидента (~$60 / 2 дня) действует жёсткий cost guard:
+Idle OpenAI Live 24/7 (warm pool + mic keepalive) **жжёт кредиты даже без звонков**. После инцидента (~$60 / 2 дня):
 
 | Env | Default | Смысл |
 |-----|---------|--------|
-| `AVA_LIVE_WARM` | **`0`** | warm pool выключен |
-| `AVA_LIVE_WARM_COST_OK` | **`0`** | второй ключ; без него warm **не стартует** |
-| `AVA_LIVE_WARM_MAX_IDLE_S` | `45` | даже при явном включении idle-сессия убивается через N секунд |
+| `AVA_LIVE_WARM` | **`0`** | idle warm pool выключен |
+| `AVA_LIVE_WARM_COST_OK` | **`0`** | второй ключ для idle pool |
+| `AVA_LIVE_WARM_MAX_IDLE_S` | `45` | hard-expire idle |
+| `AVA_LIVE_DIAL_PREWARM` | **`1`** | **ring-time** Live на время гудков (не 24/7) |
+| `AVA_LIVE_DIAL_PREWARM_TTL_S` | `75` | убить prewarm, если не взяли трубку |
 
-Правила:
+### Ring-time prewarm (правильный путь к ≤1.5 с)
 
-- Warm **запрещён** без **обоих** флагов `=1`.
-- `install_prod.sh` всегда принудительно пишет `AVA_LIVE_WARM=0` и `AVA_LIVE_WARM_COST_OK=0`.
-- `warm_start` / keepalive / supervisor отказывают без dual opt-in; при снятии флагов открытая сессия закрывается (`LIVE_WARM_KILLED_COST_GUARD`).
-- Офлайн Live-пробы и тестовые звонки — только по явному OK владельца после пополнения баланса.
+1. Console `POST /api/outbound/dial` → ARI originate → `channel_id`.
+2. Сразу `POST :15000/live-prewarm` — Live + mic keepalive **пока гудки**.
+3. Ответ абонента → `LIVE_DIAL_PREWARM_USED` → только greeting kick.
+4. Не взяли / `ChannelDestroyed` → `LIVE_DIAL_PREWARM_DROP` (нет orphan-сессий).
 
-**Не включать warm «чтобы было быстрее» без лимита стоимости.**
+Idle `AVA_LIVE_WARM=1` **не включать** без dual opt-in и лимита стоимости.
 
 ## Офлайн-пробы (без звонка на телефон)
 
