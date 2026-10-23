@@ -54,6 +54,9 @@ BACKUP_SCRIPT = Path(os.getenv("BACKUP_SCRIPT", str(AVA_ROOT / "scripts/backup_q
 
 MAILER_HEALTH_URL = os.getenv("MAILER_HEALTH_URL", "http://127.0.0.1:8000/health")
 ENGINE_HEALTH_URL = os.getenv("ENGINE_HEALTH_URL", "http://127.0.0.1:15000/health")
+ENGINE_LIVE_PREWARM_URL = os.getenv(
+    "ENGINE_LIVE_PREWARM_URL", "http://127.0.0.1:15000/live-prewarm"
+)
 TEXT_BOT_HEALTH_URL = os.getenv("TEXT_BOT_HEALTH_URL", "http://127.0.0.1:8011/health")
 OUTREACH_HEALTH_URL = os.getenv("OUTREACH_HEALTH_URL", "http://127.0.0.1:8012/health")
 KNOWLEDGE_HEALTH_URL = os.getenv("KNOWLEDGE_HEALTH_URL", "http://127.0.0.1:8017/health")
@@ -1318,10 +1321,12 @@ KNOWLEDGE_SCRIPT_FOOTER = (
 
 HANGUP_GUARD_FOOTER = (
     "\n\nКРИТИЧНО — НЕ РВИ ТРУБКУ РАНО:\n"
-    "- ЗАПРЕЩЕНО вызывать hangup_call в первые 60 секунд и на первой реплике собеседника.\n"
+    "- ЗАПРЕЩЕНО вызывать hangup_call в первые 60 секунд и на первой реплике живого собеседника.\n"
     "- Обрывки ASR («авто», «сообщения», шум) НЕ считай автоответчиком — переспроси «Алло, меня слышно?».\n"
-    "- hangup_call только при ясном отказе человека ИЛИ после короткого farewell на ЯВНЫЙ автоответчик "
-    "(«оставьте сообщение после сигнала»), не раньше.\n"
+    "- hangup_call при ясном отказе человека ИЛИ после короткого farewell на ЯВНЫЙ автоответчик "
+    "(«оставьте сообщение после сигнала»).\n"
+    "- ИСКЛЮЧЕНИЕ — сразу hangup_call (неверный номер), без 60с и без пересказа: автоинформатор "
+    "«номер в свободной продаже», «нажмите 1/2», вечный IVR без человека.\n"
 )
 
 # Cedar / openai_live_pilot is a male voice — never say «поняла».
@@ -2288,11 +2293,19 @@ def api_outbound_dial(
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
             payload = json.loads(raw) if raw else {}
+            channel_id = payload.get("id")
+            prewarm = _trigger_live_dial_prewarm(
+                channel_id=str(channel_id or ""),
+                greeting=per_call_greeting,
+                script=per_call_script,
+                tools=per_call_tools if tools_override else ["hangup_call"],
+                provider=provider,
+            )
             return {
                 "ok": True,
                 "phone": phone,
                 "endpoint": endpoint,
-                "channel_id": payload.get("id"),
+                "channel_id": channel_id,
                 "state": payload.get("state"),
                 "context": context,
                 "provider": provider,
@@ -2302,12 +2315,47 @@ def api_outbound_dial(
                 "tools_override": tools_override,
                 "script_file": script_file_host,
                 "script_chars": len(per_call_script or ""),
+                "live_prewarm": prewarm,
             }
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", errors="replace")[:800]
         raise HTTPException(e.code, f"ARI originate failed: {detail}") from e
     except urllib.error.URLError as e:
         raise HTTPException(502, f"ARI unreachable: {e}") from e
+
+
+def _trigger_live_dial_prewarm(
+    *,
+    channel_id: str,
+    greeting: str,
+    script: str,
+    tools: list[str] | None,
+    provider: str,
+) -> dict[str, Any]:
+    """Start Live WS during ring so answer→voice ≤1.5s (no 24/7 idle warm)."""
+    if not channel_id:
+        return {"ok": False, "error": "no channel_id"}
+    body = {
+        "channel_id": channel_id,
+        "greeting": greeting or "",
+        "script": script or "",
+        "tools": tools or ["hangup_call"],
+        "provider": provider or "openai_live_pilot",
+    }
+    raw = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        ENGINE_LIVE_PREWARM_URL,
+        data=raw,
+        method="POST",
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace") or "{}")
+            return data if isinstance(data, dict) else {"ok": True, "raw": data}
+    except Exception as exc:
+        # Dial must succeed even if prewarm fails — cold path remains.
+        return {"ok": False, "error": str(exc)[:200]}
 
 
 @app.post("/api/outbound/callback")

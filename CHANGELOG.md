@@ -12,6 +12,8 @@
 
 ### Fixed
 
+- AVA outbound **first-word ≤1.5s**: ring-time Live prewarm (`AVA_LIVE_DIAL_PREWARM=1`) — сессия поднимается на гудках по `channel_id`, на ответ только kick; idle 24/7 warm остаётся `AVA_LIVE_WARM=0`. Скрипт `patch_live_dial_prewarm.py`, console дергает `:15000/live-prewarm` после ARI originate.
+- Ломбарды outbound-скрипт: короткое «Алло, здравствуйте!», ждать ответа, одна фраза про финдиректора; без «направляли письмо» в первой реплике; на «Алло» не «Да»; на «подождите» — «Конечно, жду»; автоинформатор «номер в продаже» → сразу hangup; ЛПР по ФИО из ЕГРЮЛ ок; представление «секретарь Quantum Labs». Модуль `console/content/lombards_outbound.py`.
 - AVA voice: Cedar — о себе только в **мужском** роде («понял», не «поняла»). Промпты `default` / `outbound` / `live_pilot` + footer в dial API + fallback в `openai_live`. Скрипт `patch_male_voice_identity.py`.
 - AVA outbound greeting latency / barge-in: тишина 6–14s после ответа. **VPN proxy** (`AVA_OPENAI_PROXY` → Minsk) для cold Live connect. Ошибочный локальный WAV чужим голосом откатили. Silent-fallback wait+cold reconnect убран. Также: jitter 120ms, `greeting_protection_ms=8000`, метрика `GET /api/outbound/greeting-latency`. Docs: `docs/ava-greeting-latency.md`.
 - **Live cost guard (критично):** idle warm pool + mic keepalive сожгли OpenAI-кредиты (~$60 / 2 дня). `AVA_LIVE_WARM` default **`0`**; warm только при dual opt-in `AVA_LIVE_WARM=1` **и** `AVA_LIVE_WARM_COST_OK=1`; idle hard-expire (`AVA_LIVE_WARM_MAX_IDLE_S`, default 45s); `install_prod.sh` принудительно пишет оба флага в `0`. Скрипт `harden_live_cost_guard.py`.
