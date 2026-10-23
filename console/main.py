@@ -1192,11 +1192,12 @@ def api_scenario_put(
             seed["post_call_tools"] = []
             seed["greeting"] = ""
             seed["prompt"] = (
-                "Ты — голосовой ассистент на исходящем звонке. "
+                "Ты — голосовой ассистент на исходящем звонке (мужской голос). "
                 "Нет заранее заданного продукта или компании. "
                 "Действуй только по per-call сценарию из dial API. "
                 "Без сценария — коротко представься и спроси, чем помочь. "
-                "Не питчи Quantum Labs / выплаты / СБП и не предлагай встречу сам."
+                "Не питчи Quantum Labs / выплаты / СБП и не предлагай встречу сам. "
+                "О себе только в мужском роде: понял, готов, слышал — не поняла/готова."
             )
         else:
             seed = copy.deepcopy(contexts.get("outbound") or seed)
@@ -1321,6 +1322,14 @@ HANGUP_GUARD_FOOTER = (
     "- Обрывки ASR («авто», «сообщения», шум) НЕ считай автоответчиком — переспроси «Алло, меня слышно?».\n"
     "- hangup_call только при ясном отказе человека ИЛИ после короткого farewell на ЯВНЫЙ автоответчик "
     "(«оставьте сообщение после сигнала»), не раньше.\n"
+)
+
+# Cedar / openai_live_pilot is a male voice — never say «поняла».
+MALE_VOICE_FOOTER = (
+    "\n\nРОД И ГОЛОС (строго):\n"
+    "- Голос мужской. Говори о себе ТОЛЬКО в мужском роде: «понял», «готов», «слышал», «рад», «записал» "
+    "— никогда «поняла», «готова», «слышала», «рада», «записала».\n"
+    "- Не представляйся женщиной и не используй женские формы глаголов/прилагательных о себе.\n"
 )
 
 # Built-in AVA in-call tools (engine registry). HTTP tools come from YAML in_call_tools.
@@ -1653,6 +1662,8 @@ def _compose_outbound_prompt(script: str, *, use_knowledge: bool) -> str:
         body = body + KNOWLEDGE_SCRIPT_FOOTER
     if "НЕ РВИ ТРУБКУ" not in body and "ЗАПРЕЩЕНО вызывать hangup_call" not in body:
         body = body + HANGUP_GUARD_FOOTER
+    if "РОД И ГОЛОС" not in body and "мужском роде" not in body:
+        body = body + MALE_VOICE_FOOTER
     return body
 
 

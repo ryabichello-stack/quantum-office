@@ -74,6 +74,8 @@ if [ -d /root/ava ]; then
   python3 "${SRC_DIR}/scripts/patch_live_warm_keepalive.py" || true
   # Cost guard LAST: dual opt-in + idle expire; warm OFF by default forever
   python3 "${SRC_DIR}/scripts/harden_live_cost_guard.py" || true
+  # Cedar = male voice → masculine Russian self-reference («понял», not «поняла»)
+  python3 "${SRC_DIR}/scripts/patch_male_voice_identity.py" || true
   # Force env safe defaults (never leave paid idle Live on)
   if [ -f /root/ava/.env ]; then
     grep -q '^AVA_LIVE_WARM=' /root/ava/.env \
