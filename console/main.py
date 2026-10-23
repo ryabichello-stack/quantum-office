@@ -15,6 +15,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -1815,6 +1816,83 @@ def _calls_row_dict(row: sqlite3.Row) -> dict[str, Any]:
     return data
 
 
+def _parse_iso_ts(value: str | None) -> float | None:
+    if not value:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    try:
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        return datetime.fromisoformat(raw).timestamp()
+    except Exception:
+        return None
+
+
+def _greeting_latency_from_conversation(
+    *,
+    start_time: str | None,
+    conversation: list[Any] | None,
+) -> dict[str, Any]:
+    """Measure answer→first AVA line and first short barge-in («алло»/«приём»)."""
+    answer_ts = _parse_iso_ts(start_time)
+    first_assistant_ts: float | None = None
+    first_user_ts: float | None = None
+    first_assistant_text = ""
+    first_user_text = ""
+    for item in conversation or []:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "").strip().lower()
+        content = str(item.get("content") or item.get("text") or "").strip()
+        ts_raw = item.get("timestamp")
+        try:
+            ts = float(ts_raw) if ts_raw is not None else None
+        except (TypeError, ValueError):
+            ts = None
+        if role in {"assistant", "agent", "ava"} and first_assistant_ts is None and content:
+            first_assistant_ts = ts
+            first_assistant_text = content
+        elif role in {"user", "caller", "human"} and first_user_ts is None and content:
+            first_user_ts = ts
+            first_user_text = content
+        if first_assistant_ts is not None and first_user_ts is not None:
+            break
+
+    answer_to_greeting_s: float | None = None
+    if answer_ts is not None and first_assistant_ts is not None:
+        answer_to_greeting_s = round(first_assistant_ts - answer_ts, 3)
+    greet_to_user_s: float | None = None
+    if first_assistant_ts is not None and first_user_ts is not None:
+        greet_to_user_s = round(first_user_ts - first_assistant_ts, 3)
+
+    user_l = first_user_text.casefold().replace("ё", "е").replace(" ", "")
+    short_barge = bool(
+        first_user_text
+        and len(user_l) <= 24
+        and (
+            user_l.startswith("алл")
+            or user_l.startswith("але")
+            or any(m in user_l for m in ("прием", "слушаю"))
+            or user_l in {"да", "а", "угу"}
+        )
+    )
+    return {
+        "answer_ts": answer_ts,
+        "first_assistant_ts": first_assistant_ts,
+        "first_user_ts": first_user_ts,
+        "answer_to_greeting_s": answer_to_greeting_s,
+        "greeting_to_user_s": greet_to_user_s,
+        "first_assistant_text": first_assistant_text[:160],
+        "first_user_text": first_user_text[:80],
+        "short_barge_in": short_barge,
+        "target_ok": (
+            answer_to_greeting_s is not None and 0 <= answer_to_greeting_s <= 1.2
+        ),
+    }
+
+
 @app.get("/api/calls")
 def api_calls(
     limit: int = 30,
@@ -1925,9 +2003,88 @@ def api_call_detail(
                 }
             )
         data["turns"] = turns_out
+        data["greeting_latency"] = _greeting_latency_from_conversation(
+            start_time=data.get("start_time"),
+            conversation=data.get("conversation") or [],
+        )
         return {"ok": True, "call": data}
     finally:
         conn.close()
+
+
+@app.get("/api/outbound/greeting-latency")
+def api_greeting_latency(
+    limit: int = 10,
+    context: str = "outbound",
+    x_console_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    """Answer→first greeting delay for recent outbound calls (ops metric).
+
+    Target after QUANTUM_GREETING_LATENCY patch: ≤1.2s. Also flags short barge-in
+    («алло»/«приём») that cut the first phrase.
+    """
+    _require_token(x_console_token)
+    limit = max(1, min(int(limit), 50))
+    ctx = (context or "outbound").strip() or "outbound"
+    if not CALL_HISTORY_DB.is_file():
+        return {"ok": True, "items": [], "summary": {}, "target_s": 1.2}
+    conn = sqlite3.connect(str(CALL_HISTORY_DB))
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """
+            SELECT call_id, start_time, provider_name, context_name, conversation_history
+            FROM call_records
+            WHERE context_name = ?
+            ORDER BY start_time DESC
+            LIMIT ?
+            """,
+            (ctx, limit),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    items: list[dict[str, Any]] = []
+    delays: list[float] = []
+    for row in rows:
+        hist_raw = row["conversation_history"] or "[]"
+        try:
+            conversation = json.loads(hist_raw) if isinstance(hist_raw, str) else hist_raw
+        except json.JSONDecodeError:
+            conversation = []
+        lat = _greeting_latency_from_conversation(
+            start_time=row["start_time"],
+            conversation=conversation if isinstance(conversation, list) else [],
+        )
+        if lat.get("answer_to_greeting_s") is not None:
+            delays.append(float(lat["answer_to_greeting_s"]))
+        items.append(
+            {
+                "call_id": row["call_id"],
+                "start_time": row["start_time"],
+                "provider_name": row["provider_name"],
+                **lat,
+            }
+        )
+    summary: dict[str, Any] = {
+        "n": len(delays),
+        "avg_s": round(sum(delays) / len(delays), 3) if delays else None,
+        "max_s": round(max(delays), 3) if delays else None,
+        "min_s": round(min(delays), 3) if delays else None,
+        "within_target": sum(1 for d in delays if 0 <= d <= 1.2),
+        "short_barge_ins": sum(1 for it in items if it.get("short_barge_in")),
+    }
+    return {
+        "ok": True,
+        "target_s": 1.2,
+        "context": ctx,
+        "summary": summary,
+        "items": items,
+        "baseline_note": (
+            "Before patch (2026-10-22 samples): 14.25s / 5.67s / 8.85s answer→greeting; "
+            "short barge-in often ≤0.8s into greeting."
+        ),
+    }
 
 
 @app.get("/api/secrets-checklist")

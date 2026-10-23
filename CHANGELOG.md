@@ -10,6 +10,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- AVA outbound greeting latency / barge-in: тишина 6–14s после ответа. **VPN proxy** (`AVA_OPENAI_PROXY` → Minsk) для cold Live connect. Ошибочный локальный WAV чужим голосом откатили. Silent-fallback wait+cold reconnect убран. Также: jitter 120ms, `greeting_protection_ms=8000`, метрика `GET /api/outbound/greeting-latency`. Docs: `docs/ava-greeting-latency.md`.
+- **Live cost guard (критично):** idle warm pool + mic keepalive сожгли OpenAI-кредиты (~$60 / 2 дня). `AVA_LIVE_WARM` default **`0`**; warm только при dual opt-in `AVA_LIVE_WARM=1` **и** `AVA_LIVE_WARM_COST_OK=1`; idle hard-expire (`AVA_LIVE_WARM_MAX_IDLE_S`, default 45s); `install_prod.sh` принудительно пишет оба флага в `0`. Скрипт `harden_live_cost_guard.py`.
+
 ### Added
 
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
