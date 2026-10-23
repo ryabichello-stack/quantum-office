@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Idle warm WITH paced mic keepalive, then kick-only on answer."""
+"""Idle warm WITH paced mic keepalive, then kick-only on answer.
+
+REFUSES unless AVA_LIVE_WARM_COST_OK=1 — this opens a paid Live session.
+"""
 import asyncio, audioop, base64, json, os, time
 import websockets
 LIVE_WS_URL = "wss://api.openai.com/v1/live/sessions"
@@ -7,6 +10,13 @@ GREETING = "Здравствуйте, проверка задержки."
 TARGET = 1.5
 
 async def main():
+    if str(os.environ.get("AVA_LIVE_WARM_COST_OK", "0")).strip().lower() not in (
+        "1", "true", "yes", "on",
+    ):
+        raise SystemExit(
+            "REFUSED: set AVA_LIVE_WARM_COST_OK=1 explicitly "
+            "(this probe opens a paid OpenAI Live session)"
+        )
     api_key = os.environ["OPENAI_API_KEY"]
     proxy = (os.environ.get("AVA_OPENAI_PROXY") or "").strip() or None
     kw = dict(additional_headers={"Authorization": f"Bearer {api_key}"}, max_size=8*1024*1024, open_timeout=20)

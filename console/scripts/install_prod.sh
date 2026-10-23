@@ -72,6 +72,17 @@ if [ -d /root/ava ]; then
   python3 "${SRC_DIR}/scripts/harden_live_warm_pool.py" || true
   python3 "${SRC_DIR}/scripts/patch_live_openai_proxy.py" || true
   python3 "${SRC_DIR}/scripts/patch_live_warm_keepalive.py" || true
+  # Cost guard LAST: dual opt-in + idle expire; warm OFF by default forever
+  python3 "${SRC_DIR}/scripts/harden_live_cost_guard.py" || true
+  # Force env safe defaults (never leave paid idle Live on)
+  if [ -f /root/ava/.env ]; then
+    grep -q '^AVA_LIVE_WARM=' /root/ava/.env \
+      && sed -i 's/^AVA_LIVE_WARM=.*/AVA_LIVE_WARM=0/' /root/ava/.env \
+      || echo 'AVA_LIVE_WARM=0' >> /root/ava/.env
+    grep -q '^AVA_LIVE_WARM_COST_OK=' /root/ava/.env \
+      && sed -i 's/^AVA_LIVE_WARM_COST_OK=.*/AVA_LIVE_WARM_COST_OK=0/' /root/ava/.env \
+      || echo 'AVA_LIVE_WARM_COST_OK=0' >> /root/ava/.env
+  fi
 fi
 
 install -m 644 "${SRC_DIR}/quantum-console.service" "/etc/systemd/system/${SERVICE}"

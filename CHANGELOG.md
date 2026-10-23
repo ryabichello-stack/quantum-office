@@ -12,7 +12,8 @@
 
 ### Fixed
 
-- AVA outbound greeting latency / barge-in: тишина 6–14s после ответа. **Live warm keepalive** + **VPN proxy** (`AVA_OPENAI_PROXY` → Minsk): idle `session.start` + paced mic silence, на answer только greeting kick (Cedar, цель ≤1.5s). Без mic keepalive Live отдавал ~20s цифровой тишины; silent-fallback wait+cold reconnect раздувал задержку до ~15s — убран. Офлайн-пробы 1.18/0.85/1.42s. Ошибочный локальный WAV чужим голосом откатили. Также: jitter 120ms, `greeting_protection_ms=8000`, метрика `GET /api/outbound/greeting-latency`. Docs: `docs/ava-greeting-latency.md`.
+- AVA outbound greeting latency / barge-in: тишина 6–14s после ответа. **VPN proxy** (`AVA_OPENAI_PROXY` → Minsk) для cold Live connect. Ошибочный локальный WAV чужим голосом откатили. Silent-fallback wait+cold reconnect убран. Также: jitter 120ms, `greeting_protection_ms=8000`, метрика `GET /api/outbound/greeting-latency`. Docs: `docs/ava-greeting-latency.md`.
+- **Live cost guard (критично):** idle warm pool + mic keepalive сожгли OpenAI-кредиты (~$60 / 2 дня). `AVA_LIVE_WARM` default **`0`**; warm только при dual opt-in `AVA_LIVE_WARM=1` **и** `AVA_LIVE_WARM_COST_OK=1`; idle hard-expire (`AVA_LIVE_WARM_MAX_IDLE_S`, default 45s); `install_prod.sh` принудительно пишет оба флага в `0`. Скрипт `harden_live_cost_guard.py`.
 
 ### Added
 

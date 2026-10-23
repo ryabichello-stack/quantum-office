@@ -410,7 +410,7 @@ def patch_engine() -> str:
             sched_needle
             + f"        # {MARKER}_LOOP\n"
             + "        try:\n"
-            + "            if str(os.getenv('AVA_LIVE_WARM', '1')).strip() not in ('0', 'false', 'False'):\n"
+            + "            if str(os.getenv('AVA_LIVE_WARM', '0')).strip() not in ('0', 'false', 'False'):\n"
             + "                self._live_warm_task = asyncio.create_task(\n"
             + "                    self._live_warm_supervisor(), name='live-warm-pool'\n"
             + "                )\n"
@@ -505,7 +505,7 @@ def patch_engine() -> str:
 
     async def _refill_live_warm_provider(self) -> None:
         """{MARKER}: create a fresh idle Live session in the background."""
-        if str(os.getenv("AVA_LIVE_WARM", "1")).strip() in ("0", "false", "False"):
+        if str(os.getenv("AVA_LIVE_WARM", "0")).strip() in ("0", "false", "False"):
             return
         async with self._live_warm_lock:
             if getattr(self, "_live_warm_slot", None) is not None:
