@@ -4,6 +4,9 @@
 
 ### Added
 
+- DELNO restore-from-git pack: `delno-office/*` brokers, compose stack, full
+  `.env.example`, `deploy/restore_cloud4box.sh`, `docs/DELNO_RESTORE.md` (no secrets)
+- Cloud4Box `dlno.ru` HTTPS ingress + SNI mux (see `docs/DLNO_DOMAINS.md`)
 - Hermes chat attachments: photo/file attach + camera capture; OpenAI vision for
   images; text/docs excerpted into the turn (`/v1/operator/chat` `attachments`)
 - Hermes UI rebuilt as ChatGPT/Cursor-style agent chat: full-height thread,
