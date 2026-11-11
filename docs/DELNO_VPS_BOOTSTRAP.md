@@ -115,6 +115,12 @@ Surfaces live without keys: `mail`, `calendar`, `files`, `conference`.
 Tools: `suggest_calendar_slots`, `send_mail_draft`, `list_files`, `create_conference`.
 Upstream: set `MAILER_BASE_URL` / `CALENDAR_BASE_URL` / `FILES_BASE_URL` / `CONFERENCE_BASE_URL` later.
 
+### Phase B0b — MCP / Hermes (done)
+
+- `GET /v1/mcp/health|tools|openapi-lite`
+- `POST /v1/mcp/tools/call`, `POST /v1/mcp` (JSON-RPC)
+- `GET /v1/hermes/profile` → mint `mcp_api_key` + toolset for multi-user Hermes
+
 ### Phase B2 — Telegram как первый канал
 
 1. Flag `telegram` уже **enabled** у `quantum-labs`  
