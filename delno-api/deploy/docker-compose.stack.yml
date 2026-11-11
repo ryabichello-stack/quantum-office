@@ -36,12 +36,16 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${DELNO_PG_USER:-delno}:${DELNO_PG_PASSWORD}@postgres:5432/${DELNO_PG_DB:-delno}
       KNOWLEDGE_BASE_URL: http://knowledge:8021
+      FILES_BASE_URL: ${FILES_BASE_URL:-http://files:8015}
+      OFFICE_WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
     ports:
       - "127.0.0.1:18020:8020"
     depends_on:
       postgres:
         condition: service_healthy
       knowledge:
+        condition: service_started
+      files:
         condition: service_started
 
   knowledge:
@@ -61,6 +65,33 @@ services:
       - delno-brain-data:/data
     ports:
       - "127.0.0.1:18021:8021"
+
+  # File broker (Mail.ru / Yadisk / Google Drive / OneDrive / local) — tools-first
+  files:
+    build:
+      context: ./files
+      dockerfile: Dockerfile
+    image: delno-files:latest
+    container_name: delno-files
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    environment:
+      WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
+      FILES_LOCAL_ALLOWLIST: /data/assets
+      FILES_MAX_BYTES: ${FILES_MAX_BYTES:-47185920}
+      YADISK_TOKEN: ${YADISK_TOKEN:-}
+      MAILRU_WEBDAV_URL: ${MAILRU_WEBDAV_URL:-https://webdav.cloud.mail.ru}
+      MAILRU_WEBDAV_USER: ${MAILRU_WEBDAV_USER:-}
+      MAILRU_WEBDAV_PASSWORD: ${MAILRU_WEBDAV_PASSWORD:-}
+      GOOGLE_DRIVE_TOKEN: ${GOOGLE_DRIVE_TOKEN:-}
+      ONEDRIVE_TOKEN: ${ONEDRIVE_TOKEN:-}
+      MICROSOFT_GRAPH_TOKEN: ${MICROSOFT_GRAPH_TOKEN:-}
+      ONEDRIVE_DRIVE_ROOT: ${ONEDRIVE_DRIVE_ROOT:-me/drive}
+    volumes:
+      - delno-files-assets:/data/assets
+    ports:
+      - "127.0.0.1:18015:8015"
 
   site:
     build:
@@ -93,3 +124,5 @@ volumes:
     name: delno-pg-data
   delno-brain-data:
     name: delno-brain-data
+  delno-files-assets:
+    name: delno-files-assets
