@@ -149,6 +149,8 @@ Cloud disks wait for tokens only.
 
 ### Phase B0e — mail / calendar / conference brokers (done)
 
+Calendar providers live: `mailru | yandex | google | outlook` (GET `/api/calendar/providers`, `source=` on suggest/check/create; tokens later).
+
 Live containers without external keys:
 - `send_mail_draft` → dry-run stub
 - `suggest_calendar_slots` → stub slots
