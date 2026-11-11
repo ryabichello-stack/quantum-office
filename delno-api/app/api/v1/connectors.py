@@ -28,7 +28,7 @@ def get_connectors(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(get_tenant_context_auth),
 ) -> dict:
-    """List office connectors for this tenant (mail/calendar/files/conference)."""
+    """List office connectors for this tenant (mail/calendar/files/conference/outreach)."""
     return list_tenant_connectors(db, ctx)
 
 

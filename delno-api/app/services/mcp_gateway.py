@@ -89,7 +89,7 @@ def mcp_tools_catalog() -> list[dict[str, Any]]:
             },
             {
                 "name": "office.connectors",
-                "description": "List tenant office connectors (mail/calendar/files/conference) and stub status.",
+                "description": "List tenant office connectors (mail/calendar/files/conference/outreach) and stub status.",
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {

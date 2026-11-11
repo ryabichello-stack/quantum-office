@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-CONNECTOR_KINDS = ("mail", "calendar", "files", "conference")
+CONNECTOR_KINDS = ("mail", "calendar", "files", "conference", "outreach")
 
 
 @dataclass(slots=True)

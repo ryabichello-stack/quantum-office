@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     calendar_base_url: str = ""
     files_base_url: str = ""
     conference_base_url: str = ""
+    outreach_base_url: str = ""
     office_webhook_token: str | None = None
     # E2.4 MAX Bot API (platform-api2)
     max_api_base_url: str = "https://platform-api2.max.ru"

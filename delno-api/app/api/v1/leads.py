@@ -1,12 +1,13 @@
 from pydantic import BaseModel, Field
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_tenant_context_auth
 from app.core.db import get_db
 from app.core.tenant import TenantContext
 from app.models.lead import Lead
+from app.services import crm as crm_service
 from app.services.leads import create_lead_record
 from app.services.usage import record_usage
 
@@ -21,6 +22,10 @@ class LeadCreate(BaseModel):
     website: str | None = Field(default=None, max_length=255)
     inn: str | None = Field(default=None, max_length=14)
     source: str = Field(default="website", max_length=120)
+
+
+class LeadLifecyclePatch(BaseModel):
+    status: str = Field(min_length=2, max_length=32)
 
 
 @router.get("")
@@ -87,3 +92,31 @@ def create_lead(
         "party_enriched": meta["enrichment"].get("enriched"),
         "inn": lead.inn,
     }
+
+
+@router.get("/funnel")
+def leads_funnel(
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """CRM-lite funnel counts for the cabinet."""
+    return crm_service.funnel_counts(db, ctx)
+
+
+@router.patch("/{lead_id}/lifecycle")
+def patch_lead_lifecycle(
+    lead_id: str,
+    body: LeadLifecyclePatch,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    result = crm_service.set_lifecycle(db, ctx, lead_id=lead_id, status=body.status)
+    if not result.get("ok"):
+        err = result.get("error")
+        if err == "not_found":
+            raise HTTPException(status_code=404, detail="lead not found")
+        if err == "invalid_status":
+            raise HTTPException(status_code=400, detail=result)
+        raise HTTPException(status_code=400, detail=result)
+    db.commit()
+    return result
