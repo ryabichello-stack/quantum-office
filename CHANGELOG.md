@@ -12,6 +12,8 @@
 
 ### Added
 
+- Text-bot: restore channel curate — forward → rewrite → publish to Telegram channel
+  (photo/video/docs/albums) with 📣 footer link (`TELEGRAM_CHANNEL_BOT_TOKEN`, default `@epoch_z`)
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
 - Юридический футер + «Отписаться» / List-Unsubscribe в шаблонах; презентация PDF на 1-м письме
 - API `GET/POST /api/packs` (+ apply) и вкладка «Кампания» в UI (Console embed + standalone)
