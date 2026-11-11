@@ -21,11 +21,18 @@ from app.services.tts import synthesize_speech
 router = APIRouter(prefix="/operator", tags=["operator"])
 
 
+class OperatorAttachment(BaseModel):
+    filename: str = Field(default="file", max_length=200)
+    content_type: str = Field(default="application/octet-stream", max_length=120)
+    data_base64: str = Field(min_length=8, max_length=12_000_000)
+
+
 class OperatorChatRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=4000)
+    message: str = Field(default="", max_length=4000)
     channel: str = Field(default="web", max_length=32)
     conversation_id: UUID | None = None
     modality: str = Field(default="text", description="text | voice (post-STT)")
+    attachments: list[OperatorAttachment] = Field(default_factory=list, max_length=4)
 
 
 class OperatorConfirmRequest(BaseModel):
@@ -40,13 +47,18 @@ def operator_chat(
     ctx: TenantContext = Depends(get_tenant_context_auth),
 ) -> dict:
     modality = body.modality if body.modality in ("text", "voice") else "text"
+    attachments = [a.model_dump() for a in (body.attachments or [])]
+    message = (body.message or "").strip()
+    if not message and not attachments:
+        raise HTTPException(status_code=422, detail="message_or_attachment_required")
     return run_operator_turn(
         db,
         ctx,
-        message=body.message.strip(),
+        message=message or "",
         channel=body.channel,
         conversation_id=body.conversation_id,
         input_modality=modality,
+        attachments=attachments or None,
     )
 
 

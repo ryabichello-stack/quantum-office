@@ -91,27 +91,62 @@ def run_operator_turn(
     input_modality: str = "text",
     record_user_message: bool = True,
     commit: bool = True,
+    attachments: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """
     Single operator turn. Text and voice (post-STT) use the same path.
     Voice output (TTS) is handled by the client or a future /operator/voice route.
+    Optional attachments: images (vision) and text/docs.
     """
+    from app.services.operator_attachments import normalize_attachments
+
     try:
+        normalized = normalize_attachments(attachments)
+        if not normalized.get("ok"):
+            return {
+                "conversation_id": str(conversation_id) if conversation_id else None,
+                "reply": f"Не удалось принять вложение: {normalized.get('error')}",
+                "sources": [],
+                "tool_calls": [{"tool": "attachments", "ok": False, "error": normalized.get("error")}],
+                "pending_confirmation": None,
+                "modality": input_modality,
+            }
+
         conversation = _get_or_create_conversation(db, ctx, channel, conversation_id)
+        display_message = message.strip()
+        if normalized.get("summary_labels"):
+            label_line = " ".join(normalized["summary_labels"])
+            display_message = f"{display_message}\n{label_line}".strip() if display_message else label_line
+
         if record_user_message:
+            meta_user: dict[str, Any] = {"modality": input_modality}
+            if normalized.get("items"):
+                meta_user["attachments"] = [
+                    {
+                        "filename": i.get("filename"),
+                        "content_type": i.get("content_type"),
+                        "kind": i.get("kind"),
+                        "size": i.get("size"),
+                    }
+                    for i in normalized["items"]
+                ]
             db.add(
                 Message(
                     tenant_id=ctx.tenant_id,
                     conversation_id=conversation.id,
                     role="user",
-                    body=message,
-                    meta={"modality": input_modality},
+                    body=display_message or message,
+                    meta=meta_user,
                 )
             )
             db.flush()
 
         reply, tool_calls, sources, pending = _generate_reply(
-            db, ctx, message, channel=channel
+            db,
+            ctx,
+            message,
+            channel=channel,
+            attachments=normalized,
         )
 
         meta: dict[str, Any] = {"tool_calls": tool_calls, "sources": sources}
@@ -524,16 +559,20 @@ def _generate_reply(
     message: str,
     *,
     channel: str = "web",
+    attachments: dict[str, Any] | None = None,
 ) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None]:
     """KB search + optional LLM; cabinet channel enables live setup intents."""
+    from app.services.operator_attachments import build_user_content
+
     tool_calls: list[dict[str, Any]] = []
     kb_context = ""
     sources: list[dict[str, Any]] = []
     onboarding = channel == "onboarding"
     cabinet = channel in ("cabinet", "operator", "hermes")
     widget = channel == "widget"
+    has_attachments = bool(attachments and (attachments.get("items") or []))
 
-    if onboarding:
+    if onboarding and not has_attachments:
         from app.services.onboarding_website import try_onboarding_url_ingest
         from app.services.onboarding_summary import try_onboarding_summary_reply
 
@@ -555,7 +594,7 @@ def _generate_reply(
                 None,
             )
 
-    if cabinet:
+    if cabinet and not has_attachments:
         from app.services.hermes_guide import coach_reply
 
         # Phone/setup coach first — avoid dumping generic setup tool text or KB FAQ
@@ -569,12 +608,30 @@ def _generate_reply(
         if llm_tools:
             return llm_tools
 
-    knowledge = registry.run(db, ctx, "get_knowledge", query=message)
+    kb_query = message
+    if has_attachments and attachments.get("text_context"):
+        kb_query = f"{message}\n{attachments.get('text_context')}"[:500]
+    knowledge = registry.run(db, ctx, "get_knowledge", query=kb_query or message)
     if isinstance(knowledge, ToolResult):
         tool_calls.append({"tool": "get_knowledge", "ok": knowledge.ok})
         if knowledge.ok:
             kb_context = _kb_context_from_result(knowledge)
             sources = extract_sources_from_knowledge(knowledge.data)
+
+    if has_attachments:
+        tool_calls.append(
+            {
+                "tool": "attachments",
+                "ok": True,
+                "count": len(attachments.get("items") or []),
+                "kinds": [i.get("kind") for i in (attachments.get("items") or [])],
+            }
+        )
+
+    user_content = build_user_content(message, attachments or {})
+    # Vision needs a multimodal-capable model
+    vision = bool(attachments and attachments.get("vision_parts"))
+    model_override = "gpt-4o-mini" if widget or vision else None
 
     provider = get_model_provider()
     completion = provider.chat_completion(
@@ -587,12 +644,18 @@ def _generate_reply(
                     cabinet=cabinet,
                     onboarding=onboarding,
                     widget=widget,
+                )
+                + (
+                    "\nПользователь может прикладывать фото и файлы. "
+                    "Для изображений опиши увиденное и предложи конкретное действие в офисе."
+                    if has_attachments
+                    else ""
                 ),
             },
-            {"role": "user", "content": message},
+            {"role": "user", "content": user_content},
         ],
-        model="gpt-4o-mini" if widget else None,
-        max_tokens=220 if widget else None,
+        model=model_override,
+        max_tokens=450 if vision else (220 if widget else None),
     )
 
     if completion.get("ok"):

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- Hermes chat attachments: photo/file attach + camera capture; OpenAI vision for
+  images; text/docs excerpted into the turn (`/v1/operator/chat` `attachments`)
+
 ### Fixed
 
 - Hermes cabinet: phone/secretary setup no longer dumps KB FAQ when OpenAI is

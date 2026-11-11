@@ -303,12 +303,19 @@ export function apiConversationMessages(token: string, conversationId: string) {
   return apiFetch<{ items: MessageItem[] }>(`/v1/operator/conversations/${conversationId}/messages`, token);
 }
 
+export type OperatorChatAttachment = {
+  filename: string;
+  content_type: string;
+  data_base64: string;
+};
+
 export function apiOperatorChat(
   token: string,
   message: string,
   conversationId?: string,
   modality: "text" | "voice" = "text",
   channel = "cabinet",
+  attachments?: OperatorChatAttachment[],
 ) {
   return apiFetch<{
     conversation_id: string;
@@ -324,6 +331,7 @@ export function apiOperatorChat(
       channel,
       conversation_id: conversationId || null,
       modality,
+      attachments: attachments || [],
     }),
   });
 }

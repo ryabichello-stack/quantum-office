@@ -15,7 +15,7 @@ class ModelProvider(ABC):
     def chat_completion(
         self,
         *,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         model: str | None = None,
         tools: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
@@ -29,7 +29,7 @@ class OpenAIProvider(ModelProvider):
     def chat_completion(
         self,
         *,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         model: str | None = None,
         tools: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
@@ -50,7 +50,13 @@ class OpenAIProvider(ModelProvider):
                 payload["tools"] = tools
                 payload["tool_choice"] = "auto"
 
-            with openai_client(timeout=30.0) as client:
+            # Vision / large multimodal payloads need a longer timeout
+            has_vision = any(
+                isinstance(m.get("content"), list)
+                for m in messages
+                if isinstance(m, dict)
+            )
+            with openai_client(timeout=60.0 if has_vision else 30.0) as client:
                 response = client.post(
                     openai_url("/chat/completions"),
                     headers={"Authorization": f"Bearer {settings.openai_api_key}"},
@@ -83,16 +89,19 @@ class StubProvider(ModelProvider):
     def chat_completion(
         self,
         *,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         model: str | None = None,
         tools: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
     ) -> dict[str, Any]:
         last = messages[-1]["content"] if messages else ""
+        if isinstance(last, list):
+            texts = [p.get("text", "") for p in last if isinstance(p, dict) and p.get("type") == "text"]
+            last = " ".join(texts) or "[multimodal]"
         return {
             "ok": True,
             "provider": self.name,
-            "data": {"choices": [{"message": {"role": "assistant", "content": f"[stub] {last[:200]}"}}]},
+            "data": {"choices": [{"message": {"role": "assistant", "content": f"[stub] {str(last)[:200]}"}}]},
         }
 
 

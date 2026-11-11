@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { AlertTriangle, CheckCircle2, Mic, Sparkles } from "lucide-react";
+import { AlertTriangle, Camera, CheckCircle2, Mic, Paperclip, Sparkles, X } from "lucide-react";
 import { CrystalOrb } from "@/components/CrystalOrb";
 import { ConfirmCard } from "@/components/ConfirmCard";
 import {
@@ -29,6 +29,12 @@ import {
   type HermesHealthStatus,
   type HermesSetupStatus,
 } from "@/lib/hermesApi";
+import {
+  canAddMore,
+  fileToOperatorAttachment,
+  makePendingAttachment,
+  type PendingHermesAttachment,
+} from "@/lib/hermesAttachments";
 import { useDictateToInput } from "@/lib/useDictateToInput";
 import { useOperatorVoice } from "@/lib/useOperatorVoice";
 
@@ -37,6 +43,7 @@ type ChatLine = {
   text: string;
   sources?: KnowledgeSource[];
   pending?: PendingConfirmation | null;
+  previews?: { url: string; name: string }[];
 };
 
 const QUICK_CHIPS = [
@@ -61,10 +68,18 @@ export function HermesStage({ token }: { token: string }) {
   const [billing, setBilling] = useState<BillingSummary | null>(null);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [qrBusy, setQrBusy] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<PendingHermesAttachment[]>([]);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const mountRef = useRef<HTMLDivElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const messageRef = useRef(message);
   messageRef.current = message;
+  const pendingRef = useRef(pendingFiles);
+  pendingRef.current = pendingFiles;
 
   const refreshPanels = useCallback(async () => {
     try {
@@ -103,23 +118,77 @@ export function HermesStage({ token }: { token: string }) {
     void refreshPanels();
   }, [refreshPanels]);
 
+  const clearPending = useCallback((items: PendingHermesAttachment[]) => {
+    for (const item of items) {
+      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+    }
+  }, []);
+
+  const addFiles = useCallback(
+    (files: FileList | File[]) => {
+      const list = Array.from(files);
+      if (!list.length) return;
+      setError("");
+      setPendingFiles((prev) => {
+        const next = [...prev];
+        for (const file of list) {
+          if (!canAddMore(next.length)) {
+            setError("Максимум 4 вложения за раз");
+            break;
+          }
+          const made = makePendingAttachment(file);
+          if ("error" in made) {
+            setError(made.error);
+            continue;
+          }
+          next.push(made);
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  const removePending = useCallback((id: string) => {
+    setPendingFiles((prev) => {
+      const target = prev.find((p) => p.id === id);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((p) => p.id !== id);
+    });
+  }, []);
+
   const sendText = useCallback(
-    async (text: string, modality: "text" | "voice" = "text") => {
+    async (text: string, modality: "text" | "voice" = "text", withPending = false) => {
       const question = text.trim();
-      if (!question || sending) return null;
+      const attachSource = withPending ? pendingRef.current : [];
+      if ((!question && attachSource.length === 0) || sending) return null;
       setSending(true);
       setError("");
       setActivePending(null);
+      const previews = attachSource
+        .filter((a) => a.previewUrl)
+        .map((a) => ({ url: a.previewUrl!, name: a.filename }));
+      const label =
+        question ||
+        (attachSource.length
+          ? attachSource.map((a) => (a.kind === "image" ? `🖼 ${a.filename}` : `📎 ${a.filename}`)).join(" ")
+          : "");
       if (modality === "text") {
-        setLines((prev) => [...prev, { role: "user", text: question }]);
+        setLines((prev) => [...prev, { role: "user", text: label, previews }]);
       }
       try {
+        const attachments = await Promise.all(attachSource.map((a) => fileToOperatorAttachment(a.file)));
+        if (withPending) {
+          clearPending(attachSource);
+          setPendingFiles([]);
+        }
         const result = await apiOperatorChat(
           token,
           question,
           conversationId || undefined,
           modality,
           "hermes",
+          attachments,
         );
         setConversationId(result.conversation_id);
         const pending = result.pending_confirmation || null;
@@ -127,7 +196,7 @@ export function HermesStage({ token }: { token: string }) {
         setLines((prev) => {
           const base =
             modality === "voice" && (prev.length === 0 || prev[prev.length - 1]?.text !== question)
-              ? [...prev, { role: "user" as const, text: question }]
+              ? [...prev, { role: "user" as const, text: question || label }]
               : prev;
           return [
             ...base,
@@ -148,7 +217,7 @@ export function HermesStage({ token }: { token: string }) {
         setSending(false);
       }
     },
-    [token, conversationId, sending, refreshPanels],
+    [token, conversationId, sending, refreshPanels, clearPending],
   );
 
   const { voiceActive, voicePhase, toggleVoice, audioRef } = useOperatorVoice(
@@ -190,10 +259,84 @@ export function HermesStage({ token }: { token: string }) {
     e.preventDefault();
     stopDictate();
     const q = message.trim();
-    if (!q) return;
+    if (!q && pendingFiles.length === 0) return;
     setMessage("");
-    await sendText(q, "text");
+    await sendText(q, "text", true);
   }
+
+  function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (files?.length) addFiles(files);
+    e.target.value = "";
+  }
+
+  async function openDesktopCamera() {
+    setError("");
+    if (!navigator.mediaDevices?.getUserMedia) {
+      cameraInputRef.current?.click();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      setCameraOpen(true);
+    } catch {
+      cameraInputRef.current?.click();
+    }
+  }
+
+  useEffect(() => {
+    if (!cameraOpen) return;
+    const video = videoRef.current;
+    if (video && streamRef.current) {
+      video.srcObject = streamRef.current;
+      void video.play().catch(() => undefined);
+    }
+    return () => {
+      /* keep stream until closeCamera */
+    };
+  }, [cameraOpen]);
+
+  function closeCamera() {
+    setCameraOpen(false);
+    if (streamRef.current) {
+      for (const track of streamRef.current.getTracks()) track.stop();
+      streamRef.current = null;
+    }
+  }
+
+  async function captureCameraShot() {
+    const video = videoRef.current;
+    if (!video) return;
+    const w = video.videoWidth || 1280;
+    const h = video.videoHeight || 720;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, w, h);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+    closeCamera();
+    if (!blob) {
+      setError("Не удалось сделать снимок");
+      return;
+    }
+    const file = new File([blob], `camera-${Date.now()}.jpg`, { type: "image/jpeg" });
+    addFiles([file]);
+  }
+
+  useEffect(() => {
+    return () => {
+      clearPending(pendingRef.current);
+      if (streamRef.current) {
+        for (const track of streamRef.current.getTracks()) track.stop();
+      }
+    };
+  }, [clearPending]);
 
   async function onConfirm() {
     if (!activePending || confirming) return;
@@ -238,8 +381,8 @@ export function HermesStage({ token }: { token: string }) {
         <small>Hermes · руководитель офиса</small>
         <h1>Hermes</h1>
         <p>
-          Настройте офис как клиент DELNO: голосом или текстом. Hermes сам ведёт сетап, следит за
-          здоровьем компонентов и ставит задания на звонки и каналы.
+          Настройте офис как клиент DELNO: голосом, текстом, фото или файлом. Можно снять кадр с
+          камеры прямо в чате — Hermes читает изображения.
         </p>
       </div>
 
@@ -396,8 +539,8 @@ export function HermesStage({ token }: { token: string }) {
                 {!dictating && voicePhase === "error" && "Ошибка микрофона"}
                 {!dictating && voicePhase === "idle" && (
                   dictateSupported
-                    ? "Удержите mic — надиктуйте текст в поле. Orb — полный голосовой диалог."
-                    : "Наберите текст или используйте Chrome для диктовки."
+                    ? "Mic — диктовка. 📎 файл/фото. 📷 камера. Orb — голосовой диалог."
+                    : "📎 файл/фото, 📷 камера, или текст. Chrome — для диктовки."
                 )}
               </p>
             </div>
@@ -419,14 +562,22 @@ export function HermesStage({ token }: { token: string }) {
                     </span>
                   </div>
                   <p style={{ margin: 0 }}>
-                    Нажмите «Настрой телефон секретаря» или удержите mic и надиктуйте задание в поле
-                    ввода — текст появится там, отправите когда будете готовы.
+                    Прикрепите фото/файл, снимите кадр с камеры или надиктуйте задание — Hermes
+                    читает изображения и документы.
                   </p>
                 </div>
               )}
               {lines.map((line, idx) =>
                 line.role === "user" ? (
                   <div key={idx} className="msg-bubble user">
+                    {line.previews && line.previews.length > 0 && (
+                      <div className="hermes-msg-previews">
+                        {line.previews.map((p) => (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img key={p.url} src={p.url} alt={p.name} />
+                        ))}
+                      </div>
+                    )}
                     <div className="msg-body">{line.text}</div>
                   </div>
                 ) : (
@@ -462,7 +613,66 @@ export function HermesStage({ token }: { token: string }) {
 
             {(error || dictateError) && <p className="status-error">{error || dictateError}</p>}
 
+            {pendingFiles.length > 0 && (
+              <div className="hermes-attach-strip">
+                {pendingFiles.map((item) => (
+                  <div key={item.id} className="hermes-attach-chip" data-kind={item.kind}>
+                    {item.previewUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={item.previewUrl} alt={item.filename} />
+                    ) : (
+                      <span className="hermes-attach-file">{item.filename}</span>
+                    )}
+                    <button
+                      type="button"
+                      aria-label="Убрать вложение"
+                      onClick={() => removePending(item.id)}
+                      disabled={sending}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <form className="chat-form operator-form hermes-form" onSubmit={onSubmit}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,.pdf,.docx,.xlsx,.csv,.txt,.md,.html,.json"
+                multiple
+                hidden
+                onChange={onPickFiles}
+              />
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                hidden
+                onChange={onPickFiles}
+              />
+              <button
+                type="button"
+                className="hermes-mic-btn"
+                aria-label="Прикрепить файл или фото"
+                title="Файл или фото из галереи"
+                disabled={sending}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Paperclip size={18} />
+              </button>
+              <button
+                type="button"
+                className="hermes-mic-btn"
+                aria-label="Снять фото камерой"
+                title="Снимок с камеры"
+                disabled={sending}
+                onClick={() => void openDesktopCamera()}
+              >
+                <Camera size={18} />
+              </button>
               <button
                 type="button"
                 className={`hermes-mic-btn${dictating ? " active" : ""}`}
@@ -480,17 +690,37 @@ export function HermesStage({ token }: { token: string }) {
               <textarea
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder="Удержите mic и надиктуйте, или наберите текст…"
+                placeholder="Текст, диктовка, фото или файл…"
                 disabled={sending}
                 rows={dictating || message.length > 80 ? 3 : 2}
               />
-              <button type="submit" className="btn-primary" disabled={sending || !message.trim()}>
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={sending || (!message.trim() && pendingFiles.length === 0)}
+              >
                 {sending ? "…" : "Отправить"}
               </button>
             </form>
           </div>
         </div>
       </div>
+
+      {cameraOpen && (
+        <div className="hermes-camera-modal" role="dialog" aria-label="Камера">
+          <div className="hermes-camera-card">
+            <video ref={videoRef} playsInline muted autoPlay />
+            <div className="hermes-camera-actions">
+              <button type="button" className="btn-ghost" onClick={closeCamera}>
+                Отмена
+              </button>
+              <button type="button" className="btn-primary" onClick={() => void captureCameraShot()}>
+                Снять
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <audio ref={audioRef} className="operator-audio" preload="none" playsInline />
     </div>
