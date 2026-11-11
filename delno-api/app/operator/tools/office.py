@@ -98,12 +98,19 @@ class SendMailDraftTool:
 
 class ListFilesTool:
     name = "list_files"
-    description = "List files/folders via files connector (stub empty list until FILES_BASE_URL)."
+    description = (
+        "List files/folders via files connector. "
+        "Sources: mailru | yadisk | gdrive | onedrive | local (stub until FILES_BASE_URL)."
+    )
     critical_write = False
     parameters_schema = {
         "type": "object",
         "properties": {
-            "source": {"type": "string", "default": "local"},
+            "source": {
+                "type": "string",
+                "default": "mailru",
+                "description": "mailru | yadisk | gdrive | onedrive | local",
+            },
             "path": {"type": "string", "default": "/"},
         },
     }
