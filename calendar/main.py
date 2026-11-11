@@ -1,5 +1,7 @@
 """
-ava-calendar — standalone Mail.ru CalDAV service.
+ava-calendar — multi-provider calendar broker.
+
+Sources: mailru | yandex | google | outlook (tools-first stubs without creds).
 
 API-compatible with the calendar routes previously embedded in ava-mailer:
   POST /api/calendar/check
@@ -28,6 +30,7 @@ load_dotenv()
 import caldav_client as cal
 import conference_client
 import mailer_client
+import providers
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("ava-calendar")
@@ -35,7 +38,7 @@ logger = logging.getLogger("ava-calendar")
 WEBHOOK_TOKEN = os.getenv("WEBHOOK_TOKEN", "").strip()
 SERVICE_NAME = "ava-calendar"
 
-app = FastAPI(title="Quantum Labs Calendar", version="0.1.0")
+app = FastAPI(title="Quantum Labs Calendar", version="0.2.0")
 
 
 def _check_token(x_webhook_token: Optional[str] = None) -> None:
@@ -73,6 +76,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 class CalendarCheckRequest(BaseModel):
     start: str
     timezone: Optional[str] = None
+    source: Optional[str] = Field(
+        default=None,
+        description="mailru | yandex | google | outlook",
+    )
 
 
 class CalendarSuggestRequest(BaseModel):
@@ -81,6 +88,10 @@ class CalendarSuggestRequest(BaseModel):
     suggestions_count: int = 3
     search_hours_ahead: int = 72
     timezone: Optional[str] = None
+    source: Optional[str] = Field(
+        default=None,
+        description="mailru | yandex | google | outlook",
+    )
 
 
 class CalendarCreateRequest(BaseModel):
@@ -91,23 +102,43 @@ class CalendarCreateRequest(BaseModel):
     attendee_email: Optional[str] = None
     timezone: Optional[str] = None
     end: Optional[str] = None
+    source: Optional[str] = Field(
+        default=None,
+        description="mailru | yandex | google | outlook",
+    )
     create_telemost: Optional[bool] = None
     send_telemost_invite: bool = False
     invitees: List[str] = Field(default_factory=list)
 
 
+def _resolve_provider(source: Optional[str]):
+    try:
+        return providers.get_provider(source)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/health")
 def health():
+    status = providers.providers_status()
+    any_configured = any(p["configured"] for p in status["providers"])
     return {
         "ok": True,
         "service": SERVICE_NAME,
-        "caldav_configured": cal.credentials_configured(),
+        "caldav_configured": cal.credentials_configured(),  # legacy mailru flag
         "timezone": cal.CALENDAR_TIMEZONE,
         "default_duration_min": cal.CALENDAR_DEFAULT_DURATION_MIN,
         "conference_base": conference_client.CONFERENCE_BASE_URL,
         "creds_policy": "tools_first",
-        "stub_mode": not cal.credentials_configured(),
+        "stub_mode": not any_configured,
+        **status,
     }
+
+
+@app.get("/api/calendar/providers")
+def calendar_providers(x_webhook_token: Optional[str] = Header(None)):
+    _check_token(x_webhook_token)
+    return {"ok": True, **providers.providers_status()}
 
 
 @app.post("/api/calendar/check")
@@ -116,11 +147,14 @@ def calendar_check(
     x_webhook_token: Optional[str] = Header(None),
 ):
     _check_token(x_webhook_token)
+    provider = _resolve_provider(req.source)
     start_dt = cal.parse_dt(req.start, req.timezone)
     end_dt = start_dt + timedelta(minutes=cal.CALENDAR_DEFAULT_DURATION_MIN)
-    free = cal.slot_is_free(start_dt, end_dt)
+    free = provider.slot_is_free(start_dt, end_dt)
     return {
         "ok": True,
+        "source": provider.name,
+        "configured": provider.configured(),
         "free": free,
         "start": start_dt.isoformat(),
         "end": end_dt.isoformat(),
@@ -135,15 +169,18 @@ def calendar_suggest(
     x_webhook_token: Optional[str] = Header(None),
 ):
     _check_token(x_webhook_token)
+    provider = _resolve_provider(req.source)
     start_dt = cal.parse_dt(req.start, req.timezone)
-    suggestions = cal.suggest_slots(
-        desired_start=start_dt,
+    suggestions = provider.suggest_slots(
+        start_dt,
         duration_min=req.duration_min or cal.CALENDAR_DEFAULT_DURATION_MIN,
         suggestions_count=req.suggestions_count,
         search_hours_ahead=req.search_hours_ahead,
     )
     return {
         "ok": True,
+        "source": provider.name,
+        "configured": provider.configured(),
         "suggestions": suggestions,
         "count": len(suggestions),
     }
@@ -183,25 +220,13 @@ async def calendar_create(
         }
 
     try:
+        provider = _resolve_provider(req.source)
         start_dt = cal.parse_dt(req.start, req.timezone)
         end_dt = (
             cal.parse_dt(req.end, req.timezone)
             if req.end
             else start_dt + timedelta(minutes=cal.CALENDAR_DEFAULT_DURATION_MIN)
         )
-        if not cal.credentials_configured():
-            return {
-                "ok": True,
-                "created": False,
-                "stub": True,
-                "dry_run": True,
-                "message": "CalDAV not configured — meeting staged (tools-first stub)",
-                "start": start_dt.isoformat(),
-                "end": end_dt.isoformat(),
-                "summary": req.summary,
-                "telemost_created": False,
-                "telemost_join_url": "",
-            }
         summary = cal.clean_text(req.summary) or "Созвон с клиентом"
         description = cal.clean_text(req.description)
         location = cal.clean_text(req.location)
@@ -218,11 +243,12 @@ async def calendar_create(
                 },
             )
 
-        if not cal.slot_is_free(start_dt, end_dt):
+        if provider.configured() and not provider.slot_is_free(start_dt, end_dt):
             return {
                 "ok": False,
                 "created": False,
                 "reason": "slot_busy",
+                "source": provider.name,
                 "message": "Это время уже занято",
                 "start": start_dt.isoformat(),
                 "end": end_dt.isoformat(),
@@ -258,7 +284,7 @@ async def calendar_create(
                 telemost_error = str(conf.get("error") or conf.get("message") or "telemost_create_failed")
                 logger.warning("[CREATE] telemost soft-fail: %s", telemost_error)
 
-        event = cal.create_event(
+        created = provider.create_event(
             start_dt=start_dt,
             end_dt=end_dt,
             summary=summary,
@@ -267,6 +293,15 @@ async def calendar_create(
             attendee_email=attendee_email,
             event_url=telemost_join_url or "",
         )
+
+        if created.get("stub"):
+            return {
+                **created,
+                "telemost_created": bool(telemost_join_url),
+                "telemost_id": telemost_id,
+                "telemost_join_url": telemost_join_url,
+                "telemost_error": telemost_error,
+            }
 
         message = "Встреча успешно создана"
         if telemost_join_url:
@@ -291,8 +326,10 @@ async def calendar_create(
         return {
             "ok": True,
             "created": True,
+            "source": provider.name,
             "message": message,
-            "event_url": str(getattr(event, "url", "") or ""),
+            "event_url": str(created.get("html_link") or created.get("web_link") or ""),
+            "event_id": created.get("event_id") or "",
             "telemost_created": bool(telemost_join_url),
             "telemost_id": telemost_id,
             "telemost_join_url": telemost_join_url,
