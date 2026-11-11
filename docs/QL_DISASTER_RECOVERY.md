@@ -25,17 +25,33 @@ Bootstrap: `deploy/cloud4box/bootstrap_quantum_office.sh`
 Secrets file on server: `/opt/quantum-office/.env` (mode 600)  
 Access note: `/root/QL_RECOVERY.txt`
 
-## Lost with QL (re-enter)
+## Secrets status (Cloud4Box `/opt/quantum-office/.env`)
 
-- `OPENAI_API_KEY`, `TELEGRAM_BOT_TOKEN` (office secretary)
-- SMTP Mail.ru / Yandex OAuth + Telemost refresh tokens
-- Mail.ru CalDAV password, Bitrix webhook, DaData
-- Knowledge vault **content** beyond git
-- Asterisk / AVA voice / Mango (telephony) — not restored here
-- Polyhub trading — out of scope
-- `a.47z.ru` DNS/TLS — point to Cloud4Box when ready
+| Key | Status |
+|-----|--------|
+| `OPENAI_API_KEY` | **set** |
+| `TELEGRAM_CHANNEL_BOT_TOKEN` | **set** (`@AIContentGPTBot` → `@epoch_z`) |
+| `TELEGRAM_BOT_TOKEN` (personal secretary) | empty — send when ready |
+| SMTP `MAIL_*` | empty |
+| Yandex OAuth / Telemost | empty |
+| Mail.ru CalDAV user/password | empty |
+| Bitrix webhook / DaData | empty |
+
+## Knowledge
+
+Git vault remounted into `qo-knowledge` (`content/quantum_labs.md` exported from
+`vault/quantum-brain`). Live QL-only notes are gone forever — rebuild further content in vault.
+
+## Voice
+
+See [`QL_VOICE_RESTORE.md`](QL_VOICE_RESTORE.md). Asterisk/AVA/Mango not on Cloud4Box yet.
 
 ## Channel curate
 
-`TELEGRAM_CHANNEL_BOT_TOKEN` for `@AIContentGPTBot` → `@epoch_z`  
-Cloud4Box host has no Telegram egress; keep poller where Telegram works or add egress/proxy.
+Live poller runs where Telegram egress works (agent tmux). Compose profile
+`curate` is ready (`docker compose --profile curate up -d channel-curate`) once
+Cloud4Box can reach `api.telegram.org` (proxy/VPN).
+
+## DNS
+
+Point `a.47z.ru` (or new hostname) A-record → `161.104.89.123`, then TLS.

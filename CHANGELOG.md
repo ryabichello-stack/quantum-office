@@ -39,6 +39,8 @@
 ### Changed
 
 - Docs/AGENTS: QL Beget **безвозвратно уничтожен**; единственный прод — Cloud4Box (без SSH/миграции на старый хост)
+- Knowledge: Docker image ships git vault + exported `content/quantum_labs.md` / `index.yaml`; auto-ingest on start
+- Cloud4Box: compose profile `curate` for channel-curate; voice restore scaffold (`docs/QL_VOICE_RESTORE.md`)
 - Console UI: единый тонкий шрифт Manrope, компактные кнопки, понятнее подписи на пульте
 - Вкладка «Задание на звонок»: режимы «своя тема» / «база знаний», русские подписи tools, автосборка сценария
 - Outreach UI: полностью в стиле «Задание на звонок» — surface/поля/mode-cards, акцент Console, Кампания первой вкладкой; Рассылка / Очередь / Настройки тем же паттерном

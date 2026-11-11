@@ -101,9 +101,31 @@ services:
     environment:
       BRAIN_DATA_DIR: /data
       BRAIN_DB_PATH: /data/brain.db
+      BRAIN_VAULT_PATH: /app/vault/quantum-brain
+      KNOWLEDGE_CONTENT_DIR: /app/content
+      BRAIN_AUTO_INGEST: "true"
+      KNOWLEDGE_READ_MODE: legacy
     volumes:
       - qo-knowledge-data:/data
     ports: ["127.0.0.1:8017:8017"]
+
+  # Channel curate poller. Cloud4Box host/docker often has no Telegram egress —
+  # leave profile off until proxy/egress works; agent tmux poller is the live path.
+  channel-curate:
+    profiles: ["curate"]
+    build:
+      context: ../../text-bot
+      dockerfile: Dockerfile
+    image: qo-text-bot:latest
+    container_name: qo-channel-curate
+    restart: unless-stopped
+    env_file: [/opt/quantum-office/.env]
+    environment:
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      TELEGRAM_CURATE_CHANNEL_ID: "@epoch_z"
+      TELEGRAM_CURATE_CHANNEL_LINK: "https://t.me/epoch_z"
+      TELEGRAM_CURATE_AUTO_PUBLISH: "true"
+    command: ["python3", "scripts/curate_runner.py"]
 
 volumes:
   qo-text-bot-data:
