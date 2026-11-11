@@ -4,8 +4,8 @@
 
 | Host | State |
 |------|--------|
-| `5.35.86.62` (QL Beget / a.47z.ru) | **Destroyed / unreachable** — SSH `:22` timeout; office ports dead |
-| `161.104.89.123` (Cloud4Box) | **Recovery target** — DELNO + office stack + 3x-ui |
+| `5.35.86.62` (QL Beget / a.47z.ru) | **IRREVOCABLY GONE** — disk and all data lost forever. Do **not** SSH, wait, or plan migration back. |
+| `161.104.89.123` (Cloud4Box) | **New production** — rebuild from git + new secrets. DELNO + office stack + 3x-ui |
 
 ## Restored on Cloud4Box
 
