@@ -28,7 +28,9 @@ class CalendarConnector:
                 data={
                     "enabled": enabled,
                     "tenant_slug": tenant_slug,
-                    "capabilities": ["check", "suggest", "create"],
+                    "capabilities": ["check", "suggest", "create", "providers"],
+                    "sources": ["mailru", "yandex", "google", "outlook"],
+                    "creds_policy": "tools_first",
                 },
             )
         return ConnectorResult(
@@ -36,7 +38,12 @@ class CalendarConnector:
             configured=True,
             kind=self.kind,
             message="Calendar upstream configured",
-            data={"enabled": enabled, "base_url": base, "tenant_slug": tenant_slug},
+            data={
+                "enabled": enabled,
+                "base_url": base,
+                "tenant_slug": tenant_slug,
+                "sources": ["mailru", "yandex", "google", "outlook"],
+            },
         )
 
     def probe(self, *, tenant_slug: str, config: dict[str, Any]) -> ConnectorResult:
@@ -68,25 +75,40 @@ class CalendarConnector:
         config: dict[str, Any],
         start: str,
         duration_min: int = 60,
+        source: str | None = None,
     ) -> ConnectorResult:
         base = self._base(config)
+        source = (source or str(config.get("default_source") or "mailru")).strip() or "mailru"
         if not base:
             # Deterministic stub slots so operator/Hermes can rehearse without CalDAV.
             stub = [
-                {"start": start, "label": f"{start} (stub)", "duration_min": duration_min},
+                {
+                    "start": start,
+                    "label": f"{start} (stub:{source})",
+                    "duration_min": duration_min,
+                    "source": source,
+                    "stub": True,
+                },
             ]
             return ConnectorResult(
                 ok=True,
                 configured=False,
                 kind=self.kind,
                 error="not_configured",
-                message="Stub suggestions — wire CALENDAR_BASE_URL for live CalDAV",
-                data={"suggestions": stub, "count": 1, "stub": True, "tenant_slug": tenant_slug},
+                message="Stub suggestions — wire CALENDAR_BASE_URL for live providers",
+                data={
+                    "suggestions": stub,
+                    "count": 1,
+                    "stub": True,
+                    "source": source,
+                    "tenant_slug": tenant_slug,
+                },
             )
+        payload: dict[str, Any] = {"start": start, "duration_min": duration_min, "source": source}
         code, resp, err = post_json(
             base,
             "/api/calendar/suggest",
-            json={"start": start, "duration_min": duration_min},
+            json=payload,
             token=self._token(config),
         )
         if err:
@@ -96,5 +118,5 @@ class CalendarConnector:
             configured=True,
             kind=self.kind,
             message="Calendar suggestions",
-            data={"upstream": resp or {}, "status_code": code},
+            data={"upstream": resp or {}, "status_code": code, "source": source},
         )
