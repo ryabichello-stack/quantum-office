@@ -8,6 +8,12 @@ from app.operator.tools.builtin import (
     UpdateTenantSettingsTool,
     UploadKnowledgeSnippetTool,
 )
+from app.operator.tools.office import (
+    CreateConferenceTool,
+    ListFilesTool,
+    SendMailDraftTool,
+    SuggestCalendarSlotsTool,
+)
 from app.operator.tools.registry import registry
 
 
@@ -19,3 +25,8 @@ def register_builtin_tools() -> None:
     registry.register(UpdateTenantSettingsTool())
     registry.register(UploadKnowledgeSnippetTool())
     registry.register(SetFeatureFlagTool())
+    # Office connectors (tools-first stubs)
+    registry.register(SuggestCalendarSlotsTool())
+    registry.register(SendMailDraftTool())
+    registry.register(ListFilesTool())
+    registry.register(CreateConferenceTool())

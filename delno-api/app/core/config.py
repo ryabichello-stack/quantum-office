@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     knowledge_use_legacy_principals: bool = True
     messenger_base_url: str = ""
     api_public_base_url: str = ""
+    # Office connectors (tools-first — empty = stub / not_configured)
+    mailer_base_url: str = ""
+    calendar_base_url: str = ""
+    files_base_url: str = ""
+    conference_base_url: str = ""
+    office_webhook_token: str | None = None
     # E2.4 MAX Bot API (platform-api2)
     max_api_base_url: str = "https://platform-api2.max.ru"
 
