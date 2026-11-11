@@ -11,6 +11,8 @@
 ## [Unreleased]
 
 ### Added
+- Cloud4Box `dlno.ru` production ingress: host vhosts, Let’s Encrypt,
+  nginx stream SNI mux (:443 → HTTPS :4444 / Reality :8443); docs IP → `161.104.89.123`
 
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
 - Юридический футер + «Отписаться» / List-Unsubscribe в шаблонах; презентация PDF на 1-м письме
