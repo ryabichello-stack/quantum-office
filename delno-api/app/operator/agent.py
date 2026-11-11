@@ -556,6 +556,12 @@ def _generate_reply(
             )
 
     if cabinet:
+        from app.services.hermes_guide import coach_reply
+
+        # Phone/setup coach first — avoid dumping generic setup tool text or KB FAQ
+        guided = coach_reply(db, ctx, message)
+        if guided:
+            return guided["reply"], guided.get("tool_calls") or [], [], None
         setup = _try_cabinet_setup(db, ctx, message)
         if setup:
             return setup
@@ -602,6 +608,24 @@ def _generate_reply(
                 tool_calls.append({"tool": "llm", "ok": False, "provider": provider_name, "error": "stub_echo"})
         except (KeyError, IndexError, TypeError):
             tool_calls.append({"tool": "llm", "ok": False, "error": "invalid_completion_shape"})
+    else:
+        tool_calls.append(
+            {
+                "tool": "llm",
+                "ok": False,
+                "provider": str(completion.get("provider") or provider.name),
+                "error": str(completion.get("error") or "llm_failed"),
+            }
+        )
+
+    # Hermes cabinet: never dump raw KB FAQ as "answer" when LLM is geo-blocked
+    if cabinet:
+        from app.services.hermes_guide import coach_reply, llm_unavailable_reply
+
+        guided = coach_reply(db, ctx, message)
+        if guided:
+            return guided["reply"], (guided.get("tool_calls") or []) + tool_calls, [], None
+        return llm_unavailable_reply(message), tool_calls, [], None
 
     if any(word in message.lower() for word in ("заявк", "оставить", "позвон", "связ")):
         return (

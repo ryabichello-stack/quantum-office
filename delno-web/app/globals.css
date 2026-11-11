@@ -1208,15 +1208,69 @@ p {
   color: #a86a10;
 }
 
+.hermes-main {
+  min-height: min(70vh, 820px);
+  display: flex;
+  flex-direction: column;
+}
+
+.hermes-chat-shell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: min(68vh, 780px);
+  background: linear-gradient(180deg, #fbfcfd 0%, #f3f7fa 100%);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px 14px 12px;
+  gap: 10px;
+}
+
+.hermes-chat-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.hermes-orb-compact {
+  transform: scale(0.55);
+  transform-origin: left center;
+  margin: -28px 0 -28px -12px;
+  flex-shrink: 0;
+}
+
+.hermes-phase {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: #5a6b7a;
+}
+
+.hermes-thread.operator-thread {
+  flex: 1;
+  max-height: none;
+  min-height: 360px;
+  overflow-y: auto;
+  margin-bottom: 0;
+  padding-right: 4px;
+}
+
 .hermes-form {
   display: flex;
   gap: 8px;
-  align-items: center;
+  align-items: flex-end;
+  flex-shrink: 0;
+  margin-top: 0;
+  position: sticky;
+  bottom: 0;
+  background: #f3f7fa;
+  padding-top: 6px;
 }
 
 .hermes-mic-btn {
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   border-radius: 12px;
   border: 1px solid var(--line);
   background: #fff;
@@ -1241,8 +1295,16 @@ p {
   box-shadow: 0 0 0 3px rgba(61, 126, 166, 0.22);
 }
 
-.hermes-form input {
+.hermes-form input,
+.hermes-form textarea {
   flex: 1;
+  min-height: 48px;
+  resize: vertical;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  padding: 12px 14px;
+  font: inherit;
+  line-height: 1.4;
 }
 
 @media (max-width: 900px) {
@@ -1256,6 +1318,10 @@ p {
 
   .hermes-main {
     order: 1;
+  }
+
+  .hermes-thread.operator-thread {
+    min-height: 280px;
   }
 }
 

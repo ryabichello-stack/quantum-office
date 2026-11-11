@@ -29,6 +29,7 @@ import {
   type HermesHealthStatus,
   type HermesSetupStatus,
 } from "@/lib/hermesApi";
+import { useDictateToInput } from "@/lib/useDictateToInput";
 import { useOperatorVoice } from "@/lib/useOperatorVoice";
 
 type ChatLine = {
@@ -39,10 +40,10 @@ type ChatLine = {
 };
 
 const QUICK_CHIPS = [
+  "Настрой телефон секретаря",
   "Что ещё настроить в офисе?",
   "Проверь здоровье офиса",
   "Какие звонки были сегодня?",
-  "Найди в интернете свежие новости про нашу нишу",
   "Покажи расход токенов и баланс",
 ];
 
@@ -58,10 +59,12 @@ export function HermesStage({ token }: { token: string }) {
   const [health, setHealth] = useState<HermesHealthStatus | null>(null);
   const [calls, setCalls] = useState<CallSessionItem[]>([]);
   const [billing, setBilling] = useState<BillingSummary | null>(null);
-  const [holdingMic, setHoldingMic] = useState(false);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [qrBusy, setQrBusy] = useState(false);
   const mountRef = useRef<HTMLDivElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
+  const messageRef = useRef(message);
+  messageRef.current = message;
 
   const refreshPanels = useCallback(async () => {
     try {
@@ -148,11 +151,22 @@ export function HermesStage({ token }: { token: string }) {
     [token, conversationId, sending, refreshPanels],
   );
 
-  const { voiceActive, voicePhase, toggleVoice, startHoldVoice, endHoldVoice, audioRef } =
-    useOperatorVoice(
-      useCallback((text) => sendText(text, "voice").then((r) => r || ""), [sendText]),
-      token,
-    );
+  const { voiceActive, voicePhase, toggleVoice, audioRef } = useOperatorVoice(
+    useCallback((text) => sendText(text, "voice").then((r) => r || ""), [sendText]),
+    token,
+  );
+
+  const {
+    dictating,
+    supported: dictateSupported,
+    error: dictateError,
+    start: startDictate,
+    stop: stopDictate,
+  } = useDictateToInput(
+    useCallback((text) => {
+      setMessage(text);
+    }, []),
+  );
 
   useEffect(() => {
     if (bootstrapped || !setup) return;
@@ -166,8 +180,15 @@ export function HermesStage({ token }: { token: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot welcome
   }, [setup, bootstrapped]);
 
+  useEffect(() => {
+    const el = threadRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [lines, sending]);
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    stopDictate();
     const q = message.trim();
     if (!q) return;
     setMessage("");
@@ -200,14 +221,11 @@ export function HermesStage({ token }: { token: string }) {
 
   function onMicDown(e: ReactPointerEvent<HTMLButtonElement>) {
     e.preventDefault();
-    setHoldingMic(true);
-    startHoldVoice();
+    startDictate(messageRef.current);
   }
 
   function onMicUp() {
-    if (!holdingMic) return;
-    setHoldingMic(false);
-    endHoldVoice();
+    stopDictate();
   }
 
   const progressPct = setup
@@ -365,103 +383,112 @@ export function HermesStage({ token }: { token: string }) {
         </aside>
 
         <div className="hermes-main">
-          <div className="operator-orb-wrap">
-            <CrystalOrb voiceActive={voiceActive} voicePhase={voicePhase} onOrbClick={toggleVoice} />
-            <p className="operator-phase">
-              {voicePhase === "listen" && (holdingMic ? "Держите — слушаю задание…" : "Слушаю…")}
-              {voicePhase === "think" && "Думаю…"}
-              {voicePhase === "speak" && "Отвечаю…"}
-              {voicePhase === "error" && "Ошибка микрофона"}
-              {voicePhase === "idle" && "Нажмите orb или удерживайте mic — говорите задание Hermes"}
-            </p>
-          </div>
-
-          <div className="operator-chips">
-            {QUICK_CHIPS.map((chip) => (
-              <button key={chip} type="button" disabled={sending} onClick={() => void sendText(chip)}>
-                {chip}
-              </button>
-            ))}
-          </div>
-
-          {lines.length === 0 && (
-            <div className="delno-result">
-              <div className="result-head">
-                <span>
-                  <Sparkles /> Hermes
-                </span>
+          <div className="hermes-chat-shell">
+            <div className="hermes-chat-toolbar">
+              <div className="operator-orb-wrap hermes-orb-compact">
+                <CrystalOrb voiceActive={voiceActive} voicePhase={voicePhase} onOrbClick={toggleVoice} />
               </div>
-              <p style={{ margin: 0 }}>
-                Скажите голосом: «привяжи номер», «проверь здоровье», «перезвони клиенту…» — как в
-                чате с ассистентом.
+              <p className="operator-phase hermes-phase">
+                {dictating && "Диктовка в поле… отпустите mic и нажмите Отправить"}
+                {!dictating && voicePhase === "listen" && "Слушаю разговор…"}
+                {!dictating && voicePhase === "think" && "Думаю…"}
+                {!dictating && voicePhase === "speak" && "Отвечаю голосом…"}
+                {!dictating && voicePhase === "error" && "Ошибка микрофона"}
+                {!dictating && voicePhase === "idle" && (
+                  dictateSupported
+                    ? "Удержите mic — надиктуйте текст в поле. Orb — полный голосовой диалог."
+                    : "Наберите текст или используйте Chrome для диктовки."
+                )}
               </p>
             </div>
-          )}
 
-          <div className="operator-thread">
-            {lines.map((line, idx) =>
-              line.role === "user" ? (
-                <div key={idx} className="msg-bubble user">
-                  <div className="msg-body">{line.text}</div>
+            <div className="operator-chips">
+              {QUICK_CHIPS.map((chip) => (
+                <button key={chip} type="button" disabled={sending} onClick={() => void sendText(chip)}>
+                  {chip}
+                </button>
+              ))}
+            </div>
+
+            <div className="operator-thread hermes-thread" ref={threadRef}>
+              {lines.length === 0 && (
+                <div className="delno-result">
+                  <div className="result-head">
+                    <span>
+                      <Sparkles /> Hermes
+                    </span>
+                  </div>
+                  <p style={{ margin: 0 }}>
+                    Нажмите «Настрой телефон секретаря» или удержите mic и надиктуйте задание в поле
+                    ввода — текст появится там, отправите когда будете готовы.
+                  </p>
                 </div>
-              ) : (
-                <div key={idx}>
-                  <div className="delno-result">
-                    <div className="result-head">
-                      <span>
-                        <Sparkles /> Hermes
-                      </span>
+              )}
+              {lines.map((line, idx) =>
+                line.role === "user" ? (
+                  <div key={idx} className="msg-bubble user">
+                    <div className="msg-body">{line.text}</div>
+                  </div>
+                ) : (
+                  <div key={idx}>
+                    <div className="delno-result">
+                      <div className="result-head">
+                        <span>
+                          <Sparkles /> Hermes
+                        </span>
+                      </div>
+                      <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{line.text}</p>
+                      {line.sources && line.sources.length > 0 && (
+                        <ul className="msg-sources">
+                          {line.sources.map((s, i) => (
+                            <li key={i}>{s.title || s.citation || s.document_id}</li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
-                    <p style={{ margin: 0 }}>{line.text}</p>
-                    {line.sources && line.sources.length > 0 && (
-                      <ul className="msg-sources">
-                        {line.sources.map((s, i) => (
-                          <li key={i}>{s.title || s.citation || s.document_id}</li>
-                        ))}
-                      </ul>
+                    {line.pending && activePending?.confirmation_id === line.pending.confirmation_id && (
+                      <ConfirmCard
+                        summary={line.pending.summary}
+                        toolName={line.pending.tool_name}
+                        busy={confirming}
+                        onConfirm={() => void onConfirm()}
+                        onCancel={() => setActivePending(null)}
+                      />
                     )}
                   </div>
-                  {line.pending && activePending?.confirmation_id === line.pending.confirmation_id && (
-                    <ConfirmCard
-                      summary={line.pending.summary}
-                      toolName={line.pending.tool_name}
-                      busy={confirming}
-                      onConfirm={() => void onConfirm()}
-                      onCancel={() => setActivePending(null)}
-                    />
-                  )}
-                </div>
-              ),
-            )}
+                ),
+              )}
+            </div>
+
+            {(error || dictateError) && <p className="status-error">{error || dictateError}</p>}
+
+            <form className="chat-form operator-form hermes-form" onSubmit={onSubmit}>
+              <button
+                type="button"
+                className={`hermes-mic-btn${dictating ? " active" : ""}`}
+                aria-label="Удерживайте для диктовки в поле"
+                title="Удерживайте — диктовка в поле ввода"
+                disabled={sending}
+                onPointerDown={onMicDown}
+                onPointerUp={onMicUp}
+                onPointerLeave={onMicUp}
+                onPointerCancel={onMicUp}
+                onContextMenu={(e) => e.preventDefault()}
+              >
+                <Mic size={18} />
+              </button>
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="Удержите mic и надиктуйте, или наберите текст…"
+                disabled={sending}
+                rows={dictating || message.length > 80 ? 3 : 2}
+              />
+              <button type="submit" className="btn-primary" disabled={sending || !message.trim()}>
+                {sending ? "…" : "Отправить"}
+              </button>
+            </form>
           </div>
-
-          {error && <p className="status-error">{error}</p>}
-
-          <form className="chat-form operator-form hermes-form" onSubmit={onSubmit}>
-            <button
-              type="button"
-              className={`hermes-mic-btn${holdingMic || voiceActive ? " active" : ""}`}
-              aria-label="Удерживайте для голосового задания"
-              title="Удерживайте — говорите задание"
-              disabled={sending}
-              onPointerDown={onMicDown}
-              onPointerUp={onMicUp}
-              onPointerLeave={onMicUp}
-              onPointerCancel={onMicUp}
-              onContextMenu={(e) => e.preventDefault()}
-            >
-              <Mic size={18} />
-            </button>
-            <input
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="Задание Hermes текстом или удерживайте mic…"
-              disabled={sending}
-            />
-            <button type="submit" className="btn-primary" disabled={sending}>
-              {sending ? "…" : "Отправить"}
-            </button>
-          </form>
         </div>
       </div>
 

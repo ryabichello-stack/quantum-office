@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Hermes cabinet: phone/secretary setup no longer dumps KB FAQ when OpenAI is
+  geo-blocked — deterministic coach replies with live DID/setup/health status
+- Hermes chat UX: larger dialog thread, mic dictates into the input field (STT),
+  send only on Submit; orb kept for full voice conversation
+
 ### Added
 
 - DELNO Office OS (dogfood): `CallSession` / `CallJob`, tenant phone provisioning,
