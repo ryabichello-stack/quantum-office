@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import admin, admin_cms, auth, channels, connectors, health, leads, operator, public, tenant, webhooks
+from app.api.v1 import admin, admin_cms, auth, channels, connectors, health, leads, mcp, operator, public, tenant, webhooks
 
 router = APIRouter(prefix="/v1")
 router.include_router(health.router)
@@ -12,5 +12,7 @@ router.include_router(admin_cms.router)
 router.include_router(tenant.router)
 router.include_router(channels.router)
 router.include_router(connectors.router)
+router.include_router(mcp.router)
+router.include_router(mcp.hermes_router)
 router.include_router(leads.router)
 router.include_router(operator.router)
