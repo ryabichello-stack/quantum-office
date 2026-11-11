@@ -12,6 +12,7 @@
 
 ### Added
 
+- Docs/ops: mail/calendar/conference brokers live on Cloud4Box (tools-first stubs, no SMTP/CalDAV/OAuth yet)
 - Docs/ops: `delno-files` broker live on Cloud4Box (`FILES_BASE_URL=http://files:8015`, :18015)
 - Docs/ops: CRM-lite funnel + outreach staging stubs (27 MCP tools, 5 connectors incl. outreach)
 - Docs/ops: multi-tenant MCP gateway + Hermes profile (`/v1/mcp`, `/v1/hermes/profile`)

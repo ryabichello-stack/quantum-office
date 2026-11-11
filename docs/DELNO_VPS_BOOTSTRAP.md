@@ -38,12 +38,15 @@
 | Widget CDN | http://161.104.89.123/widget/v1/ | ✅ |
 | `delno-site` container | `127.0.0.1:18019` → nginx `/` | ✅ restored `DELNO-site-v23` |
 | **Files broker** (`delno-files`) | `127.0.0.1:18015` → `http://files:8015` | ✅ Mail.ru/Yadisk/gdrive/onedrive/local surfaces |
+| **Mail gateway** (`delno-mail`) | `127.0.0.1:18000` → `http://mail:8000` | ✅ dry-run `/api/mail/send` без SMTP |
+| **Calendar** (`delno-calendar`) | `127.0.0.1:18014` → `http://calendar:8014` | ✅ stub suggest/create без CalDAV |
+| **Conference** (`delno-conference`) | `127.0.0.1:18016` → `http://conference:8016` | ✅ stub Telemost URL без Yandex OAuth |
 | Postgres (internal) | docker `delno-postgres` | ✅ healthy |
 | systemd | `delno-stack.service` | ✅ active |
 
-Код на сервере: `/opt/delno/{api,knowledge,web,cdn,files}` + `/opt/delno/docker-compose.yml` + `/opt/delno/.env` (mode 600).  
+Код на сервере: `/opt/delno/{api,knowledge,web,cdn,files,mail,calendar,conference}` + compose + `.env` (mode 600).  
 Доступы (пароли): `/root/DELNO_ACCESS.txt` на VPS.  
-`FILES_BASE_URL=http://files:8015` — `list_files` уже ходит в живой брокер (disk tokens optional).
+Office URLs live: `FILES/MAILER/CALENDAR/CONFERENCE_BASE_URL` — внешние SMTP/CalDAV/OAuth/disk tokens **позже**.
 
 ### Tenant dogfood
 
@@ -116,10 +119,8 @@ cd /opt/delno && docker compose up -d --force-recreate api
 Surfaces live without keys: `mail`, `calendar`, `files`, `conference`, `outreach`.
 Tools: `suggest_calendar_slots`, `send_mail_draft`, `list_files`, `create_conference`,
 `outreach.status|dashboard|packs|preview|stage_send|lead_check`.
-Upstream: set `MAILER_BASE_URL` / `CALENDAR_BASE_URL` /
-`CONFERENCE_BASE_URL` / `OUTREACH_BASE_URL` later.
-**`FILES_BASE_URL` уже live** (`http://files:8015`); disk tokens (`YADISK_TOKEN`,
-`MAILRU_WEBDAV_*`, `GOOGLE_DRIVE_TOKEN`, `ONEDRIVE_TOKEN`) — later.
+**`FILES/MAILER/CALENDAR/CONFERENCE_BASE_URL` уже live** (compose internal).  
+Внешние токены позже: SMTP, CalDAV, Yandex OAuth, disk tokens, `OUTREACH_BASE_URL`.
 
 ### Phase B0b — MCP / Hermes (done)
 
@@ -146,9 +147,16 @@ Outreach staging is dry-run stub until `OUTREACH_BASE_URL` / SMTP.
 `delno-files` in compose; probe + `list_files source=local` returns `/data/assets`.
 Cloud disks wait for tokens only.
 
-### Phase B3 — почта / календарь
+### Phase B0e — mail / calendar / conference brokers (done)
 
-Перенос `mailer` / `calendar` / `conference` upstream URLs — после TG.
+Live containers without external keys:
+- `send_mail_draft` → dry-run stub
+- `suggest_calendar_slots` → stub slots
+- `create_conference` → stub Telemost join URL
+
+### Phase B3 — внешние SMTP / CalDAV / Telemost OAuth
+
+Только когда пользователь введёт креды в `.env` (не блокер dogfood).
 
 ### Phase C — voice widget
 
