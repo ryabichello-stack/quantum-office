@@ -36,7 +36,7 @@ CONFIRMATION_SAFE_WRITE = "SAFE_WRITE"
 CONFIRMATION_HIGH_IMPACT = "HIGH_IMPACT"
 
 # Tools requiring explicit user confirm before execution in cabinet.
-_HIGH_IMPACT_TOOLS = frozenset({"create_lead"})
+_HIGH_IMPACT_TOOLS = frozenset({"create_lead", "send_mail_draft", "create_conference"})
 
 
 def tool_confirmation_class(tool: Tool) -> str:
