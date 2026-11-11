@@ -12,6 +12,9 @@
 
 ### Added
 
+- Docs: bootstrap DELNO на Cloud4Box VPS (`docs/DELNO_VPS_BOOTSTRAP.md`) — Phase A live, cabinet/widget/brain, dogfood tenant `quantum-labs`, план Phase B (OpenAI/TG/DaData)
+- Docs: полный аудит инструментов Quantum Office (`docs/QUANTUM_OFFICE_TOOLS_AUDIT.md`) — сервисы, MCP, каналы, DaData, CRM, пробелы для переноса на DELNO
+
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
 - Юридический футер + «Отписаться» / List-Unsubscribe в шаблонах; презентация PDF на 1-м письме
 - API `GET/POST /api/packs` (+ apply) и вкладка «Кампания» в UI (Console embed + standalone)
