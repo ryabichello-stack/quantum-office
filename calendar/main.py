@@ -109,6 +109,10 @@ class CalendarCreateRequest(BaseModel):
     create_telemost: Optional[bool] = None
     send_telemost_invite: bool = False
     invitees: List[str] = Field(default_factory=list)
+    conference_provider: Optional[str] = Field(
+        default=None,
+        description="yandex | google_meet | zoom | teams | jitsi",
+    )
 
 
 def _resolve_provider(source: Optional[str]):
@@ -272,6 +276,7 @@ async def calendar_create(
                 when_text=cal.format_slot(start_dt),
                 message=description[:500],
                 send_invites=bool(req.send_telemost_invite and invitees),
+                provider=req.conference_provider,
             )
             if conf.get("ok") and conf.get("join_url"):
                 telemost_join_url = conf["join_url"]

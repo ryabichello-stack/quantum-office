@@ -1417,7 +1417,7 @@ _TOOL_META: dict[str, dict[str, str]] = {
     },
     "create_conference": {
         "label": "Создать конференцию",
-        "description": "Ссылка Яндекс Телемост через conference (:8016).",
+        "description": "ВКС через conference (:8016): yandex / google_meet / zoom / teams / jitsi.",
         "group": "business",
     },
     "send_welcome_email": {
@@ -1472,7 +1472,7 @@ _SERVICE_LABELS = {
     "outreach": "Bitrix / outreach",
     "knowledge": "База знаний",
     "calendar": "Календарь",
-    "conference": "Телемост",
+    "conference": "Конференции",
     "files": "Файлы",
     "sheets_campaign": "Кампания Sheets",
     "mango SIP": "Регистрация Mango SIP",
