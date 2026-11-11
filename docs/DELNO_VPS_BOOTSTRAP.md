@@ -87,8 +87,8 @@ cd /opt/delno && docker compose up -d --force-recreate api
 
 ### Phase B2 — Telegram как первый канал
 
-1. Включить flag `telegram` у tenant  
-2. Connect bot → проверить webhook ` /delno-api/v1/webhooks/telegram/{account_id}`  
+1. Flag `telegram` уже **enabled** у `quantum-labs`  
+2. После токена: connect bot → webhook `/delno-api/v1/webhooks/telegram/{account_id}`  
 3. Inbox в кабинете
 
 ### Phase B3 — почта / календарь / файлы
