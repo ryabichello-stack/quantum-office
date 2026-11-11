@@ -12,6 +12,8 @@
 
 ### Added
 
+- Disaster recovery: Cloud4Box compose restores QL office stack after Beget (`5.35.86.62`) loss
+  (`deploy/cloud4box`, nginx `/_ava_*` routes on `161.104.89.123`)
 - Conference: multi-provider registry — `yandex` (Telemost), `google_meet`, `zoom`, `teams`, `jitsi`;
   `GET /api/conferences/providers`, `provider` on `POST /api/conferences`; tools-first stubs without creds
 - Text-bot: restore channel curate — forward → rewrite → publish to Telegram channel
