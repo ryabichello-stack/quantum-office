@@ -38,3 +38,14 @@ def test_list_openai_specs_filtered():
     specs = reg.list_openai_specs(names=["get_tenant_summary"])
     assert len(specs) == 1
     assert specs[0]["function"]["name"] == "get_tenant_summary"
+
+
+def test_list_catalog_tools_first():
+    reg = ToolRegistry()
+    reg.register(GetKnowledgeTool(_FakeAdapter()))
+    reg.register(CreateLeadTool())
+    catalog = reg.list_catalog()
+    assert [item["name"] for item in catalog] == ["create_lead", "get_knowledge"]
+    assert catalog[0]["confirmation_class"] == "HIGH_IMPACT"
+    assert catalog[1]["confirmation_class"] == "READ"
+    assert "parameters_schema" in catalog[0]
