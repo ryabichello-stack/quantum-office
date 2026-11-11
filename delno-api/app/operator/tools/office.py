@@ -151,13 +151,20 @@ class ListFilesTool:
 class CreateConferenceTool:
     name = "create_conference"
     description = (
-        "Create a conference (Telemost when CONFERENCE_BASE_URL set; stub join URL otherwise)."
+        "Create a video conference. "
+        "Providers: yandex | google_meet | zoom | teams | jitsi "
+        "(stub join URL until CONFERENCE_BASE_URL / provider creds)."
     )
     critical_write = True
     parameters_schema = {
         "type": "object",
         "properties": {
             "title": {"type": "string"},
+            "provider": {
+                "type": "string",
+                "description": "yandex | google_meet | zoom | teams | jitsi",
+                "default": "yandex",
+            },
             "invitees": {"type": "array", "items": {"type": "string"}},
             "when_text": {"type": "string"},
         },
@@ -168,6 +175,7 @@ class CreateConferenceTool:
         title = str(params.get("title") or "").strip()
         if not title:
             return ToolResult(ok=False, message="title is required")
+        provider = str(params.get("provider") or "yandex").strip() or "yandex"
         invitees_raw = params.get("invitees") or []
         invitees = [str(x).strip() for x in invitees_raw if str(x).strip()] if isinstance(invitees_raw, list) else []
         when_text = str(params.get("when_text") or "").strip()
@@ -180,12 +188,18 @@ class CreateConferenceTool:
             title=title,
             invitees=invitees,
             when_text=when_text,
+            provider=provider,
         )
         write_audit(
             db,
             ctx,
             action="tool.create_conference",
             resource="connector:conference",
-            new_value={"title": title, "configured": result.configured, "stub": bool(result.data.get("stub"))},
+            new_value={
+                "title": title,
+                "provider": provider,
+                "configured": result.configured,
+                "stub": bool(result.data.get("stub")),
+            },
         )
         return ToolResult(ok=result.ok, data=result.as_dict(), message=result.message or "ok")

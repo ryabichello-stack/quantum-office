@@ -61,9 +61,11 @@ def test_conference_stub_create():
         config={},
         title="Demo call",
         invitees=["a@b.c"],
+        provider="zoom",
     )
     assert result.ok is True
-    assert "stub.delno.local" in result.data["join_url"]
+    assert result.data["provider"] == "zoom"
+    assert "stub.zoom.delno.local" in result.data["join_url"]
 
 
 def test_office_tools_registered_confirmation():
@@ -94,9 +96,10 @@ def test_office_tools_run_stub(monkeypatch):
     files = ListFilesTool().run(db, ctx, path="/")
     assert files.ok is True
 
-    conf = CreateConferenceTool().run(db, ctx, title="Meet")
+    conf = CreateConferenceTool().run(db, ctx, title="Meet", provider="jitsi")
     assert conf.ok is True
     assert conf.data["stub"] is True
+    assert conf.data["provider"] == "jitsi"
 
 
 def test_list_and_enable_connector_service():

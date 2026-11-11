@@ -29,6 +29,7 @@ class ConferenceConnector:
                     "enabled": enabled,
                     "tenant_slug": tenant_slug,
                     "capabilities": ["create", "invite"],
+                    "providers": ["yandex", "google_meet", "zoom", "teams", "jitsi"],
                 },
             )
         return ConnectorResult(
@@ -36,7 +37,12 @@ class ConferenceConnector:
             configured=True,
             kind=self.kind,
             message="Conference upstream configured",
-            data={"enabled": enabled, "base_url": base, "tenant_slug": tenant_slug},
+            data={
+                "enabled": enabled,
+                "base_url": base,
+                "tenant_slug": tenant_slug,
+                "providers": ["yandex", "google_meet", "zoom", "teams", "jitsi"],
+            },
         )
 
     def probe(self, *, tenant_slug: str, config: dict[str, Any]) -> ConnectorResult:
@@ -69,20 +75,23 @@ class ConferenceConnector:
         title: str,
         invitees: list[str] | None = None,
         when_text: str = "",
+        provider: str = "yandex",
     ) -> ConnectorResult:
         base = self._base(config)
         title = (title or "").strip() or "Встреча DELNO"
+        provider = (provider or "yandex").strip().lower() or "yandex"
         if not base:
             return ConnectorResult(
                 ok=True,
                 configured=False,
                 kind=self.kind,
                 error="not_configured",
-                message="Stub conference — wire CONFERENCE_BASE_URL for Telemost",
+                message="Stub conference — wire CONFERENCE_BASE_URL (yandex/google_meet/zoom/teams/jitsi)",
                 data={
                     "stub": True,
+                    "provider": provider,
                     "title": title,
-                    "join_url": f"https://stub.delno.local/meet/{tenant_slug}",
+                    "join_url": f"https://stub.{provider}.delno.local/{tenant_slug}",
                     "invitees": invitees or [],
                     "when_text": when_text,
                     "tenant_slug": tenant_slug,
@@ -93,6 +102,7 @@ class ConferenceConnector:
             "/api/conferences",
             json={
                 "title": title,
+                "provider": provider,
                 "invitees": invitees or [],
                 "when_text": when_text,
                 "send_invites": bool(invitees),
@@ -101,10 +111,17 @@ class ConferenceConnector:
         )
         if err:
             return ConnectorResult(ok=False, configured=True, kind=self.kind, error="create_failed", message=err)
+        upstream = resp or {}
         return ConnectorResult(
             ok=True,
             configured=True,
             kind=self.kind,
-            message="Conference created",
-            data={"upstream": resp or {}, "status_code": code},
+            message=str(upstream.get("message") or "Conference created"),
+            data={
+                "upstream": upstream,
+                "status_code": code,
+                "provider": upstream.get("provider") or provider,
+                "stub": bool(upstream.get("stub")),
+                "join_url": upstream.get("join_url") or "",
+            },
         )
