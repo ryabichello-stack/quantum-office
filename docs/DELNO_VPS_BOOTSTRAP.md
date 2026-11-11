@@ -1,0 +1,193 @@
+# DELNO на Cloud4Box — bootstrap status
+
+**Хост:** `161.104.89.123` (Cloud4Box «Производительный»)  
+**Дата:** 2026-11-11  
+**Цель:** быстрее всего получить **пользуемый** dogfood-контур (tenant `quantum-labs`), не дожидаясь телефонии и полного переноса Quantum Office.
+
+
+## Политика порядка (обязательно)
+
+1. **Сначала полный набор инструментов / adapters / flags / UI** — без внешних ключей (stub LLM, локальный brain, каталог tools).
+2. **Потом креды** OpenAI / Telegram / DaData / SMTP — только когда поверхности уже есть и отвечают.
+3. **Телефония (AVA/Asterisk/Mango) — Phase D**, после стабильного office multi-tenant.
+
+Не блокировать dogfood ожиданием ключей.
+
+## AVA и Asterisk в многопользовательском режиме?
+
+**Короткий ответ: как сейчас на старом QO — нет. Как целевой DELNO — да, но это отдельный этап (E4), не «включить Asterisk и готово».**
+
+| Слой | Сейчас | Multi-user? |
+|------|--------|-------------|
+| **QO Beget** (`/root/ava` + Asterisk + один Mango trunk) | один стек Quantum Labs | **Нет** — один транк, один AVA, multi-scenario внутри одной компании |
+| **DELNO tenants** (api/cabinet/admin) | `quantum-labs` + `delno-demo` | **Да** — изоляция JWT/tenant_id, флаги, KB, tools per tenant |
+| **Hermes profile** | план: profile = toolset на тенант/пользователя | Да на уровне **инструментов**, не PSTN |
+| **phone_numbers / Mango multi-tenant / Voice Worker** | схема таблиц есть, E4.1–E4.6 ⬜ | **Ещё нет** |
+
+Итого: многопользовательский **офисный** режим (кабинеты, KB, operator tools, каналы) — наш текущий трек.  
+Многопользовательская **телефония** = у каждого тенанта свой DID/SIP + маршрутизация в общий или выделенный voice worker — **после** подъёма tools; текущий AVA docker «как на Beget» сам по себе мультитенантным не станет.
+
+## Что поднято (Phase A — готово)
+
+| Компонент | URL / путь | Статус |
+|-----------|------------|--------|
+| Marketing site **v2** (canonical) | http://161.104.89.123/ | ✅ «Клиенты пишут и звонят…» |
+| Кабинет (`delno-web`) | http://161.104.89.123:3020/ | ✅ |
+| API | http://161.104.89.123/delno-api/v1/health | ✅ |
+| Brain / knowledge | http://161.104.89.123/delno-brain/api/brain/health | ✅ |
+| Widget CDN | http://161.104.89.123/widget/v1/ | ✅ |
+| `delno-site` container | `127.0.0.1:18019` → nginx `/` | ✅ restored `DELNO-site-v23` |
+| **Files broker** (`delno-files`) | `127.0.0.1:18015` → `http://files:8015` | ✅ Mail.ru/Yadisk/gdrive/onedrive/local surfaces |
+| **Mail gateway** (`delno-mail`) | `127.0.0.1:18000` → `http://mail:8000` | ✅ dry-run `/api/mail/send` без SMTP |
+| **Calendar** (`delno-calendar`) | `127.0.0.1:18014` → `http://calendar:8014` | ✅ stub suggest/create без CalDAV |
+| **Conference** (`delno-conference`) | `127.0.0.1:18016` → `http://conference:8016` | ✅ stub Telemost URL без Yandex OAuth |
+| Postgres (internal) | docker `delno-postgres` | ✅ healthy |
+| systemd | `delno-stack.service` | ✅ active |
+
+Код на сервере: `/opt/delno/{api,knowledge,web,cdn,files,mail,calendar,conference}` + compose + `.env` (mode 600).  
+Доступы (пароли): `/root/DELNO_ACCESS.txt` на VPS.  
+Office URLs live: `FILES/MAILER/CALENDAR/CONFERENCE_BASE_URL` — внешние SMTP/CalDAV/OAuth/disk tokens **позже**.
+
+### Tenant dogfood
+
+- slug: `quantum-labs`
+- owner: `owner@quantumlabs.ru` (пароль в `DELNO_ACCESS.txt` — **сменить после первого входа**)
+- `site_key` / public_key: в ответе `GET /v1/tenant/widget`
+- onboarding: **started** (`in_progress`)
+- knowledge: seed-документ Quantum Labs
+- LLM: `MODEL_PROVIDER=stub` → кабинет / виджет / onboarding **уже отвечают** без OpenAI
+
+### Smoke (проверено)
+
+- `POST /v1/auth/login` → JWT
+- `GET /v1/tenant/me`, `/v1/tenant/widget`, `/v1/tenant/knowledge/documents`
+- `POST /v1/public/widget/session` + `/message` (stub reply)
+- `POST /v1/tenant/onboarding/start`
+
+## Не только Quantum Office — что ещё в наборе
+
+Источник кода: ветка `cursor/delno-api-scaffold-14e9` (worktree `/tmp/delno-src` у агента).
+
+| Пакет | Есть в коде | На VPS сейчас | Заметка |
+|-------|-------------|---------------|---------|
+| **delno-api** multi-tenant | ✅ | ✅ | auth, tenants, leads, operator, channels, onboarding, party |
+| **delno-knowledge** (second-brain) | ✅ | ✅ | tenant vault, search |
+| **delno-web** cabinet | ✅ | ✅ :3020 | dashboard / onboarding / knowledge / inbox / settings |
+| **delno-widget** crystal v28 | ✅ | ✅ CDN | text chat работает на stub |
+| **delno-admin** | ✅ | ⬜ | следующий шаг UI платформы |
+| **DELNO-site-v23** marketing | ⚠️ без package.json | ⬜ | не блокирует dogfood |
+| Party / DaData | ✅ API | ⬜ ключи | `DADATA_*` пусто |
+| Telegram channel | ✅ connect + webhook | ⬜ токен | flag `telegram=true` (ожидает `TELEGRAM_BOT_TOKEN`) |
+| MAX channel | ✅ | ⬜ | flag `max=false` |
+| Instant demo | ✅ | ⬜ polish | зависит от публичных URL |
+| Voice web widget / TTS | ✅ | ⬜ OpenAI | flag `web_voice=true`, нужен ключ |
+| Telephony (Asterisk/AVA/Mango) | QO / AVA | ⬜ Phase D | **не трогаем** до стабильного A–B |
+| Hermes multi-user profiles | отдельно | ⬜ | на VPS пока нет; не блокер кабинета |
+| Beget backup restore | — | ⬜ | DC block `backup.beget.com`; только ручной scp → `/root/beget-backup/incoming/` |
+| Старый QO MCP (`a.47z.ru`) | — | ❌ down | Beget недоступен; dogfood идёт через DELNO |
+
+Полный реестр QO-инструментов для переноса: [`QUANTUM_OFFICE_TOOLS_AUDIT.md`](QUANTUM_OFFICE_TOOLS_AUDIT.md) (PR аудита).
+
+## Как пользоваться прямо сейчас
+
+1. Открыть **маркетинговый сайт v2**: http://161.104.89.123/ (hero «Клиенты пишут и звонят…», демо-орб, Crystal widget)
+2. Кабинет: http://161.104.89.123:3020/ → `owner@quantumlabs.ru`
+3. Пройти **Onboarding** (уже стартован)
+4. **Knowledge** — seed + свои документы
+5. Embed — snippet из `GET /v1/tenant/widget`
+
+## Следующие шаги (порядок «скорее пользоваться»)
+
+### Phase B1 — ключи (только после tools surfaces; разблокируют live)
+
+Прописать в `/opt/delno/.env` на VPS (не в git), затем:
+
+```bash
+cd /opt/delno && docker compose up -d --force-recreate api
+```
+
+| Переменная | Эффект |
+|------------|--------|
+| `OPENAI_API_KEY` + `MODEL_PROVIDER=openai` | живые ответы operator/widget/TTS |
+| `TELEGRAM_BOT_TOKEN` | `POST /v1/tenant/channels/telegram/connect` + webhook |
+| `DADATA_API_KEY` + `DADATA_SECRET_KEY` | party lookup / suggest / legal |
+
+В Cursor cloud сейчас **нет** этих secrets (есть только `POLYHUB_SSH_KEY`, `BITRIX_WEBHOOK_URL`).
+
+### Phase B0 — office connectors (done as stubs)
+
+Surfaces live without keys: `mail`, `calendar`, `files`, `conference`, `outreach`.
+Tools: `suggest_calendar_slots`, `send_mail_draft`, `list_files`, `create_conference`,
+`outreach.status|dashboard|packs|preview|stage_send|lead_check`.
+**`FILES/MAILER/CALENDAR/CONFERENCE_BASE_URL` уже live** (compose internal).  
+Внешние токены позже: SMTP, CalDAV, Yandex OAuth, disk tokens, `OUTREACH_BASE_URL`.
+
+### Phase B0b — MCP / Hermes (done)
+
+- `GET /v1/mcp/health|tools|openapi-lite`
+- `POST /v1/mcp/tools/call`, `POST /v1/mcp` (JSON-RPC)
+- `GET /v1/hermes/profile` → mint `mcp_api_key` + toolset for multi-user Hermes
+- Live catalog: **27** tools (24 registry + 3 meta)
+
+### Phase B0c — CRM-lite + outreach staging (done)
+
+Local funnel over tenant leads (no Bitrix): `crm.funnel`, `crm.leads`, `crm.lead_get`,
+`crm.companies`, `crm.company_upsert`, `crm.lifecycle_set`, `crm.suggest_next`.
+HTTP: `GET /v1/leads/funnel`, `PATCH /v1/leads/{id}/lifecycle`.
+Outreach staging is dry-run stub until `OUTREACH_BASE_URL` / SMTP.
+
+### Phase B2 — Telegram как первый канал
+
+1. Flag `telegram` уже **enabled** у `quantum-labs`  
+2. После токена: connect bot → webhook `/delno-api/v1/webhooks/telegram/{account_id}`  
+3. Inbox в кабинете
+
+### Phase B0d — files broker on VPS (done)
+
+`delno-files` in compose; probe + `list_files source=local` returns `/data/assets`.
+Cloud disks wait for tokens only.
+
+### Phase B0e — mail / calendar / conference brokers (done)
+
+Calendar providers live: `mailru | yandex | google | outlook` (GET `/api/calendar/providers`, `source=` on suggest/check/create; tokens later).
+
+Live containers without external keys:
+- `send_mail_draft` → dry-run stub
+- `suggest_calendar_slots` → stub slots
+- `create_conference` → stub Telemost join URL
+
+### Phase B3 — внешние SMTP / CalDAV / Telemost OAuth
+
+Только когда пользователь введёт креды в `.env` (не блокер dogfood).
+
+### Phase C — voice widget
+
+Уже есть код + CDN; нужен OpenAI (STT/TTS) и проверка mic в браузере.
+
+### Phase D — телефония
+
+Только после стабильного A–B. Asterisk/AVA/`/opt/polyhub` **не трогать**.
+
+## Ops cheat-sheet
+
+```bash
+ssh root@161.104.89.123
+systemctl status delno-stack nginx
+docker ps
+curl -sf http://127.0.0.1:18020/v1/health
+curl -sf http://127.0.0.1:18021/api/brain/health
+curl -sf -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3020/
+```
+
+Compose **без** сломанного `site` (нет `package.json` у DELNO-site-v23); сервис `web` = образ `delno-web:latest` на `:3020`.
+
+## Site restore
+
+`DELNO-site-v23` в git был без `package.json` / `tsconfig` / `globals.css` / `ScenarioSwitcher` — из‑за этого на bootstrap поднялась заглушка.  
+Сейчас v2 собран и отдан на `/`; scaffold закоммичен в ветку `cursor/delno-site-restore-9b51`.
+
+## Runtime-патчи на VPS (зафиксировать в delno-ветку позже)
+
+- `tenant_widget_config` отдаёт `PUBLIC_API_BASE` / `PUBLIC_CDN_BASE` вместо hardcode `api.dlno.ru`
+- nginx: `/delno-api`, `/delno-brain`, `/widget/`, landing `/`
+- `MODEL_PROVIDER=stub` до появления OpenAI

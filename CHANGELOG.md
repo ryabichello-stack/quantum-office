@@ -12,6 +12,17 @@
 
 ### Added
 
+- Docs/ops: calendar multi-provider mailru/yandex/google/outlook (tools-first)
+- Docs/ops: mail/calendar/conference brokers live on Cloud4Box (tools-first stubs, no SMTP/CalDAV/OAuth yet)
+- Docs/ops: `delno-files` broker live on Cloud4Box (`FILES_BASE_URL=http://files:8015`, :18015)
+- Docs/ops: CRM-lite funnel + outreach staging stubs (27 MCP tools, 5 connectors incl. outreach)
+- Docs/ops: multi-tenant MCP gateway + Hermes profile (`/v1/mcp`, `/v1/hermes/profile`)
+- Docs/ops: office connectors stubs (mail/calendar/files/conference) + tenant-beta dogfood
+- Docs/ops: политика tools-first; admin :3010; GET /v1/tenant/tools; ответ по AVA/Asterisk multi-tenant (E4)
+- Docs: на Cloud4Box поднят канонический marketing site v2 (`DELNO-site-v23`) на `/` вместо заглушки
+- Docs: bootstrap DELNO на Cloud4Box VPS (`docs/DELNO_VPS_BOOTSTRAP.md`) — Phase A live, cabinet/widget/brain, dogfood tenant `quantum-labs`, план Phase B (OpenAI/TG/DaData)
+- Docs: полный аудит инструментов Quantum Office (`docs/QUANTUM_OFFICE_TOOLS_AUDIT.md`) — сервисы, MCP, каналы, DaData, CRM, пробелы для переноса на DELNO
+
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
 - Юридический футер + «Отписаться» / List-Unsubscribe в шаблонах; презентация PDF на 1-м письме
 - API `GET/POST /api/packs` (+ apply) и вкладка «Кампания» в UI (Console embed + standalone)
