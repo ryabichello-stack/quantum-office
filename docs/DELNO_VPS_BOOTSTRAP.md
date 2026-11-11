@@ -37,11 +37,13 @@
 | Brain / knowledge | http://161.104.89.123/delno-brain/api/brain/health | ✅ |
 | Widget CDN | http://161.104.89.123/widget/v1/ | ✅ |
 | `delno-site` container | `127.0.0.1:18019` → nginx `/` | ✅ restored `DELNO-site-v23` |
+| **Files broker** (`delno-files`) | `127.0.0.1:18015` → `http://files:8015` | ✅ Mail.ru/Yadisk/gdrive/onedrive/local surfaces |
 | Postgres (internal) | docker `delno-postgres` | ✅ healthy |
 | systemd | `delno-stack.service` | ✅ active |
 
-Код на сервере: `/opt/delno/{api,knowledge,web,cdn}` + `/opt/delno/docker-compose.yml` + `/opt/delno/.env` (mode 600).  
-Доступы (пароли): `/root/DELNO_ACCESS.txt` на VPS.
+Код на сервере: `/opt/delno/{api,knowledge,web,cdn,files}` + `/opt/delno/docker-compose.yml` + `/opt/delno/.env` (mode 600).  
+Доступы (пароли): `/root/DELNO_ACCESS.txt` на VPS.  
+`FILES_BASE_URL=http://files:8015` — `list_files` уже ходит в живой брокер (disk tokens optional).
 
 ### Tenant dogfood
 
@@ -114,8 +116,10 @@ cd /opt/delno && docker compose up -d --force-recreate api
 Surfaces live without keys: `mail`, `calendar`, `files`, `conference`, `outreach`.
 Tools: `suggest_calendar_slots`, `send_mail_draft`, `list_files`, `create_conference`,
 `outreach.status|dashboard|packs|preview|stage_send|lead_check`.
-Upstream: set `MAILER_BASE_URL` / `CALENDAR_BASE_URL` / `FILES_BASE_URL` /
+Upstream: set `MAILER_BASE_URL` / `CALENDAR_BASE_URL` /
 `CONFERENCE_BASE_URL` / `OUTREACH_BASE_URL` later.
+**`FILES_BASE_URL` уже live** (`http://files:8015`); disk tokens (`YADISK_TOKEN`,
+`MAILRU_WEBDAV_*`, `GOOGLE_DRIVE_TOKEN`, `ONEDRIVE_TOKEN`) — later.
 
 ### Phase B0b — MCP / Hermes (done)
 
@@ -137,9 +141,14 @@ Outreach staging is dry-run stub until `OUTREACH_BASE_URL` / SMTP.
 2. После токена: connect bot → webhook `/delno-api/v1/webhooks/telegram/{account_id}`  
 3. Inbox в кабинете
 
-### Phase B3 — почта / календарь / файлы
+### Phase B0d — files broker on VPS (done)
 
-Перенос коннекторов из QO (`mailer`, `calendar`, `files`) как adapters за feature flags — после TG.
+`delno-files` in compose; probe + `list_files source=local` returns `/data/assets`.
+Cloud disks wait for tokens only.
+
+### Phase B3 — почта / календарь
+
+Перенос `mailer` / `calendar` / `conference` upstream URLs — после TG.
 
 ### Phase C — voice widget
 
