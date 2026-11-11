@@ -1,8 +1,11 @@
 from app.models.cms import CmsPage, CmsRevision
 from app.models.audit import AuditLog
+from app.models.call_job import CallJob
+from app.models.call_session import CallSession
 from app.models.channel_account import ChannelAccount
 from app.models.conversation import Conversation, Message
 from app.models.feature_flag import FeatureFlag
+from app.models.lead import Lead
 from app.models.onboarding_upload import OnboardingUpload
 from app.models.party_cache import PartyCache
 from app.models.phone_number import PhoneNumber
@@ -16,6 +19,8 @@ __all__ = [
     "CmsPage",
     "CmsRevision",
     "AuditLog",
+    "CallJob",
+    "CallSession",
     "ChannelAccount",
     "Conversation",
     "FeatureFlag",

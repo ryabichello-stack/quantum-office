@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     conference_base_url: str = ""
     outreach_base_url: str = ""
     office_webhook_token: str | None = None
+    # Asterisk / dialer → DELNO telephony bridge
+    telephony_webhook_token: str | None = None
     # E2.4 MAX Bot API (platform-api2)
     max_api_base_url: str = "https://platform-api2.max.ru"
 

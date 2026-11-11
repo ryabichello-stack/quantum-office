@@ -23,12 +23,30 @@ from app.services.events import emit_event
 from app.services.model_provider import get_model_provider
 from app.services.provenance import extract_sources_from_knowledge
 
+# Owner/Hermes cabinet allowlist — setup + health + office + telephony
 CABINET_LLM_TOOLS = (
     "get_tenant_summary",
     "update_tenant_settings",
     "upload_knowledge_snippet",
     "set_feature_flag",
     "get_knowledge",
+    # Hermes setup / health
+    "hermes.setup_status",
+    "hermes.setup_mark",
+    "hermes.health",
+    "hermes.alerts",
+    # Phones + calls
+    "phones.list",
+    "phones.provision",
+    "calls.list",
+    "calls.get",
+    "calls.dial",
+    "calls.jobs",
+    # Office connectors
+    "suggest_calendar_slots",
+    "send_mail_draft",
+    "list_files",
+    "create_conference",
 )
 
 
