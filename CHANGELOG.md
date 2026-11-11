@@ -8,6 +8,9 @@
   geo-blocked — deterministic coach replies with live DID/setup/health status
 - Hermes chat UX: larger dialog thread, mic dictates into the input field (STT),
   send only on Submit; orb kept for full voice conversation
+- Cloud4Box OpenAI egress: local xray HTTP CONNECT `inbound-grok-minsk` (:10808)
+  via Minsk `up-vpn1`; `OPENAI_HTTP_PROXY`/`HTTPS_PROXY` for `delno-api` so Hermes
+  LLM works despite direct geo-block
 
 ### Added
 
