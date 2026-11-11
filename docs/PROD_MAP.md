@@ -1,8 +1,12 @@
 # PROD MAP — Quantum Labs Office
 
-**Host:** `5.35.86.62`  
+> **2026-11-11:** Beget `5.35.86.62` / `a.47z.ru` destroyed.  
+> Recovery host: **Cloud4Box `161.104.89.123`** — see [`QL_DISASTER_RECOVERY.md`](QL_DISASTER_RECOVERY.md).
+
+**Host (recovery):** `161.104.89.123`  
 **User:** `root`  
-**Public:** https://a.47z.ru
+**Public (temp):** `http://161.104.89.123/_ava_*`  
+**Former:** `5.35.86.62` / https://a.47z.ru (down)
 
 ## Services
 

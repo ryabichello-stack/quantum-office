@@ -101,7 +101,11 @@ SMTP_TIMEOUT_SECONDS = _env_float("MAIL_SMTP_TIMEOUT_SECONDS", 6.0)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_TIMEOUT_SECONDS = _env_float("OPENAI_TIMEOUT_SECONDS", 25.0)
 
-client = OpenAI(api_key=OPENAI_API_KEY, timeout=OPENAI_TIMEOUT_SECONDS)
+client = (
+    OpenAI(api_key=OPENAI_API_KEY, timeout=OPENAI_TIMEOUT_SECONDS)
+    if OPENAI_API_KEY
+    else None
+)
 
 #календарь
 MAILRU_CALDAV_URL = os.getenv("MAILRU_CALDAV_URL", "https://calendar.mail.ru")

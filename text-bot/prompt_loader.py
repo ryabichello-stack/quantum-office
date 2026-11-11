@@ -19,18 +19,26 @@ TEXT_CHANNEL_OVERLAY = """
 - Помни контекст переписки в этом чате.
 """
 
+FALLBACK_PROMPT = """
+Ты — ИИ-секретарь Quantum Labs.
+Помогаешь с календарём, конференциями, знаниями о продуктах и офисными задачами.
+Не выдумывай факты. Если нет данных — скажи об этом.
+""".strip()
+
 
 def load_system_prompt(config_path: Path) -> str:
+    if not config_path.is_file():
+        return f"{FALLBACK_PROMPT}\n{TEXT_CHANNEL_OVERLAY.strip()}\n"
     raw = config_path.read_text(encoding="utf-8")
     data = yaml.safe_load(raw) or {}
     ctx = (data.get("contexts") or {}).get("default") or {}
-    voice_prompt = str(ctx.get("prompt") or "").strip()
-    if not voice_prompt:
-        raise ValueError(f"empty prompt in {config_path}")
+    voice_prompt = str(ctx.get("prompt") or "").strip() or FALLBACK_PROMPT
     return f"{voice_prompt.strip()}\n{TEXT_CHANNEL_OVERLAY.strip()}\n"
 
 
 def greeting_text(config_path: Path) -> str:
+    if not config_path.is_file():
+        return "Здравствуйте! Я ИИ-секретарь Quantum Labs. Чем могу помочь?"
     raw = config_path.read_text(encoding="utf-8")
     data = yaml.safe_load(raw) or {}
     ctx = (data.get("contexts") or {}).get("default") or {}
