@@ -111,15 +111,25 @@ cd /opt/delno && docker compose up -d --force-recreate api
 
 ### Phase B0 — office connectors (done as stubs)
 
-Surfaces live without keys: `mail`, `calendar`, `files`, `conference`.
-Tools: `suggest_calendar_slots`, `send_mail_draft`, `list_files`, `create_conference`.
-Upstream: set `MAILER_BASE_URL` / `CALENDAR_BASE_URL` / `FILES_BASE_URL` / `CONFERENCE_BASE_URL` later.
+Surfaces live without keys: `mail`, `calendar`, `files`, `conference`, `outreach`.
+Tools: `suggest_calendar_slots`, `send_mail_draft`, `list_files`, `create_conference`,
+`outreach.status|dashboard|packs|preview|stage_send|lead_check`.
+Upstream: set `MAILER_BASE_URL` / `CALENDAR_BASE_URL` / `FILES_BASE_URL` /
+`CONFERENCE_BASE_URL` / `OUTREACH_BASE_URL` later.
 
 ### Phase B0b — MCP / Hermes (done)
 
 - `GET /v1/mcp/health|tools|openapi-lite`
 - `POST /v1/mcp/tools/call`, `POST /v1/mcp` (JSON-RPC)
 - `GET /v1/hermes/profile` → mint `mcp_api_key` + toolset for multi-user Hermes
+- Live catalog: **27** tools (24 registry + 3 meta)
+
+### Phase B0c — CRM-lite + outreach staging (done)
+
+Local funnel over tenant leads (no Bitrix): `crm.funnel`, `crm.leads`, `crm.lead_get`,
+`crm.companies`, `crm.company_upsert`, `crm.lifecycle_set`, `crm.suggest_next`.
+HTTP: `GET /v1/leads/funnel`, `PATCH /v1/leads/{id}/lifecycle`.
+Outreach staging is dry-run stub until `OUTREACH_BASE_URL` / SMTP.
 
 ### Phase B2 — Telegram как первый канал
 
