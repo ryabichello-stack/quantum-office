@@ -1,7 +1,7 @@
 """
 ava-files — file broker: fetch from sources, deliver via email/Telegram.
 
-Sources: local (allowlisted), github repo, Yandex Disk, Mail.ru Cloud (WebDAV).
+Sources: local, github, Yandex Disk, Mail.ru Cloud, Google Drive, OneDrive.
 Does not own Bitrix outreach, Asterisk, or Polyhub trading.
 """
 
@@ -27,7 +27,32 @@ logger = logging.getLogger("ava-files")
 WEBHOOK_TOKEN = os.getenv("WEBHOOK_TOKEN", "").strip()
 SERVICE_NAME = "ava-files"
 
-app = FastAPI(title="Quantum Labs Files", version="0.1.0")
+FetchSource = Literal[
+    "local",
+    "repo",
+    "github",
+    "yadisk",
+    "yandex",
+    "mailru",
+    "gdrive",
+    "google",
+    "google_drive",
+    "onedrive",
+    "one_drive",
+]
+BrowseSource = Literal[
+    "local",
+    "yadisk",
+    "yandex",
+    "mailru",
+    "gdrive",
+    "google",
+    "google_drive",
+    "onedrive",
+    "one_drive",
+]
+
+app = FastAPI(title="Quantum Labs Files", version="0.2.0")
 
 
 def _check_token(x_webhook_token: Optional[str] = None) -> None:
@@ -38,7 +63,7 @@ def _check_token(x_webhook_token: Optional[str] = None) -> None:
 
 
 class FileSendRequest(BaseModel):
-    source: Literal["local", "repo", "github", "yadisk", "yandex", "mailru"] = Field(
+    source: FetchSource = Field(
         ...,
         description="Where to read the file from",
     )
@@ -55,14 +80,14 @@ class FileSendRequest(BaseModel):
 
 
 class FileFetchRequest(BaseModel):
-    source: Literal["local", "repo", "github", "yadisk", "yandex", "mailru"]
+    source: FetchSource
     path: str = Field(..., min_length=1, max_length=1000)
     ref: Optional[str] = None
     repo: Optional[str] = None
 
 
 class FileListRequest(BaseModel):
-    source: Literal["local", "yadisk", "yandex", "mailru"] = Field(
+    source: BrowseSource = Field(
         default="mailru",
         description="Cloud/local source to browse",
     )
@@ -70,7 +95,7 @@ class FileListRequest(BaseModel):
 
 
 class FileSearchRequest(BaseModel):
-    source: Literal["local", "yadisk", "yandex", "mailru"] = Field(default="mailru")
+    source: BrowseSource = Field(default="mailru")
     query: str = Field(..., min_length=2, max_length=200, description="Substring in name/path")
     path: str = Field(default="/", max_length=1000, description="Start folder for search")
     limit: int = Field(default=40, ge=1, le=100)

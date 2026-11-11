@@ -46,8 +46,13 @@ Health: `GET /health`
 |--------|----------|
 | `local` | файлы под `FILES_LOCAL_ALLOWLIST` |
 | `repo` / `github` | файл из GitHub (`FILES_GITHUB_REPO`) |
-| `yadisk` | Яндекс.Диск (`YADISK_TOKEN`) |
+| `yadisk` / `yandex` | Яндекс.Диск (`YADISK_TOKEN`) |
 | `mailru` | Mail.ru Облако WebDAV (`MAILRU_WEBDAV_*`, fallback на `MAIL_*`) |
+| `gdrive` / `google` / `google_drive` | Google Drive (`GOOGLE_DRIVE_TOKEN`) — path или `id:<fileId>` |
+| `onedrive` / `one_drive` | OneDrive / Graph (`ONEDRIVE_TOKEN` / `MICROSOFT_GRAPH_TOKEN`) |
+
+Политика **tools-first**: без токенов `/health` показывает `*_configured: false`, list/fetch/search
+возвращают `*_not_configured` — поверхности уже есть, креды подключаются позже.
 
 ## Каналы
 

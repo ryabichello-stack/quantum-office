@@ -12,6 +12,7 @@
 
 ### Added
 
+- Files: Google Drive (`gdrive`) + OneDrive/Graph (`onedrive`) sources alongside Mail.ru / Яндекс.Диск (tools-first, tokens optional)
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
 - Юридический футер + «Отписаться» / List-Unsubscribe в шаблонах; презентация PDF на 1-м письме
 - API `GET/POST /api/packs` (+ apply) и вкладка «Кампания» в UI (Console embed + standalone)
