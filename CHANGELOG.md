@@ -39,6 +39,7 @@
 ### Changed
 
 - Docs/AGENTS: QL Beget **безвозвратно уничтожен**; единственный прод — Cloud4Box (без SSH/миграции на старый хост)
+- Voice: Asterisk + AVA ai_engine restored on Cloud4Box from upstream; Mango registration awaits SIP password
 - Knowledge: Docker image ships git vault + exported `content/quantum_labs.md` / `index.yaml`; auto-ingest on start
 - Cloud4Box: compose profile `curate` for channel-curate; voice restore scaffold (`docs/QL_VOICE_RESTORE.md`)
 - Console UI: единый тонкий шрифт Manrope, компактные кнопки, понятнее подписи на пульте
