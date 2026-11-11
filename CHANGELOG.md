@@ -14,3 +14,5 @@
 - Quantum Labs dogfood seed: enable office connectors + feature flags + owner login
 - Hermes deterministic intents (setup/health/calls) so cabinet works when OpenAI is
   geo-blocked from the VPS; channel `hermes` treated as cabinet
+- OpenAI HTTP client supports `OPENAI_HTTP_PROXY` / `HTTPS_PROXY` and `OPENAI_BASE_URL`
+  for SPB→Minsk→NL egress bridge (chat + TTS)

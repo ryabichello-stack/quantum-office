@@ -28,6 +28,10 @@ Quantum Labs — **первый платящий dogfood-tenant**, которы�
 
 **Важно:** поднятый сейчас `ai_engine` + Mango на Cloud4Box — это **legacy QL-секретарь**, он **не** является DELNO Office OS. Его можно временно использовать как media-движок, но мозг и память должны быть DELNO-tenant.
 
+**OpenAI egress:** с Cloud4Box прямой `api.openai.com` даёт `unsupported_country_region_territory`.
+Рабочий путь — мост **СПБ → Минск → NL**: `OPENAI_HTTP_PROXY` / `HTTPS_PROXY` (SOCKS/HTTP)
+и опционально `OPENAI_BASE_URL` в `delno-api` (chat + TTS).
+
 ---
 
 ## 3. Правильная модель агентов (не «по агенту на канал»)

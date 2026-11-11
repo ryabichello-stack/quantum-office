@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_model: str = "gpt-4.1-mini"
     model_provider: str = "openai"
+    # OpenAI egress: direct api.openai.com is geo-blocked from RU VPS —
+    # route via SPB→Minsk→NL bridge (HTTP/SOCKS proxy) and/or compatible base URL.
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_http_proxy: str | None = None
 
     dadata_api_key: str | None = None
     dadata_secret_key: str | None = None

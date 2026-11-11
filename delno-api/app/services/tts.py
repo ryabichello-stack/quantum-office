@@ -44,9 +44,11 @@ def synthesize_speech(text: str) -> tuple[bytes | None, str | None]:
     }
 
     try:
-        with httpx.Client(timeout=45.0) as client:
+        from app.services.openai_http import openai_client, openai_url
+
+        with openai_client(timeout=45.0) as client:
             response = client.post(
-                "https://api.openai.com/v1/audio/speech",
+                openai_url("/audio/speech"),
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",

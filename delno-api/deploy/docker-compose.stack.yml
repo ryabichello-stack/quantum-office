@@ -41,6 +41,18 @@ services:
       CALENDAR_BASE_URL: ${CALENDAR_BASE_URL:-http://calendar:8014}
       CONFERENCE_BASE_URL: ${CONFERENCE_BASE_URL:-http://conference:8016}
       OFFICE_WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
+      # OpenAI via SPB→Minsk→NL bridge (host SOCKS/HTTP). Use host-gateway IP from container.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-openai}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_HTTP_PROXY: ${OPENAI_HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      ALL_PROXY: ${ALL_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,postgres,knowledge,mail,calendar,files,conference,api,web}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:18020:8020"
     depends_on:

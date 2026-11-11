@@ -38,7 +38,7 @@ class OpenAIProvider(ModelProvider):
         if not settings.openai_api_key:
             return {"ok": False, "error": "openai_api_key_not_configured"}
         try:
-            import httpx
+            from app.services.openai_http import openai_client, openai_proxy_url, openai_url
 
             payload: dict[str, Any] = {
                 "model": model or settings.openai_model,
@@ -50,15 +50,25 @@ class OpenAIProvider(ModelProvider):
                 payload["tools"] = tools
                 payload["tool_choice"] = "auto"
 
-            response = httpx.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {settings.openai_api_key}"},
-                json=payload,
-                timeout=30.0,
-            )
+            with openai_client(timeout=30.0) as client:
+                response = client.post(
+                    openai_url("/chat/completions"),
+                    headers={"Authorization": f"Bearer {settings.openai_api_key}"},
+                    json=payload,
+                )
             if response.status_code == 200:
-                return {"ok": True, "data": response.json(), "provider": self.name}
-            return {"ok": False, "error": f"openai_http_{response.status_code}", "provider": self.name}
+                return {
+                    "ok": True,
+                    "data": response.json(),
+                    "provider": self.name,
+                    "via_proxy": bool(openai_proxy_url()),
+                }
+            return {
+                "ok": False,
+                "error": f"openai_http_{response.status_code}",
+                "provider": self.name,
+                "via_proxy": bool(openai_proxy_url()),
+            }
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": str(exc), "provider": self.name}
 
