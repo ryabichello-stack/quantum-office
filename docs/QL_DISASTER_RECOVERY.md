@@ -44,7 +44,8 @@ Git vault remounted into `qo-knowledge` (`content/quantum_labs.md` exported from
 
 ## Voice
 
-See [`QL_VOICE_RESTORE.md`](QL_VOICE_RESTORE.md). Asterisk/AVA/Mango not on Cloud4Box yet.
+See [`QL_VOICE_RESTORE.md`](QL_VOICE_RESTORE.md) (Asterisk + AVA media up; Mango password pending).  
+**Product target (multi-tenant office):** [`DELNO_OFFICE_OS_ARCHITECTURE.md`](DELNO_OFFICE_OS_ARCHITECTURE.md) — Hermes + Frontline; QL as dogfood tenant.
 
 ## Channel curate
 
