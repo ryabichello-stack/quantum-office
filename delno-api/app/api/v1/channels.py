@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_tenant_context_auth
 from app.core.db import get_db
 from app.core.tenant import TenantContext
+from app.services import channel_qr
 from app.services.max_connect import (
     connect_max_branded,
     disconnect_max_branded,
@@ -32,6 +33,15 @@ class TelegramConnectRequest(BaseModel):
 
 class MaxConnectRequest(BaseModel):
     access_token: str = Field(min_length=16, max_length=256)
+
+
+class QrStartRequest(BaseModel):
+    channel_type: str = Field(min_length=3, max_length=32)
+    label: str | None = Field(default=None, max_length=120)
+
+
+class QrConfirmRequest(BaseModel):
+    session_material: str = Field(min_length=20, max_length=20000)
 
 
 def _require_tenant_admin(ctx: TenantContext) -> None:
@@ -125,4 +135,46 @@ def tenant_max_health(
     result = healthcheck_max_branded(db, ctx, account_id)
     if result.get("error") == "not_found":
         raise HTTPException(status_code=404, detail="not_found")
+    return result
+
+
+@router.post("/qr/start")
+def tenant_channel_qr_start(
+    body: QrStartRequest,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """Start QR / web-session login (alternative to bot token)."""
+    _require_tenant_admin(ctx)
+    result = channel_qr.start_qr_login(db, ctx, channel_type=body.channel_type, label=body.label)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+
+@router.post("/qr/{account_id}/confirm")
+def tenant_channel_qr_confirm(
+    account_id: UUID,
+    body: QrConfirmRequest,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    _require_tenant_admin(ctx)
+    result = channel_qr.confirm_qr_session(db, ctx, account_id=account_id, session_material=body.session_material)
+    if not result.get("ok"):
+        code = 404 if result.get("error") == "not_found" else 400
+        raise HTTPException(status_code=code, detail=result.get("error"))
+    return result
+
+
+@router.get("/qr/{account_id}")
+def tenant_channel_qr_status(
+    account_id: UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    _require_tenant_admin(ctx)
+    result = channel_qr.qr_status(db, ctx, account_id=account_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=404, detail=result.get("error"))
     return result

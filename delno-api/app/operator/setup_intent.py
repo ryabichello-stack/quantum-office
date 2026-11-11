@@ -159,6 +159,15 @@ _HERMES_CALLS_TRIGGERS = (
     "calls",
 )
 
+_HERMES_BILLING_TRIGGERS = (
+    "расход токенов",
+    "баланс",
+    "тариф",
+    "сколько токенов",
+    "billing",
+    "стоимость",
+)
+
 
 def parse_hermes_intent(message: str) -> dict[str, Any] | None:
     """Deterministic Hermes supervisor intents (works without LLM)."""
@@ -171,6 +180,8 @@ def parse_hermes_intent(message: str) -> dict[str, Any] | None:
         return {"tool": "hermes.health", "params": {}, "summary": "Проверить здоровье офиса"}
     if any(t in lower for t in _HERMES_CALLS_TRIGGERS):
         return {"tool": "calls.list", "params": {"limit": 10}, "summary": "Список звонков"}
+    if any(t in lower for t in _HERMES_BILLING_TRIGGERS):
+        return {"tool": "billing.summary", "params": {}, "summary": "Баланс и тариф токенов"}
     if any(t in lower for t in _HERMES_SETUP_TRIGGERS):
         return {"tool": "hermes.setup_status", "params": {}, "summary": "Статус сетапа офиса"}
     # Owner onboarding phrase from Hermes UI bootstrap

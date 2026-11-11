@@ -45,6 +45,8 @@ from app.operator.tools.hermes import (
     HermesSetupMarkTool,
     HermesSetupStatusTool,
 )
+from app.operator.tools.billing_tools import BillingSummaryTool
+from app.operator.tools.web import WebBrowseTool, WebFetchTool, WebSearchTool
 from app.operator.tools.registry import registry
 
 
@@ -87,3 +89,8 @@ def register_builtin_tools() -> None:
     registry.register(HermesSetupMarkTool())
     registry.register(HermesHealthTool())
     registry.register(HermesAlertsTool())
+    # Hermes browser / web
+    registry.register(WebSearchTool())
+    registry.register(WebFetchTool())
+    registry.register(WebBrowseTool())
+    registry.register(BillingSummaryTool())

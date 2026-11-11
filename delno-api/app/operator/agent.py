@@ -19,9 +19,35 @@ from app.operator.tools.registry import (
     tool_confirmation_class,
 )
 from app.services.audit import write_audit
+from app.services.billing import record_llm_usage
 from app.services.events import emit_event
 from app.services.model_provider import get_model_provider
 from app.services.provenance import extract_sources_from_knowledge
+
+
+def _charge_llm_if_any(
+    db: Session,
+    ctx: TenantContext,
+    completion: dict[str, Any],
+    *,
+    channel: str | None = None,
+) -> None:
+    usage = completion.get("usage") if isinstance(completion.get("usage"), dict) else {}
+    prompt = int(usage.get("prompt_tokens") or 0)
+    completion_tokens = int(usage.get("completion_tokens") or 0)
+    if prompt or completion_tokens:
+        try:
+            record_llm_usage(
+                db,
+                ctx,
+                prompt_tokens=prompt,
+                completion_tokens=completion_tokens,
+                model=str(completion.get("model") or "") or None,
+                channel=channel,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
 
 # Owner/Hermes cabinet allowlist — setup + health + office + telephony
 CABINET_LLM_TOOLS = (
@@ -47,6 +73,11 @@ CABINET_LLM_TOOLS = (
     "send_mail_draft",
     "list_files",
     "create_conference",
+    # Hermes web browser
+    "web.search",
+    "web.fetch",
+    "web.browse",
+    "billing.summary",
 )
 
 
@@ -373,7 +404,7 @@ def _execute_cabinet_tool(
         tool_calls[0]["ok"] = False
         return "Поиск в базе знаний не удался.", tool_calls, [], None
 
-    if tool_name in ("hermes.setup_status", "hermes.health", "hermes.alerts", "calls.list"):
+    if tool_name in ("hermes.setup_status", "hermes.health", "hermes.alerts", "calls.list", "billing.summary"):
         result = registry.run(db, ctx, tool_name, **params)
         if isinstance(result, ToolResult) and result.ok:
             tool_calls[0]["ok"] = True
@@ -383,6 +414,8 @@ def _execute_cabinet_tool(
                 return _format_hermes_health(result.data or {}), tool_calls, [], None
             if tool_name == "calls.list":
                 return _format_calls_list(result.data or {}), tool_calls, [], None
+            if tool_name == "billing.summary":
+                return result.message or "Баланс недоступен.", tool_calls, [], None
             items = (result.data or {}).get("items") or []
             if not items:
                 return "Свежих алертов нет — всё тихо.", tool_calls, [], None
@@ -457,6 +490,7 @@ def _try_cabinet_llm_tools(
 
     content = str(choice_msg.get("content") or "").strip()
     if content:
+        _charge_llm_if_any(db, ctx, completion, channel="hermes")
         return content, [{"tool": "llm", "ok": True, "provider": provider.name}], [], None
     return None
 
@@ -561,6 +595,7 @@ def _generate_reply(
             provider_name = str(completion.get("provider") or "")
             stub_echo = provider_name == "stub" and reply.startswith("[stub]")
             if reply and not stub_echo:
+                _charge_llm_if_any(db, ctx, completion, channel=channel)
                 tool_calls.append({"tool": "llm", "ok": True, "provider": provider_name})
                 return reply, tool_calls, sources, None
             if stub_echo:
