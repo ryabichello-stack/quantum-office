@@ -349,12 +349,15 @@ def extract_post(message: dict[str, Any]) -> dict[str, Any]:
 
 
 def rewrite_text(source: str, *, openai_api_key: str, model: str) -> str:
-    from openai import OpenAI
-
-    client = OpenAI(api_key=openai_api_key)
     src = (source or "").strip()
     if not src:
         return ""
+    if not (openai_api_key or "").strip():
+        logger.warning("rewrite skipped: OPENAI_API_KEY missing — publishing source text")
+        return src
+    from openai import OpenAI
+
+    client = OpenAI(api_key=openai_api_key)
     kwargs: dict = {
         "model": model or "gpt-4.1-mini",
         "messages": [
