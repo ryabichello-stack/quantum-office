@@ -8,6 +8,8 @@
   images; text/docs excerpted into the turn (`/v1/operator/chat` `attachments`)
 - Hermes UI rebuilt as ChatGPT/Cursor-style agent chat: full-height thread,
   floating composer, typing indicator, office status in a slide-over panel
+- delno-web: Tailwind v4 + shadcn/ui (base-nova); Hermes uses Button, Textarea,
+  Sheet, ScrollArea, Avatar, Badge, Tooltip (`postcss.config.cjs` for Next 15)
 
 ### Fixed
 

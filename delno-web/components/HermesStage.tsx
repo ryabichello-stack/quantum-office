@@ -21,6 +21,20 @@ import {
 } from "lucide-react";
 import { CrystalOrb } from "@/components/CrystalOrb";
 import { ConfirmCard } from "@/components/ConfirmCard";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   apiOperatorChat,
   apiOperatorConfirm,
@@ -45,6 +59,7 @@ import {
   makePendingAttachment,
   type PendingHermesAttachment,
 } from "@/lib/hermesAttachments";
+import { cn } from "@/lib/utils";
 import { useDictateToInput } from "@/lib/useDictateToInput";
 import { useOperatorVoice } from "@/lib/useOperatorVoice";
 
@@ -64,11 +79,13 @@ const QUICK_PROMPTS = [
   { title: "Баланс", text: "Покажи расход токенов и баланс" },
 ];
 
-function HermesAvatar() {
+function HermesAvatar({ className }: { className?: string }) {
   return (
-    <span className="hx-avatar" aria-hidden>
-      <Sparkles size={14} />
-    </span>
+    <Avatar size="sm" className={cn("rounded-[11px] bg-[var(--y)] text-black after:border-black/10", className)}>
+      <AvatarFallback className="rounded-[11px] bg-[var(--y)] text-black">
+        <Sparkles size={14} />
+      </AvatarFallback>
+    </Avatar>
   );
 }
 
@@ -90,7 +107,7 @@ export function HermesStage({ token }: { token: string }) {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const mountRef = useRef<HTMLDivElement>(null);
-  const threadRef = useRef<HTMLDivElement>(null);
+  const threadEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -267,17 +284,8 @@ export function HermesStage({ token }: { token: string }) {
   }, [setup, bootstrapped]);
 
   useEffect(() => {
-    const el = threadRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    threadEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [lines, sending]);
-
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "0px";
-    el.style.height = `${Math.min(160, Math.max(24, el.scrollHeight))}px`;
-  }, [message]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -419,7 +427,6 @@ export function HermesStage({ token }: { token: string }) {
       className="operator-stage hermes-stage hx-app"
       ref={mountRef}
       data-voice-active={voiceActive ? "true" : "false"}
-      data-panel={panelOpen ? "open" : "closed"}
     >
       <header className="hx-topbar">
         <div className="hx-brand">
@@ -430,113 +437,136 @@ export function HermesStage({ token }: { token: string }) {
           </div>
         </div>
         <div className="hx-top-actions">
-          <button
-            type="button"
-            className={`hx-icon-btn${voiceActive ? " is-live" : ""}`}
-            title="Голосовой диалог"
-            aria-label="Голосовой диалог"
-            onClick={toggleVoice}
-          >
-            <Mic size={18} />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className={cn(voiceActive && "border-sky-400/60 bg-sky-50")}
+                  onClick={toggleVoice}
+                  aria-label="Голосовой диалог"
+                />
+              }
+            >
+              <Mic size={18} />
+            </TooltipTrigger>
+            <TooltipContent>Голосовой диалог</TooltipContent>
+          </Tooltip>
           <div className="hx-orb-mini" aria-hidden>
             <CrystalOrb voiceActive={voiceActive} voicePhase={voicePhase} onOrbClick={toggleVoice} />
           </div>
-          <button
-            type="button"
-            className={`hx-icon-btn${panelOpen ? " is-on" : ""}`}
-            title="Офис: сетап и здоровье"
-            aria-label="Панель офиса"
-            onClick={() => setPanelOpen((v) => !v)}
-          >
-            <PanelRight size={18} />
-            {!setup?.setup_complete && <i className="hx-dot" />}
-            {health && !health.healthy && <i className="hx-dot warn" />}
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="relative"
+                  onClick={() => setPanelOpen(true)}
+                  aria-label="Панель офиса"
+                />
+              }
+            >
+              <PanelRight size={18} />
+              {!setup?.setup_complete && <i className="hx-dot" />}
+              {health && !health.healthy && <i className="hx-dot warn" />}
+            </TooltipTrigger>
+            <TooltipContent>Офис: сетап и здоровье</TooltipContent>
+          </Tooltip>
         </div>
       </header>
 
       <div className="hx-body">
         <main className="hx-chat">
-          <div className="hx-thread" ref={threadRef}>
-            {lines.length === 0 && !sending && (
-              <div className="hx-empty">
-                <p className="hx-empty-kicker">DELNO · office agent</p>
-                <h1 className="hx-empty-title">Hermes</h1>
-                <p className="hx-empty-lead">
-                  Как в Cursor или ChatGPT: пишите задачу, кидайте фото, снимайте камерой — Hermes
-                  отвечает в этом же потоке.
-                </p>
-                <div className="hx-suggestions">
-                  {QUICK_PROMPTS.map((item) => (
-                    <button
-                      key={item.title}
-                      type="button"
-                      disabled={sending}
-                      onClick={() => void sendText(item.text)}
-                    >
-                      <strong>{item.title}</strong>
-                      <span>{item.text}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {lines.map((line, idx) =>
-              line.role === "user" ? (
-                <article key={idx} className="hx-row hx-row-user">
-                  <div className="hx-bubble hx-bubble-user">
-                    {line.previews && line.previews.length > 0 && (
-                      <div className="hx-previews">
-                        {line.previews.map((p) => (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img key={p.url} src={p.url} alt={p.name} />
-                        ))}
-                      </div>
-                    )}
-                    <div className="hx-text">{line.text}</div>
+          <ScrollArea className="hx-thread-scroll h-full min-h-0 flex-1">
+            <div className="hx-thread">
+              {lines.length === 0 && !sending && (
+                <div className="hx-empty">
+                  <p className="hx-empty-kicker">DELNO · office agent</p>
+                  <h1 className="hx-empty-title">Hermes</h1>
+                  <p className="hx-empty-lead">
+                    Как в Cursor или ChatGPT: пишите задачу, кидайте фото, снимайте камерой — Hermes
+                    отвечает в этом же потоке.
+                  </p>
+                  <div className="hx-suggestions">
+                    {QUICK_PROMPTS.map((item) => (
+                      <Button
+                        key={item.title}
+                        type="button"
+                        variant="outline"
+                        disabled={sending}
+                        className="h-auto flex-col items-start gap-1 whitespace-normal px-3.5 py-3 text-left"
+                        onClick={() => void sendText(item.text)}
+                      >
+                        <strong className="text-[13px]">{item.title}</strong>
+                        <span className="text-muted-foreground text-xs font-normal leading-snug">
+                          {item.text}
+                        </span>
+                      </Button>
+                    ))}
                   </div>
-                </article>
-              ) : (
-                <article key={idx} className="hx-row hx-row-assistant">
-                  <HermesAvatar />
-                  <div className="hx-assistant-col">
-                    <div className="hx-bubble hx-bubble-assistant">
-                      <div className="hx-text">{line.text}</div>
-                      {line.sources && line.sources.length > 0 && (
-                        <ul className="hx-sources">
-                          {line.sources.map((s, i) => (
-                            <li key={i}>{s.title || s.citation || s.document_id}</li>
+                </div>
+              )}
+
+              {lines.map((line, idx) =>
+                line.role === "user" ? (
+                  <article key={idx} className="hx-row hx-row-user">
+                    <div className="hx-bubble hx-bubble-user">
+                      {line.previews && line.previews.length > 0 && (
+                        <div className="hx-previews">
+                          {line.previews.map((p) => (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img key={p.url} src={p.url} alt={p.name} />
                           ))}
-                        </ul>
+                        </div>
+                      )}
+                      <div className="hx-text">{line.text}</div>
+                    </div>
+                  </article>
+                ) : (
+                  <article key={idx} className="hx-row hx-row-assistant">
+                    <HermesAvatar />
+                    <div className="hx-assistant-col">
+                      <div className="hx-bubble hx-bubble-assistant">
+                        <div className="hx-text">{line.text}</div>
+                        {line.sources && line.sources.length > 0 && (
+                          <div className="mt-2.5 flex flex-wrap gap-1.5">
+                            {line.sources.map((s, i) => (
+                              <Badge key={i} variant="outline">
+                                {s.title || s.citation || s.document_id}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {line.pending && activePending?.confirmation_id === line.pending.confirmation_id && (
+                        <ConfirmCard
+                          summary={line.pending.summary}
+                          toolName={line.pending.tool_name}
+                          busy={confirming}
+                          onConfirm={() => void onConfirm()}
+                          onCancel={() => setActivePending(null)}
+                        />
                       )}
                     </div>
-                    {line.pending && activePending?.confirmation_id === line.pending.confirmation_id && (
-                      <ConfirmCard
-                        summary={line.pending.summary}
-                        toolName={line.pending.tool_name}
-                        busy={confirming}
-                        onConfirm={() => void onConfirm()}
-                        onCancel={() => setActivePending(null)}
-                      />
-                    )}
+                  </article>
+                ),
+              )}
+
+              {sending && (
+                <article className="hx-row hx-row-assistant">
+                  <HermesAvatar />
+                  <div className="hx-bubble hx-bubble-assistant hx-typing" aria-label="Печатает">
+                    <span />
+                    <span />
+                    <span />
                   </div>
                 </article>
-              ),
-            )}
-
-            {sending && (
-              <article className="hx-row hx-row-assistant">
-                <HermesAvatar />
-                <div className="hx-bubble hx-bubble-assistant hx-typing" aria-label="Печатает">
-                  <span />
-                  <span />
-                  <span />
-                </div>
-              </article>
-            )}
-          </div>
+              )}
+              <div ref={threadEndRef} />
+            </div>
+          </ScrollArea>
 
           <div className="hx-composer-wrap">
             {(error || dictateError) && <p className="hx-error">{error || dictateError}</p>}
@@ -551,14 +581,17 @@ export function HermesStage({ token }: { token: string }) {
                     ) : (
                       <span>{item.filename}</span>
                     )}
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      className="absolute top-1 right-1 rounded-full bg-black/70 text-white hover:bg-black/80 hover:text-white"
                       aria-label="Убрать вложение"
                       onClick={() => removePending(item.id)}
                       disabled={sending}
                     >
                       <X size={14} />
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -582,46 +615,71 @@ export function HermesStage({ token }: { token: string }) {
                 onChange={onPickFiles}
               />
               <div className="hx-composer-tools">
-                <button
-                  type="button"
-                  aria-label="Прикрепить"
-                  title="Файл или фото"
-                  disabled={sending}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Paperclip size={18} />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Камера"
-                  title="Снимок"
-                  disabled={sending}
-                  onClick={() => void openDesktopCamera()}
-                >
-                  <Camera size={18} />
-                </button>
-                <button
-                  type="button"
-                  className={dictating ? "is-live" : undefined}
-                  aria-label="Диктовка"
-                  title="Удерживайте для диктовки"
-                  disabled={sending}
-                  onPointerDown={onMicDown}
-                  onPointerUp={onMicUp}
-                  onPointerLeave={onMicUp}
-                  onPointerCancel={onMicUp}
-                  onContextMenu={(e) => e.preventDefault()}
-                >
-                  <Mic size={18} />
-                </button>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        disabled={sending}
+                        onClick={() => fileInputRef.current?.click()}
+                        aria-label="Прикрепить"
+                      />
+                    }
+                  >
+                    <Paperclip size={18} />
+                  </TooltipTrigger>
+                  <TooltipContent>Файл или фото</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        disabled={sending}
+                        onClick={() => void openDesktopCamera()}
+                        aria-label="Камера"
+                      />
+                    }
+                  >
+                    <Camera size={18} />
+                  </TooltipTrigger>
+                  <TooltipContent>Снимок с камеры</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant={dictating ? "default" : "ghost"}
+                        size="icon"
+                        disabled={sending}
+                        aria-label="Диктовка"
+                        onPointerDown={onMicDown}
+                        onPointerUp={onMicUp}
+                        onPointerLeave={onMicUp}
+                        onPointerCancel={onMicUp}
+                        onContextMenu={(e) => e.preventDefault()}
+                        className="touch-none"
+                      />
+                    }
+                  >
+                    <Mic size={18} />
+                  </TooltipTrigger>
+                  <TooltipContent>Удерживайте для диктовки</TooltipContent>
+                </Tooltip>
               </div>
-              <textarea
+              <Textarea
                 ref={textareaRef}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="Сообщение Hermes…"
                 disabled={sending}
                 rows={1}
+                className="min-h-9 max-h-40 flex-1 resize-none border-0 bg-transparent px-1 py-2 shadow-none focus-visible:ring-0"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -634,166 +692,169 @@ export function HermesStage({ token }: { token: string }) {
                   }
                 }}
               />
-              <button type="submit" className="hx-send" disabled={!canSend} aria-label="Отправить">
+              <Button type="submit" size="icon" className="hx-send-shadcn size-10 rounded-[14px]" disabled={!canSend} aria-label="Отправить">
                 <ArrowUp size={18} strokeWidth={2.4} />
-              </button>
+              </Button>
             </form>
-            <p className="hx-footnote">Enter — отправить · Shift+Enter — новая строка</p>
+            <p className="hx-footnote">Enter — отправить · Shift+Enter — новая строка · shadcn/ui</p>
           </div>
         </main>
-
-        <aside className="hx-panel" aria-hidden={!panelOpen}>
-          <div className="hx-panel-inner">
-            <header className="hx-panel-head">
-              <strong>Офис</strong>
-              <button type="button" className="hx-icon-btn" aria-label="Закрыть" onClick={() => setPanelOpen(false)}>
-                <X size={16} />
-              </button>
-            </header>
-
-            <section className="hx-card">
-              <header>
-                <span>Сетап</span>
-                {setup?.setup_complete ? (
-                  <CheckCircle2 size={15} className="hermes-ok" />
-                ) : (
-                  <span className="hx-pct">{progressPct}%</span>
-                )}
-              </header>
-              {setup ? (
-                <>
-                  <div className="hermes-progress-bar" aria-hidden>
-                    <i style={{ width: `${progressPct}%` }} />
-                  </div>
-                  <p>{setup.message_ru}</p>
-                  <ul className="hermes-checklist">
-                    {setup.steps.map((step) => {
-                      const check = setup.checks[step.id];
-                      const done = Boolean(check?.ok);
-                      const optional = Boolean(check?.optional);
-                      return (
-                        <li key={step.id} data-done={done ? "1" : "0"} data-optional={optional ? "1" : "0"}>
-                          <span className="hermes-check-dot" />
-                          <div>
-                            <strong>
-                              {step.title}
-                              {optional ? " · опц." : ""}
-                            </strong>
-                            <small>{done ? check?.detail || "готово" : step.hint}</small>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </>
-              ) : (
-                <p>Загружаю…</p>
-              )}
-            </section>
-
-            <section className="hx-card">
-              <header>
-                <span>Здоровье</span>
-                {health && !health.healthy && <AlertTriangle size={15} className="hermes-warn" />}
-                {health?.healthy && <CheckCircle2 size={15} className="hermes-ok" />}
-              </header>
-              {health ? (
-                <>
-                  <p>{health.message_ru}</p>
-                  {health.alerts.length > 0 && (
-                    <ul className="hermes-alerts">
-                      {health.alerts.slice(0, 5).map((a) => (
-                        <li key={a.code} data-sev={a.severity}>
-                          <strong>{a.message_ru}</strong>
-                          {a.fix ? <small>{a.fix}</small> : null}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </>
-              ) : (
-                <p>Проверяю…</p>
-              )}
-            </section>
-
-            <section className="hx-card">
-              <header>
-                <span>Тариф</span>
-              </header>
-              {billing ? (
-                <>
-                  <p>{billing.message_ru}</p>
-                  <ul className="hermes-calls">
-                    <li>
-                      <strong>
-                        {billing.balance.token_credits.toFixed(2)} {billing.balance.currency}
-                      </strong>
-                      <small>
-                        выдано {billing.balance.granted_credits.toFixed(2)} · потрачено{" "}
-                        {billing.balance.spent_credits.toFixed(2)}
-                      </small>
-                    </li>
-                  </ul>
-                </>
-              ) : (
-                <p>Загружаю…</p>
-              )}
-            </section>
-
-            <section className="hx-card">
-              <header>
-                <span>Каналы</span>
-              </header>
-              <p>Токен бота или QR. Instagram — тот же контур.</p>
-              <div className="hx-channel-row">
-                <button type="button" disabled={qrBusy} onClick={() => void startQr("telegram")}>
-                  QR TG
-                </button>
-                <button type="button" disabled={qrBusy} onClick={() => void startQr("max")}>
-                  QR MAX
-                </button>
-                <button type="button" disabled={qrBusy} onClick={() => void startQr("instagram")}>
-                  QR IG
-                </button>
-              </div>
-            </section>
-
-            {calls.length > 0 && (
-              <section className="hx-card">
-                <header>
-                  <span>Звонки</span>
-                </header>
-                <ul className="hermes-calls">
-                  {calls.map((c) => (
-                    <li key={c.id}>
-                      <strong>
-                        {c.direction} · {c.state}
-                      </strong>
-                      <small>
-                        {(c.from_e164 || "—") + " → " + (c.to_e164 || "—")}
-                      </small>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-          </div>
-        </aside>
       </div>
 
-      {panelOpen && <button type="button" className="hx-backdrop" aria-label="Закрыть панель" onClick={() => setPanelOpen(false)} />}
+      <Sheet open={panelOpen} onOpenChange={setPanelOpen}>
+        <SheetContent side="right" className="w-[min(360px,92vw)] gap-0 p-0 sm:max-w-sm">
+          <SheetHeader className="border-b border-border/70">
+            <SheetTitle className="font-[Fraunces,Georgia,serif] text-xl font-medium tracking-tight">
+              Офис
+            </SheetTitle>
+            <SheetDescription>Сетап, здоровье, тариф и каналы</SheetDescription>
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100%-5rem)]">
+            <div className="flex flex-col gap-3 p-4">
+              <section className="hx-card">
+                <header>
+                  <span>Сетап</span>
+                  {setup?.setup_complete ? (
+                    <CheckCircle2 size={15} className="hermes-ok" />
+                  ) : (
+                    <Badge variant="secondary">{progressPct}%</Badge>
+                  )}
+                </header>
+                {setup ? (
+                  <>
+                    <div className="hermes-progress-bar" aria-hidden>
+                      <i style={{ width: `${progressPct}%` }} />
+                    </div>
+                    <p>{setup.message_ru}</p>
+                    <ul className="hermes-checklist">
+                      {setup.steps.map((step) => {
+                        const check = setup.checks[step.id];
+                        const done = Boolean(check?.ok);
+                        const optional = Boolean(check?.optional);
+                        return (
+                          <li key={step.id} data-done={done ? "1" : "0"} data-optional={optional ? "1" : "0"}>
+                            <span className="hermes-check-dot" />
+                            <div>
+                              <strong>
+                                {step.title}
+                                {optional ? " · опц." : ""}
+                              </strong>
+                              <small>{done ? check?.detail || "готово" : step.hint}</small>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                ) : (
+                  <p>Загружаю…</p>
+                )}
+              </section>
+
+              <section className="hx-card">
+                <header>
+                  <span>Здоровье</span>
+                  {health && !health.healthy && <AlertTriangle size={15} className="hermes-warn" />}
+                  {health?.healthy && <CheckCircle2 size={15} className="hermes-ok" />}
+                </header>
+                {health ? (
+                  <>
+                    <p>{health.message_ru}</p>
+                    {health.alerts.length > 0 && (
+                      <ul className="hermes-alerts">
+                        {health.alerts.slice(0, 5).map((a) => (
+                          <li key={a.code} data-sev={a.severity}>
+                            <strong>{a.message_ru}</strong>
+                            {a.fix ? <small>{a.fix}</small> : null}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                ) : (
+                  <p>Проверяю…</p>
+                )}
+              </section>
+
+              <section className="hx-card">
+                <header>
+                  <span>Тариф</span>
+                </header>
+                {billing ? (
+                  <>
+                    <p>{billing.message_ru}</p>
+                    <ul className="hermes-calls">
+                      <li>
+                        <strong>
+                          {billing.balance.token_credits.toFixed(2)} {billing.balance.currency}
+                        </strong>
+                        <small>
+                          выдано {billing.balance.granted_credits.toFixed(2)} · потрачено{" "}
+                          {billing.balance.spent_credits.toFixed(2)}
+                        </small>
+                      </li>
+                    </ul>
+                  </>
+                ) : (
+                  <p>Загружаю…</p>
+                )}
+              </section>
+
+              <Separator />
+
+              <section className="hx-card">
+                <header>
+                  <span>Каналы</span>
+                </header>
+                <p>Токен бота или QR. Instagram — тот же контур.</p>
+                <div className="hx-channel-row">
+                  <Button type="button" variant="secondary" size="sm" disabled={qrBusy} onClick={() => void startQr("telegram")}>
+                    QR TG
+                  </Button>
+                  <Button type="button" variant="secondary" size="sm" disabled={qrBusy} onClick={() => void startQr("max")}>
+                    QR MAX
+                  </Button>
+                  <Button type="button" variant="secondary" size="sm" disabled={qrBusy} onClick={() => void startQr("instagram")}>
+                    QR IG
+                  </Button>
+                </div>
+              </section>
+
+              {calls.length > 0 && (
+                <section className="hx-card">
+                  <header>
+                    <span>Звонки</span>
+                  </header>
+                  <ul className="hermes-calls">
+                    {calls.map((c) => (
+                      <li key={c.id}>
+                        <strong>
+                          {c.direction} · {c.state}
+                        </strong>
+                        <small>
+                          {(c.from_e164 || "—") + " → " + (c.to_e164 || "—")}
+                        </small>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
 
       {cameraOpen && (
         <div className="hermes-camera-modal" role="dialog" aria-label="Камера">
           <div className="hermes-camera-card">
             <video ref={videoRef} playsInline muted autoPlay />
             <div className="hermes-camera-actions">
-              <button type="button" className="btn-ghost" onClick={closeCamera}>
+              <Button type="button" variant="outline" onClick={closeCamera}>
                 Отмена
-              </button>
-              <button type="button" className="btn-primary" onClick={() => void captureCameraShot()}>
+              </Button>
+              <Button type="button" onClick={() => void captureCameraShot()}>
                 Снять
-              </button>
+              </Button>
             </div>
           </div>
         </div>

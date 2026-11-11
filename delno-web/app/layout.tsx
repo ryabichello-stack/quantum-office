@@ -1,5 +1,6 @@
 import "./globals.css";
 import "../styles/crystal-operator.css";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -12,7 +13,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body className="min-h-screen font-sans antialiased">
+        <TooltipProvider>{children}</TooltipProvider>
+      </body>
     </html>
   );
 }

@@ -4,8 +4,8 @@ ARG NEXT_PUBLIC_DELNO_API_URL=https://api.dlno.ru
 ARG NEXT_PUBLIC_BASE_PATH=
 ENV NEXT_PUBLIC_DELNO_API_URL=${NEXT_PUBLIC_DELNO_API_URL}
 ENV NEXT_PUBLIC_BASE_PATH=${NEXT_PUBLIC_BASE_PATH}
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json* ./
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 COPY . .
 RUN npm run build
 
