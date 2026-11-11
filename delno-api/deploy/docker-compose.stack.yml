@@ -37,6 +37,9 @@ services:
       DATABASE_URL: postgresql+psycopg://${DELNO_PG_USER:-delno}:${DELNO_PG_PASSWORD}@postgres:5432/${DELNO_PG_DB:-delno}
       KNOWLEDGE_BASE_URL: http://knowledge:8021
       FILES_BASE_URL: ${FILES_BASE_URL:-http://files:8015}
+      MAILER_BASE_URL: ${MAILER_BASE_URL:-http://mail:8000}
+      CALENDAR_BASE_URL: ${CALENDAR_BASE_URL:-http://calendar:8014}
+      CONFERENCE_BASE_URL: ${CONFERENCE_BASE_URL:-http://conference:8016}
       OFFICE_WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
     ports:
       - "127.0.0.1:18020:8020"
@@ -46,6 +49,12 @@ services:
       knowledge:
         condition: service_started
       files:
+        condition: service_started
+      mail:
+        condition: service_started
+      calendar:
+        condition: service_started
+      conference:
         condition: service_started
 
   knowledge:
@@ -92,6 +101,68 @@ services:
       - delno-files-assets:/data/assets
     ports:
       - "127.0.0.1:18015:8015"
+
+  # Mail gateway (SMTP optional — dry-run stub without MAIL_*)
+  mail:
+    build:
+      context: ./mail
+      dockerfile: Dockerfile.office
+    image: delno-mail:latest
+    container_name: delno-mail
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    environment:
+      WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
+      MAIL_SMTP_HOST: ${MAIL_SMTP_HOST:-}
+      MAIL_SMTP_PORT: ${MAIL_SMTP_PORT:-465}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-DELNO}
+    ports:
+      - "127.0.0.1:18000:8000"
+
+  # Calendar (CalDAV optional — suggest/create stub without credentials)
+  calendar:
+    build:
+      context: ./calendar
+      dockerfile: Dockerfile
+    image: delno-calendar:latest
+    container_name: delno-calendar
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    environment:
+      WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
+      MAILRU_CALDAV_URL: ${MAILRU_CALDAV_URL:-https://calendar.mail.ru}
+      MAILRU_CALDAV_USERNAME: ${MAILRU_CALDAV_USERNAME:-}
+      MAILRU_CALDAV_PASSWORD: ${MAILRU_CALDAV_PASSWORD:-}
+      MAILRU_CALENDAR_URL: ${MAILRU_CALENDAR_URL:-}
+      CALENDAR_TIMEZONE: ${CALENDAR_TIMEZONE:-Europe/Moscow}
+      CONFERENCE_BASE_URL: http://conference:8016
+    ports:
+      - "127.0.0.1:18014:8014"
+
+  # Conference / Telemost (OAuth optional — stub join URL without token)
+  conference:
+    build:
+      context: ./conference
+      dockerfile: Dockerfile
+    image: delno-conference:latest
+    container_name: delno-conference
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    environment:
+      WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
+      TELEMOST_ENABLED: ${TELEMOST_ENABLED:-true}
+      TELEMOST_STUB_WHEN_UNAUTH: ${TELEMOST_STUB_WHEN_UNAUTH:-true}
+      YANDEX_OAUTH_CLIENT_ID: ${YANDEX_OAUTH_CLIENT_ID:-}
+      YANDEX_OAUTH_CLIENT_SECRET: ${YANDEX_OAUTH_CLIENT_SECRET:-}
+      YANDEX_OAUTH_ACCESS_TOKEN: ${YANDEX_OAUTH_ACCESS_TOKEN:-}
+    ports:
+      - "127.0.0.1:18016:8016"
 
   site:
     build:
