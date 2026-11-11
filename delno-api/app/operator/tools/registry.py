@@ -61,6 +61,21 @@ class ToolRegistry:
     def get(self, name: str) -> Tool | None:
         return self._tools.get(name)
 
+    def list_catalog(self) -> list[dict[str, Any]]:
+        """Tenant-facing tool inventory (no external credentials required)."""
+        items: list[dict[str, Any]] = []
+        for tool in sorted(self._tools.values(), key=lambda t: t.name):
+            items.append(
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "critical_write": bool(getattr(tool, "critical_write", False)),
+                    "confirmation_class": tool_confirmation_class(tool),
+                    "parameters_schema": getattr(tool, "parameters_schema", {"type": "object", "properties": {}}),
+                }
+            )
+        return items
+
     def list_openai_specs(self, *, names: list[str] | None = None) -> list[dict[str, Any]]:
         specs: list[dict[str, Any]] = []
         for tool in self._tools.values():

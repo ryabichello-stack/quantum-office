@@ -87,14 +87,20 @@ def test_update_tenant_legal_endpoint():
         return_value={"enriched": True, "legal": legal},
     ):
         with patch("app.api.v1.tenant.write_audit"):
-            result = update_tenant_legal(
-                TenantLegalUpdate(inn="471405233378"),
-                db=db,
-                ctx=ctx,
-            )
+            with patch(
+                "app.api.v1.tenant.sync_tenant_settings_for_ctx",
+                return_value={"ok": True, "skipped": True},
+            ) as sync_mock:
+                result = update_tenant_legal(
+                    TenantLegalUpdate(inn="471405233378"),
+                    db=db,
+                    ctx=ctx,
+                )
 
     assert result["party_enriched"] is True
     assert result["legal"]["inn"] == "471405233378"
+    assert result["knowledge_sync"]["ok"] is True
+    sync_mock.assert_called_once()
     db.commit.assert_called_once()
 
 
