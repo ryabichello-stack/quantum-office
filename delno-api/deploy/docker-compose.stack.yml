@@ -1,4 +1,7 @@
-# DELNO isolated stack — copy to /opt/delno/docker-compose.yml on prod
+# DELNO isolated stack — copy to /opt/delno/docker-compose.yml on restore
+# Layout expected under /opt/delno (see deploy/restore_cloud4box.sh):
+#   api/ web/ admin/ site/ knowledge/ mail/ files/ calendar/ conference/
+# Secrets: /opt/delno/.env only (never commit). Template: delno-api/.env.example
 
 name: delno
 
@@ -20,54 +23,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 8
-    # no host ports — DB only inside delno-internal
-
-  api:
-    build:
-      context: ./api
-      dockerfile: Dockerfile
-    image: delno-api:latest
-    container_name: delno-api
-    restart: unless-stopped
-    networks:
-      - delno-internal
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: postgresql+psycopg://${DELNO_PG_USER:-delno}:${DELNO_PG_PASSWORD}@postgres:5432/${DELNO_PG_DB:-delno}
-      KNOWLEDGE_BASE_URL: http://knowledge:8021
-      FILES_BASE_URL: ${FILES_BASE_URL:-http://files:8015}
-      MAILER_BASE_URL: ${MAILER_BASE_URL:-http://mail:8000}
-      CALENDAR_BASE_URL: ${CALENDAR_BASE_URL:-http://calendar:8014}
-      CONFERENCE_BASE_URL: ${CONFERENCE_BASE_URL:-http://conference:8016}
-      OFFICE_WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
-      # OpenAI via SPB→Minsk→NL bridge (host SOCKS/HTTP). Use host-gateway IP from container.
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
-      MODEL_PROVIDER: ${MODEL_PROVIDER:-openai}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      OPENAI_HTTP_PROXY: ${OPENAI_HTTP_PROXY:-}
-      HTTPS_PROXY: ${HTTPS_PROXY:-}
-      HTTP_PROXY: ${HTTP_PROXY:-}
-      ALL_PROXY: ${ALL_PROXY:-}
-      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,postgres,knowledge,mail,calendar,files,conference,api,web}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    ports:
-      - "127.0.0.1:18020:8020"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      knowledge:
-        condition: service_started
-      files:
-        condition: service_started
-      mail:
-        condition: service_started
-      calendar:
-        condition: service_started
-      conference:
-        condition: service_started
 
   knowledge:
     build:
@@ -87,7 +42,109 @@ services:
     ports:
       - "127.0.0.1:18021:8021"
 
-  # File broker (Mail.ru / Yadisk / Google Drive / OneDrive / local) — tools-first
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    image: delno-api:latest
+    container_name: delno-api
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${DELNO_PG_USER:-delno}:${DELNO_PG_PASSWORD}@postgres:5432/${DELNO_PG_DB:-delno}
+      KNOWLEDGE_BASE_URL: http://knowledge:8021
+      FILES_BASE_URL: ${FILES_BASE_URL:-http://files:8015}
+      MAILER_BASE_URL: ${MAILER_BASE_URL:-http://mail:8000}
+      CALENDAR_BASE_URL: ${CALENDAR_BASE_URL:-http://calendar:8014}
+      CONFERENCE_BASE_URL: ${CONFERENCE_BASE_URL:-http://conference:8016}
+      OFFICE_WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-openai}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_HTTP_PROXY: ${OPENAI_HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      ALL_PROXY: ${ALL_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,postgres,knowledge,mail,calendar,files,conference,api,web}
+      TELEPHONY_WEBHOOK_TOKEN: ${TELEPHONY_WEBHOOK_TOKEN:-}
+    ports:
+      - "127.0.0.1:18020:8020"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      knowledge:
+        condition: service_started
+      files:
+        condition: service_started
+      conference:
+        condition: service_started
+      calendar:
+        condition: service_started
+      mail:
+        condition: service_started
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_DELNO_API_URL: ${NEXT_PUBLIC_DELNO_API_URL:-https://api.dlno.ru}
+        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-}
+    image: delno-web:latest
+    container_name: delno-web
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    ports:
+      - "0.0.0.0:3020:3000"
+    depends_on:
+      - api
+
+  site:
+    build:
+      context: ./site
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_BASE_PATH: ""
+    image: delno-site:latest
+    container_name: delno-site
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    environment:
+      DELNO_API_URL: http://api:8020
+      DELNO_TENANT_SLUG: ${DELNO_TENANT_SLUG:-quantum-labs}
+      NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY: ${NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY:-}
+      NEXT_PUBLIC_BASE_PATH: ""
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DELNO_TTS_VOICE: ${DELNO_TTS_VOICE:-cedar}
+    ports:
+      - "127.0.0.1:18019:3000"
+    depends_on:
+      - api
+
+  admin:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_DELNO_API_URL: ${NEXT_PUBLIC_DELNO_API_URL:-https://api.dlno.ru}
+    image: delno-admin:latest
+    container_name: delno-admin
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    ports:
+      - "0.0.0.0:3010:3000"
+    depends_on:
+      - api
+
   files:
     build:
       context: ./files
@@ -114,7 +171,6 @@ services:
     ports:
       - "127.0.0.1:18015:8015"
 
-  # Mail gateway (SMTP optional — dry-run stub without MAIL_*)
   mail:
     build:
       context: ./mail
@@ -135,7 +191,6 @@ services:
     ports:
       - "127.0.0.1:18000:8000"
 
-  # Calendar (CalDAV optional — suggest/create stub without credentials)
   calendar:
     build:
       context: ./calendar
@@ -150,27 +205,22 @@ services:
       CALENDAR_DEFAULT_SOURCE: ${CALENDAR_DEFAULT_SOURCE:-mailru}
       CALENDAR_TIMEZONE: ${CALENDAR_TIMEZONE:-Europe/Moscow}
       CONFERENCE_BASE_URL: http://conference:8016
-      # mailru
       MAILRU_CALDAV_URL: ${MAILRU_CALDAV_URL:-https://calendar.mail.ru}
       MAILRU_CALDAV_USERNAME: ${MAILRU_CALDAV_USERNAME:-}
       MAILRU_CALDAV_PASSWORD: ${MAILRU_CALDAV_PASSWORD:-}
       MAILRU_CALENDAR_URL: ${MAILRU_CALENDAR_URL:-}
-      # yandex
       YANDEX_CALDAV_URL: ${YANDEX_CALDAV_URL:-https://caldav.yandex.ru}
       YANDEX_CALDAV_USERNAME: ${YANDEX_CALDAV_USERNAME:-}
       YANDEX_CALDAV_PASSWORD: ${YANDEX_CALDAV_PASSWORD:-}
       YANDEX_CALENDAR_URL: ${YANDEX_CALENDAR_URL:-}
-      # google
       GOOGLE_CALENDAR_TOKEN: ${GOOGLE_CALENDAR_TOKEN:-}
       GOOGLE_CALENDAR_ID: ${GOOGLE_CALENDAR_ID:-primary}
-      # outlook / graph
       OUTLOOK_CALENDAR_TOKEN: ${OUTLOOK_CALENDAR_TOKEN:-}
       MICROSOFT_GRAPH_TOKEN: ${MICROSOFT_GRAPH_TOKEN:-}
       OUTLOOK_CALENDAR_ID: ${OUTLOOK_CALENDAR_ID:-}
     ports:
       - "127.0.0.1:18014:8014"
 
-  # Conference multi-provider (stub join URLs without provider creds)
   conference:
     build:
       context: ./conference
@@ -202,27 +252,6 @@ services:
       JITSI_BASE_URL: ${JITSI_BASE_URL:-https://meet.jit.si}
     ports:
       - "127.0.0.1:18016:8016"
-
-  site:
-    build:
-      context: ./site
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-/delno}
-    image: delno-site:latest
-    container_name: delno-site
-    restart: unless-stopped
-    networks:
-      - delno-internal
-    env_file:
-      - .env
-    environment:
-      DELNO_API_URL: http://api:8020
-      DELNO_TENANT_SLUG: ${DEFAULT_TENANT_SLUG:-delno-demo}
-    ports:
-      - "127.0.0.1:18019:3000"
-    depends_on:
-      - api
 
 networks:
   delno-internal:

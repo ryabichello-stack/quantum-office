@@ -1,0 +1,187 @@
+# Second Brain eval cases (S3). Offline-friendly; run: brain eval
+cases:
+  - id: product-what
+    query: "что такое Quantum Payouts"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 80
+    expect_any: ["выплат", "Quantum", "payout"]
+    require_citation: true
+
+  - id: tariffs
+    query: "какая комиссия"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["комисси", "%", "ставк", "тариф"]
+    require_citation: true
+
+  - id: sbp
+    query: "можно ли платить через СБП"
+    principal: service:text-secretary
+    mode: keyword
+    min_chars: 40
+    expect_any: ["СБП", "карт", "выплат"]
+    require_citation: true
+
+  - id: npd
+    query: "самозанятые НПД чеки"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["НПД", "самозанят", "ФНС", "чек"]
+    require_citation: true
+
+  - id: banks
+    query: "с какими банками работаете"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["банк", "номинальн", "партнер", "партнёр"]
+    require_citation: true
+
+  - id: lombards-law
+    query: "ломбард 196-ФЗ"
+    principal: service:cursor-admin
+    mode: hybrid
+    min_chars: 60
+    expect_any: ["ломбард", "196", "залог"]
+    require_citation: true
+
+  - id: lombards-payout
+    query: "безналичная выдача займа ломбард"
+    principal: service:cursor-admin
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["ломбард", "займ", "выплат", "залог"]
+    require_citation: true
+
+  - id: objections
+    query: "нам нужна самая низкая комиссия"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["комисси", "ставк", "ценност", "дешев"]
+    require_citation: true
+
+  - id: escalate
+    query: "когда переводить на менеджера"
+    principal: service:text-secretary
+    mode: keyword
+    min_chars: 40
+    expect_any: ["менеджер", "эскал", "перевод"]
+    require_citation: true
+
+  - id: acl-voice-public-faq-private
+    query: "какая комиссия Quantum"
+    principal: service:voice-public
+    mode: keyword
+    expect_empty: true
+
+  - id: acl-voice-no-mail
+    query: "договор номинального счёта письмо"
+    principal: service:voice-public
+    mode: keyword
+    expect_empty: true
+
+  - id: acl-unknown-deny
+    query: "тарифы"
+    principal: service:unknown-bot
+    expect_denied: true
+
+  - id: contactish-alpha
+    query: "Альфа-Банк комплаенс"
+    principal: service:cursor-admin
+    mode: hybrid
+    min_chars: 20
+    expect_any: ["Альфа", "банк", "комплаенс", "compliance", "номинальн"]
+    require_citation: true
+
+  - id: graph-person
+    query: "Парцуф"
+    principal: service:cursor-admin
+    mode: hybrid
+    min_chars: 10
+    expect_any: ["Парцуф", "альфа", "Alfa", "ypartsuf"]
+    require_citation: true
+
+  - id: sales-script
+    query: "скрипт холодного звонка ломбард"
+    principal: service:cursor-admin
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["звонок", "ломбард", "скрипт", "привет"]
+    require_citation: true
+
+  - id: brain-self-what
+    query: "что такое Second Brain база знаний"
+    principal: service:voice-office
+    mode: hybrid
+    min_chars: 60
+    expect_any: ["Second Brain", "ava-knowledge", "баз", "знан", "поиск"]
+    require_citation: true
+
+  - id: brain-self-mode
+    query: "KNOWLEDGE_READ_MODE brain rollback legacy"
+    principal: service:voice-office
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["KNOWLEDGE_READ_MODE", "legacy", "brain", "rollback", "откат"]
+    require_citation: true
+
+  - id: brain-self-acl
+    query: "service:voice-office видит ли почту"
+    principal: service:voice-office
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["voice", "почт", "mail", "assistant", "ACL"]
+    require_citation: true
+
+  - id: vertical-insurance
+    query: "выплаты страховщикам ОСАГО каско Quantum"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 60
+    expect_any: ["страх", "ОСАГО", "каско", "выплат"]
+    require_citation: true
+
+  - id: vertical-tradein
+    query: "trade-in выкуп автомобиля выплата физлицу"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["trade", "выкуп", "дилер", "авто", "физлиц"]
+    require_citation: true
+
+  - id: vertical-agro
+    query: "выкуп сельхозпродукции у ЛПХ выплаты"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["сельхоз", "ЛПХ", "закуп", "продукц", "ферм"]
+    require_citation: true
+
+  - id: vertical-mfo
+    query: "МФО микрозаймы массовые выплаты Quantum"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["МФО", "микрозайм", "займ", "выплат"]
+    require_citation: true
+
+  - id: vertical-gig
+    query: "gig курьеры самозанятые выплаты НПД"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["gig", "курьер", "самозанят", "НПД", "платформ"]
+    require_citation: true
+
+  - id: vertical-affiliate
+    query: "CPA affiliate блогеры выплаты веб-мастерам"
+    principal: service:text-secretary
+    mode: hybrid
+    min_chars: 40
+    expect_any: ["CPA", "affiliate", "блогер", "веб-мастер", "партнер", "партнёр"]
+    require_citation: true
+

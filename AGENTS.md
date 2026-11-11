@@ -1,54 +1,37 @@
 # Quantum Labs Office — Agent Onboarding
 
-**Это репозиторий office-сервисов Quantum Labs**, не Polyhub trading.
+**Это репозиторий office-сервисов Quantum Labs + DELNO**, не Polyhub trading.
 
 ## Что здесь
 
-- `outreach/` — Bitrix outreach (FastAPI, `:8012`)
-- `mailer/` — post-call письма, календарь, Телемост (`:8000`)
-- `text-bot/` — Telegram-бот (`:8011`)
-- `delno-api/` — DELNO platform API (multi-tenant SaaS)
-- `docs/` — карта прода и состояние
+| Папка | Сервис |
+|-------|--------|
+| `outreach/` | Bitrix outreach `:8012` |
+| `mailer/` | post-call / calendar·Telemost `:8000` |
+| `text-bot/` | Telegram + HTTP `:8011` |
+| `console/` | пульт `:8013` |
+| `knowledge/` | Second Brain / KB `:8017` |
+| `calendar/` `conference/` `files/` | office brokers |
+| `delno-api/` `delno-web/` `delno-admin/` `DELNO-site-v23/` | DELNO SaaS |
+| `delno-office/` | DELNO brokers under `/opt/delno` |
+| `docs/` | планы, DNS, restore |
 
-## DELNO (commercial SaaS)
+## DELNO
 
-**Мастер-план (canonical):** [`docs/DELNO_MASTER_PLAN.md`](docs/DELNO_MASTER_PLAN.md)
+- **Prod host:** Cloud4Box **`161.104.89.123`** (Beget `5.35.86.62` уничтожен — не SSH туда)
+- Site: https://dlno.ru · Cabinet: https://app.dlno.ru · API: https://api.dlno.ru
+- **Restore from git:** [`docs/DELNO_RESTORE.md`](docs/DELNO_RESTORE.md)
+- DNS: [`docs/DLNO_DOMAINS.md`](docs/DLNO_DOMAINS.md)
+- Env template: `delno-api/.env.example` → `/opt/delno/.env` only (never git)
+- Master plan: [`docs/DELNO_MASTER_PLAN.md`](docs/DELNO_MASTER_PLAN.md)
 
-Staging: https://a.47z.ru/delno/ · https://a.47z.ru/delno-api/ · prod path `/opt/delno/`
+## Дисциплина
 
-**Marketing prod:** https://dlno.ru/ (`delno-site-root` :18022) · **API prod:** https://api.dlno.ru/
-
-**Deploy rule:** любой деплoy site/api/knowledge для DELNO — **сразу на оба фронта**: staging `a.47z.ru/delno` **и** prod `dlno.ru`. Скрипт: `delno-api/deploy/deploy_staging_refresh.sh`.
-
-Second Brain (KB foundation): `/opt/ava-knowledge/brain_platform/` → port as `delno-knowledge`
-
-## Прод (справочно)
-
-- SSH: `ssh root@5.35.86.62`
-- Сайт: https://a.47z.ru
-- UI: https://a.47z.ru/_ava_outreach/ui/
-
-| Путь | Сервис |
-|------|--------|
-| `/opt/ava-outreach` | `ava-outreach.service` |
-| `/opt/ava-mailer` | `ava-mailer.service` |
-| `/opt/ava-text-bot` | `ava-text-bot.service` |
-| `/opt/polyhub/src` | **НЕ ТРОГАТЬ** (trading) |
-| `/root/ava` | Asterisk AVA voice — **не ломать** |
-
-Секреты: `/opt/ava-outreach/.env`, `/opt/ava-mailer/.env`, `/opt/ava-text-bot/.env`.
+1. Любое изменение → commit + push + PR  
+2. Журнал → [`CHANGELOG.md`](CHANGELOG.md)  
+3. Секреты не в git  
+4. Прод обновлять из git, затем smoke `/health`
 
 ## Не ломать
 
-Asterisk, AVA docker, Mango, VPN, `/opt/polyhub`.
-
-## Проверки на сервере
-
-```bash
-systemctl status ava-outreach ava-mailer ava-text-bot
-curl -sf http://127.0.0.1:8012/health
-curl -sf http://127.0.0.1:8000/health
-curl -sf http://127.0.0.1:8011/health
-```
-
-Снаружи: `curl -sf https://a.47z.ru/_ava_outreach/health`
+Asterisk / AVA docker / Mango / VPN / `/opt/polyhub` / 3x-ui Reality (после ingress на **:8443**).
