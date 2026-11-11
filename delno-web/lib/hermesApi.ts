@@ -106,3 +106,34 @@ export function apiCallDial(token: string, body: { to_e164: string; script?: str
     },
   );
 }
+
+export type BillingSummary = {
+  ok: boolean;
+  balance: { currency: string; token_credits: number; granted_credits: number; spent_credits: number };
+  tariff: Record<string, number | string>;
+  by_metric: Array<{ metric: string; quantity: number; events: number }>;
+  message_ru: string;
+};
+
+export function apiBillingSummary(token: string) {
+  return apiFetch<BillingSummary>("/v1/tenant/billing/summary", token);
+}
+
+export function apiBillingEnsure(token: string) {
+  return apiFetch<BillingSummary>("/v1/tenant/billing/ensure", token, { method: "POST" });
+}
+
+export function apiChannelQrStart(token: string, channel_type: string, label?: string) {
+  return apiFetch<{
+    ok: boolean;
+    account_id: string;
+    login_id: string;
+    status: string;
+    message_ru: string;
+    auth_mode: string;
+  }>("/v1/tenant/channels/qr/start", token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ channel_type, label }),
+  });
+}

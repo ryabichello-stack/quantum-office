@@ -18,9 +18,13 @@ import {
   type PendingConfirmation,
 } from "@/lib/api";
 import {
+  apiBillingEnsure,
+  apiBillingSummary,
   apiCallsList,
+  apiChannelQrStart,
   apiHermesHealth,
   apiHermesSetup,
+  type BillingSummary,
   type CallSessionItem,
   type HermesHealthStatus,
   type HermesSetupStatus,
@@ -38,7 +42,8 @@ const QUICK_CHIPS = [
   "Что ещё настроить в офисе?",
   "Проверь здоровье офиса",
   "Какие звонки были сегодня?",
-  "Покажи текущие настройки",
+  "Найди в интернете свежие новости про нашу нишу",
+  "Покажи расход токенов и баланс",
 ];
 
 export function HermesStage({ token }: { token: string }) {
@@ -52,24 +57,44 @@ export function HermesStage({ token }: { token: string }) {
   const [setup, setSetup] = useState<HermesSetupStatus | null>(null);
   const [health, setHealth] = useState<HermesHealthStatus | null>(null);
   const [calls, setCalls] = useState<CallSessionItem[]>([]);
+  const [billing, setBilling] = useState<BillingSummary | null>(null);
   const [holdingMic, setHoldingMic] = useState(false);
   const [bootstrapped, setBootstrapped] = useState(false);
+  const [qrBusy, setQrBusy] = useState(false);
   const mountRef = useRef<HTMLDivElement>(null);
 
   const refreshPanels = useCallback(async () => {
     try {
-      const [s, h, c] = await Promise.all([
+      const [s, h, c, b] = await Promise.all([
         apiHermesSetup(token),
         apiHermesHealth(token),
         apiCallsList(token, 8).catch(() => ({ ok: true, items: [] as CallSessionItem[] })),
+        apiBillingEnsure(token).catch(() => apiBillingSummary(token)),
       ]);
       setSetup(s);
       setHealth(h);
       setCalls(c.items || []);
+      setBilling(b);
     } catch {
       /* panels are best-effort; chat still works */
     }
   }, [token]);
+
+  async function startQr(channelType: string) {
+    if (qrBusy) return;
+    setQrBusy(true);
+    try {
+      const out = await apiChannelQrStart(token, channelType);
+      setLines((prev) => [
+        ...prev,
+        { role: "assistant", text: out.message_ru || `QR-сессия ${channelType}: ${out.account_id}` },
+      ]);
+    } catch {
+      setError("Не удалось стартовать QR-подключение канала.");
+    } finally {
+      setQrBusy(false);
+    }
+  }
 
   useEffect(() => {
     void refreshPanels();
@@ -265,6 +290,57 @@ export function HermesStage({ token }: { token: string }) {
             ) : (
               <p className="hermes-panel-msg">Проверяю компоненты…</p>
             )}
+          </section>
+
+          <section className="hermes-panel">
+            <header>
+              <span>Тариф / токены</span>
+            </header>
+            {billing ? (
+              <>
+                <p className="hermes-panel-msg">{billing.message_ru}</p>
+                <ul className="hermes-calls">
+                  <li>
+                    <strong>
+                      Баланс {billing.balance.token_credits.toFixed(2)} {billing.balance.currency}
+                    </strong>
+                    <small>
+                      выдано {billing.balance.granted_credits.toFixed(2)} · потрачено{" "}
+                      {billing.balance.spent_credits.toFixed(2)}
+                    </small>
+                  </li>
+                  <li>
+                    <strong>LLM</strong>
+                    <small>
+                      {String(billing.tariff.llm_input_per_1k)} / {String(billing.tariff.llm_output_per_1k)} за 1k
+                      in/out
+                    </small>
+                  </li>
+                </ul>
+              </>
+            ) : (
+              <p className="hermes-panel-msg">Загружаю тариф…</p>
+            )}
+          </section>
+
+          <section className="hermes-panel">
+            <header>
+              <span>Каналы</span>
+            </header>
+            <p className="hermes-panel-msg">
+              Два режима: токен бота (Settings) или QR/web-login. Instagram — тот же QR-контур.
+            </p>
+            <div className="operator-chips">
+              <button type="button" disabled={qrBusy} onClick={() => void startQr("telegram")}>
+                QR Telegram
+              </button>
+              <button type="button" disabled={qrBusy} onClick={() => void startQr("max")}>
+                QR MAX
+              </button>
+              <button type="button" disabled={qrBusy} onClick={() => void startQr("instagram")}>
+                QR Instagram
+              </button>
+            </div>
           </section>
 
           {calls.length > 0 && (

@@ -57,11 +57,15 @@ class OpenAIProvider(ModelProvider):
                     json=payload,
                 )
             if response.status_code == 200:
+                data = response.json()
+                usage = data.get("usage") if isinstance(data, dict) else None
                 return {
                     "ok": True,
-                    "data": response.json(),
+                    "data": data,
                     "provider": self.name,
                     "via_proxy": bool(openai_proxy_url()),
+                    "usage": usage if isinstance(usage, dict) else {},
+                    "model": payload.get("model"),
                 }
             return {
                 "ok": False,
