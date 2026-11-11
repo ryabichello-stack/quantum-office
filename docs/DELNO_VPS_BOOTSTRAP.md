@@ -8,11 +8,12 @@
 
 | Компонент | URL / путь | Статус |
 |-----------|------------|--------|
-| Landing + live widget embed | http://161.104.89.123/ | ✅ |
+| Marketing site **v2** (canonical) | http://161.104.89.123/ | ✅ «Клиенты пишут и звонят…» |
 | Кабинет (`delno-web`) | http://161.104.89.123:3020/ | ✅ |
 | API | http://161.104.89.123/delno-api/v1/health | ✅ |
 | Brain / knowledge | http://161.104.89.123/delno-brain/api/brain/health | ✅ |
 | Widget CDN | http://161.104.89.123/widget/v1/ | ✅ |
+| `delno-site` container | `127.0.0.1:18019` → nginx `/` | ✅ restored `DELNO-site-v23` |
 | Postgres (internal) | docker `delno-postgres` | ✅ healthy |
 | systemd | `delno-stack.service` | ✅ active |
 
@@ -61,11 +62,11 @@
 
 ## Как пользоваться прямо сейчас
 
-1. Открыть http://161.104.89.123:3020/ → войти `owner@quantumlabs.ru`
-2. Пройти **Onboarding** (уже стартован) — текст / загрузка материалов
-3. **Knowledge** — проверить seed; добавить документы
-4. На лендинге http://161.104.89.123/ — виджет снизу (stub-ответы)
-5. Embed для своего сайта — snippet из Settings / `GET /v1/tenant/widget`
+1. Открыть **маркетинговый сайт v2**: http://161.104.89.123/ (hero «Клиенты пишут и звонят…», демо-орб, Crystal widget)
+2. Кабинет: http://161.104.89.123:3020/ → `owner@quantumlabs.ru`
+3. Пройти **Onboarding** (уже стартован)
+4. **Knowledge** — seed + свои документы
+5. Embed — snippet из `GET /v1/tenant/widget`
 
 ## Следующие шаги (порядок «скорее пользоваться»)
 
@@ -115,6 +116,11 @@ curl -sf -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3020/
 ```
 
 Compose **без** сломанного `site` (нет `package.json` у DELNO-site-v23); сервис `web` = образ `delno-web:latest` на `:3020`.
+
+## Site restore
+
+`DELNO-site-v23` в git был без `package.json` / `tsconfig` / `globals.css` / `ScenarioSwitcher` — из‑за этого на bootstrap поднялась заглушка.  
+Сейчас v2 собран и отдан на `/`; scaffold закоммичен в ветку `cursor/delno-site-restore-9b51`.
 
 ## Runtime-патчи на VPS (зафиксировать в delno-ветку позже)
 

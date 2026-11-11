@@ -12,6 +12,7 @@
 
 ### Added
 
+- Docs: на Cloud4Box поднят канонический marketing site v2 (`DELNO-site-v23`) на `/` вместо заглушки
 - Docs: bootstrap DELNO на Cloud4Box VPS (`docs/DELNO_VPS_BOOTSTRAP.md`) — Phase A live, cabinet/widget/brain, dogfood tenant `quantum-labs`, план Phase B (OpenAI/TG/DaData)
 - Docs: полный аудит инструментов Quantum Office (`docs/QUANTUM_OFFICE_TOOLS_AUDIT.md`) — сервисы, MCP, каналы, DaData, CRM, пробелы для переноса на DELNO
 
