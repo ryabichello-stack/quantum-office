@@ -13,9 +13,11 @@ source: tools#ava-conference
 shard: tool-ava-conference
 ---
 
-# Инструмент: ava-conference (Яндекс Телемост)
+# Инструмент: ava-conference (мультипровайдер ВКС)
 
 Создание видеовстречи и email-приглашений по запросу.
+
+Провайдеры: `yandex` (Телемост), `google_meet`, `zoom`, `teams`, `jitsi`.
 
 - Путь: `/opt/ava-conference`
 - Порт: `8016`
@@ -23,11 +25,14 @@ shard: tool-ava-conference
 
 ## API
 
+`GET /api/conferences/providers` — список провайдеров и `configured`.
+
 `POST /api/conferences` с `X-Webhook-Token`:
 
-- `title`, `invitees[]`, `when_text`, `message`, `send_invites`
+- `title`, `provider`, `invitees[]`, `when_text`, `message`, `send_invites`
 
-Ответ содержит `conference_id`, `join_url` (telemost.yandex.ru), статус инвайтов.
+Ответ: `conference_id`, `join_url`, `provider`, `stub`, статус инвайтов.
 
-Голосовой/текстовый сценарий: «создай конференцию / Телемост, пригласи …».  
-Text-bot scenario `conference`; AVA tool может бить в этот сервис или в mailer calendar+telemost.
+Без кредов — stub URL (`stub.<provider>.delno.local`); Jitsi работает сразу (публичная комната).
+
+Голосовой/текстовый сценарий: «создай конференцию / Meet / Zoom / Teams / Jitsi, пригласи …».

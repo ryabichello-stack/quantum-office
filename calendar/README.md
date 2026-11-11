@@ -1,39 +1,48 @@
-# calendar — отдельный модуль проверки и создания событий
+# calendar — multi-provider calendar broker
 
-Mail.ru CalDAV: check / suggest / create. Совместим по путям с тем, что раньше жило в mailer.
+Sources (tools-first — without tokens return stub slots / staged create):
+
+| source | backend | env |
+|--------|---------|-----|
+| `mailru` | Mail.ru CalDAV | `MAILRU_CALDAV_*` + `MAILRU_CALENDAR_URL` |
+| `yandex` | Яндекс.Календарь CalDAV | `YANDEX_CALDAV_*` + `YANDEX_CALENDAR_URL` |
+| `google` | Google Calendar API | `GOOGLE_CALENDAR_TOKEN`, optional `GOOGLE_CALENDAR_ID` |
+| `outlook` | Microsoft Graph | `OUTLOOK_CALENDAR_TOKEN` / `MICROSOFT_GRAPH_TOKEN` |
+
+Default source: `CALENDAR_DEFAULT_SOURCE=mailru`.
 
 ## API
 
 ```http
+GET /api/calendar/providers
+
 POST /api/calendar/check
-{"start":"2026-07-22T17:00:00","timezone":"Europe/Moscow"}
+{"start":"2026-07-22T17:00:00","timezone":"Europe/Moscow","source":"google"}
 
 POST /api/calendar/suggest
-{"start":"2026-07-22T17:00:00","duration_min":30,"suggestions_count":3}
+{"start":"2026-07-22T17:00:00","duration_min":30,"source":"yandex"}
 
 POST /api/calendar/create
 {
   "start": "2026-07-22T17:00:00",
   "summary": "Созвон с клиентом",
+  "source": "outlook",
   "attendee_email": "ivan@example.com",
-  "create_telemost": true,
-  "send_telemost_invite": false
+  "create_telemost": true
 }
 ```
 
-Health: `GET /health`
+Health: `GET /health` — lists all providers + `configured` flags.
 
-## Связь с conference/
+## Telemost
 
-При `create_telemost=true` (или `CREATE_TELEMOST_BY_DEFAULT=true`) calendar вызывает  
+При `create_telemost=true` calendar вызывает  
 `POST {CONFERENCE_BASE_URL}/api/conferences` и кладёт `join_url` в событие.
 
-## Прод (когда задеплоим)
+## Прод / DELNO
 
 | | |
 |--|--|
-| path | `/opt/ava-calendar` |
-| port | `8014` |
-| unit | `ava-calendar.service` |
-
-Mailer `:8000` calendar routes пока не трогаем — сначала выкат calendar, потом переключим AVA tools.
+| path | `/opt/delno/calendar` (или `/opt/ava-calendar`) |
+| port | `8014` host `18014` |
+| unit / compose | `delno-calendar` |

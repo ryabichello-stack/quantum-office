@@ -1,0 +1,8 @@
+FROM python:3.12-slim
+WORKDIR /app
+COPY requirements.office.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+COPY office_gateway.py ./
+ENV MAIL_FORCE_DRY_RUN=false
+EXPOSE 8000
+CMD ["uvicorn", "office_gateway:app", "--host", "0.0.0.0", "--port", "8000"]

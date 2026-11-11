@@ -20,6 +20,13 @@ TELEMOST_API_URL = (
     or "https://cloud-api.yandex.net/v1/telemost-api/conferences"
 )
 TELEMOST_TIMEOUT_SECONDS = float(os.getenv("TELEMOST_TIMEOUT_SECONDS", "6") or "6")
+# Tools-first: without Yandex OAuth return a deterministic stub join URL.
+TELEMOST_STUB_WHEN_UNAUTH = os.getenv("TELEMOST_STUB_WHEN_UNAUTH", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
 
 
 def create_conference(
@@ -41,6 +48,10 @@ def create_conference(
         logger.warning(
             "[TELEMOST] no OAuth access token — authorize via /oauth/yandex/start"
         )
+        if TELEMOST_STUB_WHEN_UNAUTH:
+            slug = "".join(ch if ch.isalnum() else "-" for ch in (title or "meet"))[:40].strip("-") or "meet"
+            join = f"https://stub.telemost.delno.local/{slug}"
+            return f"stub-{slug}", join, None
         return None, None, "oauth_missing"
 
     level = (waiting_room_level or TELEMOST_WAITING_ROOM_LEVEL).strip() or "PUBLIC"
