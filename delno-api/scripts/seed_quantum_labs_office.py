@@ -19,7 +19,7 @@ from app.services import hermes_ops, phone_provision
 
 
 DID = os.getenv("QL_DID", "+79699665899")
-OWNER_EMAIL = os.getenv("QL_OWNER_EMAIL", "owner@quantumlabs.ru")
+OWNER_EMAIL = os.getenv("QL_OWNER_EMAIL", "office@quantumlabs.ru")
 OWNER_PASSWORD = os.getenv("QL_OWNER_PASSWORD", "hermes-ql-2026")
 DOGFOOD_FLAGS = (
     "web_voice",
