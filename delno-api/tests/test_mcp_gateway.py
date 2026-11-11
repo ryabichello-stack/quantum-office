@@ -19,10 +19,14 @@ def test_mcp_catalog_includes_office_and_meta():
     names = {t["name"] for t in mcp_tools_catalog()}
     assert "get_knowledge" in names
     assert "suggest_calendar_slots" in names
+    assert "crm.funnel" in names
+    assert "crm.lifecycle_set" in names
+    assert "outreach.stage_send" in names
+    assert "outreach.packs" in names
     assert "office.health" in names
     assert "office.connectors" in names
     assert "hermes.profile" in names
-    assert len(names) >= 14
+    assert len(names) >= 27
 
 
 def test_ensure_and_find_mcp_key():
@@ -59,7 +63,7 @@ def test_call_office_health_and_connectors(monkeypatch):
     assert health["tenant_slug"] == "demo"
 
     connectors = call_mcp_tool(db, ctx, "office.connectors", {})
-    assert connectors["total"] == 4
+    assert connectors["total"] == 5
 
 
 def test_call_registry_stub_tool(monkeypatch):
@@ -101,4 +105,4 @@ def test_hermes_profile_shape(monkeypatch):
     assert profile["mcp"]["transport"] == "http"
     assert "/v1/mcp" in profile["mcp"]["base_url"]
     assert profile["mcp_api_key"].startswith("dmcp_")
-    assert profile["toolset"]["total"] >= 14
+    assert profile["toolset"]["total"] >= 27

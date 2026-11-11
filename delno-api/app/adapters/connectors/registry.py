@@ -5,6 +5,7 @@ from app.adapters.connectors.calendar import CalendarConnector
 from app.adapters.connectors.conference import ConferenceConnector
 from app.adapters.connectors.files import FilesConnector
 from app.adapters.connectors.mail import MailConnector
+from app.adapters.connectors.outreach import OutreachConnector
 
 _REGISTRY: dict[str, OfficeConnector] = {}
 
@@ -26,3 +27,4 @@ register_connector(MailConnector())
 register_connector(CalendarConnector())
 register_connector(FilesConnector())
 register_connector(ConferenceConnector())
+register_connector(OutreachConnector())

@@ -18,9 +18,9 @@ from app.operator.tools.registry import ToolRegistry, tool_confirmation_class
 from app.services.connectors import list_tenant_connectors, update_tenant_connector
 
 
-def test_connector_registry_has_four():
+def test_connector_registry_has_five():
     kinds = [c.kind for c in list_connectors()]
-    assert kinds == ["mail", "calendar", "files", "conference"]
+    assert kinds == ["mail", "calendar", "files", "conference", "outreach"]
 
 
 def test_mail_stub_send_draft():
@@ -108,7 +108,7 @@ def test_list_and_enable_connector_service():
     db.query.return_value.filter.return_value.one.return_value = tenant
 
     listed = list_tenant_connectors(db, ctx)
-    assert listed["total"] == 4
+    assert listed["total"] == 5
     assert all(item["configured"] is False for item in listed["items"])
 
     updated = update_tenant_connector(db, ctx, "calendar", enabled=True)
