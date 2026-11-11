@@ -105,6 +105,8 @@ def health():
         "timezone": cal.CALENDAR_TIMEZONE,
         "default_duration_min": cal.CALENDAR_DEFAULT_DURATION_MIN,
         "conference_base": conference_client.CONFERENCE_BASE_URL,
+        "creds_policy": "tools_first",
+        "stub_mode": not cal.credentials_configured(),
     }
 
 
@@ -187,6 +189,19 @@ async def calendar_create(
             if req.end
             else start_dt + timedelta(minutes=cal.CALENDAR_DEFAULT_DURATION_MIN)
         )
+        if not cal.credentials_configured():
+            return {
+                "ok": True,
+                "created": False,
+                "stub": True,
+                "dry_run": True,
+                "message": "CalDAV not configured — meeting staged (tools-first stub)",
+                "start": start_dt.isoformat(),
+                "end": end_dt.isoformat(),
+                "summary": req.summary,
+                "telemost_created": False,
+                "telemost_join_url": "",
+            }
         summary = cal.clean_text(req.summary) or "Созвон с клиентом"
         description = cal.clean_text(req.description)
         location = cal.clean_text(req.location)

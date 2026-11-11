@@ -76,13 +76,16 @@ class ConferenceCreateResponse(BaseModel):
 @app.get("/health")
 def health():
     oauth = yandex_oauth.oauth_status()
+    has_token = bool(oauth.get("has_access_token") or oauth.get("static_token_set"))
     return {
         "ok": True,
         "service": SERVICE_NAME,
         "telemost_enabled": telemost.TELEMOST_ENABLED,
         "smtp_configured": invites.smtp_configured(),
         "oauth_configured": oauth.get("configured"),
-        "oauth_has_token": bool(oauth.get("has_access_token") or oauth.get("static_token_set")),
+        "oauth_has_token": has_token,
+        "stub_mode": bool(telemost.TELEMOST_STUB_WHEN_UNAUTH and not has_token),
+        "creds_policy": "tools_first",
     }
 
 
@@ -114,8 +117,9 @@ def create_conference(
             ).model_dump(),
         )
 
+    stub = str(conf_id or "").startswith("stub-") or "stub.telemost.delno.local" in (join_url or "")
     invite_results: List[dict] = []
-    if req.send_invites and req.invitees:
+    if req.send_invites and req.invitees and not stub:
         invite_results = invites.send_invites(
             invitees=req.invitees,
             title=title,
@@ -123,20 +127,30 @@ def create_conference(
             when_text=req.when_text,
             host_note=req.message,
         )
+    elif req.send_invites and req.invitees and stub:
+        invite_results = [
+            {"email": e, "sent": False, "stub": True, "error": "smtp_skipped_stub"}
+            for e in req.invitees
+        ]
 
     sent_ok = sum(1 for r in invite_results if r.get("sent"))
     msg = f"Конференция создана: {join_url}"
+    if stub:
+        msg = f"Stub conference (no Yandex OAuth yet): {join_url}"
     if req.invitees:
         msg += f". Приглашения: {sent_ok}/{len(req.invitees)} отправлено"
 
-    return ConferenceCreateResponse(
+    payload = ConferenceCreateResponse(
         ok=True,
         conference_id=conf_id or "",
         join_url=join_url,
         title=title,
         invites=invite_results,
         message=msg,
-    )
+    ).model_dump()
+    if stub:
+        payload["stub"] = True
+    return payload
 
 
 # ---- Yandex OAuth (same flow as mailer; tokens owned by this service) ----
