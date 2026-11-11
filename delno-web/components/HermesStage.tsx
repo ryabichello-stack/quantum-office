@@ -8,7 +8,17 @@ import {
   useRef,
   useState,
 } from "react";
-import { AlertTriangle, Camera, CheckCircle2, Mic, Paperclip, Sparkles, X } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowUp,
+  Camera,
+  CheckCircle2,
+  Mic,
+  PanelRight,
+  Paperclip,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { CrystalOrb } from "@/components/CrystalOrb";
 import { ConfirmCard } from "@/components/ConfirmCard";
 import {
@@ -46,13 +56,21 @@ type ChatLine = {
   previews?: { url: string; name: string }[];
 };
 
-const QUICK_CHIPS = [
-  "Настрой телефон секретаря",
-  "Что ещё настроить в офисе?",
-  "Проверь здоровье офиса",
-  "Какие звонки были сегодня?",
-  "Покажи расход токенов и баланс",
+const QUICK_PROMPTS = [
+  { title: "Телефон секретаря", text: "Настрой телефон секретаря" },
+  { title: "Сетап офиса", text: "Что ещё настроить в офисе?" },
+  { title: "Здоровье", text: "Проверь здоровье офиса" },
+  { title: "Звонки", text: "Какие звонки были сегодня?" },
+  { title: "Баланс", text: "Покажи расход токенов и баланс" },
 ];
+
+function HermesAvatar() {
+  return (
+    <span className="hx-avatar" aria-hidden>
+      <Sparkles size={14} />
+    </span>
+  );
+}
 
 export function HermesStage({ token }: { token: string }) {
   const [lines, setLines] = useState<ChatLine[]>([]);
@@ -70,12 +88,14 @@ export function HermesStage({ token }: { token: string }) {
   const [qrBusy, setQrBusy] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingHermesAttachment[]>([]);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
   const mountRef = useRef<HTMLDivElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messageRef = useRef(message);
   messageRef.current = message;
   const pendingRef = useRef(pendingFiles);
@@ -124,30 +144,27 @@ export function HermesStage({ token }: { token: string }) {
     }
   }, []);
 
-  const addFiles = useCallback(
-    (files: FileList | File[]) => {
-      const list = Array.from(files);
-      if (!list.length) return;
-      setError("");
-      setPendingFiles((prev) => {
-        const next = [...prev];
-        for (const file of list) {
-          if (!canAddMore(next.length)) {
-            setError("Максимум 4 вложения за раз");
-            break;
-          }
-          const made = makePendingAttachment(file);
-          if ("error" in made) {
-            setError(made.error);
-            continue;
-          }
-          next.push(made);
+  const addFiles = useCallback((files: FileList | File[]) => {
+    const list = Array.from(files);
+    if (!list.length) return;
+    setError("");
+    setPendingFiles((prev) => {
+      const next = [...prev];
+      for (const file of list) {
+        if (!canAddMore(next.length)) {
+          setError("Максимум 4 вложения за раз");
+          break;
         }
-        return next;
-      });
-    },
-    [],
-  );
+        const made = makePendingAttachment(file);
+        if ("error" in made) {
+          setError(made.error);
+          continue;
+        }
+        next.push(made);
+      }
+      return next;
+    });
+  }, []);
 
   const removePending = useCallback((id: string) => {
     setPendingFiles((prev) => {
@@ -255,6 +272,13 @@ export function HermesStage({ token }: { token: string }) {
     el.scrollTop = el.scrollHeight;
   }, [lines, sending]);
 
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${Math.min(160, Math.max(24, el.scrollHeight))}px`;
+  }, [message]);
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     stopDictate();
@@ -295,9 +319,6 @@ export function HermesStage({ token }: { token: string }) {
       video.srcObject = streamRef.current;
       void video.play().catch(() => undefined);
     }
-    return () => {
-      /* keep stream until closeCamera */
-    };
   }, [cameraOpen]);
 
   function closeCamera() {
@@ -375,222 +396,116 @@ export function HermesStage({ token }: { token: string }) {
     ? Math.round((100 * setup.progress.required_done) / Math.max(1, setup.progress.required_total))
     : 0;
 
+  const statusHint = dictating
+    ? "Диктовка… отпустите mic"
+    : voicePhase === "listen"
+      ? "Слушаю…"
+      : voicePhase === "think"
+        ? "Думаю…"
+        : voicePhase === "speak"
+          ? "Отвечаю голосом…"
+          : voicePhase === "error"
+            ? "Ошибка микрофона"
+            : sending
+              ? "Hermes печатает…"
+              : dictateSupported
+                ? "Напишите, приложите фото или удержите mic"
+                : "Напишите, приложите фото или файл";
+
+  const canSend = !sending && (Boolean(message.trim()) || pendingFiles.length > 0);
+
   return (
-    <div className="operator-stage hermes-stage" ref={mountRef} data-voice-active={voiceActive ? "true" : "false"}>
-      <div className="page-head operator-head">
-        <small>Hermes · руководитель офиса</small>
-        <h1>Hermes</h1>
-        <p>
-          Настройте офис как клиент DELNO: голосом, текстом, фото или файлом. Можно снять кадр с
-          камеры прямо в чате — Hermes читает изображения.
-        </p>
-      </div>
+    <div
+      className="operator-stage hermes-stage hx-app"
+      ref={mountRef}
+      data-voice-active={voiceActive ? "true" : "false"}
+      data-panel={panelOpen ? "open" : "closed"}
+    >
+      <header className="hx-topbar">
+        <div className="hx-brand">
+          <HermesAvatar />
+          <div>
+            <strong>Hermes</strong>
+            <small>{statusHint}</small>
+          </div>
+        </div>
+        <div className="hx-top-actions">
+          <button
+            type="button"
+            className={`hx-icon-btn${voiceActive ? " is-live" : ""}`}
+            title="Голосовой диалог"
+            aria-label="Голосовой диалог"
+            onClick={toggleVoice}
+          >
+            <Mic size={18} />
+          </button>
+          <div className="hx-orb-mini" aria-hidden>
+            <CrystalOrb voiceActive={voiceActive} voicePhase={voicePhase} onOrbClick={toggleVoice} />
+          </div>
+          <button
+            type="button"
+            className={`hx-icon-btn${panelOpen ? " is-on" : ""}`}
+            title="Офис: сетап и здоровье"
+            aria-label="Панель офиса"
+            onClick={() => setPanelOpen((v) => !v)}
+          >
+            <PanelRight size={18} />
+            {!setup?.setup_complete && <i className="hx-dot" />}
+            {health && !health.healthy && <i className="hx-dot warn" />}
+          </button>
+        </div>
+      </header>
 
-      <div className="hermes-layout">
-        <aside className="hermes-side">
-          <section className="hermes-panel">
-            <header>
-              <span>Сетап офиса</span>
-              {setup?.setup_complete ? (
-                <CheckCircle2 size={16} className="hermes-ok" />
-              ) : (
-                <span className="hermes-progress-label">{progressPct}%</span>
-              )}
-            </header>
-            {setup ? (
-              <>
-                <div className="hermes-progress-bar" aria-hidden>
-                  <i style={{ width: `${progressPct}%` }} />
+      <div className="hx-body">
+        <main className="hx-chat">
+          <div className="hx-thread" ref={threadRef}>
+            {lines.length === 0 && !sending && (
+              <div className="hx-empty">
+                <p className="hx-empty-kicker">DELNO · office agent</p>
+                <h1 className="hx-empty-title">Hermes</h1>
+                <p className="hx-empty-lead">
+                  Как в Cursor или ChatGPT: пишите задачу, кидайте фото, снимайте камерой — Hermes
+                  отвечает в этом же потоке.
+                </p>
+                <div className="hx-suggestions">
+                  {QUICK_PROMPTS.map((item) => (
+                    <button
+                      key={item.title}
+                      type="button"
+                      disabled={sending}
+                      onClick={() => void sendText(item.text)}
+                    >
+                      <strong>{item.title}</strong>
+                      <span>{item.text}</span>
+                    </button>
+                  ))}
                 </div>
-                <p className="hermes-panel-msg">{setup.message_ru}</p>
-                <ul className="hermes-checklist">
-                  {setup.steps.map((step) => {
-                    const check = setup.checks[step.id];
-                    const done = Boolean(check?.ok);
-                    const optional = Boolean(check?.optional);
-                    return (
-                      <li key={step.id} data-done={done ? "1" : "0"} data-optional={optional ? "1" : "0"}>
-                        <span className="hermes-check-dot" />
-                        <div>
-                          <strong>
-                            {step.title}
-                            {optional ? " · опц." : ""}
-                          </strong>
-                          <small>{done ? check?.detail || "готово" : step.hint}</small>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </>
-            ) : (
-              <p className="hermes-panel-msg">Загружаю чеклист…</p>
-            )}
-          </section>
-
-          <section className="hermes-panel">
-            <header>
-              <span>Здоровье</span>
-              {health && !health.healthy && <AlertTriangle size={16} className="hermes-warn" />}
-              {health?.healthy && <CheckCircle2 size={16} className="hermes-ok" />}
-            </header>
-            {health ? (
-              <>
-                <p className="hermes-panel-msg">{health.message_ru}</p>
-                {health.alerts.length > 0 && (
-                  <ul className="hermes-alerts">
-                    {health.alerts.slice(0, 5).map((a) => (
-                      <li key={a.code} data-sev={a.severity}>
-                        <strong>{a.message_ru}</strong>
-                        {a.fix ? <small>{a.fix}</small> : null}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </>
-            ) : (
-              <p className="hermes-panel-msg">Проверяю компоненты…</p>
-            )}
-          </section>
-
-          <section className="hermes-panel">
-            <header>
-              <span>Тариф / токены</span>
-            </header>
-            {billing ? (
-              <>
-                <p className="hermes-panel-msg">{billing.message_ru}</p>
-                <ul className="hermes-calls">
-                  <li>
-                    <strong>
-                      Баланс {billing.balance.token_credits.toFixed(2)} {billing.balance.currency}
-                    </strong>
-                    <small>
-                      выдано {billing.balance.granted_credits.toFixed(2)} · потрачено{" "}
-                      {billing.balance.spent_credits.toFixed(2)}
-                    </small>
-                  </li>
-                  <li>
-                    <strong>LLM</strong>
-                    <small>
-                      {String(billing.tariff.llm_input_per_1k)} / {String(billing.tariff.llm_output_per_1k)} за 1k
-                      in/out
-                    </small>
-                  </li>
-                </ul>
-              </>
-            ) : (
-              <p className="hermes-panel-msg">Загружаю тариф…</p>
-            )}
-          </section>
-
-          <section className="hermes-panel">
-            <header>
-              <span>Каналы</span>
-            </header>
-            <p className="hermes-panel-msg">
-              Два режима: токен бота (Settings) или QR/web-login. Instagram — тот же QR-контур.
-            </p>
-            <div className="operator-chips">
-              <button type="button" disabled={qrBusy} onClick={() => void startQr("telegram")}>
-                QR Telegram
-              </button>
-              <button type="button" disabled={qrBusy} onClick={() => void startQr("max")}>
-                QR MAX
-              </button>
-              <button type="button" disabled={qrBusy} onClick={() => void startQr("instagram")}>
-                QR Instagram
-              </button>
-            </div>
-          </section>
-
-          {calls.length > 0 && (
-            <section className="hermes-panel">
-              <header>
-                <span>Звонки</span>
-              </header>
-              <ul className="hermes-calls">
-                {calls.map((c) => (
-                  <li key={c.id}>
-                    <strong>
-                      {c.direction} · {c.state}
-                    </strong>
-                    <small>
-                      {(c.from_e164 || "—") + " → " + (c.to_e164 || "—")}
-                    </small>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </aside>
-
-        <div className="hermes-main">
-          <div className="hermes-chat-shell">
-            <div className="hermes-chat-toolbar">
-              <div className="operator-orb-wrap hermes-orb-compact">
-                <CrystalOrb voiceActive={voiceActive} voicePhase={voicePhase} onOrbClick={toggleVoice} />
               </div>
-              <p className="operator-phase hermes-phase">
-                {dictating && "Диктовка в поле… отпустите mic и нажмите Отправить"}
-                {!dictating && voicePhase === "listen" && "Слушаю разговор…"}
-                {!dictating && voicePhase === "think" && "Думаю…"}
-                {!dictating && voicePhase === "speak" && "Отвечаю голосом…"}
-                {!dictating && voicePhase === "error" && "Ошибка микрофона"}
-                {!dictating && voicePhase === "idle" && (
-                  dictateSupported
-                    ? "Mic — диктовка. 📎 файл/фото. 📷 камера. Orb — голосовой диалог."
-                    : "📎 файл/фото, 📷 камера, или текст. Chrome — для диктовки."
-                )}
-              </p>
-            </div>
+            )}
 
-            <div className="operator-chips">
-              {QUICK_CHIPS.map((chip) => (
-                <button key={chip} type="button" disabled={sending} onClick={() => void sendText(chip)}>
-                  {chip}
-                </button>
-              ))}
-            </div>
-
-            <div className="operator-thread hermes-thread" ref={threadRef}>
-              {lines.length === 0 && (
-                <div className="delno-result">
-                  <div className="result-head">
-                    <span>
-                      <Sparkles /> Hermes
-                    </span>
-                  </div>
-                  <p style={{ margin: 0 }}>
-                    Прикрепите фото/файл, снимите кадр с камеры или надиктуйте задание — Hermes
-                    читает изображения и документы.
-                  </p>
-                </div>
-              )}
-              {lines.map((line, idx) =>
-                line.role === "user" ? (
-                  <div key={idx} className="msg-bubble user">
+            {lines.map((line, idx) =>
+              line.role === "user" ? (
+                <article key={idx} className="hx-row hx-row-user">
+                  <div className="hx-bubble hx-bubble-user">
                     {line.previews && line.previews.length > 0 && (
-                      <div className="hermes-msg-previews">
+                      <div className="hx-previews">
                         {line.previews.map((p) => (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img key={p.url} src={p.url} alt={p.name} />
                         ))}
                       </div>
                     )}
-                    <div className="msg-body">{line.text}</div>
+                    <div className="hx-text">{line.text}</div>
                   </div>
-                ) : (
-                  <div key={idx}>
-                    <div className="delno-result">
-                      <div className="result-head">
-                        <span>
-                          <Sparkles /> Hermes
-                        </span>
-                      </div>
-                      <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{line.text}</p>
+                </article>
+              ) : (
+                <article key={idx} className="hx-row hx-row-assistant">
+                  <HermesAvatar />
+                  <div className="hx-assistant-col">
+                    <div className="hx-bubble hx-bubble-assistant">
+                      <div className="hx-text">{line.text}</div>
                       {line.sources && line.sources.length > 0 && (
-                        <ul className="msg-sources">
+                        <ul className="hx-sources">
                           {line.sources.map((s, i) => (
                             <li key={i}>{s.title || s.citation || s.document_id}</li>
                           ))}
@@ -607,21 +522,34 @@ export function HermesStage({ token }: { token: string }) {
                       />
                     )}
                   </div>
-                ),
-              )}
-            </div>
+                </article>
+              ),
+            )}
 
-            {(error || dictateError) && <p className="status-error">{error || dictateError}</p>}
+            {sending && (
+              <article className="hx-row hx-row-assistant">
+                <HermesAvatar />
+                <div className="hx-bubble hx-bubble-assistant hx-typing" aria-label="Печатает">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              </article>
+            )}
+          </div>
+
+          <div className="hx-composer-wrap">
+            {(error || dictateError) && <p className="hx-error">{error || dictateError}</p>}
 
             {pendingFiles.length > 0 && (
-              <div className="hermes-attach-strip">
+              <div className="hx-attach-strip">
                 {pendingFiles.map((item) => (
-                  <div key={item.id} className="hermes-attach-chip" data-kind={item.kind}>
+                  <div key={item.id} className="hx-attach-chip" data-kind={item.kind}>
                     {item.previewUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={item.previewUrl} alt={item.filename} />
                     ) : (
-                      <span className="hermes-attach-file">{item.filename}</span>
+                      <span>{item.filename}</span>
                     )}
                     <button
                       type="button"
@@ -636,7 +564,7 @@ export function HermesStage({ token }: { token: string }) {
               </div>
             )}
 
-            <form className="chat-form operator-form hermes-form" onSubmit={onSubmit}>
+            <form className="hx-composer" onSubmit={onSubmit}>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -653,58 +581,207 @@ export function HermesStage({ token }: { token: string }) {
                 hidden
                 onChange={onPickFiles}
               />
-              <button
-                type="button"
-                className="hermes-mic-btn"
-                aria-label="Прикрепить файл или фото"
-                title="Файл или фото из галереи"
-                disabled={sending}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Paperclip size={18} />
-              </button>
-              <button
-                type="button"
-                className="hermes-mic-btn"
-                aria-label="Снять фото камерой"
-                title="Снимок с камеры"
-                disabled={sending}
-                onClick={() => void openDesktopCamera()}
-              >
-                <Camera size={18} />
-              </button>
-              <button
-                type="button"
-                className={`hermes-mic-btn${dictating ? " active" : ""}`}
-                aria-label="Удерживайте для диктовки в поле"
-                title="Удерживайте — диктовка в поле ввода"
-                disabled={sending}
-                onPointerDown={onMicDown}
-                onPointerUp={onMicUp}
-                onPointerLeave={onMicUp}
-                onPointerCancel={onMicUp}
-                onContextMenu={(e) => e.preventDefault()}
-              >
-                <Mic size={18} />
-              </button>
+              <div className="hx-composer-tools">
+                <button
+                  type="button"
+                  aria-label="Прикрепить"
+                  title="Файл или фото"
+                  disabled={sending}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Paperclip size={18} />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Камера"
+                  title="Снимок"
+                  disabled={sending}
+                  onClick={() => void openDesktopCamera()}
+                >
+                  <Camera size={18} />
+                </button>
+                <button
+                  type="button"
+                  className={dictating ? "is-live" : undefined}
+                  aria-label="Диктовка"
+                  title="Удерживайте для диктовки"
+                  disabled={sending}
+                  onPointerDown={onMicDown}
+                  onPointerUp={onMicUp}
+                  onPointerLeave={onMicUp}
+                  onPointerCancel={onMicUp}
+                  onContextMenu={(e) => e.preventDefault()}
+                >
+                  <Mic size={18} />
+                </button>
+              </div>
               <textarea
+                ref={textareaRef}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder="Текст, диктовка, фото или файл…"
+                placeholder="Сообщение Hermes…"
                 disabled={sending}
-                rows={dictating || message.length > 80 ? 3 : 2}
+                rows={1}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (canSend) {
+                      stopDictate();
+                      const q = message.trim();
+                      setMessage("");
+                      void sendText(q, "text", true);
+                    }
+                  }
+                }}
               />
-              <button
-                type="submit"
-                className="btn-primary"
-                disabled={sending || (!message.trim() && pendingFiles.length === 0)}
-              >
-                {sending ? "…" : "Отправить"}
+              <button type="submit" className="hx-send" disabled={!canSend} aria-label="Отправить">
+                <ArrowUp size={18} strokeWidth={2.4} />
               </button>
             </form>
+            <p className="hx-footnote">Enter — отправить · Shift+Enter — новая строка</p>
           </div>
-        </div>
+        </main>
+
+        <aside className="hx-panel" aria-hidden={!panelOpen}>
+          <div className="hx-panel-inner">
+            <header className="hx-panel-head">
+              <strong>Офис</strong>
+              <button type="button" className="hx-icon-btn" aria-label="Закрыть" onClick={() => setPanelOpen(false)}>
+                <X size={16} />
+              </button>
+            </header>
+
+            <section className="hx-card">
+              <header>
+                <span>Сетап</span>
+                {setup?.setup_complete ? (
+                  <CheckCircle2 size={15} className="hermes-ok" />
+                ) : (
+                  <span className="hx-pct">{progressPct}%</span>
+                )}
+              </header>
+              {setup ? (
+                <>
+                  <div className="hermes-progress-bar" aria-hidden>
+                    <i style={{ width: `${progressPct}%` }} />
+                  </div>
+                  <p>{setup.message_ru}</p>
+                  <ul className="hermes-checklist">
+                    {setup.steps.map((step) => {
+                      const check = setup.checks[step.id];
+                      const done = Boolean(check?.ok);
+                      const optional = Boolean(check?.optional);
+                      return (
+                        <li key={step.id} data-done={done ? "1" : "0"} data-optional={optional ? "1" : "0"}>
+                          <span className="hermes-check-dot" />
+                          <div>
+                            <strong>
+                              {step.title}
+                              {optional ? " · опц." : ""}
+                            </strong>
+                            <small>{done ? check?.detail || "готово" : step.hint}</small>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              ) : (
+                <p>Загружаю…</p>
+              )}
+            </section>
+
+            <section className="hx-card">
+              <header>
+                <span>Здоровье</span>
+                {health && !health.healthy && <AlertTriangle size={15} className="hermes-warn" />}
+                {health?.healthy && <CheckCircle2 size={15} className="hermes-ok" />}
+              </header>
+              {health ? (
+                <>
+                  <p>{health.message_ru}</p>
+                  {health.alerts.length > 0 && (
+                    <ul className="hermes-alerts">
+                      {health.alerts.slice(0, 5).map((a) => (
+                        <li key={a.code} data-sev={a.severity}>
+                          <strong>{a.message_ru}</strong>
+                          {a.fix ? <small>{a.fix}</small> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              ) : (
+                <p>Проверяю…</p>
+              )}
+            </section>
+
+            <section className="hx-card">
+              <header>
+                <span>Тариф</span>
+              </header>
+              {billing ? (
+                <>
+                  <p>{billing.message_ru}</p>
+                  <ul className="hermes-calls">
+                    <li>
+                      <strong>
+                        {billing.balance.token_credits.toFixed(2)} {billing.balance.currency}
+                      </strong>
+                      <small>
+                        выдано {billing.balance.granted_credits.toFixed(2)} · потрачено{" "}
+                        {billing.balance.spent_credits.toFixed(2)}
+                      </small>
+                    </li>
+                  </ul>
+                </>
+              ) : (
+                <p>Загружаю…</p>
+              )}
+            </section>
+
+            <section className="hx-card">
+              <header>
+                <span>Каналы</span>
+              </header>
+              <p>Токен бота или QR. Instagram — тот же контур.</p>
+              <div className="hx-channel-row">
+                <button type="button" disabled={qrBusy} onClick={() => void startQr("telegram")}>
+                  QR TG
+                </button>
+                <button type="button" disabled={qrBusy} onClick={() => void startQr("max")}>
+                  QR MAX
+                </button>
+                <button type="button" disabled={qrBusy} onClick={() => void startQr("instagram")}>
+                  QR IG
+                </button>
+              </div>
+            </section>
+
+            {calls.length > 0 && (
+              <section className="hx-card">
+                <header>
+                  <span>Звонки</span>
+                </header>
+                <ul className="hermes-calls">
+                  {calls.map((c) => (
+                    <li key={c.id}>
+                      <strong>
+                        {c.direction} · {c.state}
+                      </strong>
+                      <small>
+                        {(c.from_e164 || "—") + " → " + (c.to_e164 || "—")}
+                      </small>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </div>
+        </aside>
       </div>
+
+      {panelOpen && <button type="button" className="hx-backdrop" aria-label="Закрыть панель" onClick={() => setPanelOpen(false)} />}
 
       {cameraOpen && (
         <div className="hermes-camera-modal" role="dialog" aria-label="Камера">

@@ -6,6 +6,8 @@
 
 - Hermes chat attachments: photo/file attach + camera capture; OpenAI vision for
   images; text/docs excerpted into the turn (`/v1/operator/chat` `attachments`)
+- Hermes UI rebuilt as ChatGPT/Cursor-style agent chat: full-height thread,
+  floating composer, typing indicator, office status in a slide-over panel
 
 ### Fixed
 
