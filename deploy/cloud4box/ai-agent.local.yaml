@@ -1,0 +1,104 @@
+active_pipeline: demo_openai
+# Quantum Labs override — Cloud4Box recovery 2026-11-11
+config_version: 6
+default_provider: openai_realtime
+audio_transport: audiosocket
+audiosocket:
+  format: slin
+  host: 127.0.0.1
+  port: 8090
+  advertise_host: 127.0.0.1
+
+contexts:
+  default:
+    greeting: "Добрый день! Вы позвонили в Quantum Labs. Чем могу помочь?"
+    profile: openai_realtime_24k
+    provider: openai_realtime
+    prompt: |
+      Ты — русскоязычный ИИ-секретарь компании Quantum Labs (массовые выплаты Quantum Payouts).
+      Говори только по-русски, коротко и по делу, без технических терминов и системных сообщений.
+      Задачи: ответить на вопросы о продукте (через get_company_knowledge), записать на встречу.
+      Перед календарём обязательно получи и подтверди имя и email клиента.
+      Затем check_calendar → при free=true сразу create_calendar_event.
+      После успешной записи скажи фиксированную фразу успеха со ссылкой на встречу если есть, затем hangup_call.
+      Не говори «сейчас проверю» и подобные филлеры — просто вызывай tool.
+    tools:
+      - check_calendar
+      - create_calendar_event
+      - get_company_knowledge
+      - hangup_call
+
+providers:
+  openai_realtime:
+    enabled: true
+    api_version: ga
+    model: gpt-realtime
+    voice: cedar
+    input_encoding: ulaw
+    input_sample_rate_hz: 8000
+    provider_input_encoding: linear16
+    provider_input_sample_rate_hz: 24000
+    output_encoding: linear16
+    output_sample_rate_hz: 24000
+    target_encoding: mulaw
+    target_sample_rate_hz: 8000
+    turn_detection:
+      type: server_vad
+      create_response: true
+      silence_duration_ms: 1700
+      threshold: 0.62
+      prefix_padding_ms: 200
+
+# In-call HTTP tools → office mailer on loopback
+in_call_tools:
+  check_calendar:
+    method: POST
+    url: http://127.0.0.1:8000/api/calendar/check
+    headers:
+      Content-Type: application/json
+      X-Webhook-Token: ${WEBHOOK_TOKEN}
+    body_template: |
+      {"start": "{{start}}", "timezone": "Europe/Moscow"}
+    output_variables:
+      free: free
+  create_calendar_event:
+    method: POST
+    url: http://127.0.0.1:8000/api/calendar/create
+    headers:
+      Content-Type: application/json
+      X-Webhook-Token: ${WEBHOOK_TOKEN}
+    body_template: |
+      {"start": "{{start}}", "timezone": "Europe/Moscow", "name": "{{name}}", "email": "{{email}}"}
+    output_variables:
+      created: created
+      event_url: event_url
+      telemost_created: telemost_created
+      telemost_join_url: telemost_join_url
+  get_company_knowledge:
+    method: POST
+    url: http://127.0.0.1:8017/api/knowledge/query
+    headers:
+      Content-Type: application/json
+      X-Webhook-Token: ${WEBHOOK_TOKEN}
+    body_template: |
+      {"topic": "{{topic}}", "limit": 4, "max_chars": 4500}
+    output_variables:
+      answer: text
+  hangup_call:
+    kind: hangup
+
+post_call_tools:
+  mailru_post_call:
+    kind: generic_webhook
+    phase: post_call
+    url: http://127.0.0.1:8000/api/ava/post-call
+    headers:
+      Content-Type: application/json
+      X-Webhook-Token: ${WEBHOOK_TOKEN}
+    body_template: |
+      {"call_id": "{{call_id}}", "caller_number": "{{caller_number}}", "caller_name": "{{caller_name}}", "call_duration": "{{call_duration}}", "call_outcome": "{{call_outcome}}", "summary": "{{summary}}", "transcript": "{{transcript}}"}
+
+vad:
+  use_provider_vad: true
+barge_in:
+  enabled: true

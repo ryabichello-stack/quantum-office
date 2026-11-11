@@ -1,4 +1,4 @@
-"""Optional client for the standalone conference (Telemost) service."""
+"""Optional client for the standalone multi-provider conference service."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ CREATE_TELEMOST_BY_DEFAULT = os.getenv("CREATE_TELEMOST_BY_DEFAULT", "true").low
     "yes",
     "on",
 )
+CONFERENCE_DEFAULT_PROVIDER = os.getenv("CONFERENCE_DEFAULT_PROVIDER", "yandex").strip() or "yandex"
 
 
 def create_telemost(
@@ -29,13 +30,15 @@ def create_telemost(
     when_text: str = "",
     message: str = "",
     send_invites: bool = False,
+    provider: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Call conference service. Returns dict with ok/join_url/error.
+    Call conference service. Returns dict with ok/join_url/error/provider.
     Does not raise on soft failures.
     """
     payload = {
         "title": title,
+        "provider": (provider or CONFERENCE_DEFAULT_PROVIDER).strip() or "yandex",
         "invitees": invitees or [],
         "when_text": when_text,
         "message": message,

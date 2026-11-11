@@ -1,0 +1,19 @@
+# Voice stack scaffold — NOT started by default.
+# Requires /root/ava tree + Asterisk on the host (lost with QL; rebuild from scratch).
+# Usage (after AVA restore): docker compose -f deploy/cloud4box/docker-compose.voice.yml up -d
+name: quantum-voice
+
+services:
+  ai_engine:
+    profiles: ["voice"]
+    image: qo-ava-engine:local
+    container_name: qo-ava-engine
+    restart: unless-stopped
+    network_mode: host
+    env_file: [/opt/quantum-office/.env, /root/ava/.env]
+    volumes:
+      - /root/ava:/app
+    working_dir: /app
+    command: ["python3", "main.py"]
+    # Build context must be provided when AVA source is restored:
+    # build: { context: /root/ava, dockerfile: Dockerfile }

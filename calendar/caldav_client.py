@@ -79,6 +79,9 @@ def find_conflicts(start_dt: datetime, end_dt: datetime) -> List[Any]:
 
 
 def slot_is_free(start_dt: datetime, end_dt: datetime) -> bool:
+    if not credentials_configured():
+        # Tools-first: without CalDAV treat requested slot as free.
+        return True
     return len(find_conflicts(start_dt, end_dt)) == 0
 
 
@@ -155,17 +158,20 @@ def suggest_slots(
     current = desired_start
     end_limit = desired_start + timedelta(hours=search_hours_ahead)
     duration = timedelta(minutes=duration_min)
+    stub = not credentials_configured()
 
     while current + duration <= end_limit and len(suggestions) < suggestions_count:
         candidate_end = current + duration
         if slot_is_free(current, candidate_end):
-            suggestions.append(
-                {
-                    "start": current.isoformat(),
-                    "end": candidate_end.isoformat(),
-                    "label": format_slot(current),
-                }
-            )
+            item = {
+                "start": current.isoformat(),
+                "end": candidate_end.isoformat(),
+                "label": format_slot(current) + (" (stub)" if stub else ""),
+                "duration_min": duration_min,
+            }
+            if stub:
+                item["stub"] = True
+            suggestions.append(item)
         current += timedelta(minutes=30)
 
     return suggestions

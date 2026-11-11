@@ -12,6 +12,12 @@
 
 ### Added
 
+- Disaster recovery: Cloud4Box compose restores QL office stack after Beget (`5.35.86.62`) loss
+  (`deploy/cloud4box`, nginx `/_ava_*` routes on `161.104.89.123`)
+- Conference: multi-provider registry — `yandex` (Telemost), `google_meet`, `zoom`, `teams`, `jitsi`;
+  `GET /api/conferences/providers`, `provider` on `POST /api/conferences`; tools-first stubs without creds
+- Text-bot: restore channel curate — forward → rewrite → publish to Telegram channel
+  (photo/video/docs/albums) with 📣 footer link (`TELEGRAM_CHANNEL_BOT_TOKEN`, default `@epoch_z`)
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
 - Юридический футер + «Отписаться» / List-Unsubscribe в шаблонах; презентация PDF на 1-м письме
 - API `GET/POST /api/packs` (+ apply) и вкладка «Кампания» в UI (Console embed + standalone)
@@ -32,6 +38,11 @@
 
 ### Changed
 
+- Docs/AGENTS: QL Beget **безвозвратно уничтожен**; единственный прод — Cloud4Box (без SSH/миграции на старый хост)
+- Voice: Asterisk + AVA ai_engine restored on Cloud4Box from upstream; Mango registration awaits SIP password
+- Docs: `DELNO_OFFICE_OS_ARCHITECTURE.md` — Hermes supervisor + Frontline + workers; QL dogfood tenant plan
+- Knowledge: Docker image ships git vault + exported `content/quantum_labs.md` / `index.yaml`; auto-ingest on start
+- Cloud4Box: compose profile `curate` for channel-curate; voice restore scaffold (`docs/QL_VOICE_RESTORE.md`)
 - Console UI: единый тонкий шрифт Manrope, компактные кнопки, понятнее подписи на пульте
 - Вкладка «Задание на звонок»: режимы «своя тема» / «база знаний», русские подписи tools, автосборка сценария
 - Outreach UI: полностью в стиле «Задание на звонок» — surface/поля/mode-cards, акцент Console, Кампания первой вкладкой; Рассылка / Очередь / Настройки тем же паттерном
