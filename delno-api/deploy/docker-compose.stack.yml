@@ -158,7 +158,7 @@ services:
     ports:
       - "127.0.0.1:18014:8014"
 
-  # Conference / Telemost (OAuth optional — stub join URL without token)
+  # Conference multi-provider (stub join URLs without provider creds)
   conference:
     build:
       context: ./conference
@@ -170,11 +170,24 @@ services:
       - delno-internal
     environment:
       WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
+      CONFERENCE_DEFAULT_PROVIDER: ${CONFERENCE_DEFAULT_PROVIDER:-yandex}
+      CONFERENCE_STUB_WHEN_UNAUTH: ${CONFERENCE_STUB_WHEN_UNAUTH:-true}
       TELEMOST_ENABLED: ${TELEMOST_ENABLED:-true}
       TELEMOST_STUB_WHEN_UNAUTH: ${TELEMOST_STUB_WHEN_UNAUTH:-true}
       YANDEX_OAUTH_CLIENT_ID: ${YANDEX_OAUTH_CLIENT_ID:-}
       YANDEX_OAUTH_CLIENT_SECRET: ${YANDEX_OAUTH_CLIENT_SECRET:-}
       YANDEX_OAUTH_ACCESS_TOKEN: ${YANDEX_OAUTH_ACCESS_TOKEN:-}
+      YANDEX_TELEMOST_OAUTH_TOKEN: ${YANDEX_TELEMOST_OAUTH_TOKEN:-}
+      GOOGLE_MEET_TOKEN: ${GOOGLE_MEET_TOKEN:-}
+      GOOGLE_CALENDAR_TOKEN: ${GOOGLE_CALENDAR_TOKEN:-}
+      ZOOM_ACCESS_TOKEN: ${ZOOM_ACCESS_TOKEN:-}
+      ZOOM_ACCOUNT_ID: ${ZOOM_ACCOUNT_ID:-}
+      ZOOM_CLIENT_ID: ${ZOOM_CLIENT_ID:-}
+      ZOOM_CLIENT_SECRET: ${ZOOM_CLIENT_SECRET:-}
+      TEAMS_TOKEN: ${TEAMS_TOKEN:-}
+      MICROSOFT_GRAPH_TOKEN: ${MICROSOFT_GRAPH_TOKEN:-}
+      JITSI_ENABLED: ${JITSI_ENABLED:-true}
+      JITSI_BASE_URL: ${JITSI_BASE_URL:-https://meet.jit.si}
     ports:
       - "127.0.0.1:18016:8016"
 
