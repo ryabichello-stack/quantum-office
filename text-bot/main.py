@@ -19,6 +19,7 @@ from openai import OpenAI
 from ava_client import OPENAI_TOOLS, run_tool
 from prompt_loader import greeting_text, load_system_prompt
 from session_store import append_message, clear_chat, init_db, load_messages
+import channel_curate
 
 load_dotenv()
 
@@ -26,6 +27,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("ava-text-bot")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+# Dedicated channel-admin bot for curate (forward → rewrite → channel). Key later.
+TELEGRAM_CHANNEL_BOT_TOKEN = os.getenv("TELEGRAM_CHANNEL_BOT_TOKEN", "").strip()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip()
 AVA_MAILER_BASE = os.getenv("AVA_MAILER_BASE", "http://127.0.0.1:8000").strip()
@@ -40,11 +43,21 @@ _client: OpenAI | None = None
 _system_prompt: str = ""
 _greeting: str = ""
 _poll_thread: threading.Thread | None = None
+_curate_poll_thread: threading.Thread | None = None
 _stop_event = threading.Event()
 
 
-def _tg_post(method: str, payload: dict[str, Any], *, timeout: float = 30.0) -> dict[str, Any]:
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/{method}"
+def _tg_post(
+    method: str,
+    payload: dict[str, Any],
+    *,
+    token: str | None = None,
+    timeout: float = 30.0,
+) -> dict[str, Any]:
+    tok = (token or TELEGRAM_BOT_TOKEN or "").strip()
+    if not tok:
+        raise RuntimeError("telegram_token_missing")
+    url = f"https://api.telegram.org/bot{tok}/{method}"
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(
         url,
@@ -56,13 +69,14 @@ def _tg_post(method: str, payload: dict[str, Any], *, timeout: float = 30.0) -> 
         return json.loads(resp.read().decode("utf-8"))
 
 
-def send_telegram(chat_id: str | int, text: str) -> None:
+def send_telegram(chat_id: str | int, text: str, *, token: str | None = None) -> None:
     _tg_post(
         "sendMessage",
         {
             "chat_id": chat_id,
             "text": str(text)[:4096],
         },
+        token=token,
         timeout=20.0,
     )
 
@@ -165,40 +179,71 @@ def handle_update(update: dict[str, Any]) -> None:
         )
 
 
-def poll_loop() -> None:
+def poll_loop(
+    *,
+    token: str,
+    name: str,
+    allowed_updates: list[str] | None = None,
+    on_update=None,
+) -> None:
     offset: int | None = None
-    logger.info("Telegram poll loop started")
+    logger.info("Telegram poll loop started name=%s", name)
+    try:
+        _tg_post(
+            "deleteWebhook",
+            {"drop_pending_updates": False},
+            token=token,
+            timeout=15.0,
+        )
+    except Exception:
+        logger.exception("deleteWebhook failed name=%s", name)
+
+    allowed = list(allowed_updates or ["message"])
+    handler = on_update or (lambda upd: handle_update(upd))
+
     while not _stop_event.is_set():
-        if not TELEGRAM_BOT_TOKEN:
+        if not token:
             time.sleep(5)
             continue
         try:
-            payload: dict[str, Any] = {"timeout": 25, "allowed_updates": ["message"]}
+            payload: dict[str, Any] = {"timeout": 25, "allowed_updates": allowed}
             if offset is not None:
                 payload["offset"] = offset
-            out = _tg_post("getUpdates", payload, timeout=35.0)
+            out = _tg_post("getUpdates", payload, token=token, timeout=35.0)
             if not out.get("ok"):
-                logger.warning("getUpdates not ok: %s", out)
+                logger.warning("getUpdates not ok name=%s: %s", name, out)
                 time.sleep(3)
                 continue
             for upd in out.get("result") or []:
                 offset = int(upd.get("update_id", 0)) + 1
                 try:
-                    handle_update(upd)
+                    handler(upd)
                 except Exception:
-                    logger.exception("update failed: %s", upd.get("update_id"))
+                    logger.exception("update failed name=%s id=%s", name, upd.get("update_id"))
         except urllib.error.URLError as exc:
-            logger.warning("poll error: %s", exc)
+            logger.warning("poll error name=%s: %s", name, exc)
             time.sleep(3)
         except Exception:
-            logger.exception("poll unexpected")
+            logger.exception("poll unexpected name=%s", name)
             time.sleep(3)
         time.sleep(POLL_INTERVAL_S)
 
 
+def _handle_curate_update_safe(update: dict[str, Any]) -> None:
+    try:
+        channel_curate.handle_update(
+            update,
+            tg_post=_tg_post,
+            openai_api_key=OPENAI_API_KEY,
+            model=OPENAI_MODEL,
+        )
+    except Exception:
+        logger.exception("curate update failed: %s", update.get("update_id"))
+
+
 @app.on_event("startup")
 def on_startup() -> None:
-    global _client, _system_prompt, _greeting, _poll_thread
+    global _client, _system_prompt, _greeting, _poll_thread, _curate_poll_thread
     init_db(SESSION_DB)
     if not OPENAI_API_KEY:
         logger.error("OPENAI_API_KEY missing")
@@ -207,11 +252,50 @@ def on_startup() -> None:
     _system_prompt = load_system_prompt(AVA_CONFIG_PATH)
     _greeting = greeting_text(AVA_CONFIG_PATH)
     if TELEGRAM_BOT_TOKEN:
-        _poll_thread = threading.Thread(target=poll_loop, name="telegram-poll", daemon=True)
+        _poll_thread = threading.Thread(
+            target=poll_loop,
+            kwargs={
+                "token": TELEGRAM_BOT_TOKEN,
+                "name": "personal",
+                "allowed_updates": ["message"],
+            },
+            name="telegram-poll",
+            daemon=True,
+        )
         _poll_thread.start()
         logger.info("bot ready model=%s mailer=%s", OPENAI_MODEL, AVA_MAILER_BASE)
     else:
-        logger.error("TELEGRAM_BOT_TOKEN missing — poll loop not started")
+        logger.error("TELEGRAM_BOT_TOKEN missing — personal poll loop not started")
+
+    # Channel curate: forward → rewrite → publish with footer (needs TELEGRAM_CHANNEL_BOT_TOKEN)
+    curate_tok = TELEGRAM_CHANNEL_BOT_TOKEN
+    if channel_curate.enabled() and curate_tok:
+        if curate_tok == TELEGRAM_BOT_TOKEN:
+            logger.warning(
+                "TELEGRAM_CHANNEL_BOT_TOKEN coincides with personal bot — "
+                "curate poller skipped (use a dedicated channel bot token)"
+            )
+        else:
+            _curate_poll_thread = threading.Thread(
+                target=poll_loop,
+                kwargs={
+                    "token": curate_tok,
+                    "name": "channel-curate",
+                    "allowed_updates": ["message", "callback_query"],
+                    "on_update": _handle_curate_update_safe,
+                },
+                name="telegram-curate-poll",
+                daemon=True,
+            )
+            _curate_poll_thread.start()
+            logger.info(
+                "channel curate poller enabled target=%s",
+                channel_curate.target_channel(),
+            )
+    else:
+        logger.info(
+            "channel curate poller off (set TELEGRAM_CHANNEL_BOT_TOKEN + TELEGRAM_CURATE_ENABLED)"
+        )
 
 
 @app.on_event("shutdown")
@@ -227,4 +311,6 @@ def health() -> dict[str, Any]:
         "openai_configured": bool(OPENAI_API_KEY),
         "model": OPENAI_MODEL,
         "mailer_base": AVA_MAILER_BASE,
+        "telegram_curate": channel_curate.status(),
+        "channel_bot_configured": bool(TELEGRAM_CHANNEL_BOT_TOKEN),
     }
