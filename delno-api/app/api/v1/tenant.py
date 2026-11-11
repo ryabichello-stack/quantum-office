@@ -108,6 +108,30 @@ def update_feature_flag(
     return FeatureFlagResponse(flag_key=flag.flag_key, enabled=flag.enabled)
 
 
+@router.get("/tools")
+def list_tenant_tools(
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """Built-in operator tool catalog for this tenant (Hermes profile target).
+
+    No external credentials required — surfaces the multi-user toolset that
+    already runs on stub LLM / local adapters. Channel tools (Telegram/DaData
+    live lookup) appear here too; they degrade until keys are filled later.
+    """
+    from app.operator.tools.registry import registry
+
+    items = registry.list_catalog()
+    return {
+        "tenant_slug": ctx.tenant_slug,
+        "total": len(items),
+        "items": items,
+        "meta": {
+            "creds_policy": "tools_first",
+            "note": "External keys unlock live channels later; catalog is available now.",
+        },
+    }
+
+
 @router.get("/me")
 def tenant_me(db: Session = Depends(get_db), ctx: TenantContext = Depends(get_tenant_context_auth)) -> dict:
     tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
