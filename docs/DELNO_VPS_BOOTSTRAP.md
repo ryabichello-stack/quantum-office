@@ -109,6 +109,12 @@ cd /opt/delno && docker compose up -d --force-recreate api
 
 В Cursor cloud сейчас **нет** этих secrets (есть только `POLYHUB_SSH_KEY`, `BITRIX_WEBHOOK_URL`).
 
+### Phase B0 — office connectors (done as stubs)
+
+Surfaces live without keys: `mail`, `calendar`, `files`, `conference`.
+Tools: `suggest_calendar_slots`, `send_mail_draft`, `list_files`, `create_conference`.
+Upstream: set `MAILER_BASE_URL` / `CALENDAR_BASE_URL` / `FILES_BASE_URL` / `CONFERENCE_BASE_URL` later.
+
 ### Phase B2 — Telegram как первый канал
 
 1. Flag `telegram` уже **enabled** у `quantum-labs`  
