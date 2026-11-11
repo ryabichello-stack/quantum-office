@@ -10,6 +10,8 @@
   floating composer, typing indicator, office status in a slide-over panel
 - delno-web: Tailwind v4 + shadcn/ui (base-nova); Hermes uses Button, Textarea,
   Sheet, ScrollArea, Avatar, Badge, Tooltip (`postcss.config.cjs` for Next 15)
+- Hermes phone UI: edge-to-edge, bottom nav dock, compact chips/composer,
+  office panel as bottom sheet — denser minimal chat on ≤720px
 
 ### Fixed
 

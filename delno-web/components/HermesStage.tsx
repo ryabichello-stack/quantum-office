@@ -72,16 +72,28 @@ type ChatLine = {
 };
 
 const QUICK_PROMPTS = [
-  { title: "Телефон секретаря", text: "Настрой телефон секретаря" },
-  { title: "Сетап офиса", text: "Что ещё настроить в офисе?" },
+  { title: "Телефон", text: "Настрой телефон секретаря" },
+  { title: "Сетап", text: "Что ещё настроить в офисе?" },
   { title: "Здоровье", text: "Проверь здоровье офиса" },
   { title: "Звонки", text: "Какие звонки были сегодня?" },
   { title: "Баланс", text: "Покажи расход токенов и баланс" },
 ];
 
+function useCompactHermes(breakpoint = 720) {
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const sync = () => setCompact(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, [breakpoint]);
+  return compact;
+}
+
 function HermesAvatar({ className }: { className?: string }) {
   return (
-    <Avatar size="sm" className={cn("rounded-[11px] bg-[var(--y)] text-black after:border-black/10", className)}>
+    <Avatar size="sm" className={cn("hx-msg-avatar rounded-[11px] bg-[var(--y)] text-black after:border-black/10", className)}>
       <AvatarFallback className="rounded-[11px] bg-[var(--y)] text-black">
         <Sparkles size={14} />
       </AvatarFallback>
@@ -90,6 +102,7 @@ function HermesAvatar({ className }: { className?: string }) {
 }
 
 export function HermesStage({ token }: { token: string }) {
+  const compact = useCompactHermes();
   const [lines, setLines] = useState<ChatLine[]>([]);
   const [message, setMessage] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -405,20 +418,26 @@ export function HermesStage({ token }: { token: string }) {
     : 0;
 
   const statusHint = dictating
-    ? "Диктовка… отпустите mic"
+    ? compact
+      ? "Диктовка…"
+      : "Диктовка… отпустите mic"
     : voicePhase === "listen"
       ? "Слушаю…"
       : voicePhase === "think"
         ? "Думаю…"
         : voicePhase === "speak"
-          ? "Отвечаю голосом…"
+          ? compact
+            ? "Говорю…"
+            : "Отвечаю голосом…"
           : voicePhase === "error"
-            ? "Ошибка микрофона"
+            ? "Ошибка mic"
             : sending
-              ? "Hermes печатает…"
-              : dictateSupported
-                ? "Напишите, приложите фото или удержите mic"
-                : "Напишите, приложите фото или файл";
+              ? "Печатает…"
+              : compact
+                ? "Чат · mic · фото"
+                : dictateSupported
+                  ? "Напишите, приложите фото или удержите mic"
+                  : "Напишите, приложите фото или файл";
 
   const canSend = !sending && (Boolean(message.trim()) || pendingFiles.length > 0);
 
@@ -427,6 +446,7 @@ export function HermesStage({ token }: { token: string }) {
       className="operator-stage hermes-stage hx-app"
       ref={mountRef}
       data-voice-active={voiceActive ? "true" : "false"}
+      data-compact={compact ? "1" : "0"}
     >
       <header className="hx-topbar">
         <div className="hx-brand">
@@ -443,32 +463,34 @@ export function HermesStage({ token }: { token: string }) {
                 <Button
                   variant="outline"
                   size="icon"
-                  className={cn(voiceActive && "border-sky-400/60 bg-sky-50")}
+                  className={cn("hx-top-btn", voiceActive && "border-sky-400/60 bg-sky-50")}
                   onClick={toggleVoice}
                   aria-label="Голосовой диалог"
                 />
               }
             >
-              <Mic size={18} />
+              <Mic size={compact ? 16 : 18} />
             </TooltipTrigger>
             <TooltipContent>Голосовой диалог</TooltipContent>
           </Tooltip>
-          <div className="hx-orb-mini" aria-hidden>
-            <CrystalOrb voiceActive={voiceActive} voicePhase={voicePhase} onOrbClick={toggleVoice} />
-          </div>
+          {!compact && (
+            <div className="hx-orb-mini" aria-hidden>
+              <CrystalOrb voiceActive={voiceActive} voicePhase={voicePhase} onOrbClick={toggleVoice} />
+            </div>
+          )}
           <Tooltip>
             <TooltipTrigger
               render={
                 <Button
                   variant="outline"
                   size="icon"
-                  className="relative"
+                  className="hx-top-btn relative"
                   onClick={() => setPanelOpen(true)}
                   aria-label="Панель офиса"
                 />
               }
             >
-              <PanelRight size={18} />
+              <PanelRight size={compact ? 16 : 18} />
               {!setup?.setup_complete && <i className="hx-dot" />}
               {health && !health.healthy && <i className="hx-dot warn" />}
             </TooltipTrigger>
@@ -483,26 +505,34 @@ export function HermesStage({ token }: { token: string }) {
             <div className="hx-thread">
               {lines.length === 0 && !sending && (
                 <div className="hx-empty">
-                  <p className="hx-empty-kicker">DELNO · office agent</p>
+                  {!compact && <p className="hx-empty-kicker">DELNO · office agent</p>}
                   <h1 className="hx-empty-title">Hermes</h1>
                   <p className="hx-empty-lead">
-                    Как в Cursor или ChatGPT: пишите задачу, кидайте фото, снимайте камерой — Hermes
-                    отвечает в этом же потоке.
+                    {compact
+                      ? "Задача, фото или mic — ответ здесь."
+                      : "Как в Cursor или ChatGPT: пишите задачу, кидайте фото, снимайте камерой — Hermes отвечает в этом же потоке."}
                   </p>
-                  <div className="hx-suggestions">
+                  <div className={cn("hx-suggestions", compact && "hx-suggestions-chips")}>
                     {QUICK_PROMPTS.map((item) => (
                       <Button
                         key={item.title}
                         type="button"
                         variant="outline"
                         disabled={sending}
-                        className="h-auto flex-col items-start gap-1 whitespace-normal px-3.5 py-3 text-left"
+                        className={cn(
+                          "h-auto whitespace-normal text-left",
+                          compact
+                            ? "rounded-full px-3.5 py-2 text-[13px] font-semibold"
+                            : "flex-col items-start gap-1 px-3.5 py-3",
+                        )}
                         onClick={() => void sendText(item.text)}
                       >
-                        <strong className="text-[13px]">{item.title}</strong>
-                        <span className="text-muted-foreground text-xs font-normal leading-snug">
-                          {item.text}
-                        </span>
+                        <strong className="text-[13px] font-semibold">{item.title}</strong>
+                        {!compact && (
+                          <span className="text-muted-foreground text-xs font-normal leading-snug">
+                            {item.text}
+                          </span>
+                        )}
                       </Button>
                     ))}
                   </div>
@@ -526,14 +556,14 @@ export function HermesStage({ token }: { token: string }) {
                   </article>
                 ) : (
                   <article key={idx} className="hx-row hx-row-assistant">
-                    <HermesAvatar />
+                    {!compact && <HermesAvatar />}
                     <div className="hx-assistant-col">
                       <div className="hx-bubble hx-bubble-assistant">
                         <div className="hx-text">{line.text}</div>
                         {line.sources && line.sources.length > 0 && (
-                          <div className="mt-2.5 flex flex-wrap gap-1.5">
+                          <div className="hx-sources-row mt-2 flex flex-wrap gap-1.5">
                             {line.sources.map((s, i) => (
-                              <Badge key={i} variant="outline">
+                              <Badge key={i} variant="outline" className="max-w-[11rem] truncate text-[10px]">
                                 {s.title || s.citation || s.document_id}
                               </Badge>
                             ))}
@@ -556,7 +586,7 @@ export function HermesStage({ token }: { token: string }) {
 
               {sending && (
                 <article className="hx-row hx-row-assistant">
-                  <HermesAvatar />
+                  {!compact && <HermesAvatar />}
                   <div className="hx-bubble hx-bubble-assistant hx-typing" aria-label="Печатает">
                     <span />
                     <span />
@@ -625,10 +655,11 @@ export function HermesStage({ token }: { token: string }) {
                         disabled={sending}
                         onClick={() => fileInputRef.current?.click()}
                         aria-label="Прикрепить"
+                        className="hx-tool-btn"
                       />
                     }
                   >
-                    <Paperclip size={18} />
+                    <Paperclip size={compact ? 16 : 18} />
                   </TooltipTrigger>
                   <TooltipContent>Файл или фото</TooltipContent>
                 </Tooltip>
@@ -642,10 +673,11 @@ export function HermesStage({ token }: { token: string }) {
                         disabled={sending}
                         onClick={() => void openDesktopCamera()}
                         aria-label="Камера"
+                        className="hx-tool-btn"
                       />
                     }
                   >
-                    <Camera size={18} />
+                    <Camera size={compact ? 16 : 18} />
                   </TooltipTrigger>
                   <TooltipContent>Снимок с камеры</TooltipContent>
                 </Tooltip>
@@ -663,11 +695,11 @@ export function HermesStage({ token }: { token: string }) {
                         onPointerLeave={onMicUp}
                         onPointerCancel={onMicUp}
                         onContextMenu={(e) => e.preventDefault()}
-                        className="touch-none"
+                        className="hx-tool-btn touch-none"
                       />
                     }
                   >
-                    <Mic size={18} />
+                    <Mic size={compact ? 16 : 18} />
                   </TooltipTrigger>
                   <TooltipContent>Удерживайте для диктовки</TooltipContent>
                 </Tooltip>
@@ -676,10 +708,13 @@ export function HermesStage({ token }: { token: string }) {
                 ref={textareaRef}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder="Сообщение Hermes…"
+                placeholder={compact ? "Сообщение…" : "Сообщение Hermes…"}
                 disabled={sending}
                 rows={1}
-                className="min-h-9 max-h-40 flex-1 resize-none border-0 bg-transparent px-1 py-2 shadow-none focus-visible:ring-0"
+                className={cn(
+                  "max-h-40 flex-1 resize-none border-0 bg-transparent px-1 shadow-none focus-visible:ring-0",
+                  compact ? "min-h-8 py-1.5 text-[15px]" : "min-h-9 py-2",
+                )}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -692,25 +727,46 @@ export function HermesStage({ token }: { token: string }) {
                   }
                 }}
               />
-              <Button type="submit" size="icon" className="hx-send-shadcn size-10 rounded-[14px]" disabled={!canSend} aria-label="Отправить">
-                <ArrowUp size={18} strokeWidth={2.4} />
+              <Button
+                type="submit"
+                size="icon"
+                className={cn("hx-send-shadcn rounded-[14px]", compact ? "size-9" : "size-10")}
+                disabled={!canSend}
+                aria-label="Отправить"
+              >
+                <ArrowUp size={compact ? 16 : 18} strokeWidth={2.4} />
               </Button>
             </form>
-            <p className="hx-footnote">Enter — отправить · Shift+Enter — новая строка · shadcn/ui</p>
+            {!compact && (
+              <p className="hx-footnote">Enter — отправить · Shift+Enter — новая строка</p>
+            )}
           </div>
         </main>
       </div>
 
       <Sheet open={panelOpen} onOpenChange={setPanelOpen}>
-        <SheetContent side="right" className="w-[min(360px,92vw)] gap-0 p-0 sm:max-w-sm">
-          <SheetHeader className="border-b border-border/70">
-            <SheetTitle className="font-[Fraunces,Georgia,serif] text-xl font-medium tracking-tight">
+        <SheetContent
+          side={compact ? "bottom" : "right"}
+          className={cn(
+            "gap-0 p-0",
+            compact
+              ? "hx-office-sheet h-[min(78dvh,640px)] rounded-t-2xl border-t sm:max-w-none"
+              : "w-[min(360px,92vw)] sm:max-w-sm",
+          )}
+        >
+          <SheetHeader className={cn("border-b border-border/70", compact && "px-4 py-3")}>
+            <SheetTitle
+              className={cn(
+                "font-[Fraunces,Georgia,serif] font-medium tracking-tight",
+                compact ? "text-lg" : "text-xl",
+              )}
+            >
               Офис
             </SheetTitle>
-            <SheetDescription>Сетап, здоровье, тариф и каналы</SheetDescription>
+            {!compact && <SheetDescription>Сетап, здоровье, тариф и каналы</SheetDescription>}
           </SheetHeader>
-          <ScrollArea className="h-[calc(100%-5rem)]">
-            <div className="flex flex-col gap-3 p-4">
+          <ScrollArea className={compact ? "h-[calc(100%-3.5rem)]" : "h-[calc(100%-5rem)]"}>
+            <div className={cn("flex flex-col gap-3", compact ? "p-3 pb-6" : "p-4")}>
               <section className="hx-card">
                 <header>
                   <span>Сетап</span>

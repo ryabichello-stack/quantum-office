@@ -1042,8 +1042,8 @@ p {
     font-size: 9px;
   }
 
-  .conversation,
-  .cabinet-main {
+  .conversation:not(:has(.hx-app)),
+  .cabinet-main:not(:has(.hx-app)) {
     padding: 16px;
   }
 }
@@ -1828,17 +1828,250 @@ p {
   }
 }
 
+/* --- Hermes phone: edge-to-edge, bottom dock, dense chat --- */
 @media (max-width: 720px) {
-  .hx-app {
-    height: calc(100dvh - 42px);
+  .cabinet-app:has(.hx-app) {
+    padding: 0;
+    background: #eef1f4;
+    min-height: 100dvh;
   }
 
-  .hx-composer {
-    border-radius: 18px;
+  .cabinet-app:has(.hx-app) .v2-console {
+    max-width: none;
+    filter: none;
+    min-height: 100dvh;
+  }
+
+  .cabinet-app:has(.hx-app) .console-bar {
+    display: none;
+  }
+
+  .cabinet-app:has(.hx-app) .console-shell.cabinet-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 100dvh;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .cabinet-app:has(.hx-app) .console-shell > aside {
+    order: 2;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-around;
+    gap: 2px;
+    width: 100%;
+    padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid #2c2d29;
+    background: #141512;
+  }
+
+  .cabinet-app:has(.hx-app) .console-shell > aside .side-logo {
+    display: none;
+  }
+
+  .cabinet-app:has(.hx-app) .console-shell > aside a,
+  .cabinet-app:has(.hx-app) .console-shell > aside button {
+    width: 40px;
+    height: 40px;
+    border-radius: 11px;
+  }
+
+  .cabinet-app:has(.hx-app) .side-bottom {
+    display: contents;
+  }
+
+  .cabinet-app:has(.hx-app) .cabinet-main,
+  .cabinet-app:has(.hx-app) .conversation {
+    order: 1;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .cabinet-main:has(.hx-app) {
+    min-height: 0;
+    background:
+      radial-gradient(700px 280px at 8% -20%, rgba(255, 210, 51, 0.14), transparent 55%),
+      linear-gradient(180deg, #f4f6f8 0%, #eef1f4 100%);
+  }
+
+  .hx-app {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .hx-app[data-compact="1"] {
+    --hx-line: rgba(21, 32, 43, 0.08);
+  }
+
+  .hx-topbar {
+    padding: 8px 10px 8px 12px;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.72);
+  }
+
+  .hx-brand {
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .hx-brand strong {
+    font-size: 16px;
+  }
+
+  .hx-brand small {
+    font-size: 11px;
+    margin-top: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 46vw;
+  }
+
+  .hx-brand .hx-msg-avatar,
+  .hx-brand [data-slot="avatar"] {
+    width: 28px;
+    height: 28px;
+    border-radius: 9px;
+  }
+
+  .hx-top-actions {
+    gap: 4px;
+  }
+
+  .hx-top-btn {
+    width: 34px !important;
+    height: 34px !important;
+    border-radius: 10px !important;
+  }
+
+  .hx-dot {
+    top: 5px;
+    right: 5px;
+    width: 6px;
+    height: 6px;
+  }
+
+  .hx-thread {
+    padding: 10px 12px 6px;
   }
 
   .hx-empty {
-    margin-top: 4vh;
+    margin: 3vh auto 0;
+    padding: 0 2px;
+    max-width: none;
+  }
+
+  .hx-empty-title {
+    font-size: clamp(28px, 9vw, 36px);
+    margin-bottom: 6px;
+  }
+
+  .hx-empty-lead {
+    margin: 0 auto 14px;
+    font-size: 13px;
+    line-height: 1.4;
+    max-width: 280px;
+  }
+
+  .hx-suggestions-chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .hx-suggestions-chips button {
+    border-radius: 999px;
+    padding: 7px 12px;
+    background: rgba(255, 255, 255, 0.9);
+  }
+
+  .hx-row {
+    margin: 0 auto 10px;
+    gap: 0;
+  }
+
+  .hx-bubble {
+    max-width: 94%;
+    border-radius: 16px;
+    padding: 9px 12px;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  .hx-bubble-assistant {
+    box-shadow: none;
+  }
+
+  .hx-previews img {
+    width: 84px;
+    height: 64px;
+    border-radius: 8px;
+  }
+
+  .hx-composer-wrap {
+    padding: 6px 10px 8px;
+    max-width: none;
+  }
+
+  .hx-composer {
+    gap: 4px;
+    padding: 6px 6px 6px 4px;
+    border-radius: 18px;
+    box-shadow: 0 8px 24px rgba(21, 32, 43, 0.07);
+  }
+
+  .hx-composer-tools {
+    gap: 0;
+  }
+
+  .hx-tool-btn,
+  .hx-composer-tools button {
+    width: 34px !important;
+    height: 34px !important;
+    border-radius: 10px !important;
+  }
+
+  .hx-attach-strip {
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  .hx-attach-chip {
+    min-height: 44px;
+    border-radius: 10px;
+    max-width: 110px;
+  }
+
+  .hx-attach-chip img {
+    width: 58px;
+    height: 44px;
+  }
+
+  .hx-card {
+    border-radius: 12px;
+    padding: 10px;
+  }
+
+  .hx-card > p {
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+
+  .hermes-checklist,
+  .hermes-alerts,
+  .hermes-calls {
+    gap: 6px;
+  }
+
+  .hx-office-sheet[data-slot="sheet-content"][data-side="bottom"] {
+    height: min(78dvh, 640px);
+    max-height: min(78dvh, 640px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
 
