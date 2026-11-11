@@ -17,7 +17,7 @@ def _cors_kwargs() -> dict:
         origins = [o.strip() for o in origins_raw.split(",") if o.strip()]
         return {
             "allow_origins": origins,
-            "allow_credentials": settings.cors_allow_credentials,
+            "allow_credentials": bool(getattr(settings, "cors_allow_credentials", False)),
             "allow_methods": ["*"],
             "allow_headers": ["*"],
         }
@@ -27,6 +27,7 @@ def _cors_kwargs() -> dict:
             r"|https://a\.47z\.ru"
             r"|http://localhost(:\d+)?"
             r"|http://127\.0\.0\.1(:\d+)?"
+            r"|http://161\.104\.89\.123(:\d+)?"
         ),
         "allow_credentials": False,
         "allow_methods": ["*"],
