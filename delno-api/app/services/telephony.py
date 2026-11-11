@@ -16,7 +16,6 @@ from app.models.call_session import CallSession
 from app.models.conversation import Conversation, Message
 from app.models.phone_number import PhoneNumber
 from app.models.tenant import Tenant
-from app.operator.agent import run_operator_turn
 from app.services.channel_router import resolve_by_phone_e164
 from app.services.events import emit_event
 
@@ -301,6 +300,9 @@ def frontline_turn(
             meta["script_injected"] = True
             session.meta = meta
             session.status = "in_progress"
+
+    # Lazy import avoids circular dependency: agent → tools.calls → telephony → agent
+    from app.operator.agent import run_operator_turn
 
     out = run_operator_turn(
         db,

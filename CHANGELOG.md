@@ -9,3 +9,8 @@
   calls dial/list — Quantum Labs as first client (`+79699665899`)
 - Docs: `docs/DELNO_OFFICE_OS_ARCHITECTURE.md` — Hermes supervisor (setup + health watch)
   + Frontline + workers
+- Hermes cabinet UI (`/dashboard/hermes`): setup checklist, health panel, recent calls,
+  push-to-talk mic + orb voice task input (STT → Hermes chat), Operator nav rebranded
+- Quantum Labs dogfood seed: enable office connectors + feature flags + owner login
+- Hermes deterministic intents (setup/health/calls) so cabinet works when OpenAI is
+  geo-blocked from the VPS; channel `hermes` treated as cabinet

@@ -180,7 +180,7 @@ export type LegalProfile = {
   enriched_at?: string;
 };
 
-async function apiFetch<T>(path: string, token: string, init?: RequestInit): Promise<T> {
+export async function apiFetch<T>(path: string, token: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: {

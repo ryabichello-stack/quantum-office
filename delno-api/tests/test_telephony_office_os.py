@@ -85,7 +85,7 @@ def test_provision_phone_and_inbound_session(db, monkeypatch):
     sid = uuid.UUID(started["session"]["id"])
 
     monkeypatch.setattr(
-        "app.services.telephony.run_operator_turn",
+        "app.operator.agent.run_operator_turn",
         lambda *a, **k: {"reply": "Мы делаем массовые выплаты.", "ok": True},
     )
     turn = telephony.frontline_turn(db, session_id=sid, text="Здравствуйте, что вы делаете?")

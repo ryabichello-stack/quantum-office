@@ -126,12 +126,69 @@ def _parse_settings_patch(text: str) -> dict[str, Any] | None:
     return None
 
 
+_HERMES_SETUP_TRIGGERS = (
+    "статус сетапа",
+    "что настроить",
+    "что ещё настроить",
+    "что еще настроить",
+    "следующий шаг",
+    "настрой офис",
+    "настроить офис",
+    "checklist",
+    "чеклист",
+    "сетап",
+    "setup",
+)
+
+_HERMES_HEALTH_TRIGGERS = (
+    "здоровье офиса",
+    "проверь здоровье",
+    "проверь офис",
+    "health",
+    "алерт",
+    "alerts",
+    "что сломалось",
+    "компонент",
+)
+
+_HERMES_CALLS_TRIGGERS = (
+    "какие звонки",
+    "список звонков",
+    "история звонков",
+    "звонки были",
+    "calls",
+)
+
+
+def parse_hermes_intent(message: str) -> dict[str, Any] | None:
+    """Deterministic Hermes supervisor intents (works without LLM)."""
+    text = message.strip()
+    if not text:
+        return None
+    lower = text.lower()
+
+    if any(t in lower for t in _HERMES_HEALTH_TRIGGERS):
+        return {"tool": "hermes.health", "params": {}, "summary": "Проверить здоровье офиса"}
+    if any(t in lower for t in _HERMES_CALLS_TRIGGERS):
+        return {"tool": "calls.list", "params": {"limit": 10}, "summary": "Список звонков"}
+    if any(t in lower for t in _HERMES_SETUP_TRIGGERS):
+        return {"tool": "hermes.setup_status", "params": {}, "summary": "Статус сетапа офиса"}
+    # Owner onboarding phrase from Hermes UI bootstrap
+    if "владелец офиса" in lower or ("статус" in lower and "сетап" in lower):
+        return {"tool": "hermes.setup_status", "params": {}, "summary": "Статус сетапа офиса"}
+    return None
+
+
 def parse_setup_intent(message: str) -> dict[str, Any] | None:
     """Return {tool, params, summary} for cabinet setup commands, or None."""
     text = message.strip()
     if not text:
         return None
     lower = text.lower()
+
+    hermes = parse_hermes_intent(text)
+    if hermes:
+        return hermes
 
     for trigger in _SUMMARY_TRIGGERS:
         if trigger in lower:

@@ -219,6 +219,60 @@ def _system_prompt(
     return base
 
 
+def _format_hermes_setup(data: dict[str, Any]) -> str:
+    progress = data.get("progress") or {}
+    done = progress.get("required_done", 0)
+    total = progress.get("required_total", 0)
+    lines = [
+        data.get("message_ru") or "Статус сетапа офиса.",
+        f"Прогресс: {done}/{total}.",
+    ]
+    checks = data.get("checks") or {}
+    steps = data.get("steps") or []
+    for step in steps:
+        sid = step.get("id")
+        check = checks.get(sid) or {}
+        mark = "✓" if check.get("ok") else ("·" if check.get("optional") else "○")
+        hint = step.get("hint") or ""
+        title = step.get("title") or sid
+        lines.append(f"{mark} {title}" + ("" if check.get("ok") else f" — {hint}"))
+    next_steps = data.get("next_steps") or []
+    if next_steps:
+        nxt = next_steps[0]
+        lines.append(f"Следующий шаг: {nxt.get('title')} — {nxt.get('hint')}")
+    lines.append("Скажите голосом или текстом, что подключить дальше (Telegram, номер, почта…).")
+    return "\n".join(lines)
+
+
+def _format_hermes_health(data: dict[str, Any]) -> str:
+    lines = [data.get("message_ru") or ("Офис в порядке." if data.get("healthy") else "Есть проблемы.")]
+    for alert in (data.get("alerts") or [])[:6]:
+        fix = alert.get("fix") or ""
+        lines.append(f"• {alert.get('message_ru')}" + (f" → {fix}" if fix else ""))
+    tel = data.get("telephony") or {}
+    if tel:
+        dids = tel.get("active_dids") or []
+        lines.append(
+            f"Телефония: DID {', '.join(dids) if isinstance(dids, list) else dids or '—'}; "
+            f"очередь {tel.get('queued_jobs', 0)}, зависло {tel.get('stuck_jobs', 0)}."
+        )
+    return "\n".join(lines)
+
+
+def _format_calls_list(data: dict[str, Any]) -> str:
+    items = data.get("items") or []
+    if not items:
+        return "Звонков пока нет. Когда появятся входящие на DID или исходящие задания — увидите их здесь."
+    lines = ["Последние звонки:"]
+    for item in items[:8]:
+        direction = item.get("direction") or "?"
+        state = item.get("state") or "?"
+        frm = item.get("from_e164") or "—"
+        to = item.get("to_e164") or "—"
+        lines.append(f"• {direction} · {state}: {frm} → {to}")
+    return "\n".join(lines)
+
+
 def _format_tenant_summary(data: dict[str, Any]) -> str:
     lines = [f"Компания: {data.get('tenant_name', '—')}"]
     settings = data.get("settings") or {}
@@ -274,6 +328,14 @@ def _tool_summary(tool_name: str, params: dict[str, Any]) -> str:
         return f"Обновить настройки: {', '.join(keys) or 'patch'}"
     if tool_name == "get_tenant_summary":
         return "Показать текущие настройки"
+    if tool_name == "hermes.setup_status":
+        return "Статус сетапа офиса"
+    if tool_name == "hermes.health":
+        return "Проверить здоровье офиса"
+    if tool_name == "hermes.alerts":
+        return "Алерты офиса"
+    if tool_name == "calls.list":
+        return "Список звонков"
     return tool_name.replace("_", " ")
 
 
@@ -311,6 +373,28 @@ def _execute_cabinet_tool(
         tool_calls[0]["ok"] = False
         return "Поиск в базе знаний не удался.", tool_calls, [], None
 
+    if tool_name in ("hermes.setup_status", "hermes.health", "hermes.alerts", "calls.list"):
+        result = registry.run(db, ctx, tool_name, **params)
+        if isinstance(result, ToolResult) and result.ok:
+            tool_calls[0]["ok"] = True
+            if tool_name == "hermes.setup_status":
+                return _format_hermes_setup(result.data or {}), tool_calls, [], None
+            if tool_name == "hermes.health":
+                return _format_hermes_health(result.data or {}), tool_calls, [], None
+            if tool_name == "calls.list":
+                return _format_calls_list(result.data or {}), tool_calls, [], None
+            items = (result.data or {}).get("items") or []
+            if not items:
+                return "Свежих алертов нет — всё тихо.", tool_calls, [], None
+            lines = ["Последние события офиса:"]
+            for item in items[:8]:
+                et = item.get("event_type") or item.get("code") or "event"
+                msg = item.get("message_ru") or item.get("summary") or str(item.get("payload") or "")[:120]
+                lines.append(f"• {et}: {msg}")
+            return "\n".join(lines), tool_calls, [], None
+        tool_calls[0]["ok"] = False
+        return "Не удалось получить статус Hermes.", tool_calls, [], None
+
     if requires_confirmation(tool):
         pending = _pending_confirmation_dict(tool_name, params, summary)
         tool_calls[0]["pending"] = True
@@ -341,9 +425,13 @@ def _try_cabinet_llm_tools(
             {
                 "role": "system",
                 "content": (
-                    f"Ты DELNO Operator в кабинете tenant {ctx.tenant_slug}. "
-                    "Помогай владельцу настраивать DELNO: база знаний, часы, флаги каналов, сводка настроек. "
-                    "Для изменений вызывай tools. Отвечай кратко по-русски после tool result."
+                    f"Ты Hermes — ИИ-руководитель офиса DELNO для tenant {ctx.tenant_slug}. "
+                    "Владелец настраивает и управляет офисом голосом или текстом, как в чате с ассистентом. "
+                    "Обязанности: (1) первый сетап — hermes.setup_status / phones.provision / флаги / KB; "
+                    "(2) health-watch — hermes.health и сразу сообщить о проблемах простым языком; "
+                    "(3) дирижирование — calls.dial/list, календарь, почта, ВКС, рассылка. "
+                    "Если сетап не завершён — предложи следующий шаг из checklist. "
+                    "Для изменений вызывай tools. Отвечай кратко по-русски."
                 ),
             },
             {"role": "user", "content": message},
@@ -408,7 +496,7 @@ def _generate_reply(
     kb_context = ""
     sources: list[dict[str, Any]] = []
     onboarding = channel == "onboarding"
-    cabinet = channel in ("cabinet", "operator")
+    cabinet = channel in ("cabinet", "operator", "hermes")
     widget = channel == "widget"
 
     if onboarding:

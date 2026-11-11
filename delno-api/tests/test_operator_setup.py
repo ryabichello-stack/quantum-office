@@ -27,6 +27,18 @@ def test_parse_setup_intent_summary():
     assert intent["tool"] == "get_tenant_summary"
 
 
+def test_parse_hermes_setup_and_health():
+    setup = parse_setup_intent("Что ещё настроить в офисе?")
+    assert setup is not None
+    assert setup["tool"] == "hermes.setup_status"
+    health = parse_setup_intent("Проверь здоровье офиса")
+    assert health is not None
+    assert health["tool"] == "hermes.health"
+    calls = parse_setup_intent("Какие звонки были сегодня?")
+    assert calls is not None
+    assert calls["tool"] == "calls.list"
+
+
 def test_cabinet_setup_pending_confirmation():
     ctx = TenantContext(tenant_id=uuid.uuid4(), tenant_slug="delno-demo", role="tenant_owner")
     db = MagicMock()

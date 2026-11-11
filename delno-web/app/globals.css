@@ -1075,6 +1075,190 @@ p {
   margin-top: auto;
 }
 
+/* --- Hermes cabinet (setup + health + voice tasks) --- */
+.hermes-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) 1fr;
+  gap: 18px;
+  align-items: start;
+  flex: 1;
+}
+
+.hermes-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hermes-panel {
+  background: linear-gradient(165deg, #f7fafc 0%, #eef4f8 100%);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 14px 12px;
+}
+
+.hermes-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #4a5a6a;
+  margin-bottom: 10px;
+}
+
+.hermes-ok {
+  color: #2f9e6b;
+}
+
+.hermes-warn {
+  color: #c47a12;
+}
+
+.hermes-progress-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: #3d7ea6;
+}
+
+.hermes-progress-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(61, 126, 166, 0.15);
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.hermes-progress-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #4a9bc7, #2f7aa8);
+  border-radius: 999px;
+}
+
+.hermes-panel-msg {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #445566;
+}
+
+.hermes-checklist,
+.hermes-alerts,
+.hermes-calls {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hermes-checklist li,
+.hermes-alerts li,
+.hermes-calls li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12px;
+}
+
+.hermes-checklist li strong,
+.hermes-alerts li strong,
+.hermes-calls li strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #243040;
+}
+
+.hermes-checklist li small,
+.hermes-alerts li small,
+.hermes-calls li small {
+  display: block;
+  color: #6a7a8a;
+  margin-top: 2px;
+  line-height: 1.35;
+}
+
+.hermes-check-dot {
+  width: 10px;
+  height: 10px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #c8d4de;
+  flex-shrink: 0;
+}
+
+.hermes-checklist li[data-done="1"] .hermes-check-dot {
+  background: #2f9e6b;
+}
+
+.hermes-checklist li[data-optional="1"][data-done="0"] .hermes-check-dot {
+  background: #d8c9a8;
+}
+
+.hermes-alerts li[data-sev="critical"] strong {
+  color: #b33a3a;
+}
+
+.hermes-alerts li[data-sev="warning"] strong {
+  color: #a86a10;
+}
+
+.hermes-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.hermes-mic-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: #3d7ea6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  touch-action: none;
+  user-select: none;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.hermes-mic-btn:hover:not(:disabled) {
+  border-color: #8bb8d4;
+}
+
+.hermes-mic-btn.active {
+  background: #3d7ea6;
+  border-color: #3d7ea6;
+  color: #fff;
+  box-shadow: 0 0 0 3px rgba(61, 126, 166, 0.22);
+}
+
+.hermes-form input {
+  flex: 1;
+}
+
+@media (max-width: 900px) {
+  .hermes-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .hermes-side {
+    order: 2;
+  }
+
+  .hermes-main {
+    order: 1;
+  }
+}
+
 .operator-confirm {
   margin-top: 10px;
   padding: 14px;
