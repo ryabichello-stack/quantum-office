@@ -36,12 +36,25 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${DELNO_PG_USER:-delno}:${DELNO_PG_PASSWORD}@postgres:5432/${DELNO_PG_DB:-delno}
       KNOWLEDGE_BASE_URL: http://knowledge:8021
+      FILES_BASE_URL: ${FILES_BASE_URL:-http://files:8015}
+      MAILER_BASE_URL: ${MAILER_BASE_URL:-http://mail:8000}
+      CALENDAR_BASE_URL: ${CALENDAR_BASE_URL:-http://calendar:8014}
+      CONFERENCE_BASE_URL: ${CONFERENCE_BASE_URL:-http://conference:8016}
+      OFFICE_WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
     ports:
       - "127.0.0.1:18020:8020"
     depends_on:
       postgres:
         condition: service_healthy
       knowledge:
+        condition: service_started
+      files:
+        condition: service_started
+      mail:
+        condition: service_started
+      calendar:
+        condition: service_started
+      conference:
         condition: service_started
 
   knowledge:
@@ -61,6 +74,109 @@ services:
       - delno-brain-data:/data
     ports:
       - "127.0.0.1:18021:8021"
+
+  # File broker (Mail.ru / Yadisk / Google Drive / OneDrive / local) — tools-first
+  files:
+    build:
+      context: ./files
+      dockerfile: Dockerfile
+    image: delno-files:latest
+    container_name: delno-files
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    environment:
+      WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
+      FILES_LOCAL_ALLOWLIST: /data/assets
+      FILES_MAX_BYTES: ${FILES_MAX_BYTES:-47185920}
+      YADISK_TOKEN: ${YADISK_TOKEN:-}
+      MAILRU_WEBDAV_URL: ${MAILRU_WEBDAV_URL:-https://webdav.cloud.mail.ru}
+      MAILRU_WEBDAV_USER: ${MAILRU_WEBDAV_USER:-}
+      MAILRU_WEBDAV_PASSWORD: ${MAILRU_WEBDAV_PASSWORD:-}
+      GOOGLE_DRIVE_TOKEN: ${GOOGLE_DRIVE_TOKEN:-}
+      ONEDRIVE_TOKEN: ${ONEDRIVE_TOKEN:-}
+      MICROSOFT_GRAPH_TOKEN: ${MICROSOFT_GRAPH_TOKEN:-}
+      ONEDRIVE_DRIVE_ROOT: ${ONEDRIVE_DRIVE_ROOT:-me/drive}
+    volumes:
+      - delno-files-assets:/data/assets
+    ports:
+      - "127.0.0.1:18015:8015"
+
+  # Mail gateway (SMTP optional — dry-run stub without MAIL_*)
+  mail:
+    build:
+      context: ./mail
+      dockerfile: Dockerfile.office
+    image: delno-mail:latest
+    container_name: delno-mail
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    environment:
+      WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
+      MAIL_SMTP_HOST: ${MAIL_SMTP_HOST:-}
+      MAIL_SMTP_PORT: ${MAIL_SMTP_PORT:-465}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-DELNO}
+    ports:
+      - "127.0.0.1:18000:8000"
+
+  # Calendar (CalDAV optional — suggest/create stub without credentials)
+  calendar:
+    build:
+      context: ./calendar
+      dockerfile: Dockerfile
+    image: delno-calendar:latest
+    container_name: delno-calendar
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    environment:
+      WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
+      CALENDAR_DEFAULT_SOURCE: ${CALENDAR_DEFAULT_SOURCE:-mailru}
+      CALENDAR_TIMEZONE: ${CALENDAR_TIMEZONE:-Europe/Moscow}
+      CONFERENCE_BASE_URL: http://conference:8016
+      # mailru
+      MAILRU_CALDAV_URL: ${MAILRU_CALDAV_URL:-https://calendar.mail.ru}
+      MAILRU_CALDAV_USERNAME: ${MAILRU_CALDAV_USERNAME:-}
+      MAILRU_CALDAV_PASSWORD: ${MAILRU_CALDAV_PASSWORD:-}
+      MAILRU_CALENDAR_URL: ${MAILRU_CALENDAR_URL:-}
+      # yandex
+      YANDEX_CALDAV_URL: ${YANDEX_CALDAV_URL:-https://caldav.yandex.ru}
+      YANDEX_CALDAV_USERNAME: ${YANDEX_CALDAV_USERNAME:-}
+      YANDEX_CALDAV_PASSWORD: ${YANDEX_CALDAV_PASSWORD:-}
+      YANDEX_CALENDAR_URL: ${YANDEX_CALENDAR_URL:-}
+      # google
+      GOOGLE_CALENDAR_TOKEN: ${GOOGLE_CALENDAR_TOKEN:-}
+      GOOGLE_CALENDAR_ID: ${GOOGLE_CALENDAR_ID:-primary}
+      # outlook / graph
+      OUTLOOK_CALENDAR_TOKEN: ${OUTLOOK_CALENDAR_TOKEN:-}
+      MICROSOFT_GRAPH_TOKEN: ${MICROSOFT_GRAPH_TOKEN:-}
+      OUTLOOK_CALENDAR_ID: ${OUTLOOK_CALENDAR_ID:-}
+    ports:
+      - "127.0.0.1:18014:8014"
+
+  # Conference / Telemost (OAuth optional — stub join URL without token)
+  conference:
+    build:
+      context: ./conference
+      dockerfile: Dockerfile
+    image: delno-conference:latest
+    container_name: delno-conference
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    environment:
+      WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
+      TELEMOST_ENABLED: ${TELEMOST_ENABLED:-true}
+      TELEMOST_STUB_WHEN_UNAUTH: ${TELEMOST_STUB_WHEN_UNAUTH:-true}
+      YANDEX_OAUTH_CLIENT_ID: ${YANDEX_OAUTH_CLIENT_ID:-}
+      YANDEX_OAUTH_CLIENT_SECRET: ${YANDEX_OAUTH_CLIENT_SECRET:-}
+      YANDEX_OAUTH_ACCESS_TOKEN: ${YANDEX_OAUTH_ACCESS_TOKEN:-}
+    ports:
+      - "127.0.0.1:18016:8016"
 
   site:
     build:
@@ -93,3 +209,5 @@ volumes:
     name: delno-pg-data
   delno-brain-data:
     name: delno-brain-data
+  delno-files-assets:
+    name: delno-files-assets

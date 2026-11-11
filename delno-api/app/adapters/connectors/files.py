@@ -29,6 +29,15 @@ class FilesConnector:
                     "enabled": enabled,
                     "tenant_slug": tenant_slug,
                     "capabilities": ["list", "search", "fetch", "send"],
+                    "sources": [
+                        "mailru",
+                        "yadisk",
+                        "gdrive",
+                        "onedrive",
+                        "local",
+                        "repo",
+                    ],
+                    "creds_policy": "tools_first",
                 },
             )
         return ConnectorResult(

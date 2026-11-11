@@ -17,7 +17,7 @@ class SuggestCalendarSlotsTool:
     name = "suggest_calendar_slots"
     description = (
         "Suggest meeting slots via tenant calendar connector. "
-        "Works in stub mode until CALENDAR_BASE_URL / CalDAV is wired."
+        "Sources: mailru | yandex | google | outlook (stub until provider creds)."
     )
     critical_write = False
     parameters_schema = {
@@ -25,6 +25,11 @@ class SuggestCalendarSlotsTool:
         "properties": {
             "start": {"type": "string", "description": "ISO datetime preferred start"},
             "duration_min": {"type": "integer", "description": "Meeting length minutes", "default": 60},
+            "source": {
+                "type": "string",
+                "description": "mailru | yandex | google | outlook",
+                "default": "mailru",
+            },
         },
         "required": ["start"],
     }
@@ -34,6 +39,7 @@ class SuggestCalendarSlotsTool:
         if not start:
             return ToolResult(ok=False, message="start is required")
         duration = int(params.get("duration_min") or 60)
+        source = str(params.get("source") or "mailru").strip() or "mailru"
         connector = get_connector("calendar")
         assert connector is not None
         config = connector_config_for(db, ctx, "calendar")
@@ -42,13 +48,18 @@ class SuggestCalendarSlotsTool:
             config=config,
             start=start,
             duration_min=duration,
+            source=source,
         )
         write_audit(
             db,
             ctx,
             action="tool.suggest_calendar_slots",
             resource="connector:calendar",
-            new_value={"configured": result.configured, "stub": bool(result.data.get("stub"))},
+            new_value={
+                "configured": result.configured,
+                "stub": bool(result.data.get("stub")),
+                "source": source,
+            },
         )
         return ToolResult(ok=result.ok, data=result.as_dict(), message=result.message or "ok")
 
@@ -98,12 +109,19 @@ class SendMailDraftTool:
 
 class ListFilesTool:
     name = "list_files"
-    description = "List files/folders via files connector (stub empty list until FILES_BASE_URL)."
+    description = (
+        "List files/folders via files connector. "
+        "Sources: mailru | yadisk | gdrive | onedrive | local (stub until FILES_BASE_URL)."
+    )
     critical_write = False
     parameters_schema = {
         "type": "object",
         "properties": {
-            "source": {"type": "string", "default": "local"},
+            "source": {
+                "type": "string",
+                "default": "mailru",
+                "description": "mailru | yadisk | gdrive | onedrive | local",
+            },
             "path": {"type": "string", "default": "/"},
         },
     }
