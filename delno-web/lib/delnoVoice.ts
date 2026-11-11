@@ -368,5 +368,33 @@ export function createVoiceController(options: VoiceSessionOptions) {
     startMic();
   }
 
-  return { toggle, stop, isActive: () => engaged };
+  /** Push-to-talk: start listening while the user holds the mic. */
+  function startHold() {
+    if (engaged) return;
+    engaged = true;
+    if (audioRef.current) void unlockAudioElement(audioRef.current);
+    startMic();
+  }
+
+  /**
+   * Release hold — finalize any pending transcript as a task for Hermes.
+   * Falls back to silence-stop if nothing was heard yet.
+   */
+  function endHold() {
+    if (!engaged) return;
+    // Force recognition end so onend flushes final transcript into answer()
+    if (recognition) {
+      try {
+        recognition.stop();
+      } catch {
+        recognition.abort();
+      }
+    }
+    // If nothing was heard, just stop the session
+    window.setTimeout(() => {
+      if (engaged && !processing && !speaking && !heard) stop();
+    }, 120);
+  }
+
+  return { toggle, stop, startHold, endHold, isActive: () => engaged };
 }

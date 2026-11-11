@@ -22,7 +22,7 @@ const nav = [
   { href: "/dashboard/leads", label: "Клиенты", Icon: UserRound },
   { href: "/dashboard/calendar", label: "Календарь", Icon: CalendarDays },
   { href: "/dashboard/knowledge", label: "Знания", Icon: FileText },
-  { href: "/dashboard/operator", label: "Operator", Icon: Sparkles, operatorOrb: true },
+  { href: "/dashboard/hermes", label: "Hermes", Icon: Sparkles, operatorOrb: true },
 ];
 
 export function AppShell({

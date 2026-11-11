@@ -44,6 +44,8 @@ _HIGH_IMPACT_TOOLS = frozenset(
         "crm.company_upsert",
         "crm.lifecycle_set",
         "outreach.stage_send",
+        "calls.dial",
+        "phones.provision",
     }
 )
 

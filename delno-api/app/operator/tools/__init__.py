@@ -31,6 +31,20 @@ from app.operator.tools.outreach import (
     OutreachStageSendTool,
     OutreachStatusTool,
 )
+from app.operator.tools.calls import (
+    CallsDialTool,
+    CallsGetTool,
+    CallsJobsTool,
+    CallsListTool,
+    PhonesListTool,
+    PhonesProvisionTool,
+)
+from app.operator.tools.hermes import (
+    HermesAlertsTool,
+    HermesHealthTool,
+    HermesSetupMarkTool,
+    HermesSetupStatusTool,
+)
 from app.operator.tools.registry import registry
 
 
@@ -62,3 +76,14 @@ def register_builtin_tools() -> None:
     registry.register(OutreachPreviewTool())
     registry.register(OutreachStageSendTool())
     registry.register(OutreachLeadCheckTool())
+    # Office OS telephony + Hermes supervisor
+    registry.register(CallsListTool())
+    registry.register(CallsGetTool())
+    registry.register(CallsDialTool())
+    registry.register(CallsJobsTool())
+    registry.register(PhonesListTool())
+    registry.register(PhonesProvisionTool())
+    registry.register(HermesSetupStatusTool())
+    registry.register(HermesSetupMarkTool())
+    registry.register(HermesHealthTool())
+    registry.register(HermesAlertsTool())

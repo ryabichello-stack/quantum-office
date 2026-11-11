@@ -22,13 +22,34 @@ export function useOperatorVoice(onTranscript: (text: string) => Promise<string>
     return () => controllerRef.current?.stop();
   }, [onTranscript, authToken]);
 
-  function toggleVoice() {
-    controllerRef.current?.toggle();
+  function syncActive() {
     window.setTimeout(() => {
       setVoiceActive(controllerRef.current?.isActive() ?? false);
       if (!controllerRef.current?.isActive()) setVoicePhase("idle");
     }, 60);
   }
 
-  return { voiceActive, voicePhase, toggleVoice, audioRef };
+  function toggleVoice() {
+    controllerRef.current?.toggle();
+    syncActive();
+  }
+
+  function startHoldVoice() {
+    controllerRef.current?.startHold();
+    syncActive();
+  }
+
+  function endHoldVoice() {
+    controllerRef.current?.endHold();
+    syncActive();
+  }
+
+  return {
+    voiceActive,
+    voicePhase,
+    toggleVoice,
+    startHoldVoice,
+    endHoldVoice,
+    audioRef,
+  };
 }

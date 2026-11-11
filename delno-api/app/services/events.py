@@ -21,6 +21,18 @@ OPERATIONAL_EVENT_TYPES = frozenset(
         "party.enriched",
         "party.suggest",
         "party.suggest_failed",
+        "hermes.setup.progress",
+        "hermes.health.checked",
+        "office.alert",
+        "phone.provisioned",
+        "call.inbound.started",
+        "call.inbound.ended",
+        "call.inbound.unrouted",
+        "call.outbound.queued",
+        "call.outbound.started",
+        "call.outbound.ended",
+        "call.transcript.ready",
+        "call.summary.ready",
     }
 )
 
