@@ -63,12 +63,15 @@ def operator_chat(
 
         if is_hermes_nous_enabled(db, ctx) and message and not attachments:
             try:
+                from app.services.hermes_nous.tool_packs import pack_for_mode
+
                 nous = create_run(
                     db,
                     ctx,
                     message=message,
                     session_id=str(body.conversation_id) if body.conversation_id else None,
-                    tool_ids=["get_knowledge", "office.health", "office.connectors", "hermes.profile"],
+                    tool_ids=pack_for_mode("conduct"),
+                    mode="conduct",
                 )
                 return {
                     "ok": True,

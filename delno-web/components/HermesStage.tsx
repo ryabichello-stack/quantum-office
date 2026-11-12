@@ -52,12 +52,18 @@ import {
   apiBillingSummary,
   apiCallsList,
   apiChannelQrStart,
+  apiAgentTasks,
   apiHermesHealth,
+  apiHermesNousStatus,
   apiHermesSetup,
+  apiOfficeLoop,
+  type AgentTaskItem,
   type BillingSummary,
   type CallSessionItem,
   type HermesHealthStatus,
+  type HermesNousStatus,
   type HermesSetupStatus,
+  type OfficeLoopStatus,
 } from "@/lib/hermesApi";
 import {
   canAddMore,
@@ -145,6 +151,9 @@ export function HermesStage({ token }: { token: string }) {
   const [health, setHealth] = useState<HermesHealthStatus | null>(null);
   const [calls, setCalls] = useState<CallSessionItem[]>([]);
   const [billing, setBilling] = useState<BillingSummary | null>(null);
+  const [officeLoop, setOfficeLoop] = useState<OfficeLoopStatus | null>(null);
+  const [nousStatus, setNousStatus] = useState<HermesNousStatus | null>(null);
+  const [agentTasks, setAgentTasks] = useState<AgentTaskItem[]>([]);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [qrBusy, setQrBusy] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingHermesAttachment[]>([]);
@@ -164,18 +173,24 @@ export function HermesStage({ token }: { token: string }) {
 
   const refreshPanels = useCallback(async () => {
     try {
-      const [s, h, c, b] = await Promise.all([
+      const [s, h, c, b, loop, nous, tasks] = await Promise.all([
         apiHermesSetup(token).catch(() => null),
         apiHermesHealth(token).catch(() => null),
         apiCallsList(token, 8).catch(() => ({ ok: true, items: [] as CallSessionItem[] })),
         apiBillingEnsure(token)
           .catch(() => apiBillingSummary(token))
           .catch(() => null),
+        apiOfficeLoop(token).catch(() => null),
+        apiHermesNousStatus(token).catch(() => null),
+        apiAgentTasks(token, 8).catch(() => ({ ok: true, items: [] as AgentTaskItem[] })),
       ]);
       if (s) setSetup(s);
       if (h) setHealth(h);
       setCalls(c?.items || []);
       if (b) setBilling(b);
+      if (loop) setOfficeLoop(loop);
+      if (nous) setNousStatus(nous);
+      setAgentTasks(tasks?.items || []);
     } catch {
       /* panels are best-effort; chat still works */
     }
@@ -1025,10 +1040,86 @@ export function HermesStage({ token }: { token: string }) {
             >
               Офис
             </SheetTitle>
-            {!compact && <SheetDescription>Сетап, здоровье, тариф и каналы</SheetDescription>}
+            {!compact && (
+              <SheetDescription>
+                Онбординг → знания → тулзы → поручения
+                {nousStatus?.enabled ? " · Nous" : " · DIY fallback"}
+              </SheetDescription>
+            )}
           </SheetHeader>
           <ScrollArea className={compact ? "h-[calc(100%-3.5rem)]" : "h-[calc(100%-5rem)]"}>
             <div className={cn("flex flex-col gap-3", compact ? "p-3 pb-6" : "p-4")}>
+              <section className="hx-card">
+                <header>
+                  <span>Путь офиса</span>
+                  {officeLoop?.next_step ? (
+                    <Badge variant="secondary">{officeLoop.phase}</Badge>
+                  ) : null}
+                </header>
+                {officeLoop ? (
+                  <>
+                    <p>{officeLoop.ui?.headline || "Настройка офиса"}</p>
+                    <ul className="hermes-checklist">
+                      {(officeLoop.steps || []).map((step) => (
+                        <li key={step.id} data-done={step.done ? "1" : "0"}>
+                          <span className="hermes-check-dot" />
+                          <div>
+                            <strong>{step.title}</strong>
+                            <small>{step.done ? "готово" : step.hint}</small>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                    {officeLoop.ui?.primary_cta ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-2 w-full"
+                        disabled={sending}
+                        onClick={() => {
+                          setPanelOpen(false);
+                          void sendText(officeLoop.ui!.primary_cta!.text);
+                        }}
+                      >
+                        {officeLoop.ui.primary_cta.title}
+                      </Button>
+                    ) : null}
+                    {officeLoop.kb_draft?.status === "draft" ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Черновик KB «{officeLoop.kb_draft.title}» ждёт подтверждения в чате.
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <p>Загружаю путь…</p>
+                )}
+              </section>
+
+              <section className="hx-card">
+                <header>
+                  <span>Поручения</span>
+                  <Badge variant="secondary">{agentTasks.length}</Badge>
+                </header>
+                {agentTasks.length ? (
+                  <ul className="hermes-checklist">
+                    {agentTasks.slice(0, 5).map((t) => (
+                      <li key={t.id} data-done={t.status === "completed" ? "1" : "0"}>
+                        <span className="hermes-check-dot" />
+                        <div>
+                          <strong>{t.trigger_kind}</strong>
+                          <small>
+                            {t.status} · {t.goal.slice(0, 80)}
+                          </small>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-muted-foreground text-sm">Пока нет сохранённых поручений.</p>
+                )}
+              </section>
+
               <section className="hx-card">
                 <header>
                   <span>Сетап</span>

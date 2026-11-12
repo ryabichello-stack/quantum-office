@@ -7,13 +7,15 @@ import os
 import urllib.error
 import urllib.request
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
 from app.core.tenant import TenantContext
 from app.services.hermes_nous.provision import ensure_tenant_hermes_home, tenant_runtime_record
 from app.services.hermes_nous.run_tokens import issue_run_token
+from app.services.hermes_nous.tasks import add_step, record_run
+from app.services.hermes_nous.tool_packs import pack_for_mode
 
 
 class HermesBridgeError(RuntimeError):
@@ -85,17 +87,37 @@ def create_run(
     session_id: str | None = None,
     tool_ids: list[str] | None = None,
     idempotency_key: str | None = None,
+    task_id: UUID | None = None,
+    mode: str | None = "onboarding",
 ) -> dict[str, Any]:
     """Start a Hermes /v1/runs turn; mint scoped MCP token for this run."""
     runtime = resolve_runtime(db, ctx)
     run_id_hint = f"delno_{uuid4().hex[:12]}"
+    tools = tool_ids if tool_ids else pack_for_mode(mode)
     issued = issue_run_token(
         db,
         ctx,
         run_id=run_id_hint,
-        tool_ids=tool_ids,
+        tool_ids=tools,
         knowledge_scopes=["default"],
     )
+    delno_run = record_run(
+        db,
+        ctx,
+        hermes_run_id=run_id_hint,
+        task_id=task_id,
+        status="running",
+        summary=message[:500],
+    )
+    add_step(
+        db,
+        ctx,
+        delno_run.id,
+        kind="plan",
+        safe_summary=f"Старт поручения (mode={mode})",
+        status="completed",
+    )
+    _meter_run_start(db, ctx, delno_run_id=str(delno_run.id))
     headers = {"Idempotency-Key": idempotency_key or f"delno-{run_id_hint}"}
     # Pass run token via header Hermes can map into MCP env (DELNO injects at gateway).
     headers["X-Delno-Run-Token"] = issued.token
@@ -122,14 +144,18 @@ def create_run(
             return _fallback_chat(runtime, message=message, session_id=payload["session_id"], issued=issued)
         raise
 
+    hermes_run_id = (body or {}).get("run_id") or issued.run_id
     return {
         "ok": True,
         "engine": "nous_hermes_agent",
         "mode": "runs",
+        "pack_mode": mode,
         "http_status": status,
-        "run_id": (body or {}).get("run_id") or issued.run_id,
+        "run_id": hermes_run_id,
         "delno_run_id": issued.run_id,
+        "delno_agent_run_id": str(delno_run.id),
         "run_token_expires_at": issued.expires_at,
+        "tool_ids": tools,
         "hermes": body,
         "session_id": payload["session_id"],
     }
@@ -190,3 +216,21 @@ def _fallback_chat(
         "hermes": body,
         "session_id": session_id,
     }
+
+
+def _meter_run_start(db: Session, ctx: TenantContext, *, delno_run_id: str) -> None:
+    """P5: best-effort usage breadcrumb (no secrets)."""
+    try:
+        from app.services.events import emit_event
+
+        emit_event(
+            db,
+            tenant_id=ctx.tenant_id,
+            event_type="hermes_nous.run_started",
+            category="billing",
+            source="hermes_nous.bridge",
+            payload={"delno_agent_run_id": delno_run_id},
+        )
+        db.commit()
+    except Exception:  # noqa: BLE001
+        pass

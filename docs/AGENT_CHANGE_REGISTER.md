@@ -207,3 +207,13 @@
 - Файл: `docs/hermes-nous/MASTER_PLAN.md` — канон порядка работ. P0 plumbing → P1 онбординг+KB+UI → P2 коннекторы+delegate → P3 cron/tasks → P4 каналы/голос last → P5 scale.
 - Codex platform plan остаётся для runtime/tokens; PRODUCT_LOOP — зачем; MASTER — как идём.
 
+## 2026-11-13 01:31 МСК — Cursor: реализация MASTER P0–P5 (код + UI + миграции)
+
+- P0: isolation_smoke.sh; pin/runtime уже были.
+- P1: office-loop API, kb-draft/confirm, SOUL+onboarding skill, UI «Путь офиса».
+- P2: tool packs onboarding/conduct/tasks; cabinet soft-route → conduct pack.
+- P3: alembic 007 agent_tasks/runs/steps + API + UI поручения; bridge пишет AgentRun.
+- P4/P5: channels-map, scale-notes, docs P4/P5; meter event hermes_nous.run_started.
+- Live docker image / telephony / lead.created worker — staging later; prod phone не трогали.
+- Тесты: test_hermes_nous_* + mcp_gateway — 11 passed.
+

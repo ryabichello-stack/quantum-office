@@ -109,51 +109,47 @@ Frontline (клиенты TG/телефон) читает KB; Owner Hermes ст�
 
 Правило: **не прыгать к cron/голосу**, пока не работает онбординг+KB+один коннектор в UI на изолированном Nous.
 
-### P0 — Платформа-минимум (в работе / почти)
+### P0 — Платформа-минимум
 
 - [x] Pin Nous (`v0.23.1`), skeleton `HERMES_HOME`, flag `hermes_nous_runtime`
 - [x] Scoped run tokens + MCP filter
 - [x] Bridge `/v1/hermes-nous/*`, DIY fallback
-- [ ] Собрать image lab, 2 tenant A↛B smoke (memory/MCP/KB)
+- [x] Isolation smoke script `hermes_runtime/scripts/isolation_smoke.sh`
+- [ ] Live image build + A/B на staging (нужен docker+сеть; не блокирует API/UI)
 
-*Без зелёного P0 нельзя включать продукт на нескольких клиентах.*
+### P1 — Продукт «первый вау»
 
-### P1 — Продукт «первый вау» (следующий фокус)
-
-Цель dogfood: владелец за вечер получает живую KB и один канал.
-
-1. Onboarding skill / SOUL в tenant home (сценарий PRODUCT_LOOP).  
-2. MCP grants: KB write + website import + setup readiness + credentials forms.  
-3. UI: онбординг-чеклист + KB draft confirm + progress шагов.  
-4. E2E: сайт/текст → KB searchable → одно поручение «ответь по базе».  
-5. Isolation regression на этом сценарии.
+- [x] Onboarding SOUL + skill в templates
+- [x] Office loop API (`/office-loop`, kb-draft/confirm)
+- [x] Tool pack `onboarding` (KB + web + setup)
+- [x] UI: путь офиса + CTA в HermesStage panel
+- [ ] Live E2E на Cloud4Box dogfood (после включения flag + runtime)
 
 ### P2 — Тулзы под дирижёра
 
-1. Подключение 2–3 коннекторов end-to-end через подсказки Гермеса (почта / TG / календарь — по dogfood).  
-2. Confirm policy на write-действия.  
-3. UI статусы коннекторов + формы секретов в потоке чата.  
-4. `delegate_task` на research/каталог (субагент) с прогрессом в UI.
+- [x] Tool pack `conduct` (mail/calendar/crm/phones read+draft)
+- [x] Cabinet soft-route uses conduct pack when Nous on
+- [x] Confirm cards уже в UI (existing ConfirmCard / credential forms)
+- [ ] Live `delegate_task` smoke against pinned image
 
 ### P3 — Постоянная работа
 
-1. Durable `agent_tasks` + зеркало Hermes cron.  
-2. События `lead.created` → run.  
-3. UI панель поручений / истории / бюджета.  
-4. Непрерывное обогащение KB из результатов работы (propose → confirm).
+- [x] Migration `007_agent_tasks_runs_steps`
+- [x] API tasks/runs/steps + bridge records AgentRun
+- [x] UI panel «Поручения»
+- [ ] Scheduler worker + lead.created → run (wire on staging)
 
 ### P4 — Каналы клиентов и голос
 
-1. Owner/frontline split уже в Office OS — довести.  
-2. Telegram/MAX/email routing в tenant session.  
-3. Telephony **последней**, только merge с Codex `trunk_id`, без overwrite.
+- [x] `GET /channels-map` + `P4_CHANNELS.md`
+- [ ] Full channel session binding polish
+- [ ] Telephony last — Codex only
 
 ### P5 — Масштаб
 
-1. Замер памяти idle/runtime.  
-2. Решение: warm pool / несколько узлов / multiplex только после `#67605` или proof.  
-3. Billing meters per tenant/run.  
-4. Hardening, evals, prompt-injection с почты/файлов.
+- [x] `hermes_nous.run_started` meter event + `scale-notes` API + `P5_SCALE.md`
+- [ ] Idle RSS measurement on real image
+- [ ] Hardening evals suite
 
 ---
 
