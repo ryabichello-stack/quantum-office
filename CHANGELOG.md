@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Hermes: SIP/Mango secrets via secure form (not chat paste);
+  `POST /v1/tenant/vault`, pending_credential_form in operator chat,
+  CredentialFormCard in UI; pasted passwords redacted from transcript
+- Hermes conversation memory: LLM gets prior turns; UI restores last
+  hermes thread on reload; credential questions search KB first;
+  mic falls back to server Whisper STT (`POST /v1/operator/stt`)
+- Hermes: «зайди на сайт / собери знания» → `office.import_website`
+  (fetch → KB + чипы следующих шагов коннекторов); источники больше
+  не выглядят как мёртвые кнопки — отдельные action-chips
+- Hermes UX: «настрой кабинет» → статус сетапа (не ложный note);
+  карточка подтверждения видна в тёмном чате; mic click-to-toggle;
+  дедуп источников; RU-ответ «Настройки обновлены»
+
 ### Added
 
 - Cabinet costs: tokens + OpenAI USD себестоимость + client RUB per tenant;

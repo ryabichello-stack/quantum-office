@@ -13,6 +13,7 @@ from app.api.v1 import (
     operator,
     phones,
     public,
+    vault,
     telephony,
     tenant,
     webhooks,
@@ -29,6 +30,7 @@ router.include_router(tenant.router)
 router.include_router(channels.router)
 router.include_router(billing.router)
 router.include_router(phones.router)
+router.include_router(vault.router)
 router.include_router(telephony.router)
 router.include_router(connectors.router)
 router.include_router(mcp.router)

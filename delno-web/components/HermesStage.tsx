@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { CrystalOrb } from "@/components/CrystalOrb";
 import { ConfirmCard } from "@/components/ConfirmCard";
+import { CredentialFormCard, type CredentialFormSpec } from "@/components/CredentialFormCard";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,10 +37,15 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
+  apiConversations,
+  apiConversationMessages,
   apiOperatorChat,
   apiOperatorConfirm,
+  apiTenantSecretSave,
+  type CredentialFormSpec as ApiCredentialFormSpec,
   type KnowledgeSource,
   type PendingConfirmation,
+  type SuggestedAction,
 } from "@/lib/api";
 import {
   apiBillingEnsure,
@@ -68,15 +74,19 @@ type ChatLine = {
   text: string;
   sources?: KnowledgeSource[];
   pending?: PendingConfirmation | null;
+  credentialForm?: CredentialFormSpec | null;
+  suggestions?: SuggestedAction[];
   previews?: { url: string; name: string }[];
 };
 
 const QUICK_PROMPTS = [
+  { title: "Сайт → знания", text: "Зайди на мой сайт и собери знания в базу" },
   { title: "Телефон", text: "Настрой телефон секретаря" },
+  { title: "SIP Mango", text: "Открой безопасную форму SIP-пароля Mango" },
   { title: "Сетап", text: "Что ещё настроить в офисе?" },
   { title: "Здоровье", text: "Проверь здоровье офиса" },
   { title: "Звонки", text: "Какие звонки были сегодня?" },
-  { title: "Баланс", text: "Покажи расход токенов и баланс" },
+  { title: "Затраты", text: "Покажи расход токенов и баланс" },
 ];
 
 function useCompactHermes(breakpoint = 720) {
@@ -110,6 +120,8 @@ export function HermesStage({ token }: { token: string }) {
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState("");
   const [activePending, setActivePending] = useState<PendingConfirmation | null>(null);
+  const [activeSecretForm, setActiveSecretForm] = useState<CredentialFormSpec | null>(null);
+  const [secretBusy, setSecretBusy] = useState(false);
   const [setup, setSetup] = useState<HermesSetupStatus | null>(null);
   const [health, setHealth] = useState<HermesHealthStatus | null>(null);
   const [calls, setCalls] = useState<CallSessionItem[]>([]);
@@ -240,11 +252,26 @@ export function HermesStage({ token }: { token: string }) {
         setConversationId(result.conversation_id);
         const pending = result.pending_confirmation || null;
         if (pending) setActivePending(pending);
+        const secretForm = (result.pending_credential_form || null) as ApiCredentialFormSpec | null;
+        if (secretForm) setActiveSecretForm(secretForm);
+        const suggestions = (result.suggested_actions || []).filter(
+          (a) => a?.title && a?.text,
+        );
+        const redactUser = Boolean(secretForm);
+        const safeUserLabel = redactUser
+          ? "[логин/пароль — через безопасную форму]"
+          : question || label;
         setLines((prev) => {
-          const base =
-            modality === "voice" && (prev.length === 0 || prev[prev.length - 1]?.text !== question)
-              ? [...prev, { role: "user" as const, text: question || label }]
-              : prev;
+          let base = prev;
+          if (modality === "text" && redactUser && prev.length) {
+            const last = prev[prev.length - 1];
+            if (last?.role === "user") {
+              base = [...prev.slice(0, -1), { ...last, text: safeUserLabel }];
+            }
+          }
+          if (modality === "voice" && (base.length === 0 || base[base.length - 1]?.text !== question)) {
+            base = [...base, { role: "user" as const, text: redactUser ? safeUserLabel : question || label }];
+          }
           return [
             ...base,
             {
@@ -252,6 +279,8 @@ export function HermesStage({ token }: { token: string }) {
               text: result.reply,
               sources: result.sources || [],
               pending,
+              credentialForm: secretForm,
+              suggestions: suggestions.length ? suggestions : undefined,
             },
           ];
         });
@@ -276,25 +305,84 @@ export function HermesStage({ token }: { token: string }) {
     dictating,
     supported: dictateSupported,
     error: dictateError,
-    start: startDictate,
     stop: stopDictate,
+    toggle: toggleDictate,
+    clearError: clearDictateError,
   } = useDictateToInput(
     useCallback((text) => {
       setMessage(text);
     }, []),
+    token,
   );
 
+  const [historyReady, setHistoryReady] = useState(false);
+
   useEffect(() => {
-    if (bootstrapped || !setup) return;
+    let cancelled = false;
+    async function restore() {
+      try {
+        const saved = typeof window !== "undefined" ? localStorage.getItem("hermes_conversation_id") : null;
+        const convs = await apiConversations(token, 30);
+        const preferred =
+          (saved && convs.items.find((c) => c.id === saved)) ||
+          convs.items.find((c) => c.channel === "hermes") ||
+          convs.items.find((c) => c.channel === "cabinet" || c.channel === "operator");
+        if (!preferred || cancelled) {
+          setHistoryReady(true);
+          return;
+        }
+        const msgs = await apiConversationMessages(token, preferred.id);
+        if (cancelled) return;
+        setConversationId(preferred.id);
+        localStorage.setItem("hermes_conversation_id", preferred.id);
+        const restored: ChatLine[] = (msgs.items || [])
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .map((m) => ({
+            role: m.role as "user" | "assistant",
+            text: m.body || "",
+            sources:
+              m.role === "assistant" && Array.isArray((m.meta as { sources?: KnowledgeSource[] } | null)?.sources)
+                ? ((m.meta as { sources: KnowledgeSource[] }).sources)
+                : undefined,
+            suggestions:
+              m.role === "assistant" &&
+              Array.isArray((m.meta as { suggested_actions?: SuggestedAction[] } | null)?.suggested_actions)
+                ? ((m.meta as { suggested_actions: SuggestedAction[] }).suggested_actions)
+                : undefined,
+          }))
+          .filter((l) => l.text.trim());
+        if (restored.length) {
+          setLines(restored);
+          setBootstrapped(true);
+        }
+      } catch {
+        /* fresh chat */
+      } finally {
+        if (!cancelled) setHistoryReady(true);
+      }
+    }
+    void restore();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    localStorage.setItem("hermes_conversation_id", conversationId);
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (bootstrapped || !setup || !historyReady) return;
     setBootstrapped(true);
-    if (!setup.setup_complete) {
+    if (!setup.setup_complete && lines.length === 0) {
       void sendText(
         "Я владелец офиса. Покажи статус сетапа и скажи, что сделать следующим шагом.",
         "text",
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot welcome
-  }, [setup, bootstrapped]);
+  }, [setup, bootstrapped, historyReady]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -404,13 +492,51 @@ export function HermesStage({ token }: { token: string }) {
     }
   }
 
-  function onMicDown(e: ReactPointerEvent<HTMLButtonElement>) {
-    e.preventDefault();
-    startDictate(messageRef.current);
+  async function onSecretSave(values: { login?: string; password?: string }) {
+    if (!activeSecretForm || secretBusy) return;
+    setSecretBusy(true);
+    setError("");
+    try {
+      const result = await apiTenantSecretSave(token, {
+        kind: activeSecretForm.kind || "mango_sip",
+        login: values.login,
+        password: values.password,
+      });
+      setActiveSecretForm(null);
+      setLines((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text:
+            result.message ||
+            `Сохранил ${result.kind}: ${result.login_masked || "••••"}. Пароль в чат не попал — дальше проверю регистрацию линии.`,
+        },
+      ]);
+      void refreshPanels();
+    } catch {
+      setError("Не удалось сохранить SIP-данные. Проверьте сессию и повторите.");
+    } finally {
+      setSecretBusy(false);
+    }
   }
 
-  function onMicUp() {
-    stopDictate();
+  function onMicToggle(e: ReactPointerEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    clearDictateError();
+    toggleDictate(messageRef.current);
+  }
+
+  function dedupeSources(sources: KnowledgeSource[] | undefined): KnowledgeSource[] {
+    if (!sources?.length) return [];
+    const seen = new Set<string>();
+    const out: KnowledgeSource[] = [];
+    for (const s of sources) {
+      const key = String(s.document_id || s.citation || s.title || "").trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(s);
+    }
+    return out;
   }
 
   const progressPct = setup
@@ -419,8 +545,8 @@ export function HermesStage({ token }: { token: string }) {
 
   const statusHint = dictating
     ? compact
-      ? "Диктовка…"
-      : "Диктовка… отпустите mic"
+      ? "Диктовка… tap stop"
+      : "Диктовка… нажмите mic ещё раз, чтобы остановить"
     : voicePhase === "listen"
       ? "Слушаю…"
       : voicePhase === "think"
@@ -436,7 +562,7 @@ export function HermesStage({ token }: { token: string }) {
               : compact
                 ? "Чат · mic · фото"
                 : dictateSupported
-                  ? "Напишите, приложите фото или удержите mic"
+                  ? "Напишите, приложите фото или нажмите mic"
                   : "Напишите, приложите фото или файл";
 
   const canSend = !sending && (Boolean(message.trim()) || pendingFiles.length > 0);
@@ -510,7 +636,7 @@ export function HermesStage({ token }: { token: string }) {
                   <p className="hx-empty-lead">
                     {compact
                       ? "Задача, фото или mic — ответ здесь."
-                      : "Как в Cursor или ChatGPT: пишите задачу, кидайте фото, снимайте камерой — Hermes отвечает в этом же потоке."}
+                      : "Диалог сохраняется: после обновления страницы Hermes помнит этот тред. Пишите задачу, кидайте фото или нажмите mic."}
                   </p>
                   <div className={cn("hx-suggestions", compact && "hx-suggestions-chips")}>
                     {QUICK_PROMPTS.map((item) => (
@@ -560,17 +686,52 @@ export function HermesStage({ token }: { token: string }) {
                     <div className="hx-assistant-col">
                       <div className="hx-bubble hx-bubble-assistant">
                         <div className="hx-text">{line.text}</div>
-                        {line.sources && line.sources.length > 0 && (
-                          <div className="hx-sources-row mt-2 flex flex-wrap gap-1.5">
-                            {line.sources.map((s, i) => (
-                              <Badge key={i} variant="outline" className="max-w-[11rem] truncate text-[10px]">
-                                {s.title || s.citation || s.document_id}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
+                        {(() => {
+                          const sources = dedupeSources(line.sources);
+                          if (!sources.length) return null;
+                          return (
+                            <p className="hx-sources-meta" title="Источники ответа (не кнопки)">
+                              Источники:{" "}
+                              {sources
+                                .map((s) => s.title || s.citation || s.document_id)
+                                .filter(Boolean)
+                                .slice(0, 4)
+                                .join(" · ")}
+                            </p>
+                          );
+                        })()}
                       </div>
-                      {line.pending && activePending?.confirmation_id === line.pending.confirmation_id && (
+                      {line.suggestions && line.suggestions.length > 0 && (
+                        <div className="hx-action-chips">
+                          {line.suggestions.map((a) => (
+                            <Button
+                              key={`${a.title}-${a.text}`}
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={sending}
+                              className="h-auto rounded-full px-3 py-1.5 text-[12px] font-semibold"
+                              onClick={() => void sendText(a.text)}
+                            >
+                              {a.title}
+                            </Button>
+                          ))}
+                        </div>
+                      )}
+                      {line.credentialForm &&
+                      activeSecretForm?.kind === line.credentialForm.kind ? (
+                        <CredentialFormCard
+                          form={activeSecretForm}
+                          busy={secretBusy}
+                          onSubmit={onSecretSave}
+                          onCancel={() => setActiveSecretForm(null)}
+                        />
+                      ) : line.credentialForm ? (
+                        <p className="hx-confirm-expired">
+                          Форма уже закрыта — напишите «SIP-пароль Mango», чтобы открыть снова.
+                        </p>
+                      ) : null}
+                      {line.pending && activePending?.confirmation_id === line.pending.confirmation_id ? (
                         <ConfirmCard
                           summary={line.pending.summary}
                           toolName={line.pending.tool_name}
@@ -578,7 +739,9 @@ export function HermesStage({ token }: { token: string }) {
                           onConfirm={() => void onConfirm()}
                           onCancel={() => setActivePending(null)}
                         />
-                      )}
+                      ) : line.pending ? (
+                        <p className="hx-confirm-expired">Подтверждение уже неактивно — повторите запрос.</p>
+                      ) : null}
                     </div>
                   </article>
                 ),
@@ -688,12 +851,10 @@ export function HermesStage({ token }: { token: string }) {
                         type="button"
                         variant={dictating ? "default" : "ghost"}
                         size="icon"
-                        disabled={sending}
-                        aria-label="Диктовка"
-                        onPointerDown={onMicDown}
-                        onPointerUp={onMicUp}
-                        onPointerLeave={onMicUp}
-                        onPointerCancel={onMicUp}
+                        disabled={sending || !dictateSupported}
+                        aria-label={dictating ? "Остановить диктовку" : "Диктовка"}
+                        aria-pressed={dictating}
+                        onPointerDown={onMicToggle}
                         onContextMenu={(e) => e.preventDefault()}
                         className="hx-tool-btn touch-none"
                       />
@@ -701,7 +862,13 @@ export function HermesStage({ token }: { token: string }) {
                   >
                     <Mic size={compact ? 16 : 18} />
                   </TooltipTrigger>
-                  <TooltipContent>Удерживайте для диктовки</TooltipContent>
+                  <TooltipContent>
+                    {dictateSupported
+                      ? dictating
+                        ? "Нажмите, чтобы остановить"
+                        : "Нажмите, чтобы диктовать"
+                      : "Диктовка недоступна в этом браузере"}
+                  </TooltipContent>
                 </Tooltip>
               </div>
               <Textarea

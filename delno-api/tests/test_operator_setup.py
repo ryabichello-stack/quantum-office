@@ -31,12 +31,33 @@ def test_parse_hermes_setup_and_health():
     setup = parse_setup_intent("Что ещё настроить в офисе?")
     assert setup is not None
     assert setup["tool"] == "hermes.setup_status"
+    cabinet = parse_setup_intent("настрой кабинет")
+    assert cabinet is not None
+    assert cabinet["tool"] == "hermes.setup_status"
+    assert parse_setup_intent("настрой кабинет")["tool"] != "update_tenant_settings"
     health = parse_setup_intent("Проверь здоровье офиса")
     assert health is not None
     assert health["tool"] == "hermes.health"
     calls = parse_setup_intent("Какие звонки были сегодня?")
     assert calls is not None
     assert calls["tool"] == "calls.list"
+
+
+def test_parse_settings_does_not_treat_cabinet_as_note():
+    assert parse_setup_intent("настрой кабинет")["tool"] == "hermes.setup_status"
+    assert parse_setup_intent("настроить офис")["tool"] == "hermes.setup_status"
+    # explicit greeting still maps to settings
+    greeting = parse_setup_intent("настрой приветствие: Здравствуйте")
+    assert greeting is not None
+    assert greeting["tool"] == "update_tenant_settings"
+    assert "greeting" in greeting["params"]["patch"]
+
+
+def test_parse_website_import_intent():
+    intent = parse_setup_intent("зайди на quantumpayouts.ru и собери знания оттуда")
+    assert intent is not None
+    assert intent["tool"] == "office.import_website"
+    assert "quantumpayouts.ru" in intent["params"]["message"]
 
 
 def test_cabinet_setup_pending_confirmation():
@@ -71,7 +92,7 @@ def test_generate_reply_cabinet_skips_llm_on_setup():
             [],
             {"tool_name": "set_feature_flag"},
         )
-        reply, _tool_calls, _sources, pending = _generate_reply(
+        reply, _tool_calls, _sources, pending, _form = _generate_reply(
             db, ctx, "Включи telegram", channel="cabinet"
         )
 

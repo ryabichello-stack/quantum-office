@@ -254,10 +254,11 @@ class UpdateTenantSettingsTool:
             payload={"keys": list(patch.keys())},
         )
         db.commit()
+        keys = ", ".join(str(k) for k in patch.keys())
         return ToolResult(
             ok=True,
             data={"settings": merged, "knowledge_sync": sync},
-            message="Settings updated",
+            message=f"Настройки обновлены ({keys})." if keys else "Настройки обновлены.",
         )
 
 

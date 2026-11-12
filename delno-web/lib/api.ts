@@ -89,6 +89,11 @@ export type PendingConfirmation = {
   summary: string;
 };
 
+export type SuggestedAction = {
+  title: string;
+  text: string;
+};
+
 export type OnboardingStatus = {
   ok?: boolean;
   status: string;
@@ -326,6 +331,20 @@ export type OperatorChatAttachment = {
   data_base64: string;
 };
 
+export type CredentialFormSpec = {
+  kind: string;
+  title: string;
+  hint?: string;
+  fields: Array<{
+    name: string;
+    label: string;
+    type: "text" | "password";
+    autocomplete?: string;
+  }>;
+  submit_label?: string;
+  prefill?: Record<string, string>;
+};
+
 export function apiOperatorChat(
   token: string,
   message: string,
@@ -340,6 +359,8 @@ export function apiOperatorChat(
     sources: KnowledgeSource[];
     tool_calls: unknown[];
     pending_confirmation: PendingConfirmation | null;
+    pending_credential_form?: CredentialFormSpec | null;
+    suggested_actions?: SuggestedAction[];
   }>("/v1/operator/chat", token, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -350,6 +371,23 @@ export function apiOperatorChat(
       modality,
       attachments: attachments || [],
     }),
+  });
+}
+
+export function apiTenantSecretSave(
+  token: string,
+  body: { kind: string; login?: string; password?: string },
+) {
+  return apiFetch<{
+    ok: boolean;
+    kind: string;
+    configured: boolean;
+    login_masked?: string;
+    message?: string;
+  }>("/v1/tenant/vault", token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 }
 
