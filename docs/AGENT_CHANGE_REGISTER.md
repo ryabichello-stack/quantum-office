@@ -135,3 +135,23 @@
 - Hermes: `qo_mcp_bridge` registers ~83 tools into registry/CABINET (skips calls.*/line.* aliases).
 - Deploy needs: `CONSOLE_TOKEN`, `WEBHOOK_TOKEN`/`OFFICE_WEBHOOK_TOKEN`, `OUTREACH_UI_TOKEN` in `/opt/delno/.env`;
   api on `quantum-office_default`; NO_PROXY must list qo-* (HTTP_PROXY otherwise 503s).
+
+## 2026-11-13 00:33 МСК — Cursor: STOP — не ломать multi-tenant AVA / маршрутизацию Codex
+
+- Автор: Cursor (после замечания владельца).
+- Контекст: владелец + Codex специально настроили DID/trunk → tenant → голосовой профиль, чтобы **разные компании** могли пользоваться AVA. Cursor ранее перезаписал `/opt/delno/api` и снёс эту маршрутизацию; Codex восстановил (запись ~00:26–00:35 МСК).
+- Жёсткие правила для Cursor и Codex (навсегда):
+  1. **Не деплоить** ветки Cursor поверх `/opt/delno/api`, если diff затирает `telephony.py`, `api/v1/telephony.py`, `phone_provision.py`, `asterisk_delno_bridge.sh`, `delno_route_call.py`, dialplan/pjsip, `hermes_progress.py`, или снова включает общий `register_qo_mcp_tools` без tenant-aware адаптеров.
+  2. Перед любой выкаткой API: `diff` прод↔git по этим файлам; при конфликте — **merge/подтянуть Codex**, не overwrite.
+  3. Старый Quantum Office MCP (`third_party/quantum_office_mcp` / `qo_mcp_bridge`) с общими токенами и фиксированным quantum-labs — **не активировать** для мульти-клиента, пока нет изоляции по `TenantContext`. Код можно держать в архиве; регистрация в `__init__.py` на проде отключена Codex — так и оставить.
+  4. Каждая задача Cursor обязана пройти фильтр: «это не вредит мультиарендной задумке?» Иначе — только verify/docs, без правок runtime.
+  5. Hermes UI progress (`hermes_progress` + `HermesStage`) уже делает Codex — **не дублировать** и не переписывать вслепую.
+- Проверка Cursor сейчас (только read-only на Cloud4Box):
+  - `telephony.resolve`/`inbound` учитывает `trunk_id`; ошибки `ambiguous_did` / shared trunk на месте.
+  - AGI `/usr/local/bin/delno_route_call.py` → `AI_AGENT` + `DELNO_TENANT_ID` + `trunk_id`.
+  - dialplan: `AGI(/usr/local/bin/delno_route_call.py)` до Stasis; pjsip `line=yes` + `endpoint=mango-trunk`; registration **Registered**.
+  - MCP register в prod `__init__.py` закомментирован/отключён (есть комментарий про shared credentials).
+  - `hermes_progress.py` на проде есть; чат показывает «Ход работы».
+  - Архив ломбардов лежит **только** в tenant `3b9326a4-…` exports; `OUTREACH_ENABLED=false`.
+- Локальная ветка Cursor `cursor/hermes-trace-tenant-archive-9b51` **опасна для деплоя as-is**: в git нет `trunk_id` telephony и нет `hermes_progress`, зато MCP снова регистрируется. **Не выкатывать** на `/opt/delno` без выравнивания с продом/Codex.
+- Статус: зафиксировано. Cursor дальше — verify/docs/tenant-safe archive; runtime телефонии и Hermes progress — зона Codex, пока владелец не скажет иначе.
