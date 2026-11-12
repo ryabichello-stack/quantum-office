@@ -92,7 +92,7 @@ def test_generate_reply_cabinet_skips_llm_on_setup():
             [],
             {"tool_name": "set_feature_flag"},
         )
-        reply, _tool_calls, _sources, pending = _generate_reply(
+        reply, _tool_calls, _sources, pending, _form = _generate_reply(
             db, ctx, "Включи telegram", channel="cabinet"
         )
 

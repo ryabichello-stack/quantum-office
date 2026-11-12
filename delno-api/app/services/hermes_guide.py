@@ -27,7 +27,8 @@ def _phone_block(db: Session, ctx: TenantContext) -> str:
         "Сейчас на Cloud4Box регистрация Mango часто Rejected — нужен SIP-пароль сотрудника Mango.\n"
         "Что сделать дальше:\n"
         "1) Проверьте «здоровье офиса».\n"
-        "2) Дайте SIP-пароль Mango (если линия не принимает звонки).\n"
+        "2) Введите SIP-логин и пароль Mango в безопасной форме ниже "
+        "(не вставляйте пароль в чат).\n"
         "3) Скажите «какие звонки были»."
     )
     return "\n".join(lines)
@@ -90,6 +91,8 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
             f"Сетап: {setup.get('message_ru')}",
             f"Здоровье: {health.get('message_ru')}",
         ]
+        from app.services.tenant_secrets import credential_form_spec
+
         return {
             "reply": "\n".join(body),
             "tool_calls": [
@@ -98,6 +101,7 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
                 {"tool": "hermes.setup_status", "ok": True},
                 {"tool": "hermes.health", "ok": True},
             ],
+            "pending_credential_form": credential_form_spec("mango_sip"),
         }
 
     setup_words = (

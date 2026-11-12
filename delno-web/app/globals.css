@@ -2239,6 +2239,39 @@ p {
   color: #9aa8b8;
 }
 
+.hx-secret-fields {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.hx-secret-field {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: #cfe0ff;
+}
+
+.hx-secret-field input {
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklab, #9ec1ff 35%, transparent);
+  background: color-mix(in oklab, #0f141a 88%, #000);
+  color: #f2f6fb;
+  padding: 10px 12px;
+  font-size: 14px;
+  outline: none;
+}
+
+.hx-secret-field input:focus {
+  border-color: color-mix(in oklab, var(--hx-accent, #6ea8ff) 70%, #fff);
+}
+
+.hx-secret-error {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #ffb4b4;
+}
+
 .hx-sources-meta {
   margin: 8px 0 0;
   font-size: 11px;

@@ -110,14 +110,20 @@ def run_operator_turn(
                 "sources": [],
                 "tool_calls": [{"tool": "attachments", "ok": False, "error": normalized.get("error")}],
                 "pending_confirmation": None,
+                "pending_credential_form": None,
                 "modality": input_modality,
             }
+
+        from app.services.tenant_secrets import looks_like_credential_paste
 
         conversation = _get_or_create_conversation(db, ctx, channel, conversation_id)
         display_message = message.strip()
         if normalized.get("summary_labels"):
             label_line = " ".join(normalized["summary_labels"])
             display_message = f"{display_message}\n{label_line}".strip() if display_message else label_line
+        # Never persist raw passwords/logins in the chat transcript.
+        if looks_like_credential_paste(display_message or message):
+            display_message = "[логин/пароль — через безопасную форму, не в ленте чата]"
 
         if record_user_message:
             meta_user: dict[str, Any] = {"modality": input_modality}
@@ -131,6 +137,8 @@ def run_operator_turn(
                     }
                     for i in normalized["items"]
                 ]
+            if looks_like_credential_paste(message):
+                meta_user["redacted_secret"] = True
             db.add(
                 Message(
                     tenant_id=ctx.tenant_id,
@@ -142,7 +150,7 @@ def run_operator_turn(
             )
             db.flush()
 
-        reply, tool_calls, sources, pending = _generate_reply(
+        reply, tool_calls, sources, pending, credential_form = _generate_reply(
             db,
             ctx,
             message,
@@ -164,6 +172,11 @@ def run_operator_turn(
         meta: dict[str, Any] = {"tool_calls": tool_calls, "sources": sources}
         if pending:
             meta["pending_confirmation"] = pending
+        if credential_form:
+            meta["pending_credential_form"] = {
+                "kind": credential_form.get("kind"),
+                "title": credential_form.get("title"),
+            }
         if suggested_actions:
             meta["suggested_actions"] = suggested_actions
 
@@ -195,6 +208,7 @@ def run_operator_turn(
             "sources": sources,
             "modality": input_modality,
             "pending_confirmation": pending,
+            "pending_credential_form": credential_form,
             "suggested_actions": suggested_actions,
         }
     except Exception as exc:
@@ -280,6 +294,33 @@ def _conversation_history_for_llm(
             continue
         out.append({"role": role, "content": body[:3000]})
     return out
+
+
+def _try_secret_form_turn(
+    message: str,
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None, dict[str, Any] | None] | None:
+    from app.services.tenant_secrets import (
+        credential_form_spec,
+        looks_like_credential_paste,
+        parse_credential_paste,
+        wants_sip_secret_form,
+    )
+
+    if not wants_sip_secret_form(message):
+        return None
+    prefill = parse_credential_paste(message) if looks_like_credential_paste(message) else None
+    form = credential_form_spec("mango_sip", prefill=prefill)
+    if looks_like_credential_paste(message):
+        reply = (
+            "Не вставляйте пароль в чат — это небезопасно и я его не принимаю текстом.\n"
+            "Заполните безопасную форму ниже: логин и SIP-пароль сохранятся только в кабинете."
+        )
+    else:
+        reply = (
+            "Для SIP Mango откройте безопасную форму ниже. "
+            "Пароль не попадёт в историю переписки."
+        )
+    return reply, [{"tool": "credentials.form", "ok": True, "kind": "mango_sip"}], [], None, form
 
 
 def _try_kb_credential_lookup(
@@ -691,7 +732,13 @@ def _generate_reply(
     channel: str = "web",
     attachments: dict[str, Any] | None = None,
     conversation_id: uuid.UUID | None = None,
-) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None]:
+) -> tuple[
+    str,
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+]:
     """KB search + optional LLM; cabinet channel enables live setup intents."""
     from app.services.operator_attachments import build_user_content
 
@@ -722,6 +769,7 @@ def _generate_reply(
                 url_ingest.get("tool_calls") or [],
                 url_ingest.get("sources") or [],
                 None,
+                None,
             )
 
         summary_reply = try_onboarding_summary_reply(db, ctx, message)
@@ -731,25 +779,38 @@ def _generate_reply(
                 summary_reply.get("tool_calls") or [],
                 summary_reply.get("sources") or [],
                 None,
+                None,
             )
 
     if cabinet and not has_attachments:
         from app.services.hermes_guide import coach_reply
 
-        cred = _try_kb_credential_lookup(db, ctx, message)
-        if cred:
-            return cred
+        secret_form = _try_secret_form_turn(message)
+        if secret_form:
+            return secret_form
 
         # Phone/setup coach first — avoid dumping generic setup tool text or KB FAQ
         guided = coach_reply(db, ctx, message)
         if guided:
-            return guided["reply"], guided.get("tool_calls") or [], [], None
+            return (
+                guided["reply"],
+                guided.get("tool_calls") or [],
+                [],
+                None,
+                guided.get("pending_credential_form"),
+            )
+
+        # Read-only KB lookup for «какой пароль» — after paste/form handling
+        cred = _try_kb_credential_lookup(db, ctx, message)
+        if cred:
+            return (*cred, None)
+
         setup = _try_cabinet_setup(db, ctx, message)
         if setup:
-            return setup
+            return (*setup, None)
         llm_tools = _try_cabinet_llm_tools(db, ctx, message, history=history)
         if llm_tools:
-            return llm_tools
+            return (*llm_tools, None)
 
     kb_query = message
     if has_attachments and attachments.get("text_context"):
@@ -812,7 +873,7 @@ def _generate_reply(
             if reply and not stub_echo:
                 _charge_llm_if_any(db, ctx, completion, channel=channel)
                 tool_calls.append({"tool": "llm", "ok": True, "provider": provider_name})
-                return reply, tool_calls, sources, None
+                return reply, tool_calls, sources, None, None
             if stub_echo:
                 tool_calls.append({"tool": "llm", "ok": False, "provider": provider_name, "error": "stub_echo"})
         except (KeyError, IndexError, TypeError):
@@ -833,8 +894,14 @@ def _generate_reply(
 
         guided = coach_reply(db, ctx, message)
         if guided:
-            return guided["reply"], (guided.get("tool_calls") or []) + tool_calls, [], None
-        return llm_unavailable_reply(message), tool_calls, [], None
+            return (
+                guided["reply"],
+                (guided.get("tool_calls") or []) + tool_calls,
+                [],
+                None,
+                guided.get("pending_credential_form"),
+            )
+        return llm_unavailable_reply(message), tool_calls, [], None, None
 
     if any(word in message.lower() for word in ("заявк", "оставить", "позвон", "связ")):
         return (
@@ -843,9 +910,10 @@ def _generate_reply(
             tool_calls,
             sources,
             None,
+            None,
         )
 
-    return _fallback_reply(kb_context), tool_calls, sources, None
+    return _fallback_reply(kb_context), tool_calls, sources, None, None
 
 
 def execute_confirmed_tool(

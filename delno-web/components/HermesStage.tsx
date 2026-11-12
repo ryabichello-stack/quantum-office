@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { CrystalOrb } from "@/components/CrystalOrb";
 import { ConfirmCard } from "@/components/ConfirmCard";
+import { CredentialFormCard, type CredentialFormSpec } from "@/components/CredentialFormCard";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,8 @@ import {
   apiConversationMessages,
   apiOperatorChat,
   apiOperatorConfirm,
+  apiTenantSecretSave,
+  type CredentialFormSpec as ApiCredentialFormSpec,
   type KnowledgeSource,
   type PendingConfirmation,
   type SuggestedAction,
@@ -71,6 +74,7 @@ type ChatLine = {
   text: string;
   sources?: KnowledgeSource[];
   pending?: PendingConfirmation | null;
+  credentialForm?: CredentialFormSpec | null;
   suggestions?: SuggestedAction[];
   previews?: { url: string; name: string }[];
 };
@@ -78,6 +82,7 @@ type ChatLine = {
 const QUICK_PROMPTS = [
   { title: "Сайт → знания", text: "Зайди на мой сайт и собери знания в базу" },
   { title: "Телефон", text: "Настрой телефон секретаря" },
+  { title: "SIP Mango", text: "Открой безопасную форму SIP-пароля Mango" },
   { title: "Сетап", text: "Что ещё настроить в офисе?" },
   { title: "Здоровье", text: "Проверь здоровье офиса" },
   { title: "Звонки", text: "Какие звонки были сегодня?" },
@@ -115,6 +120,8 @@ export function HermesStage({ token }: { token: string }) {
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState("");
   const [activePending, setActivePending] = useState<PendingConfirmation | null>(null);
+  const [activeSecretForm, setActiveSecretForm] = useState<CredentialFormSpec | null>(null);
+  const [secretBusy, setSecretBusy] = useState(false);
   const [setup, setSetup] = useState<HermesSetupStatus | null>(null);
   const [health, setHealth] = useState<HermesHealthStatus | null>(null);
   const [calls, setCalls] = useState<CallSessionItem[]>([]);
@@ -245,14 +252,26 @@ export function HermesStage({ token }: { token: string }) {
         setConversationId(result.conversation_id);
         const pending = result.pending_confirmation || null;
         if (pending) setActivePending(pending);
+        const secretForm = (result.pending_credential_form || null) as ApiCredentialFormSpec | null;
+        if (secretForm) setActiveSecretForm(secretForm);
         const suggestions = (result.suggested_actions || []).filter(
           (a) => a?.title && a?.text,
         );
+        const redactUser = Boolean(secretForm);
+        const safeUserLabel = redactUser
+          ? "[логин/пароль — через безопасную форму]"
+          : question || label;
         setLines((prev) => {
-          const base =
-            modality === "voice" && (prev.length === 0 || prev[prev.length - 1]?.text !== question)
-              ? [...prev, { role: "user" as const, text: question || label }]
-              : prev;
+          let base = prev;
+          if (modality === "text" && redactUser && prev.length) {
+            const last = prev[prev.length - 1];
+            if (last?.role === "user") {
+              base = [...prev.slice(0, -1), { ...last, text: safeUserLabel }];
+            }
+          }
+          if (modality === "voice" && (base.length === 0 || base[base.length - 1]?.text !== question)) {
+            base = [...base, { role: "user" as const, text: redactUser ? safeUserLabel : question || label }];
+          }
           return [
             ...base,
             {
@@ -260,6 +279,7 @@ export function HermesStage({ token }: { token: string }) {
               text: result.reply,
               sources: result.sources || [],
               pending,
+              credentialForm: secretForm,
               suggestions: suggestions.length ? suggestions : undefined,
             },
           ];
@@ -472,6 +492,34 @@ export function HermesStage({ token }: { token: string }) {
     }
   }
 
+  async function onSecretSave(values: { login?: string; password?: string }) {
+    if (!activeSecretForm || secretBusy) return;
+    setSecretBusy(true);
+    setError("");
+    try {
+      const result = await apiTenantSecretSave(token, {
+        kind: activeSecretForm.kind || "mango_sip",
+        login: values.login,
+        password: values.password,
+      });
+      setActiveSecretForm(null);
+      setLines((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text:
+            result.message ||
+            `Сохранил ${result.kind}: ${result.login_masked || "••••"}. Пароль в чат не попал — дальше проверю регистрацию линии.`,
+        },
+      ]);
+      void refreshPanels();
+    } catch {
+      setError("Не удалось сохранить SIP-данные. Проверьте сессию и повторите.");
+    } finally {
+      setSecretBusy(false);
+    }
+  }
+
   function onMicToggle(e: ReactPointerEvent<HTMLButtonElement>) {
     e.preventDefault();
     clearDictateError();
@@ -670,6 +718,19 @@ export function HermesStage({ token }: { token: string }) {
                           ))}
                         </div>
                       )}
+                      {line.credentialForm &&
+                      activeSecretForm?.kind === line.credentialForm.kind ? (
+                        <CredentialFormCard
+                          form={activeSecretForm}
+                          busy={secretBusy}
+                          onSubmit={onSecretSave}
+                          onCancel={() => setActiveSecretForm(null)}
+                        />
+                      ) : line.credentialForm ? (
+                        <p className="hx-confirm-expired">
+                          Форма уже закрыта — напишите «SIP-пароль Mango», чтобы открыть снова.
+                        </p>
+                      ) : null}
                       {line.pending && activePending?.confirmation_id === line.pending.confirmation_id ? (
                         <ConfirmCard
                           summary={line.pending.summary}
