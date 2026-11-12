@@ -160,14 +160,18 @@ def run_operator_turn(
         )
 
         suggested_actions: list[dict[str, str]] = []
+        pending_download: dict[str, Any] | None = None
         for tc in tool_calls or []:
-            if isinstance(tc, dict) and isinstance(tc.get("suggested_actions"), list):
+            if not isinstance(tc, dict):
+                continue
+            if not suggested_actions and isinstance(tc.get("suggested_actions"), list):
                 suggested_actions = [
                     a
                     for a in tc["suggested_actions"]
                     if isinstance(a, dict) and a.get("title") and a.get("text")
                 ]
-                break
+            if not pending_download and isinstance(tc.get("pending_download"), dict):
+                pending_download = tc["pending_download"]
 
         meta: dict[str, Any] = {"tool_calls": tool_calls, "sources": sources}
         if pending:
@@ -179,6 +183,11 @@ def run_operator_turn(
             }
         if suggested_actions:
             meta["suggested_actions"] = suggested_actions
+        if pending_download:
+            meta["pending_download"] = {
+                "filename": pending_download.get("filename"),
+                "title": pending_download.get("title"),
+            }
 
         db.add(
             Message(
@@ -209,6 +218,7 @@ def run_operator_turn(
             "modality": input_modality,
             "pending_confirmation": pending,
             "pending_credential_form": credential_form,
+            "pending_download": pending_download,
             "suggested_actions": suggested_actions,
         }
     except Exception as exc:
@@ -804,7 +814,17 @@ def _generate_reply(
                 tool_calls[0]["suggested_actions"] = suggested
             elif suggested:
                 tool_calls.append({"tool": "hermes.guide", "ok": True, "suggested_actions": suggested})
-            # pull suggested_actions nested in tool_calls (e.g. sip.probe)
+            # pull suggested_actions / downloads nested in tool_calls (e.g. sip.probe)
+            if guided.get("pending_download") and tool_calls:
+                tool_calls = list(tool_calls)
+                if not any(isinstance(t, dict) and t.get("pending_download") for t in tool_calls):
+                    tool_calls.append(
+                        {
+                            "tool": "hermes.templates.download",
+                            "ok": True,
+                            "pending_download": guided["pending_download"],
+                        }
+                    )
             return (
                 guided["reply"],
                 tool_calls,

@@ -19,11 +19,51 @@ from app.services.events import emit_event
 from app.services.tenant_vault import list_secret_status
 
 
+_OWNER_KB_SOURCES = {
+    "owner_upload",
+    "hermes_dictation",
+    "website_import",
+    "template_upload",
+    "tenant.knowledge.upload",
+    "cabinet.upload",
+}
+
+
+def company_knowledge_ready(db: Session, ctx: TenantContext, *, hermes: dict[str, Any] | None = None) -> dict[str, Any]:
+    """True only when the owner actually provided company facts — not dogfood seed."""
+    h = hermes if isinstance(hermes, dict) else {}
+    if h.get("company_profile_ready"):
+        return {"ok": True, "detail": "company_profile_ready", "source": h.get("kb_source") or "company_profile"}
+    if h.get("kb_ready") and (h.get("kb_source") or "") in _OWNER_KB_SOURCES:
+        return {"ok": True, "detail": "kb_ready", "source": h.get("kb_source")}
+
+    # Real owner uploads (ignore empty / seed)
+    events = (
+        db.query(PlatformEvent)
+        .filter(
+            PlatformEvent.tenant_id == ctx.tenant_id,
+            PlatformEvent.event_type == "knowledge.document_upserted",
+        )
+        .order_by(PlatformEvent.created_at.desc())
+        .limit(20)
+        .all()
+    )
+    for ev in events:
+        payload = ev.payload if isinstance(ev.payload, dict) else {}
+        source = str(payload.get("source") or "")
+        title = str(payload.get("title") or "").lower()
+        if source in _OWNER_KB_SOURCES or source.startswith("tenant.knowledge") or source.startswith("onboarding"):
+            return {"ok": True, "detail": "knowledge_event", "source": source or title}
+        if any(k in title for k in ("профиль компании", "о компании", "company profile", "о нас")):
+            return {"ok": True, "detail": "knowledge_title", "source": title}
+    return {"ok": False, "detail": "need_company_profile", "source": None}
+
+
 SETUP_STEPS: list[dict[str, str]] = [
     {
         "id": "kb",
-        "title": "База знаний",
-        "hint": "Скачайте шаблон профиля компании, заполните или надиктуйте Hermes",
+        "title": "О компании",
+        "hint": "Расскажите о бизнесе, пришлите сайт или заполните MD-шаблон профиля",
     },
     {
         "id": "phone",
@@ -89,8 +129,8 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
         item = by_kind.get(kind) or {}
         return bool(item.get("enabled")) and bool(item.get("configured"))
 
-    # KB: hermes flag, onboarding completed, or explicit company profile marker
-    kb_done = bool(hermes.get("kb_ready")) or (onboarding.get("status") == "completed")
+    kb_info = company_knowledge_ready(db, ctx, hermes=hermes)
+    kb_done = bool(kb_info.get("ok"))
 
     sip_items = list_secret_status(db, ctx).get("items") or []
     sip_row = next((i for i in sip_items if i.get("kind") == "mango_sip"), None) or {}
@@ -106,7 +146,7 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
     script_ok = bool(hermes.get("telephony_script_ready")) or bool((telephony.get("script") or "").strip())
 
     checks = {
-        "kb": {"ok": kb_done, "detail": "kb_ready" if kb_done else "upload_knowledge"},
+        "kb": {"ok": kb_done, "detail": kb_info},
         "phone": {"ok": phone_ok, "detail": phone_detail},
         "telephony_script": {
             "ok": script_ok,
@@ -184,8 +224,18 @@ def mark_setup_progress(
         hermes["setup_started_at"] = _now_iso()
     if kb_ready is not None:
         hermes["kb_ready"] = bool(kb_ready)
+        if kb_ready:
+            hermes["company_profile_ready"] = True
+            hermes["kb_source"] = hermes.get("kb_source") or "owner_upload"
+        else:
+            hermes["company_profile_ready"] = False
     if note:
         hermes["last_setup_note"] = note[:500]
+        if note.strip().lower() in {"dogfood seed", "dogfood", "seed"}:
+            # Seed must not skip the company-profile step for a real owner.
+            hermes["kb_ready"] = False
+            hermes["company_profile_ready"] = False
+            hermes.pop("kb_source", None)
     status = office_setup_status(db, ctx)
     # re-read after potential concurrent — apply completion on fresh checks
     if status.get("setup_complete"):

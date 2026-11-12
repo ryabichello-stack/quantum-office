@@ -9,6 +9,8 @@
   `tenant.settings.telephony`, inject inbound script on calls
 - Hermes coach: «дай шаблон», «предложи/формализуй/сохрани сценарий»,
   «включи календарь и письмо» — без ручной настройки под одного клиента
+- Setup status starts with company profile (not Telegram); Hermes
+  attaches downloadable MD template; dogfood `kb_ready` seed ignored
 - Hermes proactive SIP: apply+probe after vault save, Cursor task on
   Rejected, voice change (`tenant_voice_profiles`), billing notes for
   platform keys vs BYOK (`docs/DELNO_LLM_KEYS_AND_BILLING.md`)

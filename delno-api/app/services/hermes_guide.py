@@ -180,12 +180,12 @@ def _lost_user_guide(db: Session, ctx: TenantContext) -> dict[str, Any]:
     step = 1
     if not kb_ok:
         lines.append(
-            f"{step}) Знания о компании. Скачайте шаблон в «Знания» или скажите "
-            "«дай шаблон профиля компании» / надиктуйте факты — сохраню в базу."
+            f"{step}) Сначала компания: расскажите о бизнесе, пришлите сайт "
+            "или скачайте MD-шаблон профиля (кнопка ниже) и прикрепите заполненный файл."
         )
         step += 1
     else:
-        lines.append(f"{step}) База знаний уже есть — этот шаг закрыт.")
+        lines.append(f"{step}) Профиль компании уже есть — этот шаг закрыт.")
         step += 1
     if not active:
         lines.append(f"{step}) Привязать номер (DID). Скажите: «привяжи номер +7…».")
@@ -232,6 +232,18 @@ def _lost_user_guide(db: Session, ctx: TenantContext) -> dict[str, Any]:
             {"title": "Статус", "text": "Статус сетапа"},
         ],
     }
+    if not kb_ok:
+        download = _company_template_download()
+        if download:
+            out["pending_download"] = download
+            out["tool_calls"].append(
+                {"tool": "hermes.templates.download", "ok": True, "pending_download": download}
+            )
+            out["suggested_actions"] = [
+                {"title": "Расскажу сам", "text": "Сейчас расскажу о компании голосом"},
+                {"title": "Есть сайт", "text": "Зайди на мой сайт и собери знания"},
+                {"title": "Шаблон MD", "text": "Дай шаблон профиля компании"},
+            ]
     if not sip.get("configured") or not probe.get("ok"):
         out["pending_credential_form"] = credential_form_spec("mango_sip")
     return out
@@ -507,11 +519,26 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
         "что дальше делать",
     )
     if any(c in lower for c in lost_cues):
+        # If company profile missing — lost guide already covers it; keep that path.
         return _lost_user_guide(db, ctx)
 
     voice = _voice_block(db, ctx, message)
     if voice:
         return voice
+
+    # Owner saying they will describe the company / starting from zero
+    if any(
+        k in lower
+        for k in (
+            "расскажу о компании",
+            "рассказать о компании",
+            "данные компании",
+            "сначала о компании",
+            "соберем данные",
+            "соберём данные",
+        )
+    ):
+        return _setup_status_coach(db, ctx)
 
     scripted = _script_coach(db, ctx, message)
     if scripted:
@@ -621,28 +648,89 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
         "что дальше",
         "помоги с сетапом",
         "статус сетапа",
+        "владельец офиса",
+        "я владелец",
     )
     if any(w in lower for w in setup_words) or (
         "сетап" in lower and any(w in lower for w in ("статус", "что", "помог", "покаж"))
     ):
-        setup = hermes_ops.office_setup_status(db, ctx)
-        next_steps = setup.get("next_steps") or []
-        lines = [
-            setup.get("message_ru") or "Продолжаем сетап офиса.",
-            "Конкретные шаги:",
-        ]
-        if next_steps:
-            for i, step in enumerate(next_steps[:3], 1):
-                lines.append(f"{i}) {step.get('title')}: {step.get('hint')}")
-        else:
-            lines.append("Обязательные шаги закрыты. Можно проверять звонки и каналы.")
-        lines.append("Голосом: удержите mic у поля ввода и надиктуйте задание.")
-        return {
-            "reply": "\n".join(lines),
-            "tool_calls": [{"tool": "hermes.guide.setup", "ok": True}],
-        }
+        return _setup_status_coach(db, ctx)
 
     return None
+
+
+def _company_template_download() -> dict[str, Any] | None:
+    from app.services.onboarding_templates import get_template
+
+    tpl = get_template("company-profile")
+    if not tpl:
+        return None
+    return {
+        "filename": tpl["filename"],
+        "title": tpl["title"],
+        "body": tpl["body"],
+        "content_type": tpl.get("content_type") or "text/markdown; charset=utf-8",
+    }
+
+
+def _setup_status_coach(db: Session, ctx: TenantContext) -> dict[str, Any]:
+    """Always put company knowledge first for a new / incomplete office."""
+    setup = hermes_ops.office_setup_status(db, ctx)
+    checks = setup.get("checks") or {}
+    kb_ok = bool((checks.get("kb") or {}).get("ok"))
+    next_steps = setup.get("next_steps") or []
+
+    if not kb_ok:
+        download = _company_template_download()
+        lines = [
+            "Сначала мне нужно понять вашу компанию — без этого секретарь и каналы бесполезны.",
+            "",
+            "Выберите удобный способ:",
+            "1) Расскажите своими словами: чем занимаетесь, для кого, цены, как записывать клиентов.",
+            "2) Пришлите ссылку на сайт — соберу черновик знаний.",
+            "3) Скачайте шаблон профиля (кнопка ниже / файл), заполните и прикрепите сюда.",
+            "",
+            "После этого перейдём к телефонии, сценарию секретаря и Telegram.",
+        ]
+        tool_calls: list[dict[str, Any]] = [{"tool": "hermes.guide.setup", "ok": True, "step": "company"}]
+        if download:
+            tool_calls.append(
+                {
+                    "tool": "hermes.templates.download",
+                    "ok": True,
+                    "pending_download": download,
+                }
+            )
+        return {
+            "reply": "\n".join(lines),
+            "tool_calls": tool_calls,
+            "pending_download": download,
+            "suggested_actions": [
+                {"title": "Расскажу сам", "text": "Сейчас расскажу о компании голосом"},
+                {"title": "Есть сайт", "text": "Зайди на мой сайт и собери знания"},
+                {"title": "Заполню шаблон", "text": "Дай шаблон профиля компании"},
+            ],
+        }
+
+    lines = [
+        setup.get("message_ru") or "Продолжаем сетап офиса.",
+        "Конкретные шаги:",
+    ]
+    if next_steps:
+        for i, step in enumerate(next_steps[:3], 1):
+            lines.append(f"{i}) {step.get('title')}: {step.get('hint')}")
+    else:
+        lines.append("Обязательные шаги закрыты. Можно проверять звонки и каналы.")
+    lines.append("Голосом можно надиктовать следующий шаг в mic.")
+    return {
+        "reply": "\n".join(lines),
+        "tool_calls": [{"tool": "hermes.guide.setup", "ok": True}],
+        "suggested_actions": [
+            {"title": "Сценарий", "text": "Предложи сценарий из базы знаний"},
+            {"title": "Telegram", "text": "Как подключить Telegram-бота"},
+            {"title": "Статус", "text": "Статус сетапа"},
+        ],
+    }
 
 
 def llm_unavailable_reply(message: str) -> str:

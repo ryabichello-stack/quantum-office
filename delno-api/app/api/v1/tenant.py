@@ -358,10 +358,12 @@ def create_knowledge_document(
     )
     if not result.get("ok"):
         raise HTTPException(status_code=502, detail=result.get("detail") or result.get("reason") or "knowledge_failed")
-    # Mark KB ready for Hermes onboarding checklist
+    # Mark company profile ready for Hermes onboarding checklist
     settings = dict(tenant.settings) if isinstance(tenant.settings, dict) else {}
     hermes = dict(settings.get("hermes") or {}) if isinstance(settings.get("hermes"), dict) else {}
     hermes["kb_ready"] = True
+    hermes["company_profile_ready"] = True
+    hermes["kb_source"] = "tenant.knowledge.upload"
     settings["hermes"] = hermes
     tenant.settings = settings
     db.add(tenant)

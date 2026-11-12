@@ -409,6 +409,12 @@ export function apiOperatorChat(
     tool_calls: unknown[];
     pending_confirmation: PendingConfirmation | null;
     pending_credential_form?: CredentialFormSpec | null;
+    pending_download?: {
+      filename: string;
+      title: string;
+      body: string;
+      content_type?: string;
+    } | null;
     suggested_actions?: SuggestedAction[];
   }>("/v1/operator/chat", token, {
     method: "POST",

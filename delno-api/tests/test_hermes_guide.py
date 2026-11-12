@@ -113,6 +113,29 @@ def test_coach_offers_blank_template():
     assert "Название компании" in out["reply"]
 
 
+def test_setup_status_starts_with_company_not_telegram():
+    db = MagicMock()
+    ctx = MagicMock()
+    with patch("app.services.hermes_guide.hermes_ops.office_setup_status") as setup:
+        setup.return_value = {
+            "message_ru": "Давайте настроим офис. Следующий шаг: Telegram.",
+            "checks": {"kb": {"ok": False}},
+            "next_steps": [{"id": "telegram", "title": "Telegram", "hint": "токен"}],
+        }
+        out = coach_reply(
+            db,
+            ctx,
+            "Я владелец офиса. Покажи статус сетапа и скажи, что сделать следующим шагом.",
+        )
+    assert out is not None
+    assert "компани" in out["reply"].lower()
+    assert out["reply"].lower().startswith("сначала") or "сначала мне нужно" in out["reply"].lower()
+    assert "Подключите branded bot token" not in out["reply"]
+    assert out.get("pending_download") or any(
+        isinstance(t, dict) and t.get("pending_download") for t in (out.get("tool_calls") or [])
+    )
+
+
 def test_coach_proposes_generic_script():
     db = MagicMock()
     ctx = MagicMock()

@@ -69,17 +69,36 @@ import { cn } from "@/lib/utils";
 import { useDictateToInput } from "@/lib/useDictateToInput";
 import { useOperatorVoice } from "@/lib/useOperatorVoice";
 
+type PendingDownload = {
+  filename: string;
+  title: string;
+  body: string;
+  content_type?: string;
+};
+
 type ChatLine = {
   role: "user" | "assistant";
   text: string;
   sources?: KnowledgeSource[];
   pending?: PendingConfirmation | null;
   credentialForm?: CredentialFormSpec | null;
+  download?: PendingDownload | null;
   suggestions?: SuggestedAction[];
   previews?: { url: string; name: string }[];
 };
 
+function triggerMarkdownDownload(file: PendingDownload) {
+  const blob = new Blob([file.body], { type: file.content_type || "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = file.filename || "template.md";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 const QUICK_PROMPTS = [
+  { title: "О компании", text: "Я владелец офиса. Покажи статус сетапа и скажи, что сделать следующим шагом." },
   { title: "Сайт → знания", text: "Зайди на мой сайт и собери знания в базу" },
   { title: "Телефон", text: "Настрой телефон секретаря" },
   { title: "SIP Mango", text: "Открой безопасную форму SIP-пароля Mango" },
@@ -256,6 +275,7 @@ export function HermesStage({ token }: { token: string }) {
         if (pending) setActivePending(pending);
         const secretForm = (result.pending_credential_form || null) as ApiCredentialFormSpec | null;
         if (secretForm) setActiveSecretForm(secretForm);
+        const download = (result.pending_download || null) as PendingDownload | null;
         const suggestions = (result.suggested_actions || []).filter(
           (a) => a?.title && a?.text,
         );
@@ -282,6 +302,7 @@ export function HermesStage({ token }: { token: string }) {
               sources: result.sources || [],
               pending,
               credentialForm: secretForm,
+              download: download || undefined,
               suggestions: suggestions.length ? suggestions : undefined,
             },
           ];
@@ -766,6 +787,19 @@ export function HermesStage({ token }: { token: string }) {
                           ))}
                         </div>
                       )}
+                      {line.download?.body ? (
+                        <div className="hx-action-chips">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-auto rounded-full px-3 py-1.5 text-[12px] font-semibold"
+                            onClick={() => triggerMarkdownDownload(line.download!)}
+                          >
+                            Скачать {line.download.filename || "шаблон.md"}
+                          </Button>
+                        </div>
+                      ) : null}
                       {line.credentialForm &&
                       activeSecretForm?.kind === line.credentialForm.kind ? (
                         <CredentialFormCard
