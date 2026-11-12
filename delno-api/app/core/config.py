@@ -40,8 +40,14 @@ class Settings(BaseSettings):
     lead_smtp_password: str | None = None
     lead_smtp_from: str | None = None
 
+    # Host Asterisk SIP apply (Cloud4Box dogfood)
+    asterisk_sip_apply_enabled: bool = False
+    asterisk_sip_apply_url: str | None = None  # e.g. http://host.docker.internal:18099
+
     openai_api_key: str | None = None
     openai_model: str = "gpt-4.1-mini"
+    openai_realtime_model: str = "gpt-realtime-2.1-mini"
+    openai_realtime_voice: str = "cedar"
     model_provider: str = "openai"
     # OpenAI egress: direct api.openai.com is geo-blocked from RU VPS —
     # route via SPB→Minsk→NL bridge (HTTP/SOCKS proxy) and/or compatible base URL.

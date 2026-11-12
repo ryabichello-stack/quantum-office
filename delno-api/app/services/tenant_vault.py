@@ -174,13 +174,40 @@ def save_secret(
         payload={"kind": kind, "configured": True},
     )
     db.commit()
-    return {
+    out: dict[str, Any] = {
         "ok": True,
         "kind": kind,
         "configured": True,
         "login_masked": _mask(str(current.get("login") or "")),
         "message": "SIP-данные сохранены в кабинете. В чат не попали.",
     }
+    if kind == "mango_sip":
+        try:
+            from app.services.sip_probe import after_vault_sip_save
+
+            probe = after_vault_sip_save(login=current.get("login"), password=current.get("password"))
+            out["sip_probe"] = {
+                k: probe.get(k)
+                for k in (
+                    "ok",
+                    "skipped",
+                    "applied",
+                    "message_ru",
+                    "registration",
+                    "next_actions",
+                    "cursor_task",
+                    "error",
+                )
+                if k in probe
+            }
+            if probe.get("message_ru"):
+                out["message"] = (
+                    out["message"] + " " + str(probe.get("message_ru"))
+                ).strip()
+        except Exception:  # noqa: BLE001
+            logger = __import__("logging").getLogger(__name__)
+            logger.exception("sip probe after vault save failed")
+    return out
 
 
 def _mask(value: str) -> str:

@@ -505,16 +505,24 @@ export function HermesStage({ token }: { token: string }) {
         password: values.password,
       });
       setActiveSecretForm(null);
+      const probe = (result as { sip_probe?: { message_ru?: string; ok?: boolean; cursor_task?: string } })
+        .sip_probe;
       const ack =
         result.message ||
         `Сохранил ${result.kind}: ${result.login_masked || "••••"}. Пароль в чат не попал.`;
-      setLines((prev) => [...prev, { role: "assistant", text: ack }]);
+      const probeLine = probe?.message_ru
+        ? `\nАвтотест линии: ${probe.message_ru}`
+        : "";
+      setLines((prev) => [...prev, { role: "assistant", text: `${ack}${probeLine}` }]);
       void refreshPanels();
       // Follow-up in the same thread so Hermes re-reads vault + setup (no more loop).
       try {
+        const followAsk = probe?.ok
+          ? "SIP сохранён и линия Registered. Что дальше — тестовый звонок или сменить голос?"
+          : "SIP сохранён. Проверь регистрацию. Если Rejected — дай задание для Cursor или снова форму.";
         const follow = await apiOperatorChat(
           token,
-          "SIP сохранён. Телефон настроен? Что дальше по линии?",
+          followAsk,
           conversationId || undefined,
           "text",
           "hermes",

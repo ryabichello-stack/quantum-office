@@ -792,9 +792,17 @@ def _generate_reply(
         # Phone/setup coach first — avoid dumping generic setup tool text or KB FAQ
         guided = coach_reply(db, ctx, message)
         if guided:
+            tool_calls = list(guided.get("tool_calls") or [])
+            suggested = guided.get("suggested_actions")
+            if suggested and tool_calls:
+                tool_calls[0] = dict(tool_calls[0])
+                tool_calls[0]["suggested_actions"] = suggested
+            elif suggested:
+                tool_calls.append({"tool": "hermes.guide", "ok": True, "suggested_actions": suggested})
+            # pull suggested_actions nested in tool_calls (e.g. sip.probe)
             return (
                 guided["reply"],
-                guided.get("tool_calls") or [],
+                tool_calls,
                 [],
                 None,
                 guided.get("pending_credential_form"),

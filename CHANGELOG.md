@@ -2,10 +2,19 @@
 
 ## [Unreleased]
 
+### Added
+
+- Hermes proactive SIP: apply+probe after vault save, Cursor task on
+  Rejected, voice change (`tenant_voice_profiles`), billing notes for
+  platform keys vs BYOK (`docs/DELNO_LLM_KEYS_AND_BILLING.md`)
+- Host helper `deploy/apply_mango_sip_server.py` for Asterisk register
+
 ### Fixed
 
 - Hermes: stop re-asking SIP form after vault save; status questions
   acknowledge saved credentials; phone setup needs DID + SIP
+- Root cause: vault SIP was never written to Asterisk (placeholder
+  `__MANGO_SIP_PASSWORD__`) — apply path restores registration flow
 - Inbox: delete conversation + bulk cleanup of junk Hermes threads
 - Public DELNO leads: restore SMTP owner notify (`lead_email`); site
   tenant must be `delno-demo` (not Quantum Labs)

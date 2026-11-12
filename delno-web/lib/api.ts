@@ -407,6 +407,14 @@ export function apiTenantSecretSave(
     configured: boolean;
     login_masked?: string;
     message?: string;
+    sip_probe?: {
+      ok?: boolean;
+      skipped?: boolean;
+      applied?: boolean;
+      message_ru?: string;
+      cursor_task?: string;
+      next_actions?: { title: string; text: string }[];
+    };
   }>("/v1/tenant/vault", token, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

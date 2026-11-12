@@ -21,6 +21,7 @@ def test_coach_phone_setup_asks_form_when_sip_missing():
         patch("app.services.hermes_guide.hermes_ops.office_setup_status") as setup,
         patch("app.services.hermes_guide.hermes_ops.office_health_report") as health,
         patch("app.services.hermes_guide.list_secret_status") as secrets,
+        patch("app.services.sip_probe.probe_registration") as probe,
     ):
         phones.return_value = {
             "items": [{"e164": "+79699665899", "label": "main", "status": "active"}]
@@ -28,6 +29,7 @@ def test_coach_phone_setup_asks_form_when_sip_missing():
         setup.return_value = {"message_ru": "Сетап 80%"}
         health.return_value = {"message_ru": "Есть предупреждения"}
         secrets.return_value = {"items": [{"kind": "mango_sip", "configured": False}]}
+        probe.return_value = {"ok": False, "status": "rejected", "message_ru": "Rejected"}
         out = coach_reply(db, ctx, "Помоги настроить телефон секретаря")
     assert out is not None
     assert "79699665899" in out["reply"]
@@ -44,6 +46,7 @@ def test_coach_phone_status_does_not_loop_when_sip_saved():
         patch("app.services.hermes_guide.hermes_ops.office_setup_status") as setup,
         patch("app.services.hermes_guide.hermes_ops.office_health_report") as health,
         patch("app.services.hermes_guide.list_secret_status") as secrets,
+        patch("app.services.sip_probe.probe_registration") as probe,
     ):
         phones.return_value = {
             "items": [{"e164": "+79699665899", "label": "main", "status": "active"}]
@@ -60,6 +63,7 @@ def test_coach_phone_status_does_not_loop_when_sip_saved():
                 }
             ]
         }
+        probe.return_value = {"ok": False, "status": "rejected", "message_ru": "Rejected"}
         out = coach_reply(db, ctx, "Телефон уже настроен?")
     assert out is not None
     assert "не начинаю настройку заново" in out["reply"].lower() or "уже сохранён" in out["reply"]

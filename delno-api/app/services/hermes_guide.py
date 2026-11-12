@@ -101,6 +101,64 @@ def _wants_new_sip_form(lower: str, *, sip_configured: bool) -> bool:
     return not sip_configured and not _is_status_question(lower)
 
 
+def _voice_block(db: Session, ctx: TenantContext, message: str) -> dict[str, Any] | None:
+    lower = message.lower()
+    voice_words = ("голос", "voice", "realtime", "смени голос", "какой голос")
+    if not any(w in lower for w in voice_words):
+        return None
+    from app.core.config import get_settings
+    from app.models.tenant_voice_profile import TenantVoiceProfile
+
+    settings = get_settings()
+    model = getattr(settings, "openai_realtime_model", None) or "gpt-realtime-2.1-mini"
+    default_voice = getattr(settings, "openai_realtime_voice", None) or "cedar"
+    row = (
+        db.query(TenantVoiceProfile)
+        .filter(TenantVoiceProfile.tenant_id == ctx.tenant_id)
+        .one_or_none()
+    )
+    current = (row.preset_id if row and row.preset_id else default_voice) or default_voice
+    # "смени голос на X"
+    new_voice = None
+    for token in ("на ", "to ", "voice "):
+        if token in lower:
+            part = lower.split(token, 1)[-1].strip().split()[0].strip(".,!")
+            if part.isalpha() and 3 <= len(part) <= 32:
+                new_voice = part
+                break
+    if new_voice and new_voice not in ("голос", "voice", "realtime"):
+        if row is None:
+            row = TenantVoiceProfile(
+                tenant_id=ctx.tenant_id,
+                mode="preset",
+                provider="openai",
+                preset_id=new_voice,
+                language="ru",
+            )
+            db.add(row)
+        else:
+            row.preset_id = new_voice
+            row.provider = "openai"
+            row.mode = "preset"
+        db.commit()
+        current = new_voice
+        head = f"Голос Realtime переключил на «{current}» (модель {model})."
+    else:
+        head = f"Сейчас голос «{current}», модель {model} (как в архиве: gpt-realtime-2.1-mini / cedar)."
+    return {
+        "reply": (
+            f"{head}\n"
+            "Скажите «смени голос на cedar|alloy|echo|shimmer|…». "
+            "Для звонков AVA читает ai-agent.local.yaml; кабинетный профиль — tenant_voice_profiles."
+        ),
+        "tool_calls": [{"tool": "hermes.voice", "ok": True, "voice": current, "model": model}],
+        "suggested_actions": [
+            {"title": "Голос cedar", "text": "Смени голос на cedar"},
+            {"title": "Тест линии", "text": "Проверь регистрацию SIP и здоровье телефонии"},
+        ],
+    }
+
+
 def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any] | None:
     lower = (message or "").lower().strip()
     if not lower:
@@ -128,6 +186,27 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
         )
     ):
         return None
+
+    voice = _voice_block(db, ctx, message)
+    if voice:
+        return voice
+
+    if any(k in lower for k in ("задание cursor", "задачу cursor", "дай задание", "почини через cursor")):
+        from app.services.sip_probe import CURSOR_TASK_SIP_REJECTED, probe_registration
+
+        probe = probe_registration()
+        return {
+            "reply": (
+                "Вот задание для Cursor по SIP/телефонии. Скопируйте в агент:\n\n"
+                f"{CURSOR_TASK_SIP_REJECTED}\n\n"
+                f"Текущий статус линии: {probe.get('message_ru')}"
+            ),
+            "tool_calls": [{"tool": "hermes.cursor_task", "ok": True, "topic": "sip"}],
+            "suggested_actions": [
+                {"title": "Форма SIP", "text": "Открой безопасную форму SIP Mango"},
+                {"title": "Статус линии", "text": "Проверь регистрацию SIP"},
+            ],
+        }
 
     # Password paste / explicit form requests handled elsewhere; don't swallow
     # pure credential paste into the coach.
@@ -183,6 +262,28 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
         }
         if show_form:
             out["pending_credential_form"] = credential_form_spec("mango_sip")
+        # Proactive next chips
+        try:
+            from app.services.sip_probe import probe_registration, _next_actions
+
+            probe = probe_registration()
+            out["tool_calls"].append(
+                {
+                    "tool": "sip.probe",
+                    "ok": bool(probe.get("ok")),
+                    "status": probe.get("status"),
+                    "suggested_actions": _next_actions(probe),
+                }
+            )
+            if not probe.get("ok") and sip.get("configured"):
+                out["reply"] += (
+                    "\n\nАвтопроверка: линия ещё не Registered. "
+                    "Могу выдать задание для Cursor или снова открыть форму SIP."
+                )
+            elif probe.get("ok"):
+                out["reply"] += "\n\nАвтопроверка: линия Registered. Следующий шаг — тестовый звонок."
+        except Exception:  # noqa: BLE001
+            pass
         return out
 
     setup_words = (
