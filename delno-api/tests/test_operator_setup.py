@@ -69,7 +69,7 @@ def test_cabinet_setup_pending_confirmation():
         tool.critical_write = True
         mock_registry.get.return_value = tool
 
-        reply, tool_calls, _sources, pending = _try_cabinet_setup(
+        reply, tool_calls, _sources, pending, _form = _try_cabinet_setup(
             db,
             ctx,
             "Добавь в базу знаний: Прайс — консультация 3000 руб.",
@@ -79,18 +79,54 @@ def test_cabinet_setup_pending_confirmation():
     assert pending["tool_name"] == "upload_knowledge_snippet"
     assert "Готов выполнить" in reply
     assert tool_calls[0]["tool"] == "upload_knowledge_snippet"
+    assert _form is None
 
 
-def test_generate_reply_cabinet_skips_llm_on_setup():
+def test_generate_reply_cabinet_agent_first():
+    """LLM tool path runs before keyword setup / coach."""
     ctx = TenantContext(tenant_id=uuid.uuid4(), tenant_slug="delno-demo", role="tenant_owner")
     db = MagicMock()
 
-    with patch("app.operator.agent._try_cabinet_setup") as mock_setup:
+    with (
+        patch("app.operator.agent._try_secret_form_turn", return_value=None),
+        patch("app.operator.agent._try_cabinet_llm_tools") as mock_llm,
+        patch("app.operator.agent._try_cabinet_setup") as mock_setup,
+        patch("app.services.hermes_guide.coach_reply") as mock_coach,
+    ):
+        mock_llm.return_value = (
+            "Tools включены",
+            [{"tool": "telephony.tools_set", "ok": True}],
+            [],
+            None,
+            None,
+        )
+        reply, tool_calls, _sources, pending, _form = _generate_reply(
+            db, ctx, "подключи тулзы к sip календарь телемост и почту", channel="cabinet"
+        )
+
+    assert reply == "Tools включены"
+    assert tool_calls[0]["tool"] == "telephony.tools_set"
+    assert pending is None
+    mock_llm.assert_called_once()
+    mock_setup.assert_not_called()
+    mock_coach.assert_not_called()
+
+
+def test_generate_reply_cabinet_falls_back_when_llm_down():
+    ctx = TenantContext(tenant_id=uuid.uuid4(), tenant_slug="delno-demo", role="tenant_owner")
+    db = MagicMock()
+
+    with (
+        patch("app.operator.agent._try_secret_form_turn", return_value=None),
+        patch("app.operator.agent._try_cabinet_llm_tools", return_value=None),
+        patch("app.operator.agent._try_cabinet_setup") as mock_setup,
+    ):
         mock_setup.return_value = (
             "OK",
             [{"tool": "set_feature_flag"}],
             [],
             {"tool_name": "set_feature_flag"},
+            None,
         )
         reply, _tool_calls, _sources, pending, _form = _generate_reply(
             db, ctx, "Включи telegram", channel="cabinet"

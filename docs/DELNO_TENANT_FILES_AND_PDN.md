@@ -171,6 +171,7 @@ Legacy `delno-office/files` с env-токенами — **не** путь для
 | **F2** | S3 РФ + envelope encryption + signed URLs |
 | **F3** | Tenant vault `files_*` + Hermes «подключи Яндекс/Mail/Google» + per-request creds в files broker (**done**) |
 | **F4** | RU LLM path / anonymizer перед foreign LLM; health «residency mode» |
+| **Agent** | Hermes cabinet **agent-first** (LLM+tools); keyword coach = fallback only |
 | **F5** | Isolation e2e test в CI + DR restore drill |
 
 ---

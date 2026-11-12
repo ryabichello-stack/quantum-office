@@ -45,6 +45,15 @@ from app.operator.tools.hermes import (
     HermesSetupMarkTool,
     HermesSetupStatusTool,
 )
+from app.operator.tools.office_setup import (
+    CredentialsOpenFormTool,
+    FilesCloudListTool,
+    FilesCloudStatusTool,
+    TelephonyScriptGetTool,
+    TelephonyScriptProposeTool,
+    TelephonyScriptSaveTool,
+    TelephonyToolsSetTool,
+)
 from app.operator.tools.billing_tools import BillingSummaryTool
 from app.operator.tools.web import WebBrowseTool, WebFetchTool, WebSearchTool
 from app.operator.tools.website_import_tool import OfficeImportWebsiteTool
@@ -90,6 +99,14 @@ def register_builtin_tools() -> None:
     registry.register(HermesSetupMarkTool())
     registry.register(HermesHealthTool())
     registry.register(HermesAlertsTool())
+    # Telephony script + cloud disks + secure forms (agent-callable)
+    registry.register(TelephonyScriptGetTool())
+    registry.register(TelephonyScriptProposeTool())
+    registry.register(TelephonyScriptSaveTool())
+    registry.register(TelephonyToolsSetTool())
+    registry.register(FilesCloudStatusTool())
+    registry.register(FilesCloudListTool())
+    registry.register(CredentialsOpenFormTool())
     # Hermes browser / web
     registry.register(WebSearchTool())
     registry.register(WebFetchTool())

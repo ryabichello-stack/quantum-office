@@ -68,6 +68,15 @@ CABINET_LLM_TOOLS = (
     "calls.get",
     "calls.dial",
     "calls.jobs",
+    # Telephony secretary script + in-call tools
+    "telephony.script_get",
+    "telephony.script_propose",
+    "telephony.script_save",
+    "telephony.tools_set",
+    # Cloud disks
+    "files.cloud_status",
+    "files.cloud_list",
+    "credentials.open_form",
     # Office connectors
     "suggest_calendar_slots",
     "send_mail_draft",
@@ -79,6 +88,25 @@ CABINET_LLM_TOOLS = (
     "web.browse",
     "office.import_website",
     "billing.summary",
+)
+
+HERMES_AGENT_SYSTEM = (
+    "Ты Hermes — умный ИИ-руководитель офиса DELNO для этого tenant. "
+    "Владелец говорит естественно; ты сам понимаешь намерение и ДЕЙСТВУЕШЬ через tools. "
+    "Не жди волшебных фраз и не отвечай шаблонным статусом SIP, если просят другое "
+    "(например тулзы линии, облако, сценарий, почту, ВКС).\n"
+    "Возможности (вызывай tools):\n"
+    "• сетап/здоровье — hermes.setup_status, hermes.health, hermes.alerts;\n"
+    "• телефония — phones.*, calls.*, telephony.script_*, telephony.tools_set "
+    "(календарь/почта/телемост/знания на линии Ava);\n"
+    "• облака — files.cloud_status / files.cloud_list; подключение — credentials.open_form "
+    "(files_yadisk|files_mailru|files_gdrive|files_onedrive); Google/OneDrive только с согласием;\n"
+    "• SIP — credentials.open_form kind=mango_sip (секреты только в форме, не в чат);\n"
+    "• сайт/KB — office.import_website, web.*, upload_knowledge_snippet, get_knowledge;\n"
+    "• офис — suggest_calendar_slots, send_mail_draft, create_conference, list_files;\n"
+    "• биллинг — billing.summary.\n"
+    "Если сценария ещё нет, а просят тулзы — сначала telephony.script_propose/save, потом tools_set. "
+    "После действия кратко скажи результат и следующий шаг. Отвечай по-русски, 2–8 предложений."
 )
 
 
@@ -415,17 +443,7 @@ def _system_prompt(
         "Не выдумывай цены, условия и действия. Не запрашивай tenant_id и не выполняй массовые операции."
     )
     if cabinet:
-        base += (
-            " Ты Hermes — спокойный напарник владельца офиса. "
-            "Говори коротко, по делу, как в нормальном диалоге: 2–6 предложений, без простыней. "
-            "Помнишь реплики этого диалога и не начинай с нуля. "
-            "Никогда не вываливай сырую базу знаний / markdown-документы в ответ. "
-            "SIP/Mango логин и пароль — только через безопасную форму UI, не проси вставлять в чат "
-            "и не цитируй секреты из KB. "
-            "Если человек потерялся («не понимаю», «что делать») — дай 3 конкретных шага по порядку. "
-            "Сам предлагай следующий шаг после каждого успеха/провала. "
-            "Запись в системы — только после явного подтверждения."
-        )
+        base += " " + HERMES_AGENT_SYSTEM
     if widget:
         base += (
             " Ты на публичном сайте DELNO в демо-режиме для посетителей. "
@@ -566,14 +584,20 @@ def _execute_cabinet_tool(
     ctx: TenantContext,
     tool_name: str,
     params: dict[str, Any],
-) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None]:
+) -> tuple[
+    str,
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+]:
     summary = _tool_summary(tool_name, params)
     tool_calls: list[dict[str, Any]] = [{"tool": tool_name, "ok": None}]
 
     tool = registry.get(tool_name)
     if not tool:
         tool_calls[0]["ok"] = False
-        return f"Инструмент «{tool_name}» недоступен.", tool_calls, [], None
+        return f"Инструмент «{tool_name}» недоступен.", tool_calls, [], None, None
 
     tool_calls[0]["confirmation_class"] = tool_confirmation_class(tool)
 
@@ -581,9 +605,9 @@ def _execute_cabinet_tool(
         result = registry.run(db, ctx, tool_name, **params)
         if isinstance(result, ToolResult) and result.ok:
             tool_calls[0]["ok"] = True
-            return _format_tenant_summary(result.data), tool_calls, [], None
+            return _format_tenant_summary(result.data), tool_calls, [], None, None
         tool_calls[0]["ok"] = False
-        return "Не удалось загрузить настройки.", tool_calls, [], None
+        return "Не удалось загрузить настройки.", tool_calls, [], None, None
 
     if tool_name == "get_knowledge":
         result = registry.run(db, ctx, tool_name, **params)
@@ -591,9 +615,9 @@ def _execute_cabinet_tool(
             tool_calls[0]["ok"] = True
             sources = extract_sources_from_knowledge(result.data)
             text = _kb_context_from_result(result)
-            return text or result.message or "Ничего не найдено в базе знаний.", tool_calls, sources, None
+            return text or result.message or "Ничего не найдено в базе знаний.", tool_calls, sources, None, None
         tool_calls[0]["ok"] = False
-        return "Поиск в базе знаний не удался.", tool_calls, [], None
+        return "Поиск в базе знаний не удался.", tool_calls, [], None, None
 
     if tool_name in ("hermes.setup_status", "hermes.health", "hermes.alerts", "calls.list", "billing.summary"):
         result = registry.run(db, ctx, tool_name, **params)
@@ -604,24 +628,24 @@ def _execute_cabinet_tool(
                 from app.operator.tools.website_import_tool import _suggested_actions
 
                 tool_calls[0]["suggested_actions"] = _suggested_actions(data.get("next_steps") or [])
-                return _format_hermes_setup(data), tool_calls, [], None
+                return _format_hermes_setup(data), tool_calls, [], None, None
             if tool_name == "hermes.health":
-                return _format_hermes_health(result.data or {}), tool_calls, [], None
+                return _format_hermes_health(result.data or {}), tool_calls, [], None, None
             if tool_name == "calls.list":
-                return _format_calls_list(result.data or {}), tool_calls, [], None
+                return _format_calls_list(result.data or {}), tool_calls, [], None, None
             if tool_name == "billing.summary":
-                return result.message or "Баланс недоступен.", tool_calls, [], None
+                return result.message or "Баланс недоступен.", tool_calls, [], None, None
             items = (result.data or {}).get("items") or []
             if not items:
-                return "Свежих алертов нет — всё тихо.", tool_calls, [], None
+                return "Свежих алертов нет — всё тихо.", tool_calls, [], None, None
             lines = ["Последние события офиса:"]
             for item in items[:8]:
                 et = item.get("event_type") or item.get("code") or "event"
                 msg = item.get("message_ru") or item.get("summary") or str(item.get("payload") or "")[:120]
                 lines.append(f"• {et}: {msg}")
-            return "\n".join(lines), tool_calls, [], None
+            return "\n".join(lines), tool_calls, [], None, None
         tool_calls[0]["ok"] = False
-        return "Не удалось получить статус Hermes.", tool_calls, [], None
+        return "Не удалось получить статус Hermes.", tool_calls, [], None, None
 
     if tool_name == "office.import_website":
         result = registry.run(db, ctx, tool_name, **params)
@@ -630,24 +654,50 @@ def _execute_cabinet_tool(
             suggested = (result.data or {}).get("suggested_actions") or []
             if suggested:
                 tool_calls[0]["suggested_actions"] = suggested
-            return result.message or summary, tool_calls, [], None
+            return result.message or summary, tool_calls, [], None, None
         tool_calls[0]["ok"] = False
         msg = result.message if isinstance(result, ToolResult) else "Ошибка"
-        return f"Не удалось импортировать сайт: {msg}", tool_calls, [], None
+        return f"Не удалось импортировать сайт: {msg}", tool_calls, [], None, None
+
+    if tool_name == "credentials.open_form":
+        result = registry.run(db, ctx, tool_name, **params)
+        if isinstance(result, ToolResult) and result.ok:
+            tool_calls[0]["ok"] = True
+            form = (result.data or {}).get("pending_credential_form")
+            return result.message or summary, tool_calls, [], None, form if isinstance(form, dict) else None
+        tool_calls[0]["ok"] = False
+        return "Не удалось открыть форму.", tool_calls, [], None, None
+
+    if tool_name in (
+        "telephony.script_get",
+        "telephony.script_propose",
+        "telephony.script_save",
+        "telephony.tools_set",
+        "files.cloud_status",
+        "files.cloud_list",
+    ):
+        result = registry.run(db, ctx, tool_name, **params)
+        if isinstance(result, ToolResult) and result.ok:
+            tool_calls[0]["ok"] = True
+            return result.message or summary, tool_calls, [], None, None
+        tool_calls[0]["ok"] = False
+        msg = result.message if isinstance(result, ToolResult) else "Ошибка"
+        return msg or f"Не удалось: {tool_name}", tool_calls, [], None, None
 
     if requires_confirmation(tool):
         pending = _pending_confirmation_dict(tool_name, params, summary)
         tool_calls[0]["pending"] = True
         reply = f"Готов выполнить: {summary}. Подтвердите действие кнопкой ниже."
-        return reply, tool_calls, [], pending
+        return reply, tool_calls, [], pending, None
 
     result = registry.run(db, ctx, tool_name, **params)
     if isinstance(result, ToolResult) and result.ok:
         tool_calls[0]["ok"] = True
-        return result.message or summary, tool_calls, [], None
+        form = (result.data or {}).get("pending_credential_form") if isinstance(result.data, dict) else None
+        return result.message or summary, tool_calls, [], None, form if isinstance(form, dict) else None
     tool_calls[0]["ok"] = False
     msg = result.message if isinstance(result, ToolResult) else "Ошибка"
-    return f"Не удалось: {msg}", tool_calls, [], None
+    return f"Не удалось: {msg}", tool_calls, [], None, None
 
 
 def _try_cabinet_llm_tools(
@@ -656,7 +706,13 @@ def _try_cabinet_llm_tools(
     message: str,
     *,
     history: list[dict[str, str]] | None = None,
-) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None] | None:
+) -> tuple[
+    str,
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+] | None:
     provider = get_model_provider()
     if provider.name == "stub":
         return None
@@ -665,21 +721,7 @@ def _try_cabinet_llm_tools(
     messages: list[dict[str, Any]] = [
         {
             "role": "system",
-            "content": (
-                f"Ты Hermes — ИИ-руководитель офиса DELNO для tenant {ctx.tenant_slug}. "
-                "Владелец настраивает и управляет офисом голосом или текстом, как в чате с ассистентом. "
-                "У тебя есть история этого диалога — опирайся на неё, не забывай прошлые шаги. "
-                "Обязанности: (1) первый сетап — hermes.setup_status / phones.provision / флаги / KB; "
-                "(2) health-watch — hermes.health и сразу сообщить о проблемах простым языком; "
-                "(3) дирижирование — calls.dial/list, календарь, почта, ВКС, рассылка; "
-                "(4) сайт компании — office.import_website / web.fetch / web.browse: "
-                "МОЖЕШЬ заходить на публичные сайты, собирать текст в базу знаний и предлагать "
-                "настройку коннекторов. Никогда не говори, что не умеешь открывать сайты — "
-                "вызывай tool. "
-                "(5) логины/пароли/доступы — сначала get_knowledge, не отвечай «нет данных» вслепую. "
-                "Если сетап не завершён — предложи следующий шаг из checklist. "
-                "Для изменений вызывай tools. Отвечай кратко по-русски."
-            ),
+            "content": f"{HERMES_AGENT_SYSTEM} Tenant: {ctx.tenant_slug}.",
         }
     ]
     if history:
@@ -711,7 +753,7 @@ def _try_cabinet_llm_tools(
 
     content = str(choice_msg.get("content") or "").strip()
     if content:
-        return content, [{"tool": "llm", "ok": True, "provider": provider.name}], [], None
+        return content, [{"tool": "llm", "ok": True, "provider": provider.name}], [], None, None
     return None
 
 
@@ -719,7 +761,13 @@ def _try_cabinet_setup(
     db: Session,
     ctx: TenantContext,
     message: str,
-) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None] | None:
+) -> tuple[
+    str,
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+] | None:
     intent = parse_setup_intent(message)
     if not intent:
         return None
@@ -800,11 +848,26 @@ def _generate_reply(
     if cabinet and not has_attachments:
         from app.services.hermes_guide import coach_reply
 
+        # 1) Secrets never go through LLM as chat text
         secret_form = _try_secret_form_turn(message)
         if secret_form:
             return secret_form
 
-        # Phone/setup coach first — avoid dumping generic setup tool text or KB FAQ
+        # 2) Agent-first: LLM chooses tools from the full catalog (no keyword scripts)
+        llm_tools = _try_cabinet_llm_tools(db, ctx, message, history=history)
+        if llm_tools:
+            return llm_tools
+
+        # 3) Optional thin keyword intents only if LLM unavailable
+        setup = _try_cabinet_setup(db, ctx, message)
+        if setup:
+            return setup
+
+        cred = _try_kb_credential_lookup(db, ctx, message)
+        if cred:
+            return (*cred, None)
+
+        # 4) Deterministic coach only as offline/geo-block fallback
         guided = coach_reply(db, ctx, message)
         if guided:
             tool_calls = list(guided.get("tool_calls") or [])
@@ -814,7 +877,6 @@ def _generate_reply(
                 tool_calls[0]["suggested_actions"] = suggested
             elif suggested:
                 tool_calls.append({"tool": "hermes.guide", "ok": True, "suggested_actions": suggested})
-            # pull suggested_actions / downloads nested in tool_calls (e.g. sip.probe)
             if guided.get("pending_download") and tool_calls:
                 tool_calls = list(tool_calls)
                 if not any(isinstance(t, dict) and t.get("pending_download") for t in tool_calls):
@@ -832,18 +894,6 @@ def _generate_reply(
                 None,
                 guided.get("pending_credential_form"),
             )
-
-        # Read-only KB lookup for «какой пароль» — after paste/form handling
-        cred = _try_kb_credential_lookup(db, ctx, message)
-        if cred:
-            return (*cred, None)
-
-        setup = _try_cabinet_setup(db, ctx, message)
-        if setup:
-            return (*setup, None)
-        llm_tools = _try_cabinet_llm_tools(db, ctx, message, history=history)
-        if llm_tools:
-            return (*llm_tools, None)
 
         # Hermes office chat: don't RAG-dump vault docs for ordinary dialogue
         skip_kb = True

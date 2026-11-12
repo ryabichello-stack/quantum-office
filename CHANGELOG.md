@@ -28,6 +28,13 @@
   platform keys vs BYOK (`docs/DELNO_LLM_KEYS_AND_BILLING.md`)
 - Host helper `deploy/apply_mango_sip_server.py` for Asterisk register
 
+### Changed
+
+- Hermes cabinet is **agent-first**: LLM + tool catalog runs before keyword
+  coach; coach remains offline/geo-block fallback only. New tools:
+  `telephony.script_*`, `telephony.tools_set`, `files.cloud_*`,
+  `credentials.open_form` — so Hermes acts on intent without hand-coded phrases
+
 ### Fixed
 
 - Hermes: «подключи тулзы к sip календарь телемост и почту» no longer hijacked
