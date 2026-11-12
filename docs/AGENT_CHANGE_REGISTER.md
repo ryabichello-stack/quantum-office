@@ -179,3 +179,10 @@
 - Вердикт: решение Codex **верно**; подтверждено upstream docs (multiplex MCP discovery process-global, `#67605`). Усилить: provision path, approvals bridge, billing, Frontline vs Owner, pin version, dogfood QL.
 - `HERMES_AGENT_ARCHITECTURE.md` = control plane, не замена Nous. Prod/telephony не трогались.
 
+## 2026-11-13 01:00 МСК — Cursor: сверка полного плана Codex `HERMES_ORIGINAL_INTEGRATION_PLAN.md`
+
+- На сервере появился канон Codex (~00:58 МСК, 117 строк). Скопирован в git `docs/HERMES_ORIGINAL_INTEGRATION_PLAN.md`.
+- Рецензия обновлена: `docs/HERMES_ORIGINAL_INTEGRATION_REVIEW.md` — вердикт **план верен**; tenant/user/agent/task/subagent модель, scoped run token, separate runtime first, voice last — принять как SoT.
+- Усиления без смены оси: pin image, policy self-setup (что агент может/не может), Frontline≠Hermes, billing meters, feature-flag cabinet.
+- Prod/telephony не трогались.
+
