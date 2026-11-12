@@ -209,6 +209,26 @@ _HERMES_BILLING_TRIGGERS = (
 )
 
 
+_WEBSITE_IMPORT_TRIGGERS = (
+    "зайди на",
+    "зайди в",
+    "зайди сайт",
+    "собери знания",
+    "собери с сайта",
+    "импорт сайта",
+    "импортируй сайт",
+    "парси сайт",
+    "парси ",
+    "обогати знания",
+    "забери с сайта",
+    "скачай сайт",
+    "прочитай сайт",
+    "изучи сайт",
+    "import website",
+    "crawl",
+)
+
+
 def parse_hermes_intent(message: str) -> dict[str, Any] | None:
     """Deterministic Hermes supervisor intents (works without LLM)."""
     text = message.strip()
@@ -225,6 +245,16 @@ def parse_hermes_intent(message: str) -> dict[str, Any] | None:
             "tool": "billing.summary",
             "params": {},
             "summary": "Токены, себестоимость USD и баланс",
+        }
+    # Website → KB import (before generic setup phrases)
+    if any(t in lower for t in _WEBSITE_IMPORT_TRIGGERS) or (
+        ("сайт" in lower or ".ru" in lower or ".com" in lower)
+        and any(w in lower for w in ("знание", "базу", "kb", "собери", "парс", "зайди", "импорт"))
+    ):
+        return {
+            "tool": "office.import_website",
+            "params": {"message": text},
+            "summary": "Импорт сайта в базу знаний",
         }
     if any(t in lower for t in _HERMES_SETUP_TRIGGERS):
         return {"tool": "hermes.setup_status", "params": {}, "summary": "Статус сетапа офиса"}

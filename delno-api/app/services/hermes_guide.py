@@ -38,7 +38,7 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
     if not lower:
         return None
 
-    # Don't steal list/health/billing intents
+    # Don't steal list/health/billing/website intents
     if any(
         t in lower
         for t in (
@@ -49,6 +49,14 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
             "баланс",
             "тариф",
             "расход токенов",
+            "зайди на",
+            "собери знания",
+            "импорт сайта",
+            "парси",
+            ".ru",
+            ".com",
+            "http://",
+            "https://",
         )
     ):
         return None

@@ -89,6 +89,11 @@ export type PendingConfirmation = {
   summary: string;
 };
 
+export type SuggestedAction = {
+  title: string;
+  text: string;
+};
+
 export type OnboardingStatus = {
   ok?: boolean;
   status: string;
@@ -340,6 +345,7 @@ export function apiOperatorChat(
     sources: KnowledgeSource[];
     tool_calls: unknown[];
     pending_confirmation: PendingConfirmation | null;
+    suggested_actions?: SuggestedAction[];
   }>("/v1/operator/chat", token, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

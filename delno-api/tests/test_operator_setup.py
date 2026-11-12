@@ -53,6 +53,13 @@ def test_parse_settings_does_not_treat_cabinet_as_note():
     assert "greeting" in greeting["params"]["patch"]
 
 
+def test_parse_website_import_intent():
+    intent = parse_setup_intent("зайди на quantumpayouts.ru и собери знания оттуда")
+    assert intent is not None
+    assert intent["tool"] == "office.import_website"
+    assert "quantumpayouts.ru" in intent["params"]["message"]
+
+
 def test_cabinet_setup_pending_confirmation():
     ctx = TenantContext(tenant_id=uuid.uuid4(), tenant_slug="delno-demo", role="tenant_owner")
     db = MagicMock()

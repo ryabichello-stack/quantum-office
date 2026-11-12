@@ -40,6 +40,7 @@ import {
   apiOperatorConfirm,
   type KnowledgeSource,
   type PendingConfirmation,
+  type SuggestedAction,
 } from "@/lib/api";
 import {
   apiBillingEnsure,
@@ -68,15 +69,17 @@ type ChatLine = {
   text: string;
   sources?: KnowledgeSource[];
   pending?: PendingConfirmation | null;
+  suggestions?: SuggestedAction[];
   previews?: { url: string; name: string }[];
 };
 
 const QUICK_PROMPTS = [
+  { title: "Сайт → знания", text: "Зайди на мой сайт и собери знания в базу" },
   { title: "Телефон", text: "Настрой телефон секретаря" },
   { title: "Сетап", text: "Что ещё настроить в офисе?" },
   { title: "Здоровье", text: "Проверь здоровье офиса" },
   { title: "Звонки", text: "Какие звонки были сегодня?" },
-  { title: "Баланс", text: "Покажи расход токенов и баланс" },
+  { title: "Затраты", text: "Покажи расход токенов и баланс" },
 ];
 
 function useCompactHermes(breakpoint = 720) {
@@ -240,6 +243,9 @@ export function HermesStage({ token }: { token: string }) {
         setConversationId(result.conversation_id);
         const pending = result.pending_confirmation || null;
         if (pending) setActivePending(pending);
+        const suggestions = (result.suggested_actions || []).filter(
+          (a) => a?.title && a?.text,
+        );
         setLines((prev) => {
           const base =
             modality === "voice" && (prev.length === 0 || prev[prev.length - 1]?.text !== question)
@@ -252,6 +258,7 @@ export function HermesStage({ token }: { token: string }) {
               text: result.reply,
               sources: result.sources || [],
               pending,
+              suggestions: suggestions.length ? suggestions : undefined,
             },
           ];
         });
@@ -575,20 +582,34 @@ export function HermesStage({ token }: { token: string }) {
                           const sources = dedupeSources(line.sources);
                           if (!sources.length) return null;
                           return (
-                            <div className="hx-sources-row mt-2 flex flex-wrap gap-1.5">
-                              {sources.map((s, i) => (
-                                <Badge
-                                  key={`${s.document_id || s.title || i}`}
-                                  variant="outline"
-                                  className="max-w-[11rem] truncate text-[10px]"
-                                >
-                                  {s.title || s.citation || s.document_id}
-                                </Badge>
-                              ))}
-                            </div>
+                            <p className="hx-sources-meta" title="Источники ответа (не кнопки)">
+                              Источники:{" "}
+                              {sources
+                                .map((s) => s.title || s.citation || s.document_id)
+                                .filter(Boolean)
+                                .slice(0, 4)
+                                .join(" · ")}
+                            </p>
                           );
                         })()}
                       </div>
+                      {line.suggestions && line.suggestions.length > 0 && (
+                        <div className="hx-action-chips">
+                          {line.suggestions.map((a) => (
+                            <Button
+                              key={`${a.title}-${a.text}`}
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={sending}
+                              className="h-auto rounded-full px-3 py-1.5 text-[12px] font-semibold"
+                              onClick={() => void sendText(a.text)}
+                            >
+                              {a.title}
+                            </Button>
+                          ))}
+                        </div>
+                      )}
                       {line.pending && activePending?.confirmation_id === line.pending.confirmation_id ? (
                         <ConfirmCard
                           summary={line.pending.summary}

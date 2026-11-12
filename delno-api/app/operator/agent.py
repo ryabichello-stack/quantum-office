@@ -77,6 +77,7 @@ CABINET_LLM_TOOLS = (
     "web.search",
     "web.fetch",
     "web.browse",
+    "office.import_website",
     "billing.summary",
 )
 
@@ -149,9 +150,21 @@ def run_operator_turn(
             attachments=normalized,
         )
 
+        suggested_actions: list[dict[str, str]] = []
+        for tc in tool_calls or []:
+            if isinstance(tc, dict) and isinstance(tc.get("suggested_actions"), list):
+                suggested_actions = [
+                    a
+                    for a in tc["suggested_actions"]
+                    if isinstance(a, dict) and a.get("title") and a.get("text")
+                ]
+                break
+
         meta: dict[str, Any] = {"tool_calls": tool_calls, "sources": sources}
         if pending:
             meta["pending_confirmation"] = pending
+        if suggested_actions:
+            meta["suggested_actions"] = suggested_actions
 
         db.add(
             Message(
@@ -181,6 +194,7 @@ def run_operator_turn(
             "sources": sources,
             "modality": input_modality,
             "pending_confirmation": pending,
+            "suggested_actions": suggested_actions,
         }
     except Exception as exc:
         emit_event(
@@ -392,6 +406,8 @@ def _tool_summary(tool_name: str, params: dict[str, Any]) -> str:
     if tool_name == "update_tenant_settings":
         keys = list((params.get("patch") or {}).keys())
         return f"Обновить настройки: {', '.join(keys) or 'patch'}"
+    if tool_name == "office.import_website":
+        return f"Импорт сайта: {params.get('url') or params.get('message') or 'URL'}"
     if tool_name == "get_tenant_summary":
         return "Показать текущие настройки"
     if tool_name == "hermes.setup_status":
@@ -444,7 +460,11 @@ def _execute_cabinet_tool(
         if isinstance(result, ToolResult) and result.ok:
             tool_calls[0]["ok"] = True
             if tool_name == "hermes.setup_status":
-                return _format_hermes_setup(result.data or {}), tool_calls, [], None
+                data = result.data or {}
+                from app.operator.tools.website_import_tool import _suggested_actions
+
+                tool_calls[0]["suggested_actions"] = _suggested_actions(data.get("next_steps") or [])
+                return _format_hermes_setup(data), tool_calls, [], None
             if tool_name == "hermes.health":
                 return _format_hermes_health(result.data or {}), tool_calls, [], None
             if tool_name == "calls.list":
@@ -462,6 +482,18 @@ def _execute_cabinet_tool(
             return "\n".join(lines), tool_calls, [], None
         tool_calls[0]["ok"] = False
         return "Не удалось получить статус Hermes.", tool_calls, [], None
+
+    if tool_name == "office.import_website":
+        result = registry.run(db, ctx, tool_name, **params)
+        if isinstance(result, ToolResult) and result.ok:
+            tool_calls[0]["ok"] = True
+            suggested = (result.data or {}).get("suggested_actions") or []
+            if suggested:
+                tool_calls[0]["suggested_actions"] = suggested
+            return result.message or summary, tool_calls, [], None
+        tool_calls[0]["ok"] = False
+        msg = result.message if isinstance(result, ToolResult) else "Ошибка"
+        return f"Не удалось импортировать сайт: {msg}", tool_calls, [], None
 
     if requires_confirmation(tool):
         pending = _pending_confirmation_dict(tool_name, params, summary)
@@ -497,8 +529,11 @@ def _try_cabinet_llm_tools(
                     "Владелец настраивает и управляет офисом голосом или текстом, как в чате с ассистентом. "
                     "Обязанности: (1) первый сетап — hermes.setup_status / phones.provision / флаги / KB; "
                     "(2) health-watch — hermes.health и сразу сообщить о проблемах простым языком; "
-                    "(3) дирижирование — calls.dial/list, календарь, почта, ВКС, рассылка. "
-                    "Если сетап не завершён — предложи следующий шаг из checklist. "
+                    "(3) дирижирование — calls.dial/list, календарь, почта, ВКС, рассылка; "
+                    "(4) сайт компании — office.import_website / web.fetch / web.browse: "
+                    "МОЖЕШЬ заходить на публичные сайты, собирать текст в базу знаний и предлагать "
+                    "настройку коннекторов. Никогда не говори, что не умеешь открывать сайты — "
+                    "вызывай tool. Если сетап не завершён — предложи следующий шаг из checklist. "
                     "Для изменений вызывай tools. Отвечай кратко по-русски."
                 ),
             },

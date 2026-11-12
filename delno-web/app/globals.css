@@ -2239,6 +2239,20 @@ p {
   color: #9aa8b8;
 }
 
+.hx-sources-meta {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #8b97a8;
+}
+
+.hx-action-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: min(640px, 92%);
+}
+
 .btn-ghost {
   border: 1px solid var(--line);
   background: #fff;
