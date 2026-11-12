@@ -8,6 +8,14 @@ from typing import Any
 from app.core.config import get_settings
 
 
+def _uses_max_completion_tokens(model: str | None) -> bool:
+    """Newer OpenAI chat models reject legacy max_tokens."""
+    name = (model or "").strip().lower()
+    if not name:
+        return False
+    return name.startswith(("gpt-5", "o1", "o3", "o4"))
+
+
 class ModelProvider(ABC):
     name: str
 
@@ -40,12 +48,17 @@ class OpenAIProvider(ModelProvider):
         try:
             from app.services.openai_http import openai_client, openai_proxy_url, openai_url
 
+            chosen_model = model or settings.openai_model
             payload: dict[str, Any] = {
-                "model": model or settings.openai_model,
+                "model": chosen_model,
                 "messages": messages,
             }
             if max_tokens is not None:
-                payload["max_tokens"] = max_tokens
+                # gpt-5+ / o-series reject max_tokens — require max_completion_tokens
+                if _uses_max_completion_tokens(chosen_model):
+                    payload["max_completion_tokens"] = max_tokens
+                else:
+                    payload["max_tokens"] = max_tokens
             if tools:
                 payload["tools"] = tools
                 payload["tool_choice"] = "auto"
