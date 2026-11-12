@@ -14,7 +14,7 @@
 
 - Hermes Nous: `lead.created` → `events_dispatch.on_lead_created` (durable AgentTask + queued AgentRun when `hermes_nous_runtime` on)
 - Hermes Nous: detailed sqlite integration suite (`test_hermes_nous_integration.py`) — A/B run tokens, MCP fail-closed tool call, KB confirm, bridge runs+fallback, flag gate, hermes profile without long-lived key
-- Hermes runtime Dockerfile: Python 3.14 + `uv sync --frozen --extra messaging`; lab smoke A/B on `:18642`/`:18643` (`scripts/lab_smoke.sh`)
+- Hermes runtime Dockerfile: Python 3.14 + `uv sync --frozen --extra messaging`; lab smoke A/B on `:18642`/`:18643` (`scripts/lab_smoke.sh`); verified live `/v1/runs` → `completed` on C4B lab
 - Hermes Nous P0–P5 implementation: office-loop/KB draft, tool packs, agent_tasks migration, Hermes UI path+tasks panels, channels/scale stubs
 - Hermes Nous `MASTER_PLAN.md`: unified product+isolation+UI sequence (P0–P5)
 - Hermes Nous product north star: `docs/hermes-nous/PRODUCT_LOOP.md` (онбординг → KB → тулзы → дирижирование)

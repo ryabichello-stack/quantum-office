@@ -125,7 +125,8 @@ Frontline (клиенты TG/телефон) читает KB; Owner Hermes ст�
 - [x] UI: путь офиса + CTA в HermesStage panel
 - [x] Lab image build + `/v1/models` A/B smoke on C4B (`/opt/delno/lab/hermes_runtime`, telephony untouched)
 - [x] Lab `/v1/runs` returns `202` + `run_id`; wrong/cross-tenant API keys → `401`
-- [ ] Live E2E site→KB→task with provider keys + flag on dogfood tenant
+- [x] Live lab chat + runs poll → `completed` with model output (C4B lab, provider key via compose env; Asterisk untouched)
+- [ ] Dogfood tenant flag-on E2E through DELNO API office-loop → KB commit → conduct task
 
 ### P2 — Тулзы под дирижёра
 
