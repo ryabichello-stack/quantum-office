@@ -12,6 +12,7 @@
 
 ### Added
 
+- Hermes Nous product north star: `docs/hermes-nous/PRODUCT_LOOP.md` (онбординг → KB → тулзы → дирижирование)
 - DELNO Hermes Nous Stage 0: pinned `hermes-agent` v0.23.1 runtime scaffold, per-tenant `HERMES_HOME` provision, scoped MCP run tokens, feature flag `hermes_nous_runtime`, bridge `/v1/hermes-nous/*` (DIY cabinet loop remains fallback)
 
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
