@@ -8,6 +8,7 @@ from app.operator.agent import (
     _cabinet_agent_no_progress_limit,
     _completion_token_total,
     _format_debug_failures,
+    _looks_like_intent_narration,
     _tool_call_fingerprint,
     _with_debug_failures,
 )
@@ -32,6 +33,15 @@ def test_completion_token_total():
     assert _completion_token_total({"usage": {"prompt_tokens": 10, "completion_tokens": 5}}) == 15
     assert _completion_token_total({"usage": {"total_tokens": 42}}) == 42
     assert _completion_token_total({}) == 0
+
+
+def test_intent_narration_detector():
+    assert _looks_like_intent_narration(
+        "Сейчас схожу в открытый интернет и кратко соберу источники"
+    )
+    assert not _looks_like_intent_narration(
+        "По T‑Банку и Консультанту: выплаты физлицам возможны так-то…"
+    )
 
 
 def test_parse_ddg_html_result_a():

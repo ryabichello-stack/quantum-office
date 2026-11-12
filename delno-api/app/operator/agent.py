@@ -94,9 +94,12 @@ CABINET_LLM_TOOLS = (
 HERMES_AGENT_SYSTEM = (
     "Ты Hermes — автономный ИИ-агент офиса DELNO для этого tenant. "
     "Владелец формулирует цель обычным языком. Ты сам понимаешь задачу, "
-    "сам составляешь план из шагов и сам выполняешь его через tools — "
-    "так же, как сильный ассистент: подумал → сделал шаг → посмотрел результат → "
-    "следующий шаг, пока цель не достигнута или не упёрся в блокер.\n"
+    "сам составляешь план и СРАЗУ выполняешь его через tools: "
+    "tool → результат → следующий tool → … → только потом финальный ответ.\n"
+    "Критично: не рассказывай «сейчас схожу / сейчас найду / сейчас сделаю». "
+    "Если нужен интернет, статус, файлы, телефония — СНАЧАЛА вызови tool, "
+    "без tool не обещай действие. Финальный текст — только после фактов из tools "
+    "или если tools реально не нужны (приветствие, уточняющий вопрос).\n"
     "Не жди волшебных фраз и не подменяй задачу шаблонным статусом SIP/сетапа.\n"
     "Каталог tools (выбираешь сам по смыслу задачи):\n"
     "• web.search / web.fetch / web.browse — открытый интернет;\n"
@@ -114,6 +117,30 @@ HERMES_AGENT_SYSTEM = (
     "• Ошибки tools не скрывай — говори что упало.\n"
     "• Отвечай по-русски, по делу, со ссылками если брал из сети."
 )
+
+_INTENT_NARRATION_MARKERS = (
+    "сейчас схожу",
+    "сейчас найду",
+    "сейчас провер",
+    "сейчас сделаю",
+    "сейчас соберу",
+    "сейчас поищу",
+    "сейчас открою",
+    "сейчас зайду",
+    "я сейчас",
+    "давай найду",
+    "пойду ",
+    "схожу ",
+    "начну ",
+    "let me ",
+    "i'll ",
+    "i will ",
+)
+
+
+def _looks_like_intent_narration(text: str) -> bool:
+    low = (text or "").lower()
+    return any(m in low for m in _INTENT_NARRATION_MARKERS)
 
 def _hermes_debug_failures() -> bool:
     try:
@@ -885,6 +912,8 @@ def _try_cabinet_llm_tools(
     tokens_used = 0
     last_fingerprint = ""
     same_fingerprint_streak = 0
+    force_tools = False
+    narration_nudge_used = False
 
     max_rounds = _cabinet_agent_max_rounds()
     no_progress_limit = _cabinet_agent_no_progress_limit()
@@ -905,7 +934,12 @@ def _try_cabinet_llm_tools(
                 pending_form,
             )
 
-        completion = provider.chat_completion(messages=messages, tools=tools)
+        completion = provider.chat_completion(
+            messages=messages,
+            tools=tools,
+            tool_choice="required" if force_tools else "auto",
+        )
+        force_tools = False
         if not completion.get("ok"):
             err = str(completion.get("error") or "llm_failed")
             reply = _with_debug_failures(
@@ -938,8 +972,27 @@ def _try_cabinet_llm_tools(
 
         tool_calls_raw = choice_msg.get("tool_calls") or []
         if not tool_calls_raw:
-            # Soft-stop: model finished on its own.
+            # Soft-stop: model finished on its own — unless it only narrated intent.
             content = str(choice_msg.get("content") or "").strip()
+            if (
+                content
+                and not ran_any_tool
+                and not narration_nudge_used
+                and _looks_like_intent_narration(content)
+            ):
+                narration_nudge_used = True
+                messages.append({"role": "assistant", "content": content})
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Не описывай план словами. Сразу вызови нужные tools "
+                            "(например web.search / web.fetch) и только потом ответь по фактам."
+                        ),
+                    }
+                )
+                force_tools = True
+                continue
             if content:
                 meta = [
                     {

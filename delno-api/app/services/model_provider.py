@@ -27,6 +27,7 @@ class ModelProvider(ABC):
         model: str | None = None,
         tools: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         raise NotImplementedError
 
@@ -41,6 +42,7 @@ class OpenAIProvider(ModelProvider):
         model: str | None = None,
         tools: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         settings = get_settings()
         if not settings.openai_api_key:
@@ -61,7 +63,7 @@ class OpenAIProvider(ModelProvider):
                     payload["max_tokens"] = max_tokens
             if tools:
                 payload["tools"] = tools
-                payload["tool_choice"] = "auto"
+                payload["tool_choice"] = tool_choice or "auto"
 
             # Vision / large multimodal payloads need a longer timeout
             has_vision = any(
@@ -106,6 +108,7 @@ class StubProvider(ModelProvider):
         model: str | None = None,
         tools: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         last = messages[-1]["content"] if messages else ""
         if isinstance(last, list):
