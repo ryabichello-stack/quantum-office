@@ -230,7 +230,7 @@ def _patch_pjsip_file(path: str, *, user: str, password: str) -> dict[str, Any]:
 
 
 def _apply_via_http(url: str, *, user: str, password: str) -> dict[str, Any]:
-    token = (os.getenv("OFFICE_WEBHOOK_TOKEN") or os.getenv("ASTERISK_SIP_APPLY_TOKEN") or "").strip()
+    token = (os.getenv("ASTERISK_SIP_APPLY_TOKEN") or os.getenv("OFFICE_WEBHOOK_TOKEN") or "").strip()
     body = json.dumps({"username": user, "password": password}).encode()
     req = urllib.request.Request(
         url,
@@ -242,9 +242,11 @@ def _apply_via_http(url: str, *, user: str, password: str) -> dict[str, Any]:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with _no_proxy_opener().open(req, timeout=20) as resp:
             data = json.loads(resp.read().decode())
     except urllib.error.URLError as exc:
+        return {"ok": False, "error": "apply_http_failed", "detail": str(exc)[:200]}
+    except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": "apply_http_failed", "detail": str(exc)[:200]}
     probe = data.get("registration") if isinstance(data, dict) else None
     if not isinstance(probe, dict):
@@ -256,11 +258,16 @@ def _apply_via_http(url: str, *, user: str, password: str) -> dict[str, Any]:
     return data
 
 
+def _no_proxy_opener() -> urllib.request.OpenerDirector:
+    """Host SIP helper must not go through OPENAI/HTTP_PROXY (would 503)."""
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
 def _probe_via_http(url: str) -> dict[str, Any]:
-    token = (os.getenv("OFFICE_WEBHOOK_TOKEN") or os.getenv("ASTERISK_SIP_APPLY_TOKEN") or "").strip()
+    token = (os.getenv("ASTERISK_SIP_APPLY_TOKEN") or os.getenv("OFFICE_WEBHOOK_TOKEN") or "").strip()
     req = urllib.request.Request(url, headers={"X-Webhook-Token": token}, method="GET")
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with _no_proxy_opener().open(req, timeout=10) as resp:
             return json.loads(resp.read().decode())
     except Exception as exc:  # noqa: BLE001
         return {

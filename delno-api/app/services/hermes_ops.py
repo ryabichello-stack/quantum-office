@@ -83,7 +83,7 @@ SETUP_STEPS: list[dict[str, str]] = [
     {
         "id": "phone",
         "title": "Телефония (линия)",
-        "hint": "Привяжите DID и сохраните SIP в сейфе кабинета (безопасная форма)",
+        "hint": "DID + SIP в сейфе и статус Registered (иначе Mango скажет «операторы заняты»)",
     },
     {
         "id": "telephony_script",
@@ -150,11 +150,23 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
     sip_items = list_secret_status(db, ctx).get("items") or []
     sip_row = next((i for i in sip_items if i.get("kind") == "mango_sip"), None) or {}
     sip_ok = bool(sip_row.get("configured"))
-    phone_ok = phones > 0 and sip_ok
+    registration: dict[str, Any] = {"ok": False, "status": "unknown", "reachable": False}
+    try:
+        from app.services.sip_probe import probe_registration
+
+        registration = probe_registration()
+    except Exception:  # noqa: BLE001
+        pass
+    reg_ok = bool(registration.get("ok"))
+    # Vault alone is not enough — Mango must show Registered or inbound gets «операторы заняты».
+    phone_ok = phones > 0 and sip_ok and reg_ok
     phone_detail = {
         "active_dids": phones,
         "sip_configured": sip_ok,
         "sip_login_masked": sip_row.get("login_masked") or "",
+        "registration_status": registration.get("status"),
+        "registration_ok": reg_ok,
+        "registration_message": registration.get("message_ru"),
     }
 
     telephony = settings.get("telephony") if isinstance(settings.get("telephony"), dict) else {}
@@ -334,6 +346,29 @@ def office_health_report(db: Session, ctx: TenantContext) -> dict[str, Any]:
                 "fix": "Откройте форму SIP ещё раз и сохраните полный логин Mango.",
             }
         )
+    else:
+        try:
+            from app.services.sip_probe import probe_registration
+
+            reg = probe_registration()
+        except Exception:  # noqa: BLE001
+            reg = {"ok": False, "status": "unknown", "reachable": False}
+        if not reg.get("ok"):
+            status = str(reg.get("status") or "unknown")
+            alerts.append(
+                {
+                    "code": f"phone.sip_{status}",
+                    "severity": "critical" if status == "rejected" else "warning",
+                    "message_ru": (
+                        reg.get("message_ru")
+                        or "Линия SIP не Registered — входящие уйдут в «все операторы заняты»."
+                    ),
+                    "fix": (
+                        "Откройте форму SIP и сохраните актуальный SIP-пароль сотрудника Mango "
+                        "(не пароль от веб-кабинета). Затем скажите «проверь регистрацию SIP»."
+                    ),
+                }
+            )
     for item in connectors.get("items") or []:
         if item.get("enabled") and not item.get("configured"):
             alerts.append(

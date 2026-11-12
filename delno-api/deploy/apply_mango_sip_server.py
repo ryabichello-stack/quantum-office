@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Host-side SIP apply microservice for Cloud4Box (127.0.0.1 only).
+"""Host-side SIP apply/probe for Cloud4Box.
 
-  ASTERISK_SIP_APPLY_TOKEN=... python3 apply_mango_sip_server.py
+Bind must be reachable from the delno-api container (docker0), not only loopback:
+  ASTERISK_SIP_APPLY_BIND=172.17.0.1 ASTERISK_SIP_APPLY_TOKEN=... python3 apply_mango_sip_server.py
 
 Endpoints:
   GET  /probe
@@ -20,7 +21,8 @@ from pathlib import Path
 
 CONF = Path(os.getenv("ASTERISK_PJSIP_CONF", "/etc/asterisk/pjsip.conf"))
 TOKEN = (os.getenv("ASTERISK_SIP_APPLY_TOKEN") or os.getenv("OFFICE_WEBHOOK_TOKEN") or "").strip()
-BIND = os.getenv("ASTERISK_SIP_APPLY_BIND", "127.0.0.1")
+# Default docker0 so containers via host.docker.internal can probe/apply.
+BIND = os.getenv("ASTERISK_SIP_APPLY_BIND", "172.17.0.1")
 PORT = int(os.getenv("ASTERISK_SIP_APPLY_PORT", "18099"))
 
 
