@@ -4,6 +4,8 @@
 
 ### Added
 
+- Agent coordination register Cursor↔Codex: `docs/AGENT_CHANGE_REGISTER.md`
+  (+ rule in `AGENTS.md` / `delno-api/AGENTS.md`); sync with `/opt/delno/docs/`
 - Tenant files + ПДн architecture (`docs/DELNO_TENANT_FILES_AND_PDN.md`):
   per-tenant prefix isolation, RU residency, encryption/retention roadmap;
   F0 helpers `tenant_files.py` (path traversal guard, object keys);

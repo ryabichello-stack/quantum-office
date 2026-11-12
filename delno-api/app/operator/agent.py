@@ -58,6 +58,7 @@ CABINET_LLM_TOOLS = (
     "set_feature_flag",
     "get_knowledge",
     # Hermes setup / health
+    "hermes.capabilities",
     "hermes.setup_status",
     "hermes.setup_mark",
     "hermes.health",
@@ -105,6 +106,7 @@ HERMES_AGENT_SYSTEM = (
     "• web.search / web.fetch / web.browse — открытый интернет;\n"
     "• get_knowledge / upload_knowledge_snippet / office.import_website — "
     "только материалы ЭТОГО tenant (локальная база), не замена интернету;\n"
+    "• hermes.capabilities — проверь реальные возможности перед онбордингом и задачами;\n"
     "• hermes.setup_status / health / alerts — состояние офиса;\n"
     "• phones.* / calls.* / telephony.script_* / telephony.tools_set — телефония Ava;\n"
     "• files.cloud_* / credentials.open_form — облака и секреты "
@@ -847,6 +849,12 @@ def _tool_result_for_llm(result: ToolResult | PendingConfirmation | Any) -> str:
         payload: dict[str, Any] = {"ok": result.ok, "message": (result.message or "")[:4000]}
         data = result.data if isinstance(result.data, dict) else {}
         # Prefer compact structured bits for web / KB so the model can chain.
+        if "connectors" in data:
+            payload["connectors"] = data.get("connectors")
+        if "tools" in data:
+            payload["tools"] = data.get("tools")
+        if "missing" in data:
+            payload["missing"] = data.get("missing")
         if "items" in data:
             payload["items"] = data.get("items")
         if "query" in data:

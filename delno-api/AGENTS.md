@@ -16,3 +16,10 @@ Product vision: `DELNO-site-v23/docs/00_MASTER_SPEC.md`
 1. Implement class with `name`, `description`, `critical_write`, `run(db, ctx, **params)`.
 2. Register in `app/operator/tools/__init__.py`.
 3. Log via `write_audit`.
+4. OpenAI function names must match `^[a-zA-Z0-9_-]+$` — registry maps dotted internal names (`web.search`→`web_search`).
+
+## Координация изменений Cursor и Codex
+Перед изменением DELNO прочитайте [`../docs/AGENT_CHANGE_REGISTER.md`](../docs/AGENT_CHANGE_REGISTER.md)
+(на проде: `/opt/delno/docs/AGENT_CHANGE_REGISTER.md`). После изменения добавьте запись:
+дата МСК, автор, файлы, что изменено, как проверено и что осталось.
+Не стирайте чужие записи и не записывайте секреты. Держите git-копию и `/opt/delno/docs/` в синхроне.

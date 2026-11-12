@@ -123,8 +123,18 @@ def apply_mango_sip(*, username: str, password: str) -> dict[str, Any]:
     }
 
 
-def after_vault_sip_save(*, login: str | None, password: str | None) -> dict[str, Any]:
+def after_vault_sip_save(*, tenant_slug: str, login: str | None, password: str | None) -> dict[str, Any]:
     """Called after tenant vault mango_sip save — apply+probe when enabled."""
+    # Legacy apply endpoint edits one shared Asterisk profile. Never send another
+    # tenant's SIP credentials there until the endpoint routes by tenant/DID.
+    allowed_tenant = (os.getenv("ASTERISK_SIP_APPLY_TENANT_SLUG") or "").strip()
+    if not allowed_tenant or tenant_slug != allowed_tenant:
+        return {
+            "ok": False,
+            "skipped": True,
+            "reason": "tenant_route_not_configured",
+            "message_ru": "SIP сохранён. Для этой компании ещё не настроен отдельный маршрут телефонии; общую линию не меняю.",
+        }
     try:
         from app.core.config import get_settings
 

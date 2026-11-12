@@ -14,7 +14,7 @@ from app.models.channel_account import ChannelAccount
 from app.models.phone_number import PhoneNumber
 from app.models.platform_event import PlatformEvent
 from app.models.tenant import Tenant
-from app.services.connectors import list_tenant_connectors
+from app.services.connectors import list_tenant_connectors, list_tenant_connector_readiness
 from app.services.events import emit_event
 from app.services.tenant_vault import list_secret_status
 
@@ -152,10 +152,11 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
     )
     connectors = list_tenant_connectors(db, ctx)
     by_kind = {i["kind"]: i for i in connectors.get("items") or []}
+    readiness = {i["kind"]: i for i in list_tenant_connector_readiness(db, ctx)}
 
     def _conn_ok(kind: str) -> bool:
         item = by_kind.get(kind) or {}
-        return bool(item.get("enabled")) and bool(item.get("configured"))
+        return bool(readiness.get(kind, {}).get("usable"))
 
     kb_info = company_knowledge_ready(db, ctx, hermes=hermes)
     kb_done = bool(kb_info.get("ok"))

@@ -29,8 +29,10 @@
 
 1. Любое изменение → commit + push + PR  
 2. Журнал → [`CHANGELOG.md`](CHANGELOG.md)  
-3. Секреты не в git  
-4. Прод обновлять из git, затем smoke `/health`
+3. **Реестр агентов Cursor↔Codex** → [`docs/AGENT_CHANGE_REGISTER.md`](docs/AGENT_CHANGE_REGISTER.md)
+   (прод: `/opt/delno/docs/AGENT_CHANGE_REGISTER.md`) — читать до правок, писать после  
+4. Секреты не в git  
+5. Прод обновлять из git **сразу**, затем smoke `/health` (владелец тестирует только прод)
 
 ## Не ломать
 

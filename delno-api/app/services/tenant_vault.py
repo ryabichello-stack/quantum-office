@@ -324,7 +324,7 @@ def save_secret(
         try:
             from app.services.sip_probe import after_vault_sip_save
 
-            probe = after_vault_sip_save(login=current.get("login"), password=current.get("password"))
+            probe = after_vault_sip_save(tenant_slug=ctx.tenant_slug, login=current.get("login"), password=current.get("password"))
             out["sip_probe"] = {
                 k: probe.get(k)
                 for k in (

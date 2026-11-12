@@ -78,3 +78,29 @@ class HermesAlertsTool:
     def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult:
         out = hermes_ops.list_recent_office_alerts(db, ctx, limit=int(params.get("limit") or 20))
         return ToolResult(ok=True, data=out, message=f"{len(out.get('items') or [])} events")
+
+
+class HermesCapabilitiesTool:
+    name = "hermes.capabilities"
+    description = (
+        "Discover the current tenant's office tools and connector readiness. "
+        "Use before onboarding or planning work across channels; distinguish a reachable service "
+        "from a usable account and explain missing access."
+    )
+    critical_write = False
+    parameters_schema = {"type": "object", "properties": {}}
+
+    def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult:
+        from app.operator.agent import CABINET_LLM_TOOLS
+        from app.operator.tools.registry import registry
+        from app.services.connectors import list_tenant_connector_readiness
+
+        connectors = list_tenant_connector_readiness(db, ctx)
+        allowed = set(CABINET_LLM_TOOLS)
+        tools = [
+            {"name": t["name"], "confirmation_class": t["confirmation_class"]}
+            for t in registry.list_catalog() if t["name"] in allowed
+        ]
+        missing = [c["kind"] for c in connectors if not c["usable"]]
+        return ToolResult(ok=True, data={"connectors": connectors, "tools": tools, "missing": missing},
+                          message="Доступные инструменты и готовность подключений проверены. Требуют настройки: " + (", ".join(missing) if missing else "нет"))

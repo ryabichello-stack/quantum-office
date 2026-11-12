@@ -41,6 +41,7 @@ from app.operator.tools.calls import (
 )
 from app.operator.tools.hermes import (
     HermesAlertsTool,
+    HermesCapabilitiesTool,
     HermesHealthTool,
     HermesSetupMarkTool,
     HermesSetupStatusTool,
@@ -99,6 +100,7 @@ def register_builtin_tools() -> None:
     registry.register(HermesSetupMarkTool())
     registry.register(HermesHealthTool())
     registry.register(HermesAlertsTool())
+    registry.register(HermesCapabilitiesTool())
     # Telephony script + cloud disks + secure forms (agent-callable)
     registry.register(TelephonyScriptGetTool())
     registry.register(TelephonyScriptProposeTool())

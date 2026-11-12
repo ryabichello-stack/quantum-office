@@ -148,3 +148,51 @@ def connector_config_for(db: Session, ctx: TenantContext, kind: str) -> dict[str
     blob = _tenant_connectors_blob(tenant)
     raw = blob.get(kind)
     return raw if isinstance(raw, dict) else {}
+
+
+def list_tenant_connector_readiness(db: Session, ctx: TenantContext) -> list[dict[str, Any]]:
+    """Operational readiness for this tenant, beyond a reachable shared service."""
+    from app.services.files_cloud import cloud_status
+
+    items = []
+    for item in list_tenant_connectors(db, ctx).get("items") or []:
+        kind = item["kind"]
+        connector = get_connector(kind)
+        try:
+            probe = connector.probe(tenant_slug=ctx.tenant_slug, config=connector_config_for(db, ctx, kind)) if connector else None
+        except Exception:
+            probe = None
+        health = ((probe.data or {}).get("health") or {}) if probe else {}
+        service_ready = bool(item.get("enabled") and probe and probe.ok and probe.configured)
+        if kind == "mail":
+            service_ready = service_ready and bool(health.get("smtp_configured"))
+        elif kind == "calendar":
+            service_ready = service_ready and not bool(health.get("stub_mode"))
+        elif kind == "conference":
+            default = health.get("default_provider")
+            service_ready = service_ready and any(
+                p.get("provider") == default and p.get("configured")
+                for p in health.get("providers") or []
+            )
+        if kind == "files":
+            try:
+                tenant_authorized = int(cloud_status(db, ctx).get("ready_count") or 0) > 0
+            except Exception:
+                tenant_authorized = False
+        else:
+            tenant_authorized = bool((probe.data or {}).get("tenant_account_verified")) if probe else False
+        usable = bool(service_ready and tenant_authorized)
+        items.append({
+            "kind": kind,
+            "enabled": bool(item.get("enabled")),
+            "service_reachable": bool(probe and probe.ok),
+            "service_ready": service_ready,
+            "tenant_authorized": tenant_authorized,
+            "usable": usable,
+            "providers": [
+                {"name": p.get("provider") or p.get("source"), "configured": bool(p.get("configured"))}
+                for p in health.get("providers") or []
+            ],
+            "reason": None if usable else (probe.error if probe and probe.error else "account_or_provider_not_configured"),
+        })
+    return items
