@@ -1,72 +1,89 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRequireAuth } from "@/lib/auth";
 import { apiLeadsList, type LeadItem } from "@/lib/api";
 import { DashboardFrame } from "@/components/DashboardFrame";
+import { CabinetCard, CabinetEmpty, CabinetPage } from "@/components/CabinetPage";
 
 export default function LeadsPage() {
   const { token } = useRequireAuth();
   const [items, setItems] = useState<LeadItem[]>([]);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!token) return;
+    setLoading(true);
     apiLeadsList(token)
       .then((data) => setItems(data.items))
-      .catch(() => setError("Не удалось загрузить заявки"));
+      .catch(() => setError("Не удалось загрузить заявки"))
+      .finally(() => setLoading(false));
   }, [token]);
 
   return (
     <DashboardFrame>
-      <div className="page-head">
-        <small>Рабочее пространство</small>
-        <h1>Заявки</h1>
-        <p>Leads из сайта, виджета и других каналов</p>
-      </div>
-      <div className="panel-card">
-        {error && <p className="status-error">{error}</p>}
-        {!error && items.length === 0 && <p className="inbox-empty">Пока нет заявок</p>}
-        {items.length > 0 && (
-          <table className="leads-table">
-            <thead>
-              <tr>
-                <th>Дата</th>
-                <th>Имя</th>
-                <th>Телефон</th>
-                <th>Компания</th>
-                <th>ИНН</th>
-                <th>Источник</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((lead) => (
-                <tr key={lead.id}>
-                  <td>{formatDate(lead.created_at)}</td>
-                  <td>
-                    <b>{lead.name}</b>
-                  </td>
-                  <td>{lead.phone}</td>
-                  <td>{lead.company || "—"}</td>
-                  <td>
-                    {lead.inn ? (
-                      <span title={lead.party_enriched ? "Обогащено DaData" : undefined}>{lead.inn}</span>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td>
-                    <span className="result-tags">
-                      <span>{lead.source}</span>
-                      {lead.party_enriched && <span>DaData</span>}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      <CabinetPage
+        kicker="Входящие"
+        title="Заявки"
+        lead="Реальные обращения с сайта и каналов. Не тестовые заглушки."
+        actions={
+          <Link href="/dashboard/hermes" className="hx-chip-link">
+            Спросить Hermes
+          </Link>
+        }
+      >
+        <CabinetCard title={loading ? "Загрузка…" : `${items.length} заявок`}>
+          {error ? <p className="hx-inline-error">{error}</p> : null}
+          {!error && !loading && items.length === 0 ? (
+            <CabinetEmpty
+              title="Заявок пока нет"
+              lead="Когда посетитель оставит контакты на сайте — они появятся здесь."
+              action={
+                <Link href="/dashboard/hermes" className="hx-chip-link">
+                  Настроить сайт через Hermes
+                </Link>
+              }
+            />
+          ) : null}
+          {items.length > 0 ? (
+            <div className="hx-table-wrap">
+              <table className="hx-table">
+                <thead>
+                  <tr>
+                    <th>Когда</th>
+                    <th>Кто</th>
+                    <th>Контакт</th>
+                    <th>Компания</th>
+                    <th>Откуда</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((lead) => (
+                    <tr key={lead.id}>
+                      <td>{formatDate(lead.created_at)}</td>
+                      <td>
+                        <strong>{lead.name}</strong>
+                        {lead.email ? <small className="hx-td-sub">{lead.email}</small> : null}
+                      </td>
+                      <td>{lead.phone || "—"}</td>
+                      <td>
+                        {lead.company || "—"}
+                        {lead.inn ? <small className="hx-td-sub">ИНН {lead.inn}</small> : null}
+                      </td>
+                      <td>
+                        <span className="hx-tag">{lead.source || "сайт"}</span>
+                        {lead.party_enriched ? <span className="hx-tag soft">DaData</span> : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </CabinetCard>
+      </CabinetPage>
     </DashboardFrame>
   );
 }
@@ -74,7 +91,11 @@ export default function LeadsPage() {
 function formatDate(iso: string | null) {
   if (!iso) return "—";
   try {
-    return new Date(iso).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" });
+    return new Date(iso).toLocaleString("ru-RU", {
+      timeZone: "Europe/Moscow",
+      dateStyle: "short",
+      timeStyle: "short",
+    });
   } catch {
     return iso;
   }

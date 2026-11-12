@@ -1,19 +1,29 @@
 "use client";
 
-import { MessageCircle } from "lucide-react";
+import Link from "next/link";
+import { CabinetEmpty, CabinetPage } from "@/components/CabinetPage";
 
 export default function InboxIndexPage() {
   return (
-    <>
-      <div className="page-head">
-        <small>Рабочее пространство</small>
-        <h1>Диалоги</h1>
-        <p>Выберите диалог слева или начните новый в Operator</p>
-      </div>
-      <div className="delno-result" style={{ textAlign: "center", padding: 32 }}>
-        <MessageCircle style={{ width: 28, height: 28, color: "#bd8900", marginBottom: 12 }} />
-        <p style={{ margin: 0, color: "#777" }}>История разговоров Operator и каналов</p>
-      </div>
-    </>
+    <CabinetPage
+      kicker="Каналы"
+      title="Диалоги"
+      lead="Выберите разговор слева — или откройте Hermes, чтобы начать новый."
+    >
+      <CabinetEmpty
+        title="Выберите диалог"
+        lead="Слева — входящие с сайта, Telegram и звонков. Hermes — отдельный рабочий чат владельца."
+        action={
+          <div className="hx-suggestions" style={{ marginTop: 16 }}>
+            <Link href="/dashboard/hermes" className="hx-chip-link">
+              Открыть Hermes
+            </Link>
+            <Link href="/dashboard/leads" className="hx-chip-link">
+              Смотреть заявки
+            </Link>
+          </div>
+        }
+      />
+    </CabinetPage>
   );
 }

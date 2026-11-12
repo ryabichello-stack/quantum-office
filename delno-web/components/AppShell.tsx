@@ -3,12 +3,10 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  CalendarDays,
   FileText,
   LogOut,
   MessageCircle,
-  Rocket,
-  ShieldCheck,
+  Settings2,
   Sparkles,
   UserRound,
   Wallet,
@@ -16,15 +14,14 @@ import {
 import { DelnoMark } from "@/components/DelnoMark";
 import { clearToken } from "@/lib/auth";
 import type { TenantMe } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 const nav = [
-  { href: "/dashboard/onboarding", label: "Старт", Icon: Rocket },
-  { href: "/dashboard/inbox", label: "Диалоги", Icon: MessageCircle },
-  { href: "/dashboard/leads", label: "Клиенты", Icon: UserRound },
-  { href: "/dashboard/calendar", label: "Календарь", Icon: CalendarDays },
-  { href: "/dashboard/knowledge", label: "Знания", Icon: FileText },
-  { href: "/dashboard/billing", label: "Затраты", Icon: Wallet },
-  { href: "/dashboard/hermes", label: "Hermes", Icon: Sparkles, operatorOrb: true },
+  { href: "/dashboard/hermes", label: "Hermes", hint: "Главный помощник", Icon: Sparkles, primary: true },
+  { href: "/dashboard/inbox", label: "Диалоги", hint: "Переписки и звонки", Icon: MessageCircle },
+  { href: "/dashboard/leads", label: "Заявки", hint: "Лиды с сайта", Icon: UserRound },
+  { href: "/dashboard/knowledge", label: "Знания", hint: "База ответов", Icon: FileText },
+  { href: "/dashboard/billing", label: "Затраты", hint: "Токены и деньги", Icon: Wallet },
 ];
 
 export function AppShell({
@@ -41,52 +38,82 @@ export function AppShell({
   const pathname = usePathname();
   const router = useRouter();
   const withInbox = Boolean(inboxSlot);
+  const company = me?.tenant_name || me?.tenant_slug || "DELNO";
 
   return (
-    <div className="cabinet-app">
-      <div className="v2-console">
-        <div className="console-bar">
+    <div className="cabinet-app hx-shell-root">
+      <div className="v2-console hx-console">
+        <div className="console-bar hx-console-bar">
           <div className="traffic">
             <i />
             <i />
             <i />
           </div>
           <span>{hostLabel}</span>
-          <div className="console-avatar">{(me?.tenant_slug || "D").slice(0, 1).toUpperCase()}</div>
+          <div className="console-avatar" title={company}>
+            {company.slice(0, 1).toUpperCase()}
+          </div>
         </div>
-        <div className={`console-shell cabinet-shell${withInbox ? " with-inbox" : ""}`}>
-          <aside>
-            <Link href="/dashboard" className="side-logo" aria-label="DELNO">
+        <div className={cn("console-shell cabinet-shell hx-shell", withInbox && "with-inbox")}>
+          <aside className="hx-nav" aria-label="Разделы кабинета">
+            <Link href="/dashboard/hermes" className="hx-nav-brand" aria-label="DELNO — к Hermes">
               <DelnoMark small />
+              <span>
+                <strong>DELNO</strong>
+                <small>{company}</small>
+              </span>
             </Link>
-            {nav.map(({ href, label, Icon, operatorOrb }) => {
-              const active = pathname === href || pathname.startsWith(`${href}/`);
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={`${active ? "selected" : ""}${operatorOrb ? " nav-operator" : ""}`.trim()}
-                  aria-label={label}
-                  title={label}
-                >
-                  {operatorOrb ? <span className="nav-orb-icon" aria-hidden /> : <Icon />}
-                </Link>
-              );
-            })}
-            <div className="side-bottom">
-              <Link href="/dashboard/settings" className={pathname.startsWith("/dashboard/settings") ? "selected" : undefined} aria-label="Настройки" title="Настройки">
-                <ShieldCheck />
+
+            <nav className="hx-nav-list">
+              {nav.map(({ href, label, hint, Icon, primary }) => {
+                const active =
+                  pathname === href ||
+                  pathname.startsWith(`${href}/`) ||
+                  (href === "/dashboard/hermes" &&
+                    (pathname === "/dashboard" || pathname.startsWith("/dashboard/operator")));
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={cn("hx-nav-item", active && "is-active", primary && "is-primary")}
+                    title={hint}
+                  >
+                    <Icon size={18} strokeWidth={2.1} />
+                    <span className="hx-nav-copy">
+                      <b>{label}</b>
+                      <small>{hint}</small>
+                    </span>
+                  </Link>
+                );
+              })}
+            </nav>
+
+            <div className="hx-nav-bottom">
+              <Link
+                href="/dashboard/settings"
+                className={cn("hx-nav-item", pathname.startsWith("/dashboard/settings") && "is-active")}
+                title="Настройки кабинета"
+              >
+                <Settings2 size={18} strokeWidth={2.1} />
+                <span className="hx-nav-copy">
+                  <b>Настройки</b>
+                  <small>Каналы и профиль</small>
+                </span>
               </Link>
               <button
                 type="button"
-                aria-label="Выйти"
+                className="hx-nav-item hx-nav-logout"
                 title="Выйти"
                 onClick={() => {
                   clearToken();
                   router.push("/");
                 }}
               >
-                <LogOut />
+                <LogOut size={18} strokeWidth={2.1} />
+                <span className="hx-nav-copy">
+                  <b>Выйти</b>
+                  <small>Сменить аккаунт</small>
+                </span>
               </button>
             </div>
           </aside>

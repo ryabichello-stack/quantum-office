@@ -1,17 +1,13 @@
 "use client";
 
-import { useRequireAuth } from "@/lib/auth";
-import { DashboardFrame } from "@/components/DashboardFrame";
-import { OperatorStage } from "@/components/OperatorStage";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-export default function OperatorPage() {
-  const { token } = useRequireAuth();
-
-  if (!token) return null;
-
-  return (
-    <DashboardFrame>
-      <OperatorStage token={token} />
-    </DashboardFrame>
-  );
+/** Legacy Operator route → Hermes. */
+export default function OperatorRedirectPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/dashboard/hermes");
+  }, [router]);
+  return <div className="loading-screen">Открываю Hermes…</div>;
 }

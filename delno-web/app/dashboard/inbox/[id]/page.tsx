@@ -47,57 +47,59 @@ export default function InboxThreadPage() {
   ) : null;
 
   return (
-    <>
-      <ConversationHeader detail={detail} />
+    <div className="hx-app hx-page">
+      <div className="hx-page-body is-wide" style={{ maxWidth: 820 }}>
+        <ConversationHeader detail={detail} />
 
-      {error && <p className="status-error">{error}</p>}
+        {error && <p className="hx-inline-error">{error}</p>}
 
-      {items.length > 0 && (
-        <div className="timeline-label">{formatDate(items[0]?.created_at)}</div>
-      )}
+        {items.length > 0 && (
+          <div className="timeline-label">{formatDate(items[0]?.created_at)}</div>
+        )}
 
-      <VoicePlayback
-        recordingUrl={detail?.recording_url}
-        durationSec={detail?.recording_duration_sec ?? call?.duration_sec ?? undefined}
-      />
+        <VoicePlayback
+          recordingUrl={detail?.recording_url}
+          durationSec={detail?.recording_duration_sec ?? call?.duration_sec ?? undefined}
+        />
 
-      {summaryBlock}
+        {summaryBlock}
 
-      {call?.transcript ? (
-        <details className="call-transcript">
-          <summary>Транскрипт звонка</summary>
-          <pre className="call-transcript-body">{call.transcript}</pre>
-        </details>
-      ) : null}
+        {call?.transcript ? (
+          <details className="call-transcript">
+            <summary>Транскрипт звонка</summary>
+            <pre className="call-transcript-body">{call.transcript}</pre>
+          </details>
+        ) : null}
 
-      {detail?.tags && detail.tags.length > 0 && !summaryText && (
-        <DelnoResultCard body="Краткий итог пока не сформирован." tags={detail.tags} />
-      )}
+        {detail?.tags && detail.tags.length > 0 && !summaryText && (
+          <DelnoResultCard body="Краткий итог пока не сформирован." tags={detail.tags} />
+        )}
 
-      {items.map((msg) => (
-        <div key={msg.id}>
-          {msg.role === "assistant" ? (
-            <DelnoResultCard
-              body={msg.body}
-              sources={
-                Array.isArray((msg.meta as { sources?: KnowledgeSource[] } | null)?.sources)
-                  ? (msg.meta as { sources: KnowledgeSource[] }).sources
-                  : undefined
-              }
-            />
-          ) : (
-            <div className="msg-bubble user">
-              <div className="msg-meta">{formatTime(msg.created_at)}</div>
-              <div className="msg-body">{msg.body}</div>
-            </div>
-          )}
-        </div>
-      ))}
+        {items.map((msg) => (
+          <div key={msg.id}>
+            {msg.role === "assistant" ? (
+              <DelnoResultCard
+                body={msg.body}
+                sources={
+                  Array.isArray((msg.meta as { sources?: KnowledgeSource[] } | null)?.sources)
+                    ? (msg.meta as { sources: KnowledgeSource[] }).sources
+                    : undefined
+                }
+              />
+            ) : (
+              <div className="msg-bubble user">
+                <div className="msg-meta">{formatTime(msg.created_at)}</div>
+                <div className="msg-body">{msg.body}</div>
+              </div>
+            )}
+          </div>
+        ))}
 
-      {!error && items.length === 0 && detail && (
-        <p className="inbox-empty">Сообщений пока нет</p>
-      )}
-    </>
+        {!error && items.length === 0 && detail && (
+          <p className="hx-muted">Сообщений пока нет</p>
+        )}
+      </div>
+    </div>
   );
 }
 

@@ -1,17 +1,13 @@
 "use client";
 
-import { useRequireAuth } from "@/lib/auth";
-import { DashboardFrame } from "@/components/DashboardFrame";
-import { OnboardingChat } from "@/components/OnboardingChat";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-export default function OnboardingPage() {
-  const { token } = useRequireAuth();
-
-  if (!token) return null;
-
-  return (
-    <DashboardFrame>
-      <OnboardingChat token={token} />
-    </DashboardFrame>
-  );
+/** Onboarding lives inside Hermes now. */
+export default function OnboardingRedirectPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/dashboard/hermes");
+  }, [router]);
+  return <div className="loading-screen">Открываю Hermes…</div>;
 }
