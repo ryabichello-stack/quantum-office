@@ -123,13 +123,50 @@ def _hermes_debug_failures() -> bool:
 
 
 def _cabinet_agent_max_rounds() -> int:
-    """Hard safety ceiling only — agent stops earlier when it finishes the goal."""
+    """Hard safety rail (cf. LangGraph recursion_limit). Soft-stop is primary."""
     try:
         n = int(get_settings().hermes_agent_max_rounds)
     except Exception:  # noqa: BLE001
-        n = 80
-    # Clamp: at least a few rounds; refuse absurd configs that blow context/bill.
+        n = 25
     return max(4, min(n, 200))
+
+
+def _cabinet_agent_no_progress_limit() -> int:
+    try:
+        n = int(get_settings().hermes_agent_no_progress_limit)
+    except Exception:  # noqa: BLE001
+        n = 3
+    return max(2, min(n, 20))
+
+
+def _cabinet_agent_max_tokens() -> int:
+    """0 = unlimited. Counts prompt+completion across the whole agent turn."""
+    try:
+        n = int(get_settings().hermes_agent_max_tokens)
+    except Exception:  # noqa: BLE001
+        n = 100_000
+    return max(0, min(n, 2_000_000))
+
+
+def _tool_call_fingerprint(tool_name: str, params: dict[str, Any]) -> str:
+    try:
+        blob = json.dumps(
+            {"n": tool_name, "p": params},
+            sort_keys=True,
+            ensure_ascii=False,
+            default=str,
+        )
+    except Exception:  # noqa: BLE001
+        blob = f"{tool_name}:{params!r}"
+    return blob
+
+
+def _completion_token_total(completion: dict[str, Any]) -> int:
+    usage = completion.get("usage") if isinstance(completion.get("usage"), dict) else {}
+    prompt = int(usage.get("prompt_tokens") or 0)
+    completion_tokens = int(usage.get("completion_tokens") or 0)
+    total = int(usage.get("total_tokens") or 0)
+    return total or (prompt + completion_tokens)
 
 
 def _format_debug_failures(
@@ -814,7 +851,13 @@ def _try_cabinet_llm_tools(
     dict[str, Any] | None,
     dict[str, Any] | None,
 ] | None:
-    """Multi-step agent loop: LLM may call tools repeatedly, then answer."""
+    """
+    Agent loop stop policy (normal systems):
+      1) soft-stop — model returns text, no tool_calls (primary)
+      2) no-progress — identical tool+args repeated N times
+      3) token budget — optional per-turn ceiling
+      4) max_rounds — hard safety rail only
+    """
     provider = get_model_provider()
     if provider.name == "stub":
         err = "model_provider=stub (нет OPENAI_API_KEY / MODEL_PROVIDER)"
@@ -839,9 +882,29 @@ def _try_cabinet_llm_tools(
     sources: list[dict[str, Any]] = []
     pending_form: dict[str, Any] | None = None
     ran_any_tool = False
+    tokens_used = 0
+    last_fingerprint = ""
+    same_fingerprint_streak = 0
 
     max_rounds = _cabinet_agent_max_rounds()
+    no_progress_limit = _cabinet_agent_no_progress_limit()
+    max_tokens = _cabinet_agent_max_tokens()
+
     for _round in range(max_rounds):
+        if max_tokens and tokens_used >= max_tokens:
+            reply = (
+                f"Остановился: исчерпан бюджет токенов на этот ход "
+                f"({tokens_used}/{max_tokens}). "
+                "Сформулируйте цель уже или продолжите отдельным сообщением."
+            )
+            return (
+                _with_debug_failures(reply, tools=collected_tools, llm_error="token_budget"),
+                collected_tools,
+                sources,
+                None,
+                pending_form,
+            )
+
         completion = provider.chat_completion(messages=messages, tools=tools)
         if not completion.get("ok"):
             err = str(completion.get("error") or "llm_failed")
@@ -870,13 +933,24 @@ def _try_cabinet_llm_tools(
             collected_tools.append({"tool": "llm", "ok": False, "error": err})
             return reply, collected_tools, sources, None, pending_form
 
+        tokens_used += _completion_token_total(completion)
         _charge_llm_if_any(db, ctx, completion, channel="hermes")
 
         tool_calls_raw = choice_msg.get("tool_calls") or []
         if not tool_calls_raw:
+            # Soft-stop: model finished on its own.
             content = str(choice_msg.get("content") or "").strip()
             if content:
-                meta = [{"tool": "llm", "ok": True, "provider": provider.name, "rounds": _round + 1}]
+                meta = [
+                    {
+                        "tool": "llm",
+                        "ok": True,
+                        "provider": provider.name,
+                        "rounds": _round + 1,
+                        "tokens_used": tokens_used,
+                        "stop": "soft",
+                    }
+                ]
                 out_tools = collected_tools or meta
                 return (
                     _with_debug_failures(content, tools=out_tools),
@@ -886,7 +960,6 @@ def _try_cabinet_llm_tools(
                     pending_form,
                 )
             if ran_any_tool:
-                # Last tool message as honest fallback
                 last = collected_tools[-1] if collected_tools else {}
                 reply = str(
                     last.get("message")
@@ -901,7 +974,6 @@ def _try_cabinet_llm_tools(
                 )
             return None
 
-        # Keep assistant tool-call turn for the next round
         messages.append(
             {
                 "role": "assistant",
@@ -925,8 +997,36 @@ def _try_cabinet_llm_tools(
                 )
                 continue
 
+            fp = _tool_call_fingerprint(tool_name, params)
+            if fp == last_fingerprint:
+                same_fingerprint_streak += 1
+            else:
+                last_fingerprint = fp
+                same_fingerprint_streak = 1
+            if same_fingerprint_streak >= no_progress_limit:
+                entry = {
+                    "tool": tool_name,
+                    "ok": False,
+                    "params": params,
+                    "error": "no_progress",
+                    "detail": f"repeated×{same_fingerprint_streak}",
+                }
+                collected_tools.append(entry)
+                reply = (
+                    f"Остановился: один и тот же шаг `{tool_name}` повторяется "
+                    f"без прогресса ({same_fingerprint_streak}×). "
+                    "Уточните задачу или дайте другой вход — иначе буду крутиться."
+                )
+                return (
+                    _with_debug_failures(reply, tools=collected_tools, llm_error="no_progress"),
+                    collected_tools,
+                    sources,
+                    None,
+                    pending_form,
+                )
+
             tool = registry.get(tool_name)
-            entry: dict[str, Any] = {"tool": tool_name, "ok": False, "params": params}
+            entry = {"tool": tool_name, "ok": False, "params": params}
             if tool is None:
                 entry["error"] = "unknown_tool"
                 collected_tools.append(entry)
@@ -939,7 +1039,6 @@ def _try_cabinet_llm_tools(
                 )
                 continue
 
-            # High-impact writes: stop loop and ask for confirmation in UI
             if requires_confirmation(tool):
                 summary = _tool_summary(tool_name, params)
                 pending = _pending_confirmation_dict(tool_name, params, summary)
@@ -964,7 +1063,6 @@ def _try_cabinet_llm_tools(
                     form = result.data.get("pending_credential_form")
                     if isinstance(form, dict):
                         pending_form = form
-                        # Credential forms need the UI — return immediately
                         collected_tools.append(entry)
                         return (
                             _with_debug_failures(
@@ -1000,9 +1098,10 @@ def _try_cabinet_llm_tools(
                     }
                 )
 
-    # Exhausted rounds — one final text-only synthesis
+    # Hard ceiling: ask for a final answer without more tools.
     completion = provider.chat_completion(messages=messages, tools=None, max_tokens=900)
     if completion.get("ok"):
+        tokens_used += _completion_token_total(completion)
         _charge_llm_if_any(db, ctx, completion, channel="hermes")
         try:
             content = str(completion["data"]["choices"][0]["message"].get("content") or "").strip()
@@ -1021,7 +1120,10 @@ def _try_cabinet_llm_tools(
         last = collected_tools[-1]
         reply = str(
             last.get("message")
-            or "Достигнут лимит шагов агента — вот последний результат инструмента."
+            or (
+                f"Достигнут потолок раундов ({max_rounds}) — вот последний результат. "
+                "Можно продолжить следующим сообщением."
+            )
         )
         return (
             _with_debug_failures(reply, tools=collected_tools, llm_error="max_rounds"),

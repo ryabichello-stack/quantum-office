@@ -30,11 +30,10 @@
 
 ### Changed
 
-- Hermes cabinet is a real multi-step agent loop (plan→tool→observe→next),
-  not hand-coded phrase routers; capability catalog in system prompt only.
-  Removed keyword «web research» blocks. DuckDuckGo search retries proxy→direct.
-  Agent round ceiling is env `HERMES_AGENT_MAX_ROUNDS` (default 80, hard max 200)
-  — safety against runaway, not «thinks only N steps».
+- Hermes cabinet agent loop uses a normal stop policy:
+  soft-stop (model answers without tools), no-progress (same tool+args ×N),
+  optional token budget, hard `HERMES_AGENT_MAX_ROUNDS` rail (default 25).
+  No phrase routers; capability catalog only. DuckDuckGo retries proxy→direct.
 - Hermes debug: tool/LLM failures are appended to the cabinet reply
   (`— отладка (сбои) —`); `HERMES_DEBUG_FAILURES=false` to hide. No silent
   stub/proxy fallthrough without telling the owner

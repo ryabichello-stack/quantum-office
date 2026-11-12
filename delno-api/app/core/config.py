@@ -76,10 +76,14 @@ class Settings(BaseSettings):
     # Hermes cabinet: surface tool/LLM failures in the chat reply (debug phase).
     # Set HERMES_DEBUG_FAILURES=false to hide the trailing «отладка (сбои)» block.
     hermes_debug_failures: bool = True
-    # Hard ceiling on agent tool rounds (anti-runaway). The model normally stops
-    # earlier when the goal is done — this is NOT "Hermes only thinks in N steps".
-    # Override via HERMES_AGENT_MAX_ROUNDS.
-    hermes_agent_max_rounds: int = 80
+    # Agent loop stop policy (same idea as LangGraph recursion_limit / Agents max_turns):
+    # 1) soft-stop — model answers without tool_calls (primary)
+    # 2) no-progress — identical tool+args repeated N times
+    # 3) token budget — optional per-turn ceiling (0 = off)
+    # 4) max_rounds — hard safety rail only
+    hermes_agent_max_rounds: int = 25
+    hermes_agent_no_progress_limit: int = 3
+    hermes_agent_max_tokens: int = 100_000
 
 
 @lru_cache

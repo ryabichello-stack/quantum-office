@@ -1,9 +1,37 @@
-"""Hermes cabinet: search HTML parse + debug failure surfacing."""
+"""Hermes cabinet: search HTML parse + agent stop policy + debug."""
 
 from __future__ import annotations
 
-from app.operator.agent import _format_debug_failures, _with_debug_failures
+from app.operator.agent import (
+    _cabinet_agent_max_rounds,
+    _cabinet_agent_max_tokens,
+    _cabinet_agent_no_progress_limit,
+    _completion_token_total,
+    _format_debug_failures,
+    _tool_call_fingerprint,
+    _with_debug_failures,
+)
 from app.services.web_browser import _parse_ddg_html
+
+
+def test_agent_stop_policy_defaults():
+    assert 4 <= _cabinet_agent_max_rounds() <= 200
+    assert _cabinet_agent_no_progress_limit() >= 2
+    assert _cabinet_agent_max_tokens() >= 0
+
+
+def test_tool_fingerprint_stable_and_sensitive():
+    a = _tool_call_fingerprint("web.search", {"query": "выплаты", "limit": 5})
+    b = _tool_call_fingerprint("web.search", {"limit": 5, "query": "выплаты"})
+    c = _tool_call_fingerprint("web.search", {"query": "другое", "limit": 5})
+    assert a == b
+    assert a != c
+
+
+def test_completion_token_total():
+    assert _completion_token_total({"usage": {"prompt_tokens": 10, "completion_tokens": 5}}) == 15
+    assert _completion_token_total({"usage": {"total_tokens": 42}}) == 42
+    assert _completion_token_total({}) == 0
 
 
 def test_parse_ddg_html_result_a():
