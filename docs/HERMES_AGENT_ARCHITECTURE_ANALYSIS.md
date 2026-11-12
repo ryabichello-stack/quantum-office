@@ -1,7 +1,11 @@
-# Почему Hermes «тупой»: глубокий разбор и целевая архитектура
+# Почему Hermes «тупой»: аудит залипухи DELNO (НЕ стратегия продукта)
 
 Дата: 2026-11-13 (МСК). Автор: Cursor.  
-Статус: **анализ**, не выкатка. Runtime телефонии / multi-tenant AVA — зона Codex; этот документ не предлагает overwrite `/opt/delno/api` поверх их маршрутизации.
+Статус: **устарел как roadmap**. Оставлен как forensic-аудит самописного цикла DELNO.
+
+**Коррекция:** продукт должен опираться на **[Nous Research Hermes Agent](https://hermes-agent.nousresearch.com/docs)** (субагенты, cron, memory, MCP уже есть). Стратегия интеграции: [`docs/HERMES_NOUS_INTEGRATION.md`](HERMES_NOUS_INTEGRATION.md). Ниже — почему *текущий* DELNO-омоним «Гермес» инвалидный; **не** план писать субагентов с нуля.
+
+Runtime телефонии / multi-tenant AVA — зона Codex; overwrite `/opt/delno/api` не предлагается.
 
 ---
 

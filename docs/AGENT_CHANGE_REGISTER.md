@@ -164,3 +164,11 @@
 - Проверка: read-only Cloud4Box (cabinet list, MCP off, web caps, model `gpt-5.4-mini`, progress poll). **API/telephony не менялись.**
 - Следующий шаг (только после согласования с Codex/владельцем): Фаза A из анализа — cabinet+crm readonly, research CSV artifact; не деплоить опасные MCP-ветки поверх `/opt/delno`.
 
+## 2026-11-13 00:47 МСК — Cursor: КОРРЕКЦИЯ — база = Nous Hermes Agent, не DIY loop
+
+- Автор: Cursor (после жёсткого замечания владельца + уточнения Codex).
+- Ошибка: Cursor называл «Гермесом» самописный `_try_cabinet_llm_tools` / `HermesStage` и проектировал субагентов/jobs с нуля. Настоящий продукт — **Nous Research Hermes Agent** (delegate_task, cron, memory, skills, MCP, profiles). На Cloud4Box **не установлен** (проверено read-only).
+- Файлы: `docs/HERMES_NOUS_INTEGRATION.md` (source of truth направления); баннер deprecation на `docs/HERMES_AGENT_ARCHITECTURE_ANALYSIS.md`.
+- Порядок дальше: изучить/посадить Nous Hermes per-tenant profile (`HERMES_HOME` под tenant), bridge из кабинета; **не** выдавать самописные subagents за решение; telephony Codex не трогать; один общий Hermes на всех клиентов — запрещён.
+- Статус: зафиксировано. Установка на staging — только после явного ОК владельца.
+
