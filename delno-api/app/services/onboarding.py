@@ -23,6 +23,7 @@ DEFAULT_FLAGS = (
     "phone",
     "outbound_calls",
     "experimental_operator",
+    "hermes_nous_runtime",
 )
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")

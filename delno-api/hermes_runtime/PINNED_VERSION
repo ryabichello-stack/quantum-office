@@ -1,0 +1,6 @@
+# Pin for DELNO Nous Hermes Stage 0 — do not float on main without re-test.
+# Upstream: https://github.com/NousResearch/hermes-agent
+HERMES_AGENT_GIT_REF=v0.23.1
+HERMES_AGENT_GIT_URL=https://github.com/NousResearch/hermes-agent.git
+# Recorded when Stage 0 scaffold was cut (UTC): 2026-11-12
+# After bump: re-run isolation A/B + MCP scoped tools/list tests.

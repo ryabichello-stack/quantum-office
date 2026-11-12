@@ -21,6 +21,8 @@ DEFAULT_FLAGS = (
     "phone",
     "outbound_calls",
     "experimental_operator",
+    # Nous Hermes Agent runtime (off by default — Stage 0 dogfood only)
+    "hermes_nous_runtime",
 )
 
 

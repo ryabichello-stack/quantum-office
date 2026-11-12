@@ -55,6 +55,42 @@ def operator_chat(
     message = (body.message or "").strip()
     if not message and not attachments:
         raise HTTPException(status_code=422, detail="message_or_attachment_required")
+
+    # Feature-flagged Nous Hermes runtime (Stage 0+). DIY loop remains fallback.
+    try:
+        from app.services.hermes_nous.bridge import HermesBridgeError, create_run
+        from app.services.hermes_nous.flags import is_hermes_nous_enabled
+
+        if is_hermes_nous_enabled(db, ctx) and message and not attachments:
+            try:
+                nous = create_run(
+                    db,
+                    ctx,
+                    message=message,
+                    session_id=str(body.conversation_id) if body.conversation_id else None,
+                    tool_ids=["get_knowledge", "office.health", "office.connectors", "hermes.profile"],
+                )
+                return {
+                    "ok": True,
+                    "engine": "nous_hermes_agent",
+                    "channel": body.channel,
+                    "conversation_id": body.conversation_id,
+                    "reply": nous.get("output")
+                    or (nous.get("hermes") or {}).get("output")
+                    or "Hermes run started — progress via /v1/hermes-nous/runs/{run_id}.",
+                    "hermes_run": nous,
+                    "modality": modality,
+                }
+            except HermesBridgeError as exc:
+                # Runtime not up yet → fall through to DIY (documented Stage 0 behavior)
+                if exc.status not in (None, 503, 404, 502):
+                    raise HTTPException(
+                        status_code=exc.status or 503,
+                        detail={"error": str(exc), "body": exc.body},
+                    ) from exc
+    except ImportError:
+        pass
+
     return run_operator_turn(
         db,
         ctx,

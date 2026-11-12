@@ -1,145 +1,68 @@
 # Changelog
 
+Все значимые изменения этого репозитория фиксируются здесь.
+
+Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
+версии — по [Semantic Versioning](https://semver.org/lang/ru/).
+
+Каждый merge в `main` обязан обновлять этот файл.
+Секреты (`.env`, OAuth tokens, credentials) в changelog и в git **не** попадают.
+
 ## [Unreleased]
 
 ### Added
 
-- Agent coordination register Cursor↔Codex: `docs/AGENT_CHANGE_REGISTER.md`
-  (+ rule in `AGENTS.md` / `delno-api/AGENTS.md`); sync with `/opt/delno/docs/`
-- Tenant files + ПДн architecture (`docs/DELNO_TENANT_FILES_AND_PDN.md`):
-  per-tenant prefix isolation, RU residency, encryption/retention roadmap;
-  F0 helpers `tenant_files.py` (path traversal guard, object keys);
-  onboarding writes under `tenants/{id}/uploads`; prod stack volumes
-  `delno-tenant-files` + `delno-onboarding-uploads` on api
-- F3 cloud disks via Hermes: vault kinds `files_yadisk|mailru|gdrive|onedrive`,
-  foreign consent for Google/OneDrive, per-request credentials to files
-  broker (no shared env token for SaaS tenants), coach «подключи / статус / файлы»
-- Site privacy/terms (152‑ФЗ): residency, tenant isolation, subject rights,
-  cross-border minimization; cabinet login links + register consent (152‑ФЗ)
-- Onboarding for any tenant via Hermes: blank MD templates (company
-  profile + telephony script), cabinet download, save script/tools in
-  `tenant.settings.telephony`, inject inbound script on calls
-- Hermes coach: «дай шаблон», «предложи/формализуй/сохрани сценарий»,
-  «включи календарь и письмо» — без ручной настройки под одного клиента
-- Setup status starts with company profile (not Telegram); Hermes
-  attaches downloadable MD template; dogfood `kb_ready` seed ignored
-- Phone setup/health require live Mango **Registered** (not vault-only);
-  SIP apply probe bypasses HTTP_PROXY; helper binds docker0
-- Hermes proactive SIP: apply+probe after vault save, Cursor task on
-  Rejected, voice change (`tenant_voice_profiles`), billing notes for
-  platform keys vs BYOK (`docs/DELNO_LLM_KEYS_AND_BILLING.md`)
-- Host helper `deploy/apply_mango_sip_server.py` for Asterisk register
+- DELNO Hermes Nous Stage 0: pinned `hermes-agent` v0.23.1 runtime scaffold, per-tenant `HERMES_HOME` provision, scoped MCP run tokens, feature flag `hermes_nous_runtime`, bridge `/v1/hermes-nous/*` (DIY cabinet loop remains fallback)
+
+- Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
+- Юридический футер + «Отписаться» / List-Unsubscribe в шаблонах; презентация PDF на 1-м письме
+- API `GET/POST /api/packs` (+ apply) и вкладка «Кампания» в UI (Console embed + standalone)
+- Из Outreach: кнопка «Задание на звонок» → вкладка пульта через postMessage
+- Цепочки по playbook ломбардов: 5 касаний (дни 0/3/6/10/15), позиционирование «платёжная инфраструктура + подбор банка»; тот же каркас для МФО / trade-in / гиг / вторсырьё
+- Playbook: `outreach/content/playbooks/lombards.md`
+- Письма: продающие хуки + **жирные** акценты; «не посредник — tech-партнёр, прямые договоры с банками, сильные ставки по рынку»
+- Приветствие: ФИО руководителя / «Уважаемый руководитель»; при rebuild очереди подставляется director из DaData/Bitrix
+- UI: прокрутка длинных textarea в iframe Outreach
+- Кампания: редактируемая подпись (`OUTREACH_SIGNATURE` / `{signature}`), телефон из формы в превью и письме
+- Микрологотип Quantum Labs в шапке HTML-письма + загрузка/сброс (`/api/brand/logo`, `assets/brand/logo-mark.png`)
+- Outreach: HTML-превью кампании показывает body письма (не пустой белый блок); колесо мыши в полях iframe надёжнее
+- Кампания: живое превью подписи + кнопка «Применить контакты» (телефон/компания/сайт сразу в подпись и settings)
+- HTML-подпись: микрозначки сайт / почта / телефон (`assets/brand/icons/*.png`)
+- Кампания: загрузка/замена PDF-презентации по отрасли (`/api/packs/{id}/presentation`, хранение в `data/presentations/`)
+- Кампания: разовое тестовое письмо на указанный адрес (сохраняет поля → `/send-one`, с PDF по флажку)
+- Письма: universal callback CTA — inline form + bulletproof кнопка (Gmail) + mailto fallback; one-screen landing
 
 ### Changed
 
-- Hermes cabinet agent loop uses a normal stop policy:
-  soft-stop (model answers without tools), no-progress (same tool+args ×N),
-  optional token budget, hard `HERMES_AGENT_MAX_ROUNDS` rail (default 25).
-  Rejects empty «сейчас схожу…» soft-stops (one forced tool round).
-  OpenAI-safe tool names (`web.search`→`web_search`) — dotted names caused
-  HTTP 400 and killed the whole agent loop.
-  No phrase routers; capability catalog only. DuckDuckGo retries proxy→direct.
-- Hermes debug: tool/LLM failures are appended to the cabinet reply
-  (`— отладка (сбои) —`); `HERMES_DEBUG_FAILURES=false` to hide. No silent
-  stub/proxy fallthrough without telling the owner
-- Hermes cabinet is **agent-first**: LLM + tool catalog runs before keyword
-  coach; coach remains offline/geo-block fallback only. New tools:
-  `telephony.script_*`, `telephony.tools_set`, `files.cloud_*`,
-  `credentials.open_form` — so Hermes acts on intent without hand-coded phrases
-- Website import reply: real excerpt/headings/char count + doc id (or honest
-  KB failure) instead of instant templated «положил материалы» + setup dump
+- Console UI: единый тонкий шрифт Manrope, компактные кнопки, понятнее подписи на пульте
+- Вкладка «Задание на звонок»: режимы «своя тема» / «база знаний», русские подписи tools, автосборка сценария
+- Outreach UI: полностью в стиле «Задание на звонок» — surface/поля/mode-cards, акцент Console, Кампания первой вкладкой; Рассылка / Очередь / Настройки тем же паттерном
+- Outreach «Отчёт»: доли / воронка / по дням / пояснения / последние письма — в панелях с тонкой разлиновкой
+- Отраслевые пакеты: финал писем через `{signature}` вместо жёсткой подписи; HTML — `{logo_header}` + корректный `{phone_line}`
 
-### Fixed
+## [0.2.0] — 2026-08-20
 
-- Hermes: «подключи тулзы к sip календарь телемост и почту» no longer hijacked
-  by SIP status dump — enables calendar/telemost/mail tools (or asks to save
-  script first); also matches «почт» not only «письм»
-- Hermes: «пришли форму» / «введу логин» open SIP form (not KB dump);
-  «ничего не понимаю» → step-by-step coach; cabinet chat skips RAG for
-  dialogue; mic prefers server Whisper + reliable click handler
-- Hermes: stop re-asking SIP form after vault save; status questions
-  acknowledge saved credentials; phone setup needs DID + SIP
-- Root cause: vault SIP was never written to Asterisk (placeholder
-  `__MANGO_SIP_PASSWORD__`) — apply path restores registration flow
-- Inbox: delete conversation + bulk cleanup of junk Hermes threads
-- Public DELNO leads: restore SMTP owner notify (`lead_email`); site
-  tenant must be `delno-demo` (not Quantum Labs)
-- DELNO mail identity: point `MAIL_*` / `LEAD_SMTP_*` at Reg.ru
-  hosting (`mail.hosting.reg.ru`, `office@dlno.ru`), not Quantum Labs
-  `smtp.mail.ru`
+### Added
+
+- `console/` — Quantum Console как единый **пульт** секретаря (`:8013`)
+  - вкладка «Пульт»: автолиния входящих, робот, outreach/campaign glance, последние звонки
+  - API `GET/POST /api/line` (AstDB `quantum/inbound_line`)
+  - dialplan `from-mango`: при `off` — Busy без Stasis/OpenAI
+  - health calendar / conference / files / knowledge
+- В git выгружены office-сервисы с прода (код без venv/секретов/БД):
+  - `knowledge/` → `/opt/ava-knowledge`
+  - `calendar/` → `/opt/ava-calendar`
+  - `conference/` → `/opt/ava-conference`
+  - `files/` → `/opt/ava-files`
+  - `sheets-campaign/` → `/opt/ava-sheets-campaign`
+- `CHANGELOG.md`, `CONTRIBUTING.md`, правила версионирования в `AGENTS.md`
 
 ### Changed
 
-- Cabinet UX: one Hermes-language shell for all pages — labeled nav
-  (Hermes / Диалоги / Заявки / Знания / Затраты / Настройки), shared
-  `CabinetPage` chrome; home/onboarding/operator → Hermes; stubs cleaned
+- `README.md` / `docs/PROD_MAP.md` / `AGENTS.md` — карта сервисов и пульта
 
-### Fixed
-- Hermes office panel crash: setup check `detail` objects are stringified
-  instead of rendered as React children
-
-- Hermes: SIP/Mango secrets via secure form (not chat paste);
-  `POST /v1/tenant/vault`, pending_credential_form in operator chat,
-  CredentialFormCard in UI; pasted passwords redacted from transcript
-- Hermes conversation memory: LLM gets prior turns; UI restores last
-  hermes thread on reload; credential questions search KB first;
-  mic falls back to server Whisper STT (`POST /v1/operator/stt`)
-- Hermes: «зайди на сайт / собери знания» → `office.import_website`
-  (fetch → KB + чипы следующих шагов коннекторов); источники больше
-  не выглядят как мёртвые кнопки — отдельные action-chips
-- Hermes UX: «настрой кабинет» → статус сетапа (не ложный note);
-  карточка подтверждения видна в тёмном чате; mic click-to-toggle;
-  дедуп источников; RU-ответ «Настройки обновлены»
+## [0.1.0] — 2026-08-20
 
 ### Added
 
-- Cabinet costs: tokens + OpenAI USD себестоимость + client RUB per tenant;
-  `/dashboard/billing`, Hermes panel, `GET /v1/admin/billing/overview` (platform),
-  vendor price table in `billing.estimate_llm_vendor_usd`
-- Hermes prod model: `gpt-5.4-mini` + OpenAI provider uses `max_completion_tokens` for gpt-5/o-series
-- Phone → live inbox memory: `end_call` keeps thread open with summary/preview,
-  syncs CallSession to Second Brain (`telephony.call`), inbox detail shows
-  `call_session` + transcript; Asterisk bridge `start|end|turn`
-- DELNO restore-from-git pack: `delno-office/*` brokers, compose stack, full
-  `.env.example`, `deploy/restore_cloud4box.sh`, `docs/DELNO_RESTORE.md` (no secrets)
-- Cloud4Box `dlno.ru` HTTPS ingress + SNI mux (see `docs/DLNO_DOMAINS.md`)
-- Hermes chat attachments: photo/file attach + camera capture; OpenAI vision for
-  images; text/docs excerpted into the turn (`/v1/operator/chat` `attachments`)
-- Hermes UI rebuilt as ChatGPT/Cursor-style agent chat: full-height thread,
-  floating composer, typing indicator, office status in a slide-over panel
-- delno-web: Tailwind v4 + shadcn/ui (base-nova); Hermes uses Button, Textarea,
-  Sheet, ScrollArea, Avatar, Badge, Tooltip (`postcss.config.cjs` for Next 15)
-- Hermes phone UI: edge-to-edge, bottom nav dock, compact chips/composer,
-  office panel as bottom sheet — denser minimal chat on ≤720px
-
-### Fixed
-- Hermes office panel crash: setup check `detail` objects are stringified
-  instead of rendered as React children
-
-- Hermes cabinet: phone/secretary setup no longer dumps KB FAQ when OpenAI is
-  geo-blocked — deterministic coach replies with live DID/setup/health status
-- Hermes chat UX: larger dialog thread, mic dictates into the input field (STT),
-  send only on Submit; orb kept for full voice conversation
-- Cloud4Box OpenAI egress: local xray HTTP CONNECT `inbound-grok-minsk` (:10808)
-  via Minsk `up-vpn1`; `OPENAI_HTTP_PROXY`/`HTTPS_PROXY` for `delno-api` so Hermes
-  LLM works despite direct geo-block
-
-### Added
-
-- DELNO Office OS (dogfood): `CallSession` / `CallJob`, tenant phone provisioning,
-  telephony bridge (`/v1/telephony/*`), Hermes tools for setup/health/alerts and
-  calls dial/list — Quantum Labs as first client (`+79699665899`)
-- Docs: `docs/DELNO_OFFICE_OS_ARCHITECTURE.md` — Hermes supervisor (setup + health watch)
-  + Frontline + workers
-- Hermes cabinet UI (`/dashboard/hermes`): setup checklist, health panel, recent calls,
-  push-to-talk mic + orb voice task input (STT → Hermes chat), Operator nav rebranded
-- Quantum Labs dogfood seed: enable office connectors + feature flags + owner login
-- Hermes deterministic intents (setup/health/calls) so cabinet works when OpenAI is
-  geo-blocked from the VPS; channel `hermes` treated as cabinet
-- OpenAI HTTP client supports `OPENAI_HTTP_PROXY` / `HTTPS_PROXY` and `OPENAI_BASE_URL`
-  for SPB→Minsk→NL egress bridge (chat + TTS)
-- Tenant billing: token wallet + RUB tariff, `/v1/tenant/billing/*`, Hermes panel +
-  `billing.summary`; LLM usage charged from OpenAI token counts
-- Hermes web tools: `web.search` / `web.fetch` / `web.browse` (Playwright when available)
-- Channel dual-mode: bot token (existing) **or** QR/session start/confirm APIs for
-  Telegram / MAX / Instagram
+- Первичный импорт `outreach/`, `mailer/`, `text-bot/`, `docs/`

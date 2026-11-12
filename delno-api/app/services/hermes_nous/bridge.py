@@ -1,0 +1,192 @@
+"""DELNO → Hermes API bridge (runs + OpenAI-compat fallback)."""
+
+from __future__ import annotations
+
+import json
+import os
+import urllib.error
+import urllib.request
+from typing import Any
+from uuid import uuid4
+
+from sqlalchemy.orm import Session
+
+from app.core.tenant import TenantContext
+from app.services.hermes_nous.provision import ensure_tenant_hermes_home, tenant_runtime_record
+from app.services.hermes_nous.run_tokens import issue_run_token
+
+
+class HermesBridgeError(RuntimeError):
+    def __init__(self, message: str, *, status: int | None = None, body: Any = None):
+        super().__init__(message)
+        self.status = status
+        self.body = body
+
+
+def _http_json(
+    method: str,
+    url: str,
+    *,
+    api_key: str,
+    payload: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: float = 120.0,
+) -> tuple[int, Any]:
+    data = None
+    req_headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    if headers:
+        req_headers.update(headers)
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers=req_headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8")
+            body: Any = json.loads(raw) if raw.strip() else {}
+            return int(resp.status), body
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        try:
+            body = json.loads(raw) if raw.strip() else {}
+        except json.JSONDecodeError:
+            body = {"raw": raw}
+        raise HermesBridgeError(f"hermes_http_{exc.code}", status=exc.code, body=body) from exc
+    except urllib.error.URLError as exc:
+        raise HermesBridgeError(f"hermes_unreachable: {exc.reason}") from exc
+
+
+def resolve_runtime(db: Session, ctx: TenantContext) -> dict[str, Any]:
+    record = tenant_runtime_record(db, ctx)
+    if not record or not record.get("runtime_base_url"):
+        record = ensure_tenant_hermes_home(db, ctx)
+    base = (record or {}).get("runtime_base_url") or os.environ.get("HERMES_NOUS_RUNTIME_URL") or ""
+    base = str(base).rstrip("/")
+    if not base:
+        raise HermesBridgeError(
+            "hermes_runtime_not_configured",
+            body={"hint": "Set HERMES_NOUS_RUNTIME_URL or provision runtime_base_url"},
+        )
+    key_env = str((record or {}).get("api_server_key_env") or "HERMES_API_SERVER_KEY")
+    api_key = os.environ.get(key_env) or os.environ.get("HERMES_API_SERVER_KEY") or ""
+    if not api_key:
+        raise HermesBridgeError("hermes_api_key_missing", body={"env": key_env})
+    return {"base_url": base, "api_key": api_key, "record": record}
+
+
+def create_run(
+    db: Session,
+    ctx: TenantContext,
+    *,
+    message: str,
+    session_id: str | None = None,
+    tool_ids: list[str] | None = None,
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    """Start a Hermes /v1/runs turn; mint scoped MCP token for this run."""
+    runtime = resolve_runtime(db, ctx)
+    run_id_hint = f"delno_{uuid4().hex[:12]}"
+    issued = issue_run_token(
+        db,
+        ctx,
+        run_id=run_id_hint,
+        tool_ids=tool_ids,
+        knowledge_scopes=["default"],
+    )
+    headers = {"Idempotency-Key": idempotency_key or f"delno-{run_id_hint}"}
+    # Pass run token via header Hermes can map into MCP env (DELNO injects at gateway).
+    headers["X-Delno-Run-Token"] = issued.token
+    payload: dict[str, Any] = {
+        "input": message,
+        "session_id": session_id or f"delno-{ctx.tenant_id}-{ctx.user_id or 'owner'}",
+        "instructions": (
+            "You are the company Hermes agent. Use DELNO MCP tools only. "
+            "Do not invent credentials. Show observable plan steps."
+        ),
+    }
+    url = f"{runtime['base_url']}/v1/runs"
+    try:
+        status, body = _http_json(
+            "POST",
+            url,
+            api_key=runtime["api_key"],
+            payload=payload,
+            headers=headers,
+        )
+    except HermesBridgeError as exc:
+        # Fallback: OpenAI-compat chat completions when Runs API unavailable on pin
+        if exc.status in (404, 405, 501) or "unreachable" in str(exc):
+            return _fallback_chat(runtime, message=message, session_id=payload["session_id"], issued=issued)
+        raise
+
+    return {
+        "ok": True,
+        "engine": "nous_hermes_agent",
+        "mode": "runs",
+        "http_status": status,
+        "run_id": (body or {}).get("run_id") or issued.run_id,
+        "delno_run_id": issued.run_id,
+        "run_token_expires_at": issued.expires_at,
+        "hermes": body,
+        "session_id": payload["session_id"],
+    }
+
+
+def get_run(db: Session, ctx: TenantContext, run_id: str) -> dict[str, Any]:
+    runtime = resolve_runtime(db, ctx)
+    status, body = _http_json(
+        "GET",
+        f"{runtime['base_url']}/v1/runs/{run_id}",
+        api_key=runtime["api_key"],
+    )
+    return {"ok": True, "http_status": status, "hermes": body}
+
+
+def stop_run(db: Session, ctx: TenantContext, run_id: str) -> dict[str, Any]:
+    runtime = resolve_runtime(db, ctx)
+    status, body = _http_json(
+        "POST",
+        f"{runtime['base_url']}/v1/runs/{run_id}/stop",
+        api_key=runtime["api_key"],
+        payload={},
+    )
+    return {"ok": True, "http_status": status, "hermes": body}
+
+
+def _fallback_chat(
+    runtime: dict[str, Any],
+    *,
+    message: str,
+    session_id: str,
+    issued: Any,
+) -> dict[str, Any]:
+    status, body = _http_json(
+        "POST",
+        f"{runtime['base_url']}/v1/chat/completions",
+        api_key=runtime["api_key"],
+        payload={
+            "model": "hermes-agent",
+            "messages": [{"role": "user", "content": message}],
+        },
+        headers={
+            "X-Hermes-Session-Id": session_id,
+            "X-Delno-Run-Token": issued.token,
+        },
+    )
+    choice = ((body or {}).get("choices") or [{}])[0]
+    text = ((choice.get("message") or {}).get("content")) or ""
+    return {
+        "ok": True,
+        "engine": "nous_hermes_agent",
+        "mode": "chat_completions_fallback",
+        "http_status": status,
+        "run_id": issued.run_id,
+        "delno_run_id": issued.run_id,
+        "run_token_expires_at": issued.expires_at,
+        "output": text,
+        "hermes": body,
+        "session_id": session_id,
+    }
