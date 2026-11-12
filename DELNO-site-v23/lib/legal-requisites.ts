@@ -10,5 +10,5 @@ export const LEGAL_OPERATOR = {
   phone: "8 800 555-00-00",
   phoneTel: "+78005550000",
   site: "https://dlno.ru",
-  revision: "1 сентября 2026 года",
+  revision: "12 ноября 2026 года",
 } as const;

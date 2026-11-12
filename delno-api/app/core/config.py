@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     # Onboarding file uploads (O3)
     onboarding_upload_dir: str = "/data/onboarding"
     onboarding_upload_max_bytes: int = 20 * 1024 * 1024
+    # Per-tenant file store (F0+) — see docs/DELNO_TENANT_FILES_AND_PDN.md
+    tenant_files_root: str = "/data/tenants"
+    tenant_files_backend: str = "local"  # local | s3_ru
+    tenant_files_region: str = "ru"
 
 
 @lru_cache

@@ -120,8 +120,16 @@ export default function LoginPage() {
             </>
           )}
         </p>
-        <p style={{ marginTop: 20, fontSize: 11, color: "#888", display: "flex", alignItems: "center", gap: 8 }}>
+        <p style={{ marginTop: 20, fontSize: 11, color: "#888", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <DelnoMark small /> app.dlno.ru
+          <span aria-hidden>·</span>
+          <a href="https://dlno.ru/privacy" target="_blank" rel="noreferrer" style={{ color: "inherit" }}>
+            Конфиденциальность
+          </a>
+          <span aria-hidden>·</span>
+          <a href="https://dlno.ru/terms" target="_blank" rel="noreferrer" style={{ color: "inherit" }}>
+            Соглашение
+          </a>
         </p>
       </div>
       <div className="login-preview">
