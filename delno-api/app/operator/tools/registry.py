@@ -87,6 +87,23 @@ class ToolRegistry:
             )
         return items
 
+    @staticmethod
+    def openai_function_name(name: str) -> str:
+        """OpenAI requires ^[a-zA-Z0-9_-]+$ — dotted internal names become underscores."""
+        return (name or "").replace(".", "_")
+
+    def resolve_openai_name(self, name: str) -> str:
+        """Map OpenAI-safe function name back to internal registry name."""
+        raw = (name or "").strip()
+        if not raw:
+            return raw
+        if raw in self._tools:
+            return raw
+        for internal in self._tools:
+            if self.openai_function_name(internal) == raw:
+                return internal
+        return raw
+
     def list_openai_specs(self, *, names: list[str] | None = None) -> list[dict[str, Any]]:
         specs: list[dict[str, Any]] = []
         for tool in self._tools.values():
@@ -96,7 +113,7 @@ class ToolRegistry:
                 {
                     "type": "function",
                     "function": {
-                        "name": tool.name,
+                        "name": self.openai_function_name(tool.name),
                         "description": tool.description,
                         "parameters": getattr(tool, "parameters_schema", {"type": "object", "properties": {}}),
                     },
@@ -105,7 +122,8 @@ class ToolRegistry:
         return specs
 
     def run(self, db: Session, ctx: TenantContext, name: str, **params: Any) -> ToolResult | PendingConfirmation:
-        tool = self.get(name)
+        resolved = self.resolve_openai_name(name)
+        tool = self.get(resolved)
         if not tool:
             return ToolResult(ok=False, message=f"Unknown tool: {name}")
         return tool.run(db, ctx, **params)

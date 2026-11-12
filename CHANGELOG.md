@@ -34,6 +34,8 @@
   soft-stop (model answers without tools), no-progress (same tool+args ×N),
   optional token budget, hard `HERMES_AGENT_MAX_ROUNDS` rail (default 25).
   Rejects empty «сейчас схожу…» soft-stops (one forced tool round).
+  OpenAI-safe tool names (`web.search`→`web_search`) — dotted names caused
+  HTTP 400 and killed the whole agent loop.
   No phrase routers; capability catalog only. DuckDuckGo retries proxy→direct.
 - Hermes debug: tool/LLM failures are appended to the cabinet reply
   (`— отладка (сбои) —`); `HERMES_DEBUG_FAILURES=false` to hide. No silent

@@ -1051,7 +1051,7 @@ def _try_cabinet_llm_tools(
 
         for raw_tc in tool_calls_raw:
             fn = raw_tc.get("function") or {}
-            tool_name = str(fn.get("name") or "")
+            tool_name = registry.resolve_openai_name(str(fn.get("name") or ""))
             params = _parse_tool_args(fn.get("arguments"))
             tc_id = str(raw_tc.get("id") or f"call_{tool_name}_{_round}")
             if not tool_name:
