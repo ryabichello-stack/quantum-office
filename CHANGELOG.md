@@ -9,6 +9,8 @@
   `CabinetPage` chrome; home/onboarding/operator → Hermes; stubs cleaned
 
 ### Fixed
+- Hermes office panel crash: setup check `detail` objects are stringified
+  instead of rendered as React children
 
 - Hermes: SIP/Mango secrets via secure form (not chat paste);
   `POST /v1/tenant/vault`, pending_credential_form in operator chat,
@@ -45,6 +47,8 @@
   office panel as bottom sheet — denser minimal chat on ≤720px
 
 ### Fixed
+- Hermes office panel crash: setup check `detail` objects are stringified
+  instead of rendered as React children
 
 - Hermes cabinet: phone/secretary setup no longer dumps KB FAQ when OpenAI is
   geo-blocked — deterministic coach replies with live DID/setup/health status

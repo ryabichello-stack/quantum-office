@@ -146,15 +146,17 @@ export function HermesStage({ token }: { token: string }) {
   const refreshPanels = useCallback(async () => {
     try {
       const [s, h, c, b] = await Promise.all([
-        apiHermesSetup(token),
-        apiHermesHealth(token),
+        apiHermesSetup(token).catch(() => null),
+        apiHermesHealth(token).catch(() => null),
         apiCallsList(token, 8).catch(() => ({ ok: true, items: [] as CallSessionItem[] })),
-        apiBillingEnsure(token).catch(() => apiBillingSummary(token)),
+        apiBillingEnsure(token)
+          .catch(() => apiBillingSummary(token))
+          .catch(() => null),
       ]);
-      setSetup(s);
-      setHealth(h);
-      setCalls(c.items || []);
-      setBilling(b);
+      if (s) setSetup(s);
+      if (h) setHealth(h);
+      setCalls(c?.items || []);
+      if (b) setBilling(b);
     } catch {
       /* panels are best-effort; chat still works */
     }
@@ -540,8 +542,25 @@ export function HermesStage({ token }: { token: string }) {
   }
 
   const progressPct = setup
-    ? Math.round((100 * setup.progress.required_done) / Math.max(1, setup.progress.required_total))
+    ? Math.round(
+        (100 * (setup.progress?.required_done || 0)) /
+          Math.max(1, setup.progress?.required_total || 1),
+      )
     : 0;
+
+  function formatCheckDetail(detail: unknown): string {
+    if (detail == null) return "готово";
+    if (typeof detail === "string" || typeof detail === "number" || typeof detail === "boolean") {
+      return String(detail);
+    }
+    if (typeof detail === "object") {
+      const obj = detail as Record<string, unknown>;
+      if (typeof obj.message === "string") return obj.message;
+      if (typeof obj.detail === "string") return obj.detail;
+      if (typeof obj.kind === "string") return String(obj.kind);
+    }
+    return "готово";
+  }
 
   const statusHint = dictating
     ? compact
@@ -950,8 +969,8 @@ export function HermesStage({ token }: { token: string }) {
                     </div>
                     <p>{setup.message_ru}</p>
                     <ul className="hermes-checklist">
-                      {setup.steps.map((step) => {
-                        const check = setup.checks[step.id];
+                      {(setup.steps || []).map((step) => {
+                        const check = (setup.checks || {})[step.id];
                         const done = Boolean(check?.ok);
                         const optional = Boolean(check?.optional);
                         return (
@@ -962,7 +981,9 @@ export function HermesStage({ token }: { token: string }) {
                                 {step.title}
                                 {optional ? " · опц." : ""}
                               </strong>
-                              <small>{done ? check?.detail || "готово" : step.hint}</small>
+                              <small>
+                                {done ? formatCheckDetail(check?.detail) : step.hint || "нужно сделать"}
+                              </small>
                             </div>
                           </li>
                         );
@@ -983,9 +1004,9 @@ export function HermesStage({ token }: { token: string }) {
                 {health ? (
                   <>
                     <p>{health.message_ru}</p>
-                    {health.alerts.length > 0 && (
+                    {(health.alerts || []).length > 0 && (
                       <ul className="hermes-alerts">
-                        {health.alerts.slice(0, 5).map((a) => (
+                        {(health.alerts || []).slice(0, 5).map((a) => (
                           <li key={a.code} data-sev={a.severity}>
                             <strong>{a.message_ru}</strong>
                             {a.fix ? <small>{a.fix}</small> : null}
@@ -1022,10 +1043,11 @@ export function HermesStage({ token }: { token: string }) {
                       </li>
                       <li>
                         <strong>
-                          {(billing.llm?.cost_client_rub ?? 0).toFixed(2)} {billing.balance.currency}
+                          {(billing.llm?.cost_client_rub ?? 0).toFixed(2)}{" "}
+                          {billing.balance?.currency || "RUB"}
                         </strong>
                         <small>
-                          клиенту · баланс {billing.balance.token_credits.toFixed(2)}
+                          клиенту · баланс {(billing.balance?.token_credits ?? 0).toFixed(2)}
                         </small>
                       </li>
                     </ul>

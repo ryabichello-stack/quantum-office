@@ -11,7 +11,7 @@ export type HermesSetupStatus = {
   tenant_slug: string;
   setup_complete: boolean;
   progress: { required_done: number; required_total: number };
-  checks: Record<string, { ok: boolean; detail?: string; optional?: boolean }>;
+  checks: Record<string, { ok: boolean; detail?: unknown; optional?: boolean }>;
   steps: HermesSetupStep[];
   next_steps: Array<HermesSetupStep & { status?: string }>;
   hermes?: {
