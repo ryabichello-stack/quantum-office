@@ -23,9 +23,12 @@ _OWNER_KB_SOURCES = {
     "owner_upload",
     "hermes_dictation",
     "website_import",
+    "hermes.import_website",
+    "tenant.instant_demo",
     "template_upload",
     "tenant.knowledge.upload",
     "cabinet.upload",
+    "onboarding.website",
 }
 
 _SEED_KB_SOURCES = {
@@ -64,7 +67,12 @@ def company_knowledge_ready(db: Session, ctx: TenantContext, *, hermes: dict[str
         source_l = source.lower()
         if source_l in _SEED_KB_SOURCES or source_l.startswith("onboarding:welcome") or "seed" in source_l:
             continue
-        if source in _OWNER_KB_SOURCES or source.startswith("tenant.knowledge"):
+        if (
+            source in _OWNER_KB_SOURCES
+            or source.startswith("tenant.knowledge")
+            or source.startswith("hermes.import")
+            or "website" in source_l
+        ):
             return {"ok": True, "detail": "knowledge_event", "source": source or title}
         # Explicit company-profile titles from owner uploads
         if any(k in title for k in ("профиль компании", "о компании", "company profile", "о нас")):

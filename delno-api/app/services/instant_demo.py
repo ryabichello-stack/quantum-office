@@ -87,6 +87,18 @@ def import_website_to_tenant(
         "imported_at": datetime.now(timezone.utc).isoformat(),
     }
     settings["instant_demo"] = instant
+    # Count a successful website import as company knowledge for Hermes setup.
+    hermes = dict(settings.get("hermes") or {})
+    if kb_result.get("ok") is True:
+        hermes["kb_ready"] = True
+        hermes["company_profile_ready"] = True
+        hermes["kb_source"] = source if source in (
+            "hermes.import_website",
+            "tenant.instant_demo",
+            "website_import",
+            "onboarding.website",
+        ) else (source or "hermes.import_website")
+        settings["hermes"] = hermes
     tenant.settings = settings
 
     emit_event(
