@@ -172,3 +172,10 @@
 - Порядок дальше: изучить/посадить Nous Hermes per-tenant profile (`HERMES_HOME` под tenant), bridge из кабинета; **не** выдавать самописные subagents за решение; telephony Codex не трогать; один общий Hermes на всех клиентов — запрещён.
 - Статус: зафиксировано. Установка на staging — только после явного ОК владельца.
 
+## 2026-11-13 00:56 МСК — Cursor: рецензия плана интеграции оригинального Hermes (multi-tenant)
+
+- Автор: Cursor. Полный `HERMES_ORIGINAL_INTEGRATION_PLAN.md` Codex на сервере не найден (только запись в реестре: Nous=engine, DELNO=control plane, runtime per tenant из‑за process-global MCP discovery).
+- Файлы: `docs/HERMES_ORIGINAL_INTEGRATION_REVIEW.md` (глубокая оценка + схема home/MCP/self-setup); `docs/HERMES_ORIGINAL_INTEGRATION_PLAN.md` (реконструкция тезисов Codex + расширения до появления канона Codex).
+- Вердикт: решение Codex **верно**; подтверждено upstream docs (multiplex MCP discovery process-global, `#67605`). Усилить: provision path, approvals bridge, billing, Frontline vs Owner, pin version, dogfood QL.
+- `HERMES_AGENT_ARCHITECTURE.md` = control plane, не замена Nous. Prod/telephony не трогались.
+
