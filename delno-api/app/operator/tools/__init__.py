@@ -120,6 +120,10 @@ def register_builtin_tools() -> None:
     registry.register(WebBrowseTool())
     registry.register(OfficeImportWebsiteTool())
     registry.register(BillingSummaryTool())
-    # Archived Quantum Office MCP catalog → live QO brokers
-    # overwrite=True: replace DELNO stubs (outreach.*/crm.*) with live QO handlers
-    register_qo_mcp_tools(overwrite=True)
+    # Archived Quantum Office MCP catalog → live QO brokers.
+    # Default: fill gaps only (keep DELNO crm.*/outreach.* stubs for CI/unit tests).
+    # Set QO_MCP_OVERWRITE=1 on Cloud4Box to prefer live qo-* handlers for overlaps.
+    import os
+
+    overwrite = (os.getenv("QO_MCP_OVERWRITE") or "").strip().lower() in {"1", "true", "yes", "on"}
+    register_qo_mcp_tools(overwrite=overwrite)
