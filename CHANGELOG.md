@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Hermes: stop re-asking SIP form after vault save; status questions
+  acknowledge saved credentials; phone setup needs DID + SIP
 - Inbox: delete conversation + bulk cleanup of junk Hermes threads
 - Public DELNO leads: restore SMTP owner notify (`lead_email`); site
   tenant must be `delno-demo` (not Quantum Labs)

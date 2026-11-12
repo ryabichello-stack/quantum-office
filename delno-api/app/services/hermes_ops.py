@@ -16,11 +16,16 @@ from app.models.platform_event import PlatformEvent
 from app.models.tenant import Tenant
 from app.services.connectors import list_tenant_connectors
 from app.services.events import emit_event
+from app.services.tenant_vault import list_secret_status
 
 
 SETUP_STEPS: list[dict[str, str]] = [
     {"id": "kb", "title": "База знаний", "hint": "Загрузите описание бизнеса / прайс в KB"},
-    {"id": "phone", "title": "Телефония", "hint": "Привяжите номер (E.164) для входящих/исходящих"},
+    {
+        "id": "phone",
+        "title": "Телефония",
+        "hint": "Привяжите DID и сохраните SIP Mango в сейфе кабинета (безопасная форма)",
+    },
     {"id": "telegram", "title": "Telegram", "hint": "Подключите branded bot token"},
     {"id": "max", "title": "MAX", "hint": "Опционально: MAX bot access token"},
     {"id": "calendar", "title": "Календарь", "hint": "Включите connector calendar + креды"},
@@ -78,9 +83,19 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
     # KB: treat onboarding completed or hermes flag as done; else unknown→pending
     kb_done = bool(hermes.get("kb_ready")) or (onboarding.get("status") == "completed")
 
+    sip_items = list_secret_status(db, ctx).get("items") or []
+    sip_row = next((i for i in sip_items if i.get("kind") == "mango_sip"), None) or {}
+    sip_ok = bool(sip_row.get("configured"))
+    phone_ok = phones > 0 and sip_ok
+    phone_detail = {
+        "active_dids": phones,
+        "sip_configured": sip_ok,
+        "sip_login_masked": sip_row.get("login_masked") or "",
+    }
+
     checks = {
         "kb": {"ok": kb_done, "detail": "kb_ready" if kb_done else "upload_knowledge"},
-        "phone": {"ok": phones > 0, "detail": f"active_dids={phones}"},
+        "phone": {"ok": phone_ok, "detail": phone_detail},
         "telegram": {"ok": tg > 0, "detail": f"accounts={tg}"},
         "max": {"ok": max_n > 0, "detail": f"accounts={max_n}", "optional": True},
         "calendar": {"ok": _conn_ok("calendar"), "detail": (by_kind.get("calendar") or {}).get("status")},
@@ -204,6 +219,9 @@ def office_health_report(db: Session, ctx: TenantContext) -> dict[str, Any]:
     )
 
     alerts: list[dict[str, Any]] = []
+    sip_items = list_secret_status(db, ctx).get("items") or []
+    sip_row = next((i for i in sip_items if i.get("kind") == "mango_sip"), None) or {}
+    sip_ok = bool(sip_row.get("configured"))
     if not active_dids:
         alerts.append(
             {
@@ -211,6 +229,24 @@ def office_health_report(db: Session, ctx: TenantContext) -> dict[str, Any]:
                 "severity": "warning",
                 "message_ru": "Нет активного телефонного номера. Входящие и исходящие звонки недоступны.",
                 "fix": "Привяжите DID через phones.provision или скажите Hermes номер.",
+            }
+        )
+    if not sip_ok:
+        alerts.append(
+            {
+                "code": "phone.sip_missing",
+                "severity": "warning",
+                "message_ru": "SIP Mango ещё не сохранён в сейфе кабинета — линия не зарегистрируется.",
+                "fix": "Скажите «настрой телефон» и заполните безопасную форму (логин вида номер/сотрудник).",
+            }
+        )
+    elif "/" not in str(sip_row.get("login_masked") or ""):
+        alerts.append(
+            {
+                "code": "phone.sip_login_partial",
+                "severity": "warning",
+                "message_ru": "SIP-логин похож на неполный (нужен вид номер/сотрудник).",
+                "fix": "Откройте форму SIP ещё раз и сохраните полный логин Mango.",
             }
         )
     for item in connectors.get("items") or []:

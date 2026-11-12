@@ -13,24 +13,58 @@ def test_llm_unavailable_mentions_proxy():
     assert "анекдот" in text
 
 
-def test_coach_phone_setup():
+def test_coach_phone_setup_asks_form_when_sip_missing():
     db = MagicMock()
     ctx = MagicMock()
     with (
         patch("app.services.hermes_guide.phone_provision.list_phones") as phones,
         patch("app.services.hermes_guide.hermes_ops.office_setup_status") as setup,
         patch("app.services.hermes_guide.hermes_ops.office_health_report") as health,
+        patch("app.services.hermes_guide.list_secret_status") as secrets,
     ):
         phones.return_value = {
             "items": [{"e164": "+79699665899", "label": "main", "status": "active"}]
         }
         setup.return_value = {"message_ru": "Сетап 80%"}
         health.return_value = {"message_ru": "Есть предупреждения"}
+        secrets.return_value = {"items": [{"kind": "mango_sip", "configured": False}]}
         out = coach_reply(db, ctx, "Помоги настроить телефон секретаря")
     assert out is not None
     assert "79699665899" in out["reply"]
     assert "без лишних вопросов" in out["reply"]
+    assert out.get("pending_credential_form")
     assert out["tool_calls"][0]["tool"] == "hermes.guide.phone"
+
+
+def test_coach_phone_status_does_not_loop_when_sip_saved():
+    db = MagicMock()
+    ctx = MagicMock()
+    with (
+        patch("app.services.hermes_guide.phone_provision.list_phones") as phones,
+        patch("app.services.hermes_guide.hermes_ops.office_setup_status") as setup,
+        patch("app.services.hermes_guide.hermes_ops.office_health_report") as health,
+        patch("app.services.hermes_guide.list_secret_status") as secrets,
+    ):
+        phones.return_value = {
+            "items": [{"e164": "+79699665899", "label": "main", "status": "active"}]
+        }
+        setup.return_value = {"message_ru": "Сетап почти готов"}
+        health.return_value = {"message_ru": "Есть предупреждения"}
+        secrets.return_value = {
+            "items": [
+                {
+                    "kind": "mango_sip",
+                    "configured": True,
+                    "login_masked": "ga***k",
+                    "updated_at": "2026-11-12T15:39:39Z",
+                }
+            ]
+        }
+        out = coach_reply(db, ctx, "Телефон уже настроен?")
+    assert out is not None
+    assert "не начинаю настройку заново" in out["reply"].lower() or "уже сохранён" in out["reply"]
+    assert out.get("pending_credential_form") is None
+    assert "неполн" in out["reply"].lower()  # login looks partial (no slash)
 
 
 def test_coach_does_not_steal_calls_list():

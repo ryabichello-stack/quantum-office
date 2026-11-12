@@ -505,16 +505,36 @@ export function HermesStage({ token }: { token: string }) {
         password: values.password,
       });
       setActiveSecretForm(null);
-      setLines((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          text:
-            result.message ||
-            `Сохранил ${result.kind}: ${result.login_masked || "••••"}. Пароль в чат не попал — дальше проверю регистрацию линии.`,
-        },
-      ]);
+      const ack =
+        result.message ||
+        `Сохранил ${result.kind}: ${result.login_masked || "••••"}. Пароль в чат не попал.`;
+      setLines((prev) => [...prev, { role: "assistant", text: ack }]);
       void refreshPanels();
+      // Follow-up in the same thread so Hermes re-reads vault + setup (no more loop).
+      try {
+        const follow = await apiOperatorChat(
+          token,
+          "SIP сохранён. Телефон настроен? Что дальше по линии?",
+          conversationId || undefined,
+          "text",
+          "hermes",
+        );
+        if (follow.conversation_id) setConversationId(follow.conversation_id);
+        setLines((prev) => [
+          ...prev,
+          { role: "user", text: "SIP сохранён. Телефон настроен? Что дальше по линии?" },
+          {
+            role: "assistant",
+            text: follow.reply || "Проверил сейф и сетап.",
+            sources: dedupeSources(follow.sources),
+          },
+        ]);
+        const secretForm = (follow.pending_credential_form || null) as ApiCredentialFormSpec | null;
+        if (secretForm) setActiveSecretForm(secretForm);
+        void refreshPanels();
+      } catch {
+        /* ack already shown; follow-up is best-effort */
+      }
     } catch {
       setError("Не удалось сохранить SIP-данные. Проверьте сессию и повторите.");
     } finally {
