@@ -6,6 +6,14 @@
 
 **Где лежит:** git `docs/AGENT_CHANGE_REGISTER.md` ↔ прод `/opt/delno/docs/AGENT_CHANGE_REGISTER.md` (держать в синхроне).
 
+
+## 2026-11-13 ~02:00 МСК — Cursor: Hermes Nous lead.created + lab image + tests
+
+- Что: `events_dispatch.on_lead_created` wired from `leads.create_lead_record`; sqlite integration suite expanded; hermes_runtime Dockerfile → Python 3.14 + `uv sync --frozen` (pip conflict Pillow/browser-harness); C4B lab under `/opt/delno/lab/hermes_runtime` (не prod API/telephony).
+- Файлы: `delno-api/app/services/hermes_nous/events_dispatch.py`, `leads.py`, `events.py`, `tests/test_hermes_nous_integration.py`, `hermes_runtime/Dockerfile`, `scripts/lab_smoke.sh`, `CHANGELOG.md`, `docs/hermes-nous/MASTER_PLAN.md`.
+- Проверка: `pytest tests/` → 241+ passed; C4B lab build/smoke (без Asterisk).
+- Статус: в git ветке `cursor/hermes-nous-runtime-9b51`.
+
 ## 2026-11-12 22:42 МСК — изменения Cursor, наблюдение Codex
 
 - Автор: Cursor по сообщению владельца; точный состав правок следует уточнять по текущему коду.

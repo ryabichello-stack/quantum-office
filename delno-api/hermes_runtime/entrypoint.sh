@@ -17,7 +17,11 @@ fi
 cd "$HERMES_HOME"
 
 # Upstream CLI surface varies by pin — try known entrypoints.
+# Prefer `gateway run` so API_SERVER_* platforms bind in-process.
 if command -v hermes >/dev/null 2>&1; then
+  if hermes gateway run --help >/dev/null 2>&1; then
+    exec hermes gateway run --accept-hooks
+  fi
   if hermes gateway --help >/dev/null 2>&1; then
     exec hermes gateway
   fi
@@ -28,7 +32,7 @@ if command -v hermes >/dev/null 2>&1; then
 fi
 
 if python -c "import hermes_cli" 2>/dev/null; then
-  exec python -m hermes_cli gateway
+  exec python -m hermes_cli gateway run --accept-hooks
 fi
 
 echo "ERROR: hermes CLI not found after install; check pin ${HERMES_AGENT_GIT_REF:-unknown}" >&2

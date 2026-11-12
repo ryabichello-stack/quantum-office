@@ -123,21 +123,24 @@ Frontline (клиенты TG/телефон) читает KB; Owner Hermes ст�
 - [x] Office loop API (`/office-loop`, kb-draft/confirm)
 - [x] Tool pack `onboarding` (KB + web + setup)
 - [x] UI: путь офиса + CTA в HermesStage panel
-- [ ] Live E2E на Cloud4Box dogfood (после включения flag + runtime)
+- [x] Lab image build + `/v1/models` A/B smoke on C4B (`/opt/delno/lab/hermes_runtime`, telephony untouched)
+- [x] Lab `/v1/runs` returns `202` + `run_id`; wrong/cross-tenant API keys → `401`
+- [ ] Live E2E site→KB→task with provider keys + flag on dogfood tenant
 
 ### P2 — Тулзы под дирижёра
 
 - [x] Tool pack `conduct` (mail/calendar/crm/phones read+draft)
 - [x] Cabinet soft-route uses conduct pack when Nous on
 - [x] Confirm cards уже в UI (existing ConfirmCard / credential forms)
-- [ ] Live `delegate_task` smoke against pinned image
+- [ ] Live `delegate_task` smoke against pinned image (needs provider keys)
 
 ### P3 — Постоянная работа
 
 - [x] Migration `007_agent_tasks_runs_steps`
 - [x] API tasks/runs/steps + bridge records AgentRun
 - [x] UI panel «Поручения»
-- [ ] Scheduler worker + lead.created → run (wire on staging)
+- [x] `lead.created` → durable AgentTask + queued AgentRun (`events_dispatch.on_lead_created`)
+- [ ] Scheduler worker to drain queued runs against live Hermes (staging)
 
 ### P4 — Каналы клиентов и голос
 
