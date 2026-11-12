@@ -136,3 +136,112 @@ class CalendarConnector:
                 "stub": bool(upstream.get("stub")),
             },
         )
+
+    def check_slot(
+        self,
+        *,
+        tenant_slug: str,
+        config: dict[str, Any],
+        start: str,
+        timezone: str | None = None,
+        source: str | None = None,
+    ) -> ConnectorResult:
+        """AVA-compatible free/busy check — POST /api/calendar/check."""
+        base = self._base(config)
+        source = (source or str(config.get("default_source") or "mailru")).strip() or "mailru"
+        if not base:
+            return ConnectorResult(
+                ok=True,
+                configured=False,
+                kind=self.kind,
+                error="not_configured",
+                message="Stub check — wire CALENDAR_BASE_URL + tenant CalDAV for live free/busy",
+                data={
+                    "free": True,
+                    "stub": True,
+                    "start": start,
+                    "source": source,
+                    "tenant_slug": tenant_slug,
+                },
+            )
+        payload: dict[str, Any] = {"start": start, "source": source}
+        if timezone:
+            payload["timezone"] = timezone
+        code, resp, err = post_json(base, "/api/calendar/check", json=payload, token=self._token(config))
+        if err:
+            return ConnectorResult(ok=False, configured=True, kind=self.kind, error="check_failed", message=err)
+        data = dict(resp or {})
+        data["status_code"] = code
+        free = bool(data.get("free"))
+        return ConnectorResult(
+            ok=True,
+            configured=True,
+            kind=self.kind,
+            message="Слот свободен" if free else "Слот занят",
+            data=data,
+        )
+
+    def create_event(
+        self,
+        *,
+        tenant_slug: str,
+        config: dict[str, Any],
+        start: str,
+        summary: str,
+        description: str = "",
+        attendee_email: str | None = None,
+        timezone: str | None = None,
+        end: str | None = None,
+        source: str | None = None,
+        create_telemost: bool = True,
+        invitees: list[str] | None = None,
+    ) -> ConnectorResult:
+        """AVA-compatible create — POST /api/calendar/create (+ optional Telemost)."""
+        base = self._base(config)
+        source = (source or str(config.get("default_source") or "mailru")).strip() or "mailru"
+        if not base:
+            return ConnectorResult(
+                ok=True,
+                configured=False,
+                kind=self.kind,
+                error="not_configured",
+                message="Stub create — wire CALENDAR_BASE_URL for live calendar + Telemost",
+                data={
+                    "created": True,
+                    "stub": True,
+                    "start": start,
+                    "summary": summary,
+                    "attendee_email": attendee_email,
+                    "telemost_created": False,
+                    "telemost_join_url": "",
+                    "source": source,
+                    "tenant_slug": tenant_slug,
+                },
+            )
+        payload: dict[str, Any] = {
+            "start": start,
+            "summary": summary,
+            "description": description or "",
+            "source": source,
+            "create_telemost": create_telemost,
+            "invitees": list(invitees or []),
+        }
+        if attendee_email:
+            payload["attendee_email"] = attendee_email
+        if timezone:
+            payload["timezone"] = timezone
+        if end:
+            payload["end"] = end
+        code, resp, err = post_json(base, "/api/calendar/create", json=payload, token=self._token(config))
+        if err:
+            return ConnectorResult(ok=False, configured=True, kind=self.kind, error="create_failed", message=err)
+        data = dict(resp or {})
+        data["status_code"] = code
+        created = bool(data.get("created", data.get("ok")))
+        return ConnectorResult(
+            ok=created or code < 400,
+            configured=True,
+            kind=self.kind,
+            message="Встреча создана" if created else (str(data.get("message") or data.get("reason") or "create_failed")),
+            data=data,
+        )

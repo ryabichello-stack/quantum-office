@@ -41,6 +41,7 @@ _HIGH_IMPACT_TOOLS = frozenset(
         "create_lead",
         "send_mail_draft",
         "create_conference",
+        "create_calendar_event",
         "crm.company_upsert",
         "crm.lifecycle_set",
         "outreach.stage_send",

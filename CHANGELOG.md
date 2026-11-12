@@ -12,6 +12,10 @@
 
 ### Added
 
+- Universal secretary tools restored for all tenants: `check_calendar`,
+  `create_calendar_event` (AVA-compatible → calendar broker check/create +
+  optional Telemost); wired into Hermes cabinet catalog alongside existing
+  suggest/mail/conference tools. Cancel/reschedule still open (no broker API yet).
 - Hermes scheduled поручения: `hermes.tasks_create/list/pause/resume` + DIY («проверяй заявки каждый час»); API background ticker runs due tasks via the tool agent; `/v1/hermes-nous/tasks/tick` for manual kick
 - Hermes browser research: pasted URL / «зайди на сайт» runs `web.research` (browse + same-host crawl + optional search) and answers from the live dossier — visible in thinking as page visits; Playwright Chromium in API image
 - Hermes composer: live dictation (browser word/phrase interim + rolling Whisper ticks while speaking)
