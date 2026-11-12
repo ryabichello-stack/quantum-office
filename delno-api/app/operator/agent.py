@@ -21,6 +21,7 @@ from app.operator.tools.registry import (
 from app.services.audit import write_audit
 from app.services.billing import record_llm_usage
 from app.services.events import emit_event
+from app.core.config import get_settings
 from app.services.model_provider import get_model_provider
 from app.services.provenance import extract_sources_from_knowledge
 
@@ -112,7 +113,9 @@ HERMES_AGENT_SYSTEM = (
     "• офис — suggest_calendar_slots, send_mail_draft, create_conference, list_files;\n"
     "• биллинг — billing.summary.\n"
     "Если сценария ещё нет, а просят тулзы — сначала telephony.script_propose/save, потом tools_set. "
-    "После исследования ответь по делу со ссылками. По-русски, ясно, без воды."
+    "После исследования ответь по делу со ссылками. По-русски, ясно, без воды. "
+    "Если tool упал или вернул ошибку — скажи об этом прямо (что сломалось), "
+    "не притворяйся что всё ок и не подменяй ответ чужой базой знаний."
 )
 
 CABINET_AGENT_MAX_ROUNDS = 6
@@ -140,6 +143,59 @@ _WEB_RESEARCH_MARKERS = (
 def _wants_web_research(message: str) -> bool:
     low = (message or "").lower()
     return any(m in low for m in _WEB_RESEARCH_MARKERS)
+
+
+def _hermes_debug_failures() -> bool:
+    try:
+        return bool(get_settings().hermes_debug_failures)
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def _format_debug_failures(
+    *,
+    tools: list[dict[str, Any]] | None = None,
+    llm_error: str | None = None,
+) -> str:
+    """Human-readable failure trail for cabinet debug replies."""
+    lines: list[str] = []
+    if llm_error:
+        lines.append(f"LLM: {llm_error}")
+    for t in tools or []:
+        if not isinstance(t, dict):
+            continue
+        name = str(t.get("tool") or "?")
+        if t.get("blocked"):
+            lines.append(f"{name}: заблокирован ({t.get('error') or 'policy'})")
+            continue
+        if t.get("pending"):
+            continue
+        if t.get("ok") is True and name != "llm":
+            continue
+        if name == "llm" and t.get("ok") is True:
+            continue
+        detail = (
+            t.get("detail")
+            or t.get("error")
+            or t.get("message")
+            or ("fail" if t.get("ok") is False else None)
+        )
+        if detail:
+            lines.append(f"{name}: {detail}")
+    if not lines:
+        return ""
+    return "\n\n— отладка (сбои) —\n" + "\n".join(f"• {x}" for x in lines)
+
+
+def _with_debug_failures(
+    reply: str,
+    *,
+    tools: list[dict[str, Any]] | None = None,
+    llm_error: str | None = None,
+) -> str:
+    if not _hermes_debug_failures():
+        return reply
+    return (reply or "") + _format_debug_failures(tools=tools, llm_error=llm_error)
 
 
 def run_operator_turn(
@@ -781,7 +837,14 @@ def _try_cabinet_llm_tools(
     """Multi-step agent loop: LLM may call tools repeatedly, then answer."""
     provider = get_model_provider()
     if provider.name == "stub":
-        return None
+        err = "model_provider=stub (нет OPENAI_API_KEY / MODEL_PROVIDER)"
+        reply = _with_debug_failures(
+            "Сейчас LLM недоступен (stub) — не могу сам выбирать tools. "
+            "Проверьте OPENAI_API_KEY / proxy на api.",
+            tools=[{"tool": "llm", "ok": False, "error": err}],
+            llm_error=err,
+        )
+        return reply, [{"tool": "llm", "ok": False, "error": err}], [], None, None
 
     tools = registry.list_openai_specs(names=list(CABINET_LLM_TOOLS))
     system = f"{HERMES_AGENT_SYSTEM} Tenant: {ctx.tenant_slug}."
@@ -789,6 +852,10 @@ def _try_cabinet_llm_tools(
         system += (
             " Сейчас пользователь явно просит интернет-исследование. "
             "Обязательно web.search → web.fetch/web.browse. get_knowledge запрещён в этом ходе."
+        )
+    if _hermes_debug_failures():
+        system += (
+            " Режим отладки: если tool вернул ok=false — обязательно назови ошибку владельцу."
         )
     messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
     if history:
@@ -803,24 +870,31 @@ def _try_cabinet_llm_tools(
     for _round in range(CABINET_AGENT_MAX_ROUNDS):
         completion = provider.chat_completion(messages=messages, tools=tools)
         if not completion.get("ok"):
-            return None if not ran_any_tool else (
-                "Не удалось завершить ответ модели после инструментов. Попробуйте ещё раз.",
-                collected_tools,
-                sources,
-                None,
-                pending_form,
+            err = str(completion.get("error") or "llm_failed")
+            reply = _with_debug_failures(
+                (
+                    f"Не удалось вызвать модель ({err}). "
+                    "Без LLM не выбираю tools сам — повторите или проверьте proxy/ключ."
+                    if not ran_any_tool
+                    else f"Модель упала после инструментов ({err}). Ниже — что успело отработать."
+                ),
+                tools=collected_tools,
+                llm_error=err,
             )
+            collected_tools.append({"tool": "llm", "ok": False, "error": err})
+            return reply, collected_tools, sources, None, pending_form
 
         try:
             choice_msg = completion["data"]["choices"][0]["message"]
         except (KeyError, IndexError, TypeError):
-            return None if not ran_any_tool else (
-                "Пустой ответ модели.",
-                collected_tools,
-                sources,
-                None,
-                pending_form,
+            err = "empty_or_malformed_llm_response"
+            reply = _with_debug_failures(
+                "Модель вернула пустой/битый ответ.",
+                tools=collected_tools,
+                llm_error=err,
             )
+            collected_tools.append({"tool": "llm", "ok": False, "error": err})
+            return reply, collected_tools, sources, None, pending_form
 
         _charge_llm_if_any(db, ctx, completion, channel="hermes")
 
@@ -829,12 +903,23 @@ def _try_cabinet_llm_tools(
             content = str(choice_msg.get("content") or "").strip()
             if content:
                 meta = [{"tool": "llm", "ok": True, "provider": provider.name, "rounds": _round + 1}]
-                return content, (collected_tools or meta), sources, None, pending_form
+                out_tools = collected_tools or meta
+                return (
+                    _with_debug_failures(content, tools=out_tools),
+                    out_tools,
+                    sources,
+                    None,
+                    pending_form,
+                )
             if ran_any_tool:
                 # Last tool message as honest fallback
                 last = collected_tools[-1] if collected_tools else {}
+                reply = str(
+                    last.get("message")
+                    or "Инструменты отработали, но модель не сформулировала ответ."
+                )
                 return (
-                    str(last.get("message") or "Инструменты отработали, но модель не сформулировала ответ."),
+                    _with_debug_failures(reply, tools=collected_tools, llm_error="no_final_text"),
                     collected_tools,
                     sources,
                     None,
@@ -898,6 +983,7 @@ def _try_cabinet_llm_tools(
                     "hint": "Use web.search then web.fetch/web.browse instead.",
                 }
                 entry["blocked"] = True
+                entry["error"] = blocked["error"]
                 collected_tools.append(entry)
                 messages.append(
                     {
@@ -915,13 +1001,22 @@ def _try_cabinet_llm_tools(
                 entry["ok"] = result.ok
                 entry["message"] = (result.message or "")[:500]
                 if isinstance(result.data, dict):
+                    if not result.ok:
+                        entry["error"] = str(
+                            result.data.get("error") or result.message or "tool_failed"
+                        )[:300]
+                        if result.data.get("detail"):
+                            entry["detail"] = str(result.data.get("detail"))[:300]
                     form = result.data.get("pending_credential_form")
                     if isinstance(form, dict):
                         pending_form = form
                         # Credential forms need the UI — return immediately
                         collected_tools.append(entry)
                         return (
-                            result.message or "Откройте форму ниже и сохраните данные.",
+                            _with_debug_failures(
+                                result.message or "Откройте форму ниже и сохраните данные.",
+                                tools=collected_tools,
+                            ),
                             collected_tools,
                             sources,
                             None,
@@ -929,6 +1024,8 @@ def _try_cabinet_llm_tools(
                         )
                     if tool_name == "get_knowledge" and result.ok:
                         sources = extract_sources_from_knowledge(result.data) or sources
+                elif not result.ok:
+                    entry["error"] = (result.message or "tool_failed")[:300]
                 collected_tools.append(entry)
                 messages.append(
                     {
@@ -958,12 +1055,22 @@ def _try_cabinet_llm_tools(
         except (KeyError, IndexError, TypeError):
             content = ""
         if content:
-            return content, collected_tools, sources, None, pending_form
+            return (
+                _with_debug_failures(content, tools=collected_tools),
+                collected_tools,
+                sources,
+                None,
+                pending_form,
+            )
 
     if collected_tools:
         last = collected_tools[-1]
+        reply = str(
+            last.get("message")
+            or "Достигнут лимит шагов агента — вот последний результат инструмента."
+        )
         return (
-            str(last.get("message") or "Достигнут лимит шагов агента — вот последний результат инструмента."),
+            _with_debug_failures(reply, tools=collected_tools, llm_error="max_rounds"),
             collected_tools,
             sources,
             None,

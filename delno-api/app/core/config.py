@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     tenant_files_backend: str = "local"  # local | s3_ru
     tenant_files_region: str = "ru"
 
+    # Hermes cabinet: surface tool/LLM failures in the chat reply (debug phase).
+    # Set HERMES_DEBUG_FAILURES=false to hide the trailing «отладка (сбои)» block.
+    hermes_debug_failures: bool = True
+
 
 @lru_cache
 def get_settings() -> Settings:

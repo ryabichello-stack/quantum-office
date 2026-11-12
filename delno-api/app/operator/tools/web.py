@@ -42,7 +42,10 @@ class WebSearchTool:
             if len(lines) == 1:
                 lines.append("Ничего не найдено.")
             return ToolResult(ok=True, data=out, message="\n".join(lines))
-        return ToolResult(ok=False, data=out, message=out.get("error") or "search_failed")
+        err = out.get("error") or "search_failed"
+        detail = out.get("detail")
+        msg = f"{err}" + (f": {detail}" if detail else "")
+        return ToolResult(ok=False, data=out, message=msg)
 
 
 class WebFetchTool:
@@ -71,7 +74,10 @@ class WebFetchTool:
                 data=out,
                 message=f"Страница «{title}» ({out.get('chars', 0)} симв.)\n{preview}",
             )
-        return ToolResult(ok=False, data=out, message=out.get("error") or "fetch_failed")
+        err = out.get("error") or "fetch_failed"
+        detail = out.get("detail")
+        msg = f"{err}" + (f": {detail}" if detail else "")
+        return ToolResult(ok=False, data=out, message=msg)
 
 
 class WebBrowseTool:
@@ -104,4 +110,7 @@ class WebBrowseTool:
                 data=out,
                 message=f"Браузер ({engine}): «{title}»\n{preview}",
             )
-        return ToolResult(ok=False, data=out, message=out.get("error") or "browse_failed")
+        err = out.get("error") or "browse_failed"
+        detail = out.get("detail") or out.get("playwright_error")
+        msg = f"{err}" + (f": {detail}" if detail else "")
+        return ToolResult(ok=False, data=out, message=msg)
