@@ -2,7 +2,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,7 @@ from app.services.conversation_present import (
     get_conversation_detail,
     list_conversation_items,
 )
+from app.services.stt import transcribe_audio
 from app.services.tts import synthesize_speech
 
 router = APIRouter(prefix="/operator", tags=["operator"])
@@ -93,6 +94,20 @@ def operator_voice_stub() -> dict:
         status_code=501,
         detail="Voice I/O not implemented yet. Use POST /v1/operator/chat with modality=voice after client-side STT.",
     )
+
+
+@router.post("/stt")
+async def operator_stt(
+    file: UploadFile = File(...),
+    _ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """Hermes mic fallback — Whisper transcription (ru)."""
+    raw = await file.read()
+    text, error = transcribe_audio(raw, filename=file.filename or "audio.webm")
+    if error or not text:
+        status = 503 if error in {"STT_NOT_CONFIGURED", "STT_AUTH_FAILED"} else 400 if error in {"AUDIO_REQUIRED", "AUDIO_TOO_LARGE", "STT_EMPTY"} else 502
+        raise HTTPException(status_code=status, detail=error or "STT_FAILED")
+    return {"ok": True, "text": text}
 
 
 @router.post("/confirm")

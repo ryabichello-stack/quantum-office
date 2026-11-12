@@ -57,6 +57,11 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
             ".com",
             "http://",
             "https://",
+            "пароль",
+            "логин",
+            "password",
+            "login",
+            "доступ",
         )
     ):
         return None

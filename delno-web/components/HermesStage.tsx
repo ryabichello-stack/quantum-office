@@ -36,6 +36,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
+  apiConversations,
+  apiConversationMessages,
   apiOperatorChat,
   apiOperatorConfirm,
   type KnowledgeSource,
@@ -290,19 +292,77 @@ export function HermesStage({ token }: { token: string }) {
     useCallback((text) => {
       setMessage(text);
     }, []),
+    token,
   );
 
+  const [historyReady, setHistoryReady] = useState(false);
+
   useEffect(() => {
-    if (bootstrapped || !setup) return;
+    let cancelled = false;
+    async function restore() {
+      try {
+        const saved = typeof window !== "undefined" ? localStorage.getItem("hermes_conversation_id") : null;
+        const convs = await apiConversations(token, 30);
+        const preferred =
+          (saved && convs.items.find((c) => c.id === saved)) ||
+          convs.items.find((c) => c.channel === "hermes") ||
+          convs.items.find((c) => c.channel === "cabinet" || c.channel === "operator");
+        if (!preferred || cancelled) {
+          setHistoryReady(true);
+          return;
+        }
+        const msgs = await apiConversationMessages(token, preferred.id);
+        if (cancelled) return;
+        setConversationId(preferred.id);
+        localStorage.setItem("hermes_conversation_id", preferred.id);
+        const restored: ChatLine[] = (msgs.items || [])
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .map((m) => ({
+            role: m.role as "user" | "assistant",
+            text: m.body || "",
+            sources:
+              m.role === "assistant" && Array.isArray((m.meta as { sources?: KnowledgeSource[] } | null)?.sources)
+                ? ((m.meta as { sources: KnowledgeSource[] }).sources)
+                : undefined,
+            suggestions:
+              m.role === "assistant" &&
+              Array.isArray((m.meta as { suggested_actions?: SuggestedAction[] } | null)?.suggested_actions)
+                ? ((m.meta as { suggested_actions: SuggestedAction[] }).suggested_actions)
+                : undefined,
+          }))
+          .filter((l) => l.text.trim());
+        if (restored.length) {
+          setLines(restored);
+          setBootstrapped(true);
+        }
+      } catch {
+        /* fresh chat */
+      } finally {
+        if (!cancelled) setHistoryReady(true);
+      }
+    }
+    void restore();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    localStorage.setItem("hermes_conversation_id", conversationId);
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (bootstrapped || !setup || !historyReady) return;
     setBootstrapped(true);
-    if (!setup.setup_complete) {
+    if (!setup.setup_complete && lines.length === 0) {
       void sendText(
         "Я владелец офиса. Покажи статус сетапа и скажи, что сделать следующим шагом.",
         "text",
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot welcome
-  }, [setup, bootstrapped]);
+  }, [setup, bootstrapped, historyReady]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -528,7 +588,7 @@ export function HermesStage({ token }: { token: string }) {
                   <p className="hx-empty-lead">
                     {compact
                       ? "Задача, фото или mic — ответ здесь."
-                      : "Как в Cursor или ChatGPT: пишите задачу, кидайте фото, снимайте камерой — Hermes отвечает в этом же потоке."}
+                      : "Диалог сохраняется: после обновления страницы Hermes помнит этот тред. Пишите задачу, кидайте фото или нажмите mic."}
                   </p>
                   <div className={cn("hx-suggestions", compact && "hx-suggestions-chips")}>
                     {QUICK_PROMPTS.map((item) => (

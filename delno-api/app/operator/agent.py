@@ -148,6 +148,7 @@ def run_operator_turn(
             message,
             channel=channel,
             attachments=normalized,
+            conversation_id=conversation.id,
         )
 
         suggested_actions: list[dict[str, str]] = []
@@ -253,6 +254,87 @@ def _kb_context_from_result(result: ToolResult) -> str:
     return "\n\n".join(snippets)[:4000]
 
 
+def _conversation_history_for_llm(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    limit: int = 24,
+) -> list[dict[str, str]]:
+    """Prior turns for the model. Excludes the latest user message (added separately)."""
+    rows = (
+        db.query(Message)
+        .filter(Message.tenant_id == tenant_id, Message.conversation_id == conversation_id)
+        .order_by(Message.created_at.desc(), Message.id.desc())
+        .limit(max(limit + 1, 2))
+        .all()
+    )
+    rows = list(reversed(rows))
+    if rows and rows[-1].role == "user":
+        rows = rows[:-1]
+    out: list[dict[str, str]] = []
+    for row in rows[-limit:]:
+        role = "assistant" if row.role == "assistant" else "user"
+        body = (row.body or "").strip()
+        if not body:
+            continue
+        out.append({"role": role, "content": body[:3000]})
+    return out
+
+
+def _try_kb_credential_lookup(
+    db: Session,
+    ctx: TenantContext,
+    message: str,
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None] | None:
+    lower = (message or "").lower()
+    if not any(
+        w in lower
+        for w in (
+            "пароль",
+            "логин",
+            "password",
+            "login",
+            "учётк",
+            "учетк",
+            "доступ",
+            "credential",
+            "smtp",
+            "imap",
+            "ключ api",
+            "api key",
+            "токен бота",
+        )
+    ):
+        return None
+    result = registry.run(db, ctx, "get_knowledge", query=message)
+    tool_calls: list[dict[str, Any]] = [{"tool": "get_knowledge", "ok": isinstance(result, ToolResult) and result.ok}]
+    if not isinstance(result, ToolResult) or not result.ok:
+        return (
+            "Не смог прочитать базу знаний. Откройте раздел «Знания» или повторите запрос.",
+            tool_calls,
+            [],
+            None,
+        )
+    text = _kb_context_from_result(result)
+    sources = extract_sources_from_knowledge(result.data)
+    if not text.strip():
+        return (
+            "В базе знаний по логину/паролю/доступу ничего не нашёл. "
+            "Добавьте запись («добавь в базу знаний: …») или загрузите документ в Знания.",
+            tool_calls,
+            sources,
+            None,
+        )
+    return (
+        "Нашёл в базе знаний (служебные данные — не пересылайте третьим лицам):\n\n"
+        f"{text[:2500]}",
+        tool_calls,
+        sources,
+        None,
+    )
+
+
 def _system_prompt(
     ctx: TenantContext,
     kb_context: str,
@@ -283,8 +365,11 @@ def _system_prompt(
     )
     if cabinet:
         base += (
-            " Ты в кабинете владельца: помогай настраивать DELNO на лету "
-            "(база знаний, часы работы, флаги каналов). Изменения применяются только после подтверждения."
+            " Ты Hermes в кабинете владельца: помнишь предыдущие реплики этого диалога. "
+            "Отвечай по контексту беседы, не начинай с нуля. "
+            "Помогай настраивать офис (KB, каналы, телефон, коннекторы). "
+            "Если спрашивают логин/пароль/доступ — сначала ищи в базе знаний (get_knowledge), "
+            "не говори «нет данных» без поиска. Изменения-записи — только после подтверждения."
         )
     if widget:
         base += (
@@ -514,31 +599,39 @@ def _try_cabinet_llm_tools(
     db: Session,
     ctx: TenantContext,
     message: str,
+    *,
+    history: list[dict[str, str]] | None = None,
 ) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None] | None:
     provider = get_model_provider()
     if provider.name == "stub":
         return None
 
     tools = registry.list_openai_specs(names=list(CABINET_LLM_TOOLS))
+    messages: list[dict[str, Any]] = [
+        {
+            "role": "system",
+            "content": (
+                f"Ты Hermes — ИИ-руководитель офиса DELNO для tenant {ctx.tenant_slug}. "
+                "Владелец настраивает и управляет офисом голосом или текстом, как в чате с ассистентом. "
+                "У тебя есть история этого диалога — опирайся на неё, не забывай прошлые шаги. "
+                "Обязанности: (1) первый сетап — hermes.setup_status / phones.provision / флаги / KB; "
+                "(2) health-watch — hermes.health и сразу сообщить о проблемах простым языком; "
+                "(3) дирижирование — calls.dial/list, календарь, почта, ВКС, рассылка; "
+                "(4) сайт компании — office.import_website / web.fetch / web.browse: "
+                "МОЖЕШЬ заходить на публичные сайты, собирать текст в базу знаний и предлагать "
+                "настройку коннекторов. Никогда не говори, что не умеешь открывать сайты — "
+                "вызывай tool. "
+                "(5) логины/пароли/доступы — сначала get_knowledge, не отвечай «нет данных» вслепую. "
+                "Если сетап не завершён — предложи следующий шаг из checklist. "
+                "Для изменений вызывай tools. Отвечай кратко по-русски."
+            ),
+        }
+    ]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": message})
     completion = provider.chat_completion(
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    f"Ты Hermes — ИИ-руководитель офиса DELNO для tenant {ctx.tenant_slug}. "
-                    "Владелец настраивает и управляет офисом голосом или текстом, как в чате с ассистентом. "
-                    "Обязанности: (1) первый сетап — hermes.setup_status / phones.provision / флаги / KB; "
-                    "(2) health-watch — hermes.health и сразу сообщить о проблемах простым языком; "
-                    "(3) дирижирование — calls.dial/list, календарь, почта, ВКС, рассылка; "
-                    "(4) сайт компании — office.import_website / web.fetch / web.browse: "
-                    "МОЖЕШЬ заходить на публичные сайты, собирать текст в базу знаний и предлагать "
-                    "настройку коннекторов. Никогда не говори, что не умеешь открывать сайты — "
-                    "вызывай tool. Если сетап не завершён — предложи следующий шаг из checklist. "
-                    "Для изменений вызывай tools. Отвечай кратко по-русски."
-                ),
-            },
-            {"role": "user", "content": message},
-        ],
+        messages=messages,
         tools=tools,
     )
     if not completion.get("ok"):
@@ -597,6 +690,7 @@ def _generate_reply(
     *,
     channel: str = "web",
     attachments: dict[str, Any] | None = None,
+    conversation_id: uuid.UUID | None = None,
 ) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None]:
     """KB search + optional LLM; cabinet channel enables live setup intents."""
     from app.services.operator_attachments import build_user_content
@@ -608,6 +702,14 @@ def _generate_reply(
     cabinet = channel in ("cabinet", "operator", "hermes")
     widget = channel == "widget"
     has_attachments = bool(attachments and (attachments.get("items") or []))
+    history: list[dict[str, str]] = []
+    if conversation_id is not None:
+        history = _conversation_history_for_llm(
+            db,
+            tenant_id=ctx.tenant_id,
+            conversation_id=conversation_id,
+            limit=24,
+        )
 
     if onboarding and not has_attachments:
         from app.services.onboarding_website import try_onboarding_url_ingest
@@ -634,6 +736,10 @@ def _generate_reply(
     if cabinet and not has_attachments:
         from app.services.hermes_guide import coach_reply
 
+        cred = _try_kb_credential_lookup(db, ctx, message)
+        if cred:
+            return cred
+
         # Phone/setup coach first — avoid dumping generic setup tool text or KB FAQ
         guided = coach_reply(db, ctx, message)
         if guided:
@@ -641,7 +747,7 @@ def _generate_reply(
         setup = _try_cabinet_setup(db, ctx, message)
         if setup:
             return setup
-        llm_tools = _try_cabinet_llm_tools(db, ctx, message)
+        llm_tools = _try_cabinet_llm_tools(db, ctx, message, history=history)
         if llm_tools:
             return llm_tools
 
@@ -671,26 +777,29 @@ def _generate_reply(
     model_override = "gpt-4o-mini" if widget or vision else None
 
     provider = get_model_provider()
+    llm_messages: list[dict[str, Any]] = [
+        {
+            "role": "system",
+            "content": _system_prompt(
+                ctx,
+                kb_context,
+                cabinet=cabinet,
+                onboarding=onboarding,
+                widget=widget,
+            )
+            + (
+                "\nПользователь может прикладывать фото и файлы. "
+                "Для изображений опиши увиденное и предложи конкретное действие в офисе."
+                if has_attachments
+                else ""
+            ),
+        }
+    ]
+    if history and not widget:
+        llm_messages.extend(history)
+    llm_messages.append({"role": "user", "content": user_content})
     completion = provider.chat_completion(
-        messages=[
-            {
-                "role": "system",
-                "content": _system_prompt(
-                    ctx,
-                    kb_context,
-                    cabinet=cabinet,
-                    onboarding=onboarding,
-                    widget=widget,
-                )
-                + (
-                    "\nПользователь может прикладывать фото и файлы. "
-                    "Для изображений опиши увиденное и предложи конкретное действие в офисе."
-                    if has_attachments
-                    else ""
-                ),
-            },
-            {"role": "user", "content": user_content},
-        ],
+        messages=llm_messages,
         model=model_override,
         max_tokens=450 if vision else (220 if widget else None),
     )

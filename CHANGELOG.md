@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Hermes conversation memory: LLM gets prior turns; UI restores last
+  hermes thread on reload; credential questions search KB first;
+  mic falls back to server Whisper STT (`POST /v1/operator/stt`)
 - Hermes: «зайди на сайт / собери знания» → `office.import_website`
   (fetch → KB + чипы следующих шагов коннекторов); источники больше
   не выглядят как мёртвые кнопки — отдельные action-chips
