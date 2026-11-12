@@ -23,7 +23,10 @@ from app.services.tenant_settings_ingest import sync_tenant_settings_for_ctx
 
 class GetKnowledgeTool:
     name = "get_knowledge"
-    description = "Search tenant knowledge base by topic or question. Never pass tenant_id."
+    description = (
+        "Search THIS tenant's private knowledge base (uploaded docs / imported company site). "
+        "Do NOT use for open internet research — use web.search/web.fetch instead."
+    )
     critical_write = False
     parameters_schema = {
         "type": "object",

@@ -15,8 +15,9 @@ from app.services.audit import write_audit
 class WebSearchTool:
     name = "web.search"
     description = (
-        "Search the public web for information (DuckDuckGo). "
-        "Use when Hermes needs fresh facts, company sites, docs, news."
+        "Search the PUBLIC internet (DuckDuckGo). "
+        "Use for open-web research, laws, news, third-party sites — NOT tenant KB. "
+        "After results, call web.fetch/web.browse on the best URLs before answering."
     )
     critical_write = False
     parameters_schema = {
