@@ -414,16 +414,153 @@ def _files_cloud_coach(db: Session, ctx: TenantContext, message: str) -> dict[st
     }
 
 
+def _wants_telephony_tools(lower: str) -> bool:
+    """True when owner asks to enable in-call tools — must beat SIP status hijack."""
+    cues = (
+        "какие tools",
+        "какие тулзы",
+        "какие тулы",
+        "tools для",
+        "тулы для",
+        "тулзы для",
+        "подключи tools",
+        "подключи тулз",
+        "подключи тулы",
+        "подключить tools",
+        "подключить тулз",
+        "включи tools",
+        "включи тулз",
+        "включи тулы",
+        "включи календарь",
+        "включи письмо",
+        "включи почт",
+        "tools сценари",
+        "тулзы к",
+        "тулы к",
+        "tools к",
+        "tools на лини",
+        "тулзы на лини",
+    )
+    if any(k in lower for k in cues):
+        return True
+    # «подключи … календарь … почту … телемост» without the word tools
+    if ("подключ" in lower or "включи" in lower) and (
+        "календар" in lower
+        or "телемост" in lower
+        or "конференц" in lower
+        or "почт" in lower
+        or "письм" in lower
+    ):
+        return True
+    return False
+
+
+def _tools_from_message(lower: str, current: list[str]) -> list[str]:
+    enable: list[str] = list(current)
+    if "календар" in lower:
+        for t in ("check_calendar", "create_calendar_event"):
+            if t not in enable:
+                enable.append(t)
+    if any(k in lower for k in ("письм", "email", "почт", "презентац", "smtp")):
+        for t in ("send_welcome_email", "send_email"):
+            if t not in enable:
+                enable.append(t)
+    if any(k in lower for k in ("вкс", "телемост", "конференц", "meet", "jitsi")):
+        if "create_conference" not in enable:
+            enable.append("create_conference")
+    if any(k in lower for k in ("баз", "знан", "knowledge")):
+        if "get_company_knowledge" not in enable:
+            enable.insert(0, "get_company_knowledge")
+    # Bare «подключи тулзы» without specifics → useful default set
+    if enable == list(current) and any(k in lower for k in ("тулз", "тулы", "tools")):
+        for t in (
+            "get_company_knowledge",
+            "check_calendar",
+            "create_calendar_event",
+            "send_welcome_email",
+            "send_email",
+            "create_conference",
+        ):
+            if t not in enable:
+                enable.append(t)
+    return enable
+
+
+def _telephony_tools_reply(
+    db: Session,
+    ctx: TenantContext,
+    lower: str,
+    cfg: dict[str, Any],
+) -> dict[str, Any]:
+    from app.services.telephony_script import AVAILABLE_TOOLS, set_telephony_tools
+
+    catalog = "\n".join(f"- `{t['id']}` — {t['title']}: {t['hint']}" for t in AVAILABLE_TOOLS)
+    current = list(cfg.get("tools") or [])
+    enable = _tools_from_message(lower, current)
+
+    if enable != current and cfg.get("configured"):
+        upd = set_telephony_tools(db, ctx, tools=enable)
+        return {
+            "reply": (
+                f"{upd.get('message_ru')}\n\nДоступный каталог:\n{catalog}\n\n"
+                "Скажите точнее («включи только календарь и знания»), если нужно сузить."
+            ),
+            "tool_calls": [{"tool": "hermes.telephony.tools", "ok": True, "tools": enable}],
+            "suggested_actions": [
+                {"title": "Тест линии", "text": "Проверь регистрацию SIP и здоровье телефонии"},
+                {"title": "Сценарий", "text": "Покажи сценарий"},
+            ],
+        }
+
+    if enable != current and not cfg.get("configured"):
+        return {
+            "reply": (
+                "Понял: к линии нужно подключить "
+                + ", ".join(enable)
+                + ".\n"
+                "Сначала сохраним сценарий секретаря — без него tools не к чему привязать.\n"
+                "Скажите «предложи сценарий из базы знаний» или «сохрани сценарий», "
+                "затем повторите «включи календарь, телемост и почту».\n\n"
+                f"Каталог:\n{catalog}"
+            ),
+            "tool_calls": [
+                {
+                    "tool": "hermes.telephony.tools",
+                    "ok": False,
+                    "error": "script_missing",
+                    "wanted": enable,
+                }
+            ],
+            "suggested_actions": [
+                {"title": "Предложи сценарий", "text": "Предложи сценарий из базы знаний"},
+                {"title": "Сохранить сценарий", "text": "Сохрани сценарий"},
+                {"title": "Повторить tools", "text": "Включи календарь телемост и почту"},
+            ],
+        }
+
+    status = (
+        "Сценарий ещё не сохранён — сначала «сохрани сценарий»."
+        if not cfg.get("configured")
+        else "Сейчас включено: " + (", ".join(current) if current else "—")
+    )
+    return {
+        "reply": f"{status}\n\nКаталог tools:\n{catalog}",
+        "tool_calls": [{"tool": "hermes.telephony.tools", "ok": True, "list_only": True}],
+        "suggested_actions": [
+            {"title": "Календарь+почта+ВКС", "text": "Включи календарь телемост и почту"},
+            {"title": "Сохранить сценарий", "text": "Сохрани сценарий"},
+        ],
+    }
+
+
 def _script_coach(db: Session, ctx: TenantContext, message: str) -> dict[str, Any] | None:
     """Onboarding: company templates + telephony script/tools for any tenant."""
     from app.services.onboarding_templates import get_template, list_templates
     from app.services.telephony_script import (
-        AVAILABLE_TOOLS,
         formalize_rough_script,
         get_telephony_config,
         propose_script_from_knowledge,
         save_telephony_script,
-        set_telephony_tools,
     )
 
     lower = (message or "").lower().strip()
@@ -546,58 +683,8 @@ def _script_coach(db: Session, ctx: TenantContext, message: str) -> dict[str, An
             "tool_calls": [{"tool": "hermes.telephony.save", "ok": bool(saved.get("ok"))}],
         }
 
-    if any(
-        k in lower
-        for k in (
-            "какие tools",
-            "какие тулзы",
-            "tools для",
-            "тулы для",
-            "подключи tools",
-            "включи календарь",
-            "включи письмо",
-            "tools сценари",
-        )
-    ):
-        catalog = "\n".join(f"- `{t['id']}` — {t['title']}: {t['hint']}" for t in AVAILABLE_TOOLS)
-        current = cfg.get("tools") or []
-        # Heuristic enable from message
-        enable: list[str] = list(current)
-        if "календар" in lower:
-            for t in ("check_calendar", "create_calendar_event"):
-                if t not in enable:
-                    enable.append(t)
-        if "письм" in lower or "email" in lower or "презентац" in lower:
-            for t in ("send_welcome_email", "send_email"):
-                if t not in enable:
-                    enable.append(t)
-        if "вкс" in lower or "телемост" in lower or "конференц" in lower:
-            if "create_conference" not in enable:
-                enable.append("create_conference")
-        if "баз" in lower or "знан" in lower:
-            if "get_company_knowledge" not in enable:
-                enable.insert(0, "get_company_knowledge")
-
-        if enable != current and cfg.get("configured"):
-            upd = set_telephony_tools(db, ctx, tools=enable)
-            return {
-                "reply": (
-                    f"{upd.get('message_ru')}\n\nДоступный каталог:\n{catalog}\n\n"
-                    "Скажите точнее («включи только календарь и знания»), если нужно сузить."
-                ),
-                "tool_calls": [{"tool": "hermes.telephony.tools", "ok": True, "tools": enable}],
-            }
-        status = "Сценарий ещё не сохранён — сначала «сохрани сценарий»." if not cfg.get("configured") else (
-            "Сейчас включено: " + (", ".join(current) if current else "—")
-        )
-        return {
-            "reply": f"{status}\n\nКаталог tools:\n{catalog}",
-            "tool_calls": [{"tool": "hermes.telephony.tools", "ok": True, "list_only": True}],
-            "suggested_actions": [
-                {"title": "Календарь+почта", "text": "Включи календарь и письмо в сценарии"},
-                {"title": "Сохранить сценарий", "text": "Сохрани сценарий"},
-            ],
-        }
+    if _wants_telephony_tools(lower):
+        return _telephony_tools_reply(db, ctx, lower, cfg)
 
     if any(
         k in lower
@@ -735,6 +822,12 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
     # pure credential paste into the coach.
     if any(t in lower for t in ("password", "login")) and "телефон" not in lower:
         return None
+
+    # Tool-enable intents must not fall into SIP status dump («…к sip календарь…»).
+    if _wants_telephony_tools(lower):
+        from app.services.telephony_script import get_telephony_config
+
+        return _telephony_tools_reply(db, ctx, lower, get_telephony_config(db, ctx))
 
     phone_words = (
         "телефон",

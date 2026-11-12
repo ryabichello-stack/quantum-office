@@ -153,3 +153,47 @@ def test_coach_proposes_generic_script():
     assert out is not None
     assert "черновик" in out["reply"].lower() or "сценари" in out["reply"].lower()
     assert "Quantum Labs" not in out["reply"]
+
+
+def test_coach_tools_not_hijacked_by_sip_word():
+    """Regression: «подключи тулзы к sip календарь…» must not dump SIP status."""
+    db = MagicMock()
+    ctx = MagicMock()
+    with (
+        patch("app.services.telephony_script.get_telephony_config") as tel,
+        patch("app.services.telephony_script.set_telephony_tools") as set_tools,
+        patch("app.services.hermes_guide.phone_provision.list_phones") as phones,
+    ):
+        tel.return_value = {
+            "configured": True,
+            "tools": ["get_company_knowledge", "hangup_call"],
+            "script": "# ok",
+        }
+        set_tools.return_value = {
+            "ok": True,
+            "message_ru": "Tools для линии обновлены: check_calendar, create_calendar_event, …",
+            "tools": [
+                "get_company_knowledge",
+                "check_calendar",
+                "create_calendar_event",
+                "send_welcome_email",
+                "send_email",
+                "create_conference",
+                "hangup_call",
+            ],
+        }
+        phones.return_value = {"items": []}
+        out = coach_reply(
+            db,
+            ctx,
+            "подключи тулзы к sip календарь телемост и почту",
+        )
+    assert out is not None
+    assert out["tool_calls"][0]["tool"] == "hermes.telephony.tools"
+    assert "79699665899" not in out["reply"]
+    assert "pending_qr" not in out["reply"].lower()
+    assert set_tools.called
+    wanted = set_tools.call_args.kwargs.get("tools") or set_tools.call_args[1].get("tools")
+    assert "create_conference" in wanted
+    assert "send_email" in wanted
+    assert "check_calendar" in wanted

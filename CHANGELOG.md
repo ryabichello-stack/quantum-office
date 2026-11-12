@@ -30,6 +30,9 @@
 
 ### Fixed
 
+- Hermes: «подключи тулзы к sip календарь телемост и почту» no longer hijacked
+  by SIP status dump — enables calendar/telemost/mail tools (or asks to save
+  script first); also matches «почт» not only «письм»
 - Hermes: «пришли форму» / «введу логин» open SIP form (not KB dump);
   «ничего не понимаю» → step-by-step coach; cabinet chat skips RAG for
   dialogue; mic prefers server Whisper + reliable click handler
