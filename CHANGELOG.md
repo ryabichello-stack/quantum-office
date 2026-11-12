@@ -4,6 +4,9 @@
 
 ### Added
 
+- Phone → live inbox memory: `end_call` keeps thread open with summary/preview,
+  syncs CallSession to Second Brain (`telephony.call`), inbox detail shows
+  `call_session` + transcript; Asterisk bridge `start|end|turn`
 - DELNO restore-from-git pack: `delno-office/*` brokers, compose stack, full
   `.env.example`, `deploy/restore_cloud4box.sh`, `docs/DELNO_RESTORE.md` (no secrets)
 - Cloud4Box `dlno.ru` HTTPS ingress + SNI mux (see `docs/DLNO_DOMAINS.md`)

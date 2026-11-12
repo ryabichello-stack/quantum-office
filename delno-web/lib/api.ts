@@ -40,6 +40,22 @@ export type ConversationItem = {
   updated_at?: string | null;
 };
 
+export type CallSessionMemory = {
+  id: string;
+  direction: string;
+  status: string;
+  from_e164?: string | null;
+  to_e164?: string | null;
+  did_e164?: string | null;
+  outcome?: string | null;
+  duration_sec?: number | null;
+  summary?: string | null;
+  has_transcript?: boolean;
+  transcript?: string | null;
+  started_at?: string | null;
+  ended_at?: string | null;
+};
+
 export type ConversationDetail = ConversationItem & {
   subtitle?: string;
   summary?: string | null;
@@ -47,6 +63,7 @@ export type ConversationDetail = ConversationItem & {
   recording_url?: string | null;
   recording_duration_sec?: number | null;
   call_status?: string | null;
+  call_session?: CallSessionMemory | null;
 };
 
 export type MessageItem = {

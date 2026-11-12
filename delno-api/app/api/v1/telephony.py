@@ -44,6 +44,9 @@ class CallEndRequest(BaseModel):
     summary: str | None = None
     outcome: str | None = Field(default=None, max_length=64)
     duration_sec: int | None = None
+    recording_url: str | None = Field(default=None, max_length=2000)
+    meta: dict = Field(default_factory=dict)
+    generate_summary: bool = False
 
 
 class CallTurnRequest(BaseModel):
@@ -89,6 +92,9 @@ def telephony_call_end(
         summary=body.summary,
         outcome=body.outcome,
         duration_sec=body.duration_sec,
+        recording_url=body.recording_url,
+        meta=body.meta,
+        generate_summary=body.generate_summary,
     )
     if not out.get("ok"):
         raise HTTPException(status_code=404, detail=out.get("error"))

@@ -92,15 +92,38 @@ def test_provision_phone_and_inbound_session(db, monkeypatch):
     assert turn["ok"] is True
     assert "выплат" in turn["reply"]
 
+    monkeypatch.setattr(
+        "app.services.telephony_brain_sync._brain_upsert",
+        lambda *a, **k: {"ok": True, "document_id": "doc-test-call"},
+    )
+
     ended = telephony.end_call(
         db,
         session_id=sid,
         transcript="user: hi\nagent: hello",
-        summary="Короткий звонок",
+        summary="Короткий звонок про выплаты",
         outcome="completed",
+        recording_url="https://cdn.example/rec.wav",
     )
     assert ended["ok"] is True
     assert ended["session"]["status"] == "ended"
+    assert ended.get("brain", {}).get("ok") is True
+
+    conv = db.query(Conversation).filter(Conversation.id == uuid.UUID(started["conversation_id"])).one()
+    assert conv.status == "open"
+    assert conv.meta.get("needs_review") is True
+    assert conv.meta.get("visitor_phone") == "+79001112233"
+    assert "выплат" in (conv.meta.get("summary") or "")
+    assert conv.meta.get("recording_url") == "https://cdn.example/rec.wav"
+    assert conv.meta.get("last_message_preview")
+
+    from app.services.conversation_present import get_conversation_detail
+
+    detail = get_conversation_detail(db, tenant.id, conv.id)
+    assert detail is not None
+    assert detail.get("summary")
+    assert detail.get("call_session", {}).get("id") == str(sid)
+    assert detail.get("call_session", {}).get("has_transcript") is True
 
 
 def test_outbound_job_and_claim(db):

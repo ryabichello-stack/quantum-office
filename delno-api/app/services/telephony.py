@@ -177,6 +177,38 @@ def start_inbound_call(
     }
 
 
+def _maybe_generate_summary(transcript: str) -> str | None:
+    """Best-effort LLM summary for hangup when worker did not supply one."""
+    text = (transcript or "").strip()
+    if len(text) < 40:
+        return text or None
+    try:
+        from app.services.model_provider import get_model_provider
+
+        provider = get_model_provider()
+        out = provider.chat_completion(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Суммируй телефонный разговор для владельца офиса на русском. "
+                        "2–4 предложения: кто звонил, о чём, итог/следующий шаг. Без воды."
+                    ),
+                },
+                {"role": "user", "content": text[:12000]},
+            ],
+            max_tokens=280,
+        )
+        if not out.get("ok"):
+            return None
+        data = out.get("data") or {}
+        choice = (data.get("choices") or [{}])[0]
+        content = ((choice.get("message") or {}).get("content") or "").strip()
+        return content[:2000] or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def end_call(
     db: Session,
     *,
@@ -185,6 +217,9 @@ def end_call(
     summary: str | None = None,
     outcome: str | None = None,
     duration_sec: int | None = None,
+    recording_url: str | None = None,
+    meta: dict[str, Any] | None = None,
+    generate_summary: bool = False,
 ) -> dict[str, Any]:
     session = db.query(CallSession).filter(CallSession.id == session_id).one_or_none()
     if not session:
@@ -209,25 +244,67 @@ def end_call(
             end = end.replace(tzinfo=timezone.utc)
         session.duration_sec = int((end - start).total_seconds())
 
-    if session.conversation_id and (summary or transcript):
-        body = summary or (transcript or "")[:2000]
+    sess_meta = dict(session.meta or {})
+    if meta:
+        sess_meta.update(meta)
+    if recording_url:
+        sess_meta["recording_url"] = recording_url
+    session.meta = sess_meta
+
+    if generate_summary and not (session.summary or "").strip() and (session.transcript or "").strip():
+        generated = _maybe_generate_summary(session.transcript or "")
+        if generated:
+            session.summary = generated
+
+    brain_result: dict[str, Any] | None = None
+    if session.conversation_id and (session.summary or session.transcript):
+        body = session.summary or (session.transcript or "")[:2000]
         db.add(
             Message(
                 tenant_id=session.tenant_id,
                 conversation_id=session.conversation_id,
                 role="system",
                 body=body,
-                meta={"kind": "call_summary", "session_id": str(session.id), "outcome": outcome},
+                meta={
+                    "kind": "call_summary",
+                    "session_id": str(session.id),
+                    "outcome": session.outcome,
+                    "has_transcript": bool(session.transcript),
+                },
             )
         )
         conv = db.query(Conversation).filter(Conversation.id == session.conversation_id).one_or_none()
         if conv:
-            conv.status = "closed"
+            # Keep open so inbox shows as new / needs review (live memory)
+            conv.status = "open"
+            cmeta = dict(conv.meta or {})
+            visitor = session.from_e164 if session.direction == "inbound" else session.to_e164
+            cmeta.update(
+                {
+                    "direction": session.direction,
+                    "did": session.did_e164,
+                    "session_id": str(session.id),
+                    "visitor_phone": visitor or cmeta.get("visitor_phone") or conv.contact_ref,
+                    "summary": session.summary,
+                    "last_message_preview": (session.summary or body)[:240],
+                    "call_status": "completed" if (session.outcome or "") != "failed" else "failed",
+                    "recording_url": sess_meta.get("recording_url"),
+                    "recording_duration_sec": session.duration_sec,
+                    "needs_review": True,
+                    "principal_id": PRINCIPAL_VOICE_PUBLIC,
+                }
+            )
+            conv.meta = cmeta
+            conv.updated_at = _utc_now()
+
+        from app.services.telephony_brain_sync import sync_call_session_to_brain
+
+        brain_result = sync_call_session_to_brain(db, session)
 
     if session.call_job_id:
         job = db.query(CallJob).filter(CallJob.id == session.call_job_id).one_or_none()
         if job:
-            job.status = "done" if (outcome or "") != "failed" else "failed"
+            job.status = "done" if (session.outcome or "") != "failed" else "failed"
             job.result_session_id = session.id
 
     event_type = "call.inbound.ended" if session.direction == "inbound" else "call.outbound.ended"
@@ -239,10 +316,12 @@ def end_call(
         source="telephony",
         payload={
             "session_id": str(session.id),
+            "conversation_id": str(session.conversation_id) if session.conversation_id else None,
             "outcome": session.outcome,
             "duration_sec": session.duration_sec,
             "has_transcript": bool(session.transcript),
             "has_summary": bool(session.summary),
+            "brain_ok": bool(brain_result and brain_result.get("ok")),
         },
     )
     if session.transcript:
@@ -264,7 +343,10 @@ def end_call(
             payload={"session_id": str(session.id), "summary": session.summary[:500]},
         )
     db.commit()
-    return {"ok": True, "session": session_to_dict(session)}
+    out: dict[str, Any] = {"ok": True, "session": session_to_dict(session)}
+    if brain_result is not None:
+        out["brain"] = brain_result
+    return out
 
 
 def frontline_turn(
@@ -285,7 +367,7 @@ def frontline_turn(
         tenant_id=tenant.id,
         tenant_slug=tenant.slug,
         user_id=None,
-        role="service:voice-public",
+        role=PRINCIPAL_VOICE_PUBLIC,
     )
 
     prompt = text.strip()
