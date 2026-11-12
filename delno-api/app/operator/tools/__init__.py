@@ -66,6 +66,7 @@ from app.operator.tools.billing_tools import BillingSummaryTool
 from app.operator.tools.media import GenerateImageTool
 from app.operator.tools.web import WebBrowseTool, WebFetchTool, WebResearchTool, WebSearchTool
 from app.operator.tools.website_import_tool import OfficeImportWebsiteTool
+from app.operator.tools.qo_mcp_bridge import register_qo_mcp_tools
 from app.operator.tools.registry import registry
 
 
@@ -132,3 +133,6 @@ def register_builtin_tools() -> None:
     registry.register(OfficeImportWebsiteTool())
     registry.register(BillingSummaryTool())
     registry.register(GenerateImageTool())
+    # Archived Quantum Office MCP catalog → live QO brokers
+    # overwrite=True: replace DELNO stubs (outreach.*/crm.*) with live QO handlers
+    register_qo_mcp_tools(overwrite=True)

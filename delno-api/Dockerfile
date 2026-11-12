@@ -40,6 +40,7 @@ COPY scripts ./scripts
 COPY deploy ./deploy
 # Nous tenant home seeds (SOUL.md / config.yaml) — required by hermes_nous.provision
 COPY hermes_runtime ./hermes_runtime
+COPY third_party ./third_party
 
 EXPOSE 8020
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8020"]
