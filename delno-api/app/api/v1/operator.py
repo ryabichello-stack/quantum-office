@@ -9,7 +9,10 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.auth import get_tenant_context_auth
 from app.core.tenant import TenantContext
+from app.models.call_session import CallSession
 from app.models.conversation import Conversation, Message
+from app.models.lead import Lead
+from app.models.onboarding_upload import OnboardingUpload
 from app.operator.agent import execute_confirmed_tool, run_operator_turn
 from app.services.conversation_present import (
     filter_conversation_items,
@@ -153,6 +156,29 @@ def get_conversation(
     return detail
 
 
+def _purge_conversation(db: Session, tenant_id: UUID, conversation_id: UUID) -> int:
+    """Remove a conversation and detach/delete FK dependents. Returns message count."""
+    db.query(CallSession).filter(
+        CallSession.conversation_id == conversation_id, CallSession.tenant_id == tenant_id
+    ).delete(synchronize_session=False)
+    db.query(OnboardingUpload).filter(
+        OnboardingUpload.conversation_id == conversation_id,
+        OnboardingUpload.tenant_id == tenant_id,
+    ).update({OnboardingUpload.conversation_id: None}, synchronize_session=False)
+    db.query(Lead).filter(
+        Lead.conversation_id == conversation_id, Lead.tenant_id == tenant_id
+    ).update({Lead.conversation_id: None}, synchronize_session=False)
+    deleted_messages = (
+        db.query(Message)
+        .filter(Message.conversation_id == conversation_id, Message.tenant_id == tenant_id)
+        .delete(synchronize_session=False)
+    )
+    db.query(Conversation).filter(
+        Conversation.id == conversation_id, Conversation.tenant_id == tenant_id
+    ).delete(synchronize_session=False)
+    return deleted_messages
+
+
 @router.delete("/conversations/{conversation_id}")
 def delete_conversation(
     conversation_id: UUID,
@@ -167,12 +193,7 @@ def delete_conversation(
     )
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    deleted_messages = (
-        db.query(Message)
-        .filter(Message.conversation_id == conversation_id, Message.tenant_id == ctx.tenant_id)
-        .delete(synchronize_session=False)
-    )
-    db.delete(conv)
+    deleted_messages = _purge_conversation(db, ctx.tenant_id, conversation_id)
     db.commit()
     return {"ok": True, "deleted_id": str(conversation_id), "deleted_messages": deleted_messages}
 
@@ -204,11 +225,8 @@ def bulk_delete_conversations(
 
     deleted_ids: list[str] = []
     for conv in rows:
-        db.query(Message).filter(
-            Message.conversation_id == conv.id, Message.tenant_id == ctx.tenant_id
-        ).delete(synchronize_session=False)
+        _purge_conversation(db, ctx.tenant_id, conv.id)
         deleted_ids.append(str(conv.id))
-        db.delete(conv)
     db.commit()
     return {"ok": True, "deleted": len(deleted_ids), "ids": deleted_ids}
 

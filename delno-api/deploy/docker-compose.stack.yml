@@ -119,7 +119,7 @@ services:
       - delno-internal
     environment:
       DELNO_API_URL: http://api:8020
-      DELNO_TENANT_SLUG: ${DELNO_TENANT_SLUG:-quantum-labs}
+      DELNO_TENANT_SLUG: ${DELNO_TENANT_SLUG:-delno-demo}
       NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY: ${NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY:-}
       NEXT_PUBLIC_BASE_PATH: ""
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
