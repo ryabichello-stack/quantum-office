@@ -80,6 +80,9 @@ CABINET_LLM_TOOLS = (
     "files.cloud_list",
     "credentials.open_form",
     # Office connectors
+    # Secretary office (universal — AVA-compatible calendar/mail/telemost)
+    "check_calendar",
+    "create_calendar_event",
     "suggest_calendar_slots",
     "send_mail_draft",
     "list_files",
@@ -111,7 +114,8 @@ HERMES_AGENT_SYSTEM = (
     "• phones.* / calls.* / telephony.script_* / telephony.tools_set — телефония Ava;\n"
     "• files.cloud_* / credentials.open_form — облака и секреты "
     "(SIP: mango_sip; диски: files_yadisk|mailru|gdrive|onedrive; Google/OneDrive с согласием);\n"
-    "• suggest_calendar_slots / send_mail_draft / create_conference / list_files — офис;\n"
+    "• секретарь: check_calendar → create_calendar_event (встреча + Telemost), "
+    "suggest_calendar_slots, send_mail_draft, create_conference, list_files;\n"
     "• billing.summary — баланс.\n"
     "Правила:\n"
     "• Секреты в чат не проси — только credentials.open_form.\n"

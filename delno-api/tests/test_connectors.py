@@ -9,6 +9,8 @@ from app.adapters.connectors.registry import list_connectors
 from app.core.tenant import TenantContext
 from app.models.tenant import Tenant
 from app.operator.tools.office import (
+    CheckCalendarTool,
+    CreateCalendarEventTool,
     CreateConferenceTool,
     ListFilesTool,
     SendMailDraftTool,
@@ -49,6 +51,28 @@ def test_calendar_stub_suggest():
     assert result.data["stub"] is True
 
 
+def test_calendar_stub_check_and_create():
+    check = CalendarConnector().check_slot(
+        tenant_slug="quantum-labs",
+        config={},
+        start="2026-11-13 15:00",
+    )
+    assert check.ok is True
+    assert check.data["free"] is True
+    assert check.data["stub"] is True
+
+    created = CalendarConnector().create_event(
+        tenant_slug="quantum-labs",
+        config={},
+        start="2026-11-13 15:00",
+        summary="Demo",
+        attendee_email="a@b.c",
+    )
+    assert created.ok is True
+    assert created.data["created"] is True
+    assert created.data["stub"] is True
+
+
 def test_files_stub_list():
     result = FilesConnector().list_entries(tenant_slug="demo", config={}, path="/docs")
     assert result.ok is True
@@ -71,6 +95,8 @@ def test_conference_stub_create():
 def test_office_tools_registered_confirmation():
     assert tool_confirmation_class(SendMailDraftTool()) == "HIGH_IMPACT"
     assert tool_confirmation_class(CreateConferenceTool()) == "HIGH_IMPACT"
+    assert tool_confirmation_class(CreateCalendarEventTool()) == "HIGH_IMPACT"
+    assert tool_confirmation_class(CheckCalendarTool()) == "READ"
     assert tool_confirmation_class(SuggestCalendarSlotsTool()) == "READ"
     assert tool_confirmation_class(ListFilesTool()) == "READ"
 
@@ -88,6 +114,16 @@ def test_office_tools_run_stub(monkeypatch):
     cal = SuggestCalendarSlotsTool().run(db, ctx, start="2026-11-12T12:00:00+03:00")
     assert cal.ok is True
     assert cal.data["stub"] is True
+
+    slot = CheckCalendarTool().run(db, ctx, start="2026-11-13 12:00")
+    assert slot.ok is True
+    assert slot.data["free"] is True
+
+    event = CreateCalendarEventTool().run(
+        db, ctx, start="2026-11-13 12:00", summary="Meet", attendee_email="a@b.c"
+    )
+    assert event.ok is True
+    assert event.data["created"] is True
 
     mail = SendMailDraftTool().run(db, ctx, to="x@y.z", subject="S", body="B")
     assert mail.ok is True
