@@ -276,8 +276,9 @@ export function HermesStage({ token }: { token: string }) {
     dictating,
     supported: dictateSupported,
     error: dictateError,
-    start: startDictate,
     stop: stopDictate,
+    toggle: toggleDictate,
+    clearError: clearDictateError,
   } = useDictateToInput(
     useCallback((text) => {
       setMessage(text);
@@ -404,13 +405,23 @@ export function HermesStage({ token }: { token: string }) {
     }
   }
 
-  function onMicDown(e: ReactPointerEvent<HTMLButtonElement>) {
+  function onMicToggle(e: ReactPointerEvent<HTMLButtonElement>) {
     e.preventDefault();
-    startDictate(messageRef.current);
+    clearDictateError();
+    toggleDictate(messageRef.current);
   }
 
-  function onMicUp() {
-    stopDictate();
+  function dedupeSources(sources: KnowledgeSource[] | undefined): KnowledgeSource[] {
+    if (!sources?.length) return [];
+    const seen = new Set<string>();
+    const out: KnowledgeSource[] = [];
+    for (const s of sources) {
+      const key = String(s.document_id || s.citation || s.title || "").trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(s);
+    }
+    return out;
   }
 
   const progressPct = setup
@@ -419,8 +430,8 @@ export function HermesStage({ token }: { token: string }) {
 
   const statusHint = dictating
     ? compact
-      ? "Диктовка…"
-      : "Диктовка… отпустите mic"
+      ? "Диктовка… tap stop"
+      : "Диктовка… нажмите mic ещё раз, чтобы остановить"
     : voicePhase === "listen"
       ? "Слушаю…"
       : voicePhase === "think"
@@ -436,7 +447,7 @@ export function HermesStage({ token }: { token: string }) {
               : compact
                 ? "Чат · mic · фото"
                 : dictateSupported
-                  ? "Напишите, приложите фото или удержите mic"
+                  ? "Напишите, приложите фото или нажмите mic"
                   : "Напишите, приложите фото или файл";
 
   const canSend = !sending && (Boolean(message.trim()) || pendingFiles.length > 0);
@@ -560,17 +571,25 @@ export function HermesStage({ token }: { token: string }) {
                     <div className="hx-assistant-col">
                       <div className="hx-bubble hx-bubble-assistant">
                         <div className="hx-text">{line.text}</div>
-                        {line.sources && line.sources.length > 0 && (
-                          <div className="hx-sources-row mt-2 flex flex-wrap gap-1.5">
-                            {line.sources.map((s, i) => (
-                              <Badge key={i} variant="outline" className="max-w-[11rem] truncate text-[10px]">
-                                {s.title || s.citation || s.document_id}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
+                        {(() => {
+                          const sources = dedupeSources(line.sources);
+                          if (!sources.length) return null;
+                          return (
+                            <div className="hx-sources-row mt-2 flex flex-wrap gap-1.5">
+                              {sources.map((s, i) => (
+                                <Badge
+                                  key={`${s.document_id || s.title || i}`}
+                                  variant="outline"
+                                  className="max-w-[11rem] truncate text-[10px]"
+                                >
+                                  {s.title || s.citation || s.document_id}
+                                </Badge>
+                              ))}
+                            </div>
+                          );
+                        })()}
                       </div>
-                      {line.pending && activePending?.confirmation_id === line.pending.confirmation_id && (
+                      {line.pending && activePending?.confirmation_id === line.pending.confirmation_id ? (
                         <ConfirmCard
                           summary={line.pending.summary}
                           toolName={line.pending.tool_name}
@@ -578,7 +597,9 @@ export function HermesStage({ token }: { token: string }) {
                           onConfirm={() => void onConfirm()}
                           onCancel={() => setActivePending(null)}
                         />
-                      )}
+                      ) : line.pending ? (
+                        <p className="hx-confirm-expired">Подтверждение уже неактивно — повторите запрос.</p>
+                      ) : null}
                     </div>
                   </article>
                 ),
@@ -688,12 +709,10 @@ export function HermesStage({ token }: { token: string }) {
                         type="button"
                         variant={dictating ? "default" : "ghost"}
                         size="icon"
-                        disabled={sending}
-                        aria-label="Диктовка"
-                        onPointerDown={onMicDown}
-                        onPointerUp={onMicUp}
-                        onPointerLeave={onMicUp}
-                        onPointerCancel={onMicUp}
+                        disabled={sending || !dictateSupported}
+                        aria-label={dictating ? "Остановить диктовку" : "Диктовка"}
+                        aria-pressed={dictating}
+                        onPointerDown={onMicToggle}
                         onContextMenu={(e) => e.preventDefault()}
                         className="hx-tool-btn touch-none"
                       />
@@ -701,7 +720,13 @@ export function HermesStage({ token }: { token: string }) {
                   >
                     <Mic size={compact ? 16 : 18} />
                   </TooltipTrigger>
-                  <TooltipContent>Удерживайте для диктовки</TooltipContent>
+                  <TooltipContent>
+                    {dictateSupported
+                      ? dictating
+                        ? "Нажмите, чтобы остановить"
+                        : "Нажмите, чтобы диктовать"
+                      : "Диктовка недоступна в этом браузере"}
+                  </TooltipContent>
                 </Tooltip>
               </div>
               <Textarea

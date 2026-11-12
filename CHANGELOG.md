@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Hermes UX: «настрой кабинет» → статус сетапа (не ложный note);
+  карточка подтверждения видна в тёмном чате; mic click-to-toggle;
+  дедуп источников; RU-ответ «Настройки обновлены»
+
 ### Added
 
 - Cabinet costs: tokens + OpenAI USD себестоимость + client RUB per tenant;

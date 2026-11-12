@@ -17,7 +17,21 @@ _KB_PREFIXES = (
 _SETTINGS_PREFIXES = (
     "измени настройки",
     "обнови настройки",
-    "настрой ",
+    "настройки:",
+    "настройка:",
+)
+
+# "настрой …" that means office setup — not a settings note patch
+_SETUP_PHRASE_BLOCKLIST = (
+    "кабинет",
+    "офис",
+    "hermes",
+    "делно",
+    "delno",
+    "секретар",
+    "чеклист",
+    "сетап",
+    "setup",
 )
 
 _SUMMARY_TRIGGERS = (
@@ -98,13 +112,35 @@ def _parse_hours(text: str) -> dict[str, Any] | None:
 
 def _parse_settings_patch(text: str) -> dict[str, Any] | None:
     lower = text.lower()
+    # "настрой кабинет/офис" is Hermes setup — never a note patch
+    if lower.startswith("настрой ") or lower.startswith("настроить "):
+        rest_l = lower.split(None, 1)[-1] if " " in lower else ""
+        if any(w in rest_l for w in _SETUP_PHRASE_BLOCKLIST) or not rest_l:
+            return None
+        # Explicit value after "настрой": e.g. "настрой приветствие: Здравствуйте"
+        rest = text.split(None, 1)[-1].strip(" :—-")
+        patch: dict[str, Any] = {}
+        if rest_l.startswith("привет") or "greeting" in rest_l:
+            patch["greeting"] = rest.split(":", 1)[-1].strip()[:500] or rest
+        elif "имя" in rest_l and "ассистент" in rest_l:
+            patch["assistant_name"] = rest.split(":", 1)[-1].strip()[:120]
+        else:
+            # Ambiguous "настрой X" without clear field — do not invent a note
+            return None
+        if not patch:
+            return None
+        return {
+            "tool": "update_tenant_settings",
+            "params": {"patch": patch},
+            "summary": f"Обновить настройки: {list(patch.keys())[0]}",
+        }
     for prefix in _SETTINGS_PREFIXES:
         if lower.startswith(prefix):
             rest = text[len(prefix) :].strip(" :—-")
             if not rest:
                 return None
-            patch: dict[str, Any] = {}
-            if "привет" in lower or " greeting" in lower:
+            patch = {}
+            if "привет" in lower or "greeting" in lower:
                 patch["greeting"] = rest
             elif "имя" in lower and "ассистент" in lower:
                 patch["assistant_name"] = rest.split(":", 1)[-1].strip()[:120]
@@ -134,6 +170,10 @@ _HERMES_SETUP_TRIGGERS = (
     "следующий шаг",
     "настрой офис",
     "настроить офис",
+    "настрой кабинет",
+    "настроить кабинет",
+    "настрой hermes",
+    "настроить hermes",
     "checklist",
     "чеклист",
     "сетап",
