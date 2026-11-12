@@ -51,6 +51,7 @@ services:
     restart: unless-stopped
     networks:
       - delno-internal
+      - quantum-office
     extra_hosts:
       - "host.docker.internal:host-gateway"
     env_file:
@@ -63,6 +64,18 @@ services:
       CALENDAR_BASE_URL: ${CALENDAR_BASE_URL:-http://calendar:8014}
       CONFERENCE_BASE_URL: ${CONFERENCE_BASE_URL:-http://conference:8016}
       OFFICE_WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
+      # Quantum Office MCP bridge (archived office-mcp → qo-* brokers)
+      CONSOLE_BASE: ${CONSOLE_BASE:-http://qo-console:8013}
+      OUTREACH_BASE: ${OUTREACH_BASE:-http://qo-outreach:8012}
+      TEXT_BOT_BASE: ${TEXT_BOT_BASE:-http://qo-text-bot:8011}
+      AVA_KNOWLEDGE_BASE: ${AVA_KNOWLEDGE_BASE:-http://qo-knowledge:8017}
+      CALENDAR_BASE: ${CALENDAR_BASE:-http://qo-calendar:8014}
+      FILES_BASE: ${FILES_BASE:-http://qo-files:8015}
+      CONFERENCE_BASE: ${CONFERENCE_BASE:-http://qo-conference:8016}
+      MAILER_BASE: ${MAILER_BASE:-http://qo-mailer:8000}
+      CONSOLE_TOKEN: ${CONSOLE_TOKEN:-}
+      WEBHOOK_TOKEN: ${WEBHOOK_TOKEN:-}
+      OUTREACH_UI_TOKEN: ${OUTREACH_UI_TOKEN:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
       MODEL_PROVIDER: ${MODEL_PROVIDER:-openai}
@@ -71,7 +84,7 @@ services:
       HTTPS_PROXY: ${HTTPS_PROXY:-}
       HTTP_PROXY: ${HTTP_PROXY:-}
       ALL_PROXY: ${ALL_PROXY:-}
-      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,postgres,knowledge,mail,calendar,files,conference,api,web}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,postgres,knowledge,mail,calendar,files,conference,api,web,qo-console,qo-outreach,qo-text-bot,qo-knowledge,qo-calendar,qo-files,qo-conference,qo-mailer,console,outreach,host.docker.internal}
       TELEPHONY_WEBHOOK_TOKEN: ${TELEPHONY_WEBHOOK_TOKEN:-}
       ONBOARDING_UPLOAD_DIR: ${ONBOARDING_UPLOAD_DIR:-/data/onboarding}
       TENANT_FILES_ROOT: ${TENANT_FILES_ROOT:-/data/tenants}
@@ -265,6 +278,10 @@ networks:
   delno-internal:
     name: delno-internal
     driver: bridge
+  quantum-office:
+    # Shared with qo-* brokers on Cloud4Box (office-mcp bridge).
+    external: true
+    name: quantum-office_default
 
 volumes:
   delno-pg-data:
