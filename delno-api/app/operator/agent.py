@@ -91,23 +91,55 @@ CABINET_LLM_TOOLS = (
 )
 
 HERMES_AGENT_SYSTEM = (
-    "Ты Hermes — умный ИИ-руководитель офиса DELNO для этого tenant. "
+    "Ты Hermes — автономный ИИ-руководитель офиса DELNO для этого tenant. "
     "Владелец говорит естественно; ты сам понимаешь намерение и ДЕЙСТВУЕШЬ через tools. "
-    "Не жди волшебных фраз и не отвечай шаблонным статусом SIP, если просят другое "
-    "(например тулзы линии, облако, сценарий, почту, ВКС).\n"
-    "Возможности (вызывай tools):\n"
+    "Можешь делать несколько шагов подряд: поиск → открыть страницы → ответить. "
+    "Не жди волшебных фраз и не отвечай шаблонным статусом SIP, если просят другое.\n"
+    "РАЗДЕЛЕНИЕ ИСТОЧНИКОВ (строго):\n"
+    "• Открытый интернет / «сходи в сеть» / свежие факты / законы / обзоры рынка → "
+    "web.search, затем web.fetch или web.browse по лучшим ссылкам. "
+    "НЕ используй get_knowledge для таких запросов — это чужая локальная база tenant.\n"
+    "• get_knowledge — только материалы ЭТОГО tenant (загруженные файлы, импорт сайта компании).\n"
+    "• office.import_website — затянуть сайт клиента в его KB.\n"
+    "Возможности:\n"
+    "• интернет — web.search, web.fetch, web.browse;\n"
     "• сетап/здоровье — hermes.setup_status, hermes.health, hermes.alerts;\n"
-    "• телефония — phones.*, calls.*, telephony.script_*, telephony.tools_set "
-    "(календарь/почта/телемост/знания на линии Ava);\n"
-    "• облака — files.cloud_status / files.cloud_list; подключение — credentials.open_form "
-    "(files_yadisk|files_mailru|files_gdrive|files_onedrive); Google/OneDrive только с согласием;\n"
-    "• SIP — credentials.open_form kind=mango_sip (секреты только в форме, не в чат);\n"
-    "• сайт/KB — office.import_website, web.*, upload_knowledge_snippet, get_knowledge;\n"
+    "• телефония — phones.*, calls.*, telephony.script_*, telephony.tools_set;\n"
+    "• облака — files.cloud_status / files.cloud_list; credentials.open_form "
+    "(files_yadisk|files_mailru|files_gdrive|files_onedrive; Google/OneDrive с согласием);\n"
+    "• SIP — credentials.open_form kind=mango_sip (секреты только в форме);\n"
+    "• KB tenant — upload_knowledge_snippet, get_knowledge, office.import_website;\n"
     "• офис — suggest_calendar_slots, send_mail_draft, create_conference, list_files;\n"
     "• биллинг — billing.summary.\n"
     "Если сценария ещё нет, а просят тулзы — сначала telephony.script_propose/save, потом tools_set. "
-    "После действия кратко скажи результат и следующий шаг. Отвечай по-русски, 2–8 предложений."
+    "После исследования ответь по делу со ссылками. По-русски, ясно, без воды."
 )
+
+CABINET_AGENT_MAX_ROUNDS = 6
+
+_WEB_RESEARCH_MARKERS = (
+    "интернет",
+    "в сети",
+    "в веб",
+    "найди в",
+    "погугли",
+    "загугли",
+    "поиск в",
+    "сходи",
+    "зайди на",
+    "открой сайт",
+    "свеж",
+    "актуальн",
+    "google",
+    "duckduckgo",
+    "web search",
+    "browse",
+)
+
+
+def _wants_web_research(message: str) -> bool:
+    low = (message or "").lower()
+    return any(m in low for m in _WEB_RESEARCH_MARKERS)
 
 
 def run_operator_turn(
@@ -700,6 +732,39 @@ def _execute_cabinet_tool(
     return f"Не удалось: {msg}", tool_calls, [], None, None
 
 
+def _tool_result_for_llm(result: ToolResult | PendingConfirmation | Any) -> str:
+    if isinstance(result, PendingConfirmation):
+        return json.dumps(
+            {
+                "ok": False,
+                "needs_confirmation": True,
+                "tool": result.tool_name,
+                "summary": result.summary,
+            },
+            ensure_ascii=False,
+        )
+    if isinstance(result, ToolResult):
+        payload: dict[str, Any] = {"ok": result.ok, "message": (result.message or "")[:4000]}
+        data = result.data if isinstance(result.data, dict) else {}
+        # Prefer compact structured bits for web / KB so the model can chain.
+        if "items" in data:
+            payload["items"] = data.get("items")
+        if "query" in data:
+            payload["query"] = data.get("query")
+        if "url" in data:
+            payload["url"] = data.get("url")
+        if "title" in data:
+            payload["title"] = data.get("title")
+        if "text" in data and isinstance(data.get("text"), str):
+            payload["text"] = data["text"][:6000]
+        if "chars" in data:
+            payload["chars"] = data.get("chars")
+        if "pending_credential_form" in data:
+            payload["pending_credential_form"] = True
+        return json.dumps(payload, ensure_ascii=False)[:9000]
+    return json.dumps({"ok": False, "error": "unknown_tool_result"}, ensure_ascii=False)
+
+
 def _try_cabinet_llm_tools(
     db: Session,
     ctx: TenantContext,
@@ -713,47 +778,197 @@ def _try_cabinet_llm_tools(
     dict[str, Any] | None,
     dict[str, Any] | None,
 ] | None:
+    """Multi-step agent loop: LLM may call tools repeatedly, then answer."""
     provider = get_model_provider()
     if provider.name == "stub":
         return None
 
     tools = registry.list_openai_specs(names=list(CABINET_LLM_TOOLS))
-    messages: list[dict[str, Any]] = [
-        {
-            "role": "system",
-            "content": f"{HERMES_AGENT_SYSTEM} Tenant: {ctx.tenant_slug}.",
-        }
-    ]
+    system = f"{HERMES_AGENT_SYSTEM} Tenant: {ctx.tenant_slug}."
+    if _wants_web_research(message):
+        system += (
+            " Сейчас пользователь явно просит интернет-исследование. "
+            "Обязательно web.search → web.fetch/web.browse. get_knowledge запрещён в этом ходе."
+        )
+    messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
     if history:
         messages.extend(history)
     messages.append({"role": "user", "content": message})
-    completion = provider.chat_completion(
-        messages=messages,
-        tools=tools,
-    )
-    if not completion.get("ok"):
-        return None
 
-    try:
-        choice_msg = completion["data"]["choices"][0]["message"]
-    except (KeyError, IndexError, TypeError):
-        return None
+    collected_tools: list[dict[str, Any]] = []
+    sources: list[dict[str, Any]] = []
+    pending_form: dict[str, Any] | None = None
+    ran_any_tool = False
 
-    # Always meter the routing LLM turn (tools or text).
-    _charge_llm_if_any(db, ctx, completion, channel="hermes")
+    for _round in range(CABINET_AGENT_MAX_ROUNDS):
+        completion = provider.chat_completion(messages=messages, tools=tools)
+        if not completion.get("ok"):
+            return None if not ran_any_tool else (
+                "Не удалось завершить ответ модели после инструментов. Попробуйте ещё раз.",
+                collected_tools,
+                sources,
+                None,
+                pending_form,
+            )
 
-    tool_calls_raw = choice_msg.get("tool_calls") or []
-    if tool_calls_raw:
-        first = tool_calls_raw[0]
-        fn = first.get("function") or {}
-        tool_name = str(fn.get("name") or "")
-        params = _parse_tool_args(fn.get("arguments"))
-        if tool_name:
-            return _execute_cabinet_tool(db, ctx, tool_name, params)
+        try:
+            choice_msg = completion["data"]["choices"][0]["message"]
+        except (KeyError, IndexError, TypeError):
+            return None if not ran_any_tool else (
+                "Пустой ответ модели.",
+                collected_tools,
+                sources,
+                None,
+                pending_form,
+            )
 
-    content = str(choice_msg.get("content") or "").strip()
-    if content:
-        return content, [{"tool": "llm", "ok": True, "provider": provider.name}], [], None, None
+        _charge_llm_if_any(db, ctx, completion, channel="hermes")
+
+        tool_calls_raw = choice_msg.get("tool_calls") or []
+        if not tool_calls_raw:
+            content = str(choice_msg.get("content") or "").strip()
+            if content:
+                meta = [{"tool": "llm", "ok": True, "provider": provider.name, "rounds": _round + 1}]
+                return content, (collected_tools or meta), sources, None, pending_form
+            if ran_any_tool:
+                # Last tool message as honest fallback
+                last = collected_tools[-1] if collected_tools else {}
+                return (
+                    str(last.get("message") or "Инструменты отработали, но модель не сформулировала ответ."),
+                    collected_tools,
+                    sources,
+                    None,
+                    pending_form,
+                )
+            return None
+
+        # Keep assistant tool-call turn for the next round
+        messages.append(
+            {
+                "role": "assistant",
+                "content": choice_msg.get("content") or None,
+                "tool_calls": tool_calls_raw,
+            }
+        )
+
+        for raw_tc in tool_calls_raw:
+            fn = raw_tc.get("function") or {}
+            tool_name = str(fn.get("name") or "")
+            params = _parse_tool_args(fn.get("arguments"))
+            tc_id = str(raw_tc.get("id") or f"call_{tool_name}_{_round}")
+            if not tool_name:
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc_id,
+                        "content": json.dumps({"ok": False, "error": "empty_tool_name"}),
+                    }
+                )
+                continue
+
+            tool = registry.get(tool_name)
+            entry: dict[str, Any] = {"tool": tool_name, "ok": False, "params": params}
+            if tool is None:
+                entry["error"] = "unknown_tool"
+                collected_tools.append(entry)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc_id,
+                        "content": json.dumps({"ok": False, "error": f"unknown tool {tool_name}"}),
+                    }
+                )
+                continue
+
+            # High-impact writes: stop loop and ask for confirmation in UI
+            if requires_confirmation(tool):
+                summary = _tool_summary(tool_name, params)
+                pending = _pending_confirmation_dict(tool_name, params, summary)
+                entry["pending"] = True
+                entry["ok"] = True
+                collected_tools.append(entry)
+                reply = f"Готов выполнить: {summary}. Подтвердите действие кнопкой ниже."
+                return reply, collected_tools, sources, pending, pending_form
+
+            if _wants_web_research(message) and tool_name == "get_knowledge":
+                # Soft-block KB during explicit internet asks — steer model back to web.*
+                blocked = {
+                    "ok": False,
+                    "error": "get_knowledge_blocked_for_web_research",
+                    "hint": "Use web.search then web.fetch/web.browse instead.",
+                }
+                entry["blocked"] = True
+                collected_tools.append(entry)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc_id,
+                        "content": json.dumps(blocked, ensure_ascii=False),
+                    }
+                )
+                ran_any_tool = True
+                continue
+
+            result = registry.run(db, ctx, tool_name, **params)
+            ran_any_tool = True
+            if isinstance(result, ToolResult):
+                entry["ok"] = result.ok
+                entry["message"] = (result.message or "")[:500]
+                if isinstance(result.data, dict):
+                    form = result.data.get("pending_credential_form")
+                    if isinstance(form, dict):
+                        pending_form = form
+                        # Credential forms need the UI — return immediately
+                        collected_tools.append(entry)
+                        return (
+                            result.message or "Откройте форму ниже и сохраните данные.",
+                            collected_tools,
+                            sources,
+                            None,
+                            pending_form,
+                        )
+                    if tool_name == "get_knowledge" and result.ok:
+                        sources = extract_sources_from_knowledge(result.data) or sources
+                collected_tools.append(entry)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc_id,
+                        "content": _tool_result_for_llm(result),
+                    }
+                )
+            else:
+                entry["ok"] = False
+                entry["error"] = "unexpected_result"
+                collected_tools.append(entry)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc_id,
+                        "content": _tool_result_for_llm(result),
+                    }
+                )
+
+    # Exhausted rounds — one final text-only synthesis
+    completion = provider.chat_completion(messages=messages, tools=None, max_tokens=900)
+    if completion.get("ok"):
+        _charge_llm_if_any(db, ctx, completion, channel="hermes")
+        try:
+            content = str(completion["data"]["choices"][0]["message"].get("content") or "").strip()
+        except (KeyError, IndexError, TypeError):
+            content = ""
+        if content:
+            return content, collected_tools, sources, None, pending_form
+
+    if collected_tools:
+        last = collected_tools[-1]
+        return (
+            str(last.get("message") or "Достигнут лимит шагов агента — вот последний результат инструмента."),
+            collected_tools,
+            sources,
+            None,
+            pending_form,
+        )
     return None
 
 

@@ -56,8 +56,8 @@ class _TextExtractor(HTMLParser):
         return raw.strip()
 
 
-def _client(timeout: float = 20.0) -> httpx.Client:
-    proxy = openai_proxy_url()  # same egress bridge when set
+def _client(*, timeout: float = 25.0, use_proxy: bool = True) -> httpx.Client:
+    proxy = openai_proxy_url() if use_proxy else None
     headers = {"User-Agent": USER_AGENT, "Accept-Language": "ru,en;q=0.8"}
     if proxy:
         return httpx.Client(timeout=timeout, proxy=proxy, headers=headers, follow_redirects=True)
@@ -77,52 +77,81 @@ def fetch_url(url: str, *, max_chars: int = 12000) -> dict[str, Any]:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return {"ok": False, "error": "invalid_url"}
-    try:
-        with _client() as client:
-            resp = client.get(url)
-    except Exception as exc:  # noqa: BLE001
-        return {"ok": False, "error": "fetch_failed", "detail": str(exc)[:200]}
-    content_type = (resp.headers.get("content-type") or "").lower()
-    body = resp.text if "html" in content_type or "text" in content_type or not content_type else ""
-    title, text = html_to_text(body) if body else ("", "")
-    if not text and body:
-        text = body
-    text = text[:max_chars]
-    return {
-        "ok": resp.status_code < 400,
-        "status_code": resp.status_code,
-        "url": str(resp.url),
-        "title": title,
-        "text": text,
-        "chars": len(text),
-    }
+    last_err = ""
+    for use_proxy in (True, False):
+        try:
+            with _client(use_proxy=use_proxy) as client:
+                resp = client.get(url)
+            content_type = (resp.headers.get("content-type") or "").lower()
+            body = resp.text if "html" in content_type or "text" in content_type or not content_type else ""
+            title, text = html_to_text(body) if body else ("", "")
+            if not text and body:
+                text = body
+            text = text[:max_chars]
+            return {
+                "ok": resp.status_code < 400,
+                "status_code": resp.status_code,
+                "url": str(resp.url),
+                "title": title,
+                "text": text,
+                "chars": len(text),
+                "via_proxy": use_proxy and bool(openai_proxy_url()),
+            }
+        except Exception as exc:  # noqa: BLE001
+            last_err = str(exc)[:200]
+            continue
+    return {"ok": False, "error": "fetch_failed", "detail": last_err}
+
+
+def _parse_ddg_html(html: str, *, limit: int) -> list[dict[str, str]]:
+    results: list[dict[str, str]] = []
+    # Classic SERP: <a rel="nofollow" class="result__a" href="...">
+    patterns = (
+        r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
+        r'href="([^"]+)"[^>]*class="result__a"[^>]*>(.*?)</a>',
+    )
+    seen: set[str] = set()
+    for pattern in patterns:
+        for match in re.finditer(pattern, html, flags=re.I | re.S):
+            href = match.group(1)
+            title = re.sub("<[^>]+>", "", match.group(2)).strip()
+            if "uddg=" in href:
+                qs = parse_qs(urlparse(href).query)
+                href = unquote(qs.get("uddg", [href])[0])
+            if not href.startswith("http"):
+                continue
+            if href in seen:
+                continue
+            seen.add(href)
+            results.append({"title": title[:200] or href, "url": href})
+            if len(results) >= limit:
+                return results
+    return results
 
 
 def _ddg_results(query: str, *, limit: int = 5) -> list[dict[str, str]]:
-    # DuckDuckGo HTML (no API key). Works via egress proxy when configured.
-    url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
-    with _client() as client:
-        resp = client.post(url, data={"q": query})
-        html = resp.text
-    results: list[dict[str, str]] = []
-    # result links look like <a rel="nofollow" class="result__a" href="...">
-    for match in re.finditer(
-        r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
-        html,
-        flags=re.I | re.S,
-    ):
-        href = match.group(1)
-        title = re.sub("<[^>]+>", "", match.group(2)).strip()
-        # DDG sometimes wraps redirects
-        if "uddg=" in href:
-            qs = parse_qs(urlparse(href).query)
-            href = unquote(qs.get("uddg", [href])[0])
-        if not href.startswith("http"):
+    """DuckDuckGo HTML (no API key). Retry proxy→direct; POST then GET."""
+    last_err: Exception | None = None
+    for use_proxy in (True, False):
+        try:
+            with _client(use_proxy=use_proxy) as client:
+                resp = client.post("https://html.duckduckgo.com/html/", data={"q": query})
+                items = _parse_ddg_html(resp.text, limit=limit)
+                if items:
+                    return items
+                # Some edges return challenge/empty — try GET with q=
+                resp = client.get(
+                    f"https://html.duckduckgo.com/html/?q={quote_plus(query)}",
+                )
+                items = _parse_ddg_html(resp.text, limit=limit)
+                if items:
+                    return items
+        except Exception as exc:  # noqa: BLE001
+            last_err = exc
             continue
-        results.append({"title": title[:200], "url": href})
-        if len(results) >= limit:
-            break
-    return results
+    if last_err:
+        raise last_err
+    return []
 
 
 def search_web(query: str, *, limit: int = 5) -> dict[str, Any]:

@@ -30,6 +30,9 @@
 
 ### Changed
 
+- Hermes cabinet agent loop is multi-step (search→fetch→answer), not one-shot;
+  open-web asks («сходи в интернет») force `web.*` and block `get_knowledge`;
+  DuckDuckGo search retries proxy→direct so SSL blips don't dump into KB
 - Hermes cabinet is **agent-first**: LLM + tool catalog runs before keyword
   coach; coach remains offline/geo-block fallback only. New tools:
   `telephony.script_*`, `telephony.tools_set`, `files.cloud_*`,
