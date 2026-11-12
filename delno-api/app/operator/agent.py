@@ -896,7 +896,21 @@ def _try_cabinet_llm_tools(
         )
         return reply, [{"tool": "llm", "ok": False, "error": err}], [], None, None
 
+    # App lifespan registers tools; keep a safety net for workers/scripts.
+    if not registry.list_catalog():
+        from app.operator.tools import register_builtin_tools
+
+        register_builtin_tools()
+
     tools = registry.list_openai_specs(names=list(CABINET_LLM_TOOLS))
+    if not tools:
+        err = "cabinet_tools_empty"
+        reply = _with_debug_failures(
+            "Каталог tools пуст — агент не может действовать. Проверьте register_builtin_tools.",
+            tools=[{"tool": "llm", "ok": False, "error": err}],
+            llm_error=err,
+        )
+        return reply, [{"tool": "llm", "ok": False, "error": err}], [], None, None
     system = f"{HERMES_AGENT_SYSTEM} Tenant: {ctx.tenant_slug}."
     if _hermes_debug_failures():
         system += " Режим отладки: при ok=false у tool назови ошибку владельцу."
