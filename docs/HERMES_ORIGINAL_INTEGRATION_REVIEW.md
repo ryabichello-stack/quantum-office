@@ -10,7 +10,9 @@
 
 План Codex **верен как инженерия платформы** (Nous = engine, runtime per tenant, scoped tokens, isolation).  
 Как **продуктовый north star — неполон**: онбординг/KB/self-setup ужат в один абзац (§8.3), а MVP (§11) про cron заявок, а не про «Гермес сам ставит офис и собирает базу знаний».  
-Продуктовый канон: [`hermes-nous/PRODUCT_LOOP.md`](hermes-nous/PRODUCT_LOOP.md). Плагинг Codex + PRODUCT_LOOP вместе = полный план.
+Продуктовый канон: [`hermes-nous/PRODUCT_LOOP.md`](hermes-nous/PRODUCT_LOOP.md).  
+Единый план работ (UI + фазы P0–P5): [`hermes-nous/MASTER_PLAN.md`](hermes-nous/MASTER_PLAN.md).  
+Плагинг Codex + PRODUCT_LOOP + MASTER = полный план.
 
 ---
 

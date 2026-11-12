@@ -201,3 +201,9 @@
 - Файлы: `docs/hermes-nous/PRODUCT_LOOP.md` (канон продукта); обновлены review + STAGE0 приоритеты.
 - Реализация дальше: после pin/isolation — onboarding skill → KB → один коннектор → поручения; cron/voice не первыми. Telephony не трогать.
 
+## 2026-11-13 01:25 МСК — Cursor: единый MASTER_PLAN (продукт + изоляция + UI + P0–P5)
+
+- Владелец подтвердил: multi-tenant изоляция сред/тулзов/KB + умный Nous (субагенты, сам выбирает как решать) + современный UI онбординга/прогресса. То же преимущество, что задумывали изначально, на нормальном Гермесе.
+- Файл: `docs/hermes-nous/MASTER_PLAN.md` — канон порядка работ. P0 plumbing → P1 онбординг+KB+UI → P2 коннекторы+delegate → P3 cron/tasks → P4 каналы/голос last → P5 scale.
+- Codex platform plan остаётся для runtime/tokens; PRODUCT_LOOP — зачем; MASTER — как идём.
+

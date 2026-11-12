@@ -35,12 +35,7 @@
 
 Телефония / Asterisk / `trunk_id`. Prod Cloud4Box не переключаем этим PR автоматически.
 
-## Дальше (приоритет = PRODUCT_LOOP, не «сразу cron»)
+## Дальше
 
-См. [`PRODUCT_LOOP.md`](PRODUCT_LOOP.md) — изначальная задача владельца.
-
-1. Собрать image + A/B isolation (Codex Stage 1) — без этого нельзя.  
-2. **Onboarding skill** в `HERMES_HOME`: сайт/текст → черновик KB → confirm.  
-3. MCP grants: setup + KB write + один коннектор end-to-end.  
-4. Progress UI: шаги онбординга видны владельцу.  
-5. Лишь затем cron/заявки (Codex §8.4 / старый §11).
+Канон последовательности: [`MASTER_PLAN.md`](MASTER_PLAN.md) — фазы **P0→P1** (isolation → онбординг+KB+UI).  
+Продукт: [`PRODUCT_LOOP.md`](PRODUCT_LOOP.md).
