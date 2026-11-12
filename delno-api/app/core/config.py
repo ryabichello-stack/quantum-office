@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     # Hermes cabinet: surface tool/LLM failures in the chat reply (debug phase).
     # Set HERMES_DEBUG_FAILURES=false to hide the trailing «отладка (сбои)» block.
     hermes_debug_failures: bool = True
+    # Hard ceiling on agent tool rounds (anti-runaway). The model normally stops
+    # earlier when the goal is done — this is NOT "Hermes only thinks in N steps".
+    # Override via HERMES_AGENT_MAX_ROUNDS.
+    hermes_agent_max_rounds: int = 80
 
 
 @lru_cache

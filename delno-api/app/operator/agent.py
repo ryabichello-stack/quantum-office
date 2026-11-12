@@ -115,14 +115,21 @@ HERMES_AGENT_SYSTEM = (
     "• Отвечай по-русски, по делу, со ссылками если брал из сети."
 )
 
-CABINET_AGENT_MAX_ROUNDS = 8
-
-
 def _hermes_debug_failures() -> bool:
     try:
         return bool(get_settings().hermes_debug_failures)
     except Exception:  # noqa: BLE001
         return True
+
+
+def _cabinet_agent_max_rounds() -> int:
+    """Hard safety ceiling only — agent stops earlier when it finishes the goal."""
+    try:
+        n = int(get_settings().hermes_agent_max_rounds)
+    except Exception:  # noqa: BLE001
+        n = 80
+    # Clamp: at least a few rounds; refuse absurd configs that blow context/bill.
+    return max(4, min(n, 200))
 
 
 def _format_debug_failures(
@@ -833,7 +840,8 @@ def _try_cabinet_llm_tools(
     pending_form: dict[str, Any] | None = None
     ran_any_tool = False
 
-    for _round in range(CABINET_AGENT_MAX_ROUNDS):
+    max_rounds = _cabinet_agent_max_rounds()
+    for _round in range(max_rounds):
         completion = provider.chat_completion(messages=messages, tools=tools)
         if not completion.get("ok"):
             err = str(completion.get("error") or "llm_failed")
