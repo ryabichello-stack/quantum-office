@@ -34,6 +34,8 @@
   coach; coach remains offline/geo-block fallback only. New tools:
   `telephony.script_*`, `telephony.tools_set`, `files.cloud_*`,
   `credentials.open_form` — so Hermes acts on intent without hand-coded phrases
+- Website import reply: real excerpt/headings/char count + doc id (or honest
+  KB failure) instead of instant templated «положил материалы» + setup dump
 
 ### Fixed
 

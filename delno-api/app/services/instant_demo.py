@@ -111,13 +111,26 @@ def import_website_to_tenant(
         payload={"job_id": job_id},
     )
 
+    paragraphs = [str(p).strip() for p in (extracted.get("paragraphs") or []) if str(p).strip()]
+    sections = [
+        str(s.get("heading") or "").strip()
+        for s in (extracted.get("sections") or [])
+        if isinstance(s, dict) and str(s.get("heading") or "").strip()
+    ]
+    kb_ok = kb_result.get("ok") is True
     return {
-        "ok": True,
+        "ok": kb_ok,
         "job_id": job_id,
         "url": normalized,
         "title": title,
+        "description": str(extracted.get("description") or "")[:400],
         "document_id": kb_result.get("document_id"),
         "kb": kb_result,
+        "kb_ok": kb_ok,
+        "chars": len(body),
+        "paragraph_count": len(paragraphs),
+        "headings": sections[:8],
+        "excerpt": "\n".join(paragraphs[:3])[:900],
         "site_key": tenant.public_key,
         "widget_embed": (
             f'<script src="https://cdn.dlno.ru/widget/v1/embed.js" '

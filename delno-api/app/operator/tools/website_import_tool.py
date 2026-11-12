@@ -54,30 +54,68 @@ class OfficeImportWebsiteTool:
         except Exception as exc:  # noqa: BLE001
             return ToolResult(ok=False, message=f"Не удалось скачать сайт: {exc}")
 
-        if not result.get("ok"):
-            return ToolResult(ok=False, data=result, message="Импорт сайта не удался")
+        title = result.get("title") or "сайт"
+        url = result.get("url") or url
+        kb_ok = bool(result.get("kb_ok") or result.get("ok"))
+        chars = int(result.get("chars") or 0)
+        paras = int(result.get("paragraph_count") or 0)
+        excerpt = str(result.get("excerpt") or "").strip()
+        description = str(result.get("description") or "").strip()
+        headings = [str(h) for h in (result.get("headings") or []) if str(h).strip()][:5]
+
+        if not kb_ok and not excerpt and not title:
+            return ToolResult(
+                ok=False,
+                data=result,
+                message=f"Не удалось разобрать {url}: пустой ответ или KB отклонил документ.",
+            )
 
         setup = hermes_ops.office_setup_status(db, ctx)
         next_steps = setup.get("next_steps") or []
         suggested = _suggested_actions(next_steps)
-        title = result.get("title") or "сайт"
-        samples = result.get("sample_questions") or []
+        # Prefer evidence chips after import
+        suggested = [
+            {"title": "Что в знаниях", "text": "Покажи, что сейчас в базе знаний про компанию"},
+            {"title": "Сценарий", "text": "Предложи сценарий из базы знаний"},
+        ] + [a for a in suggested if a.get("title") not in ("База знаний", "Сценарий")]
+        suggested = suggested[:5]
 
-        lines = [
-            f"Зашёл на {result.get('url')} и положил материалы «{title}» в базу знаний.",
-            "Дальше предлагаю донастроить кабинет по шагам:",
-        ]
-        if next_steps:
-            for i, step in enumerate(next_steps[:4], 1):
-                lines.append(f"{i}) {step.get('title')}: {step.get('hint')}")
+        lines: list[str] = []
+        if kb_ok:
+            lines.append(
+                f"Зашёл на {url}: снял «{title}» "
+                f"({paras} абзацев, ~{chars} символов) и положил в знания "
+                f"(doc `{result.get('document_id') or '—'}`)."
+            )
         else:
-            lines.append("Обязательный сетап уже закрыт — можно проверить каналы и здоровье офиса.")
-        if samples:
-            lines.append("Примеры вопросов по сайту: " + "; ".join(str(s) for s in samples[:3]))
-        lines.append("Нажмите чип действия ниже или напишите следующий шаг.")
+            lines.append(
+                f"Зашёл на {url} («{title}»), но в brain/KB документ не сохранился "
+                f"({(result.get('kb') or {}).get('error') or (result.get('kb') or {}).get('reason') or 'kb_failed'}). "
+                "Текст ниже — что успел прочитать; повторим запись или загрузите MD вручную."
+            )
+        if description:
+            lines.append(f"О сайте: {description[:280]}")
+        if headings:
+            lines.append("Заголовки: " + "; ".join(headings))
+        if excerpt:
+            lines.append("Выдержка:")
+            for chunk in excerpt.split("\n"):
+                chunk = chunk.strip()
+                if chunk:
+                    lines.append(f"• {chunk[:220]}")
+        else:
+            lines.append("На главной мало связного текста — имеет смысл дать ещё страницу услуг/о компании.")
+
+        nxt = next_steps[0] if next_steps else None
+        if nxt:
+            lines.append(
+                f"Обратная связь принята. Следующий логичный шаг: {nxt.get('title')} — {nxt.get('hint')}"
+            )
+        else:
+            lines.append("Могу предложить сценарий секретаря из этих знаний или проверить здоровье офиса.")
 
         return ToolResult(
-            ok=True,
+            ok=kb_ok or bool(excerpt or title),
             data={
                 **result,
                 "setup": setup,

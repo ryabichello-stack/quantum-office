@@ -93,6 +93,9 @@ def test_import_website_to_tenant():
     assert result["site_key"] == "pk_test"
     assert "embed.js" in result["widget_embed"]
     assert tenant.settings["instant_demo"]["url"] == "https://example.com/"
+    assert result["paragraph_count"] == 1
+    assert "продаём" in (result.get("excerpt") or "")
+    assert result["kb_ok"] is True
 
 
 def test_normalize_website_url_rejects_empty():
