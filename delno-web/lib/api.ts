@@ -392,6 +392,10 @@ export type CredentialFormSpec = {
   }>;
   submit_label?: string;
   prefill?: Record<string, string>;
+  password_required?: boolean;
+  login_optional?: boolean;
+  require_foreign_consent?: boolean;
+  consent_label?: string;
 };
 
 export function apiOperatorChat(
@@ -431,7 +435,7 @@ export function apiOperatorChat(
 
 export function apiTenantSecretSave(
   token: string,
-  body: { kind: string; login?: string; password?: string },
+  body: { kind: string; login?: string; password?: string; foreign_consent?: boolean },
 ) {
   return apiFetch<{
     ok: boolean;
@@ -446,6 +450,12 @@ export function apiTenantSecretSave(
       message_ru?: string;
       cursor_task?: string;
       next_actions?: { title: string; text: string }[];
+    };
+    cloud_probe?: {
+      source?: string;
+      title?: string;
+      message_ru?: string;
+      probe?: { ok?: boolean; message_ru?: string; next_actions?: { title: string; text: string }[] };
     };
   }>("/v1/tenant/vault", token, {
     method: "POST",

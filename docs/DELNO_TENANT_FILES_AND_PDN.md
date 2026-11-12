@@ -169,7 +169,7 @@ Legacy `delno-office/files` с env-токенами — **не** путь для
 | **F0** | Правила путей + запрет traversal + tenant-scoped onboarding (уже частично) |
 | **F1** | Таблица `tenant_files`, API list/get/delete, audit |
 | **F2** | S3 РФ + envelope encryption + signed URLs |
-| **F3** | Tenant connectors вместо global `ava-files` |
+| **F3** | Tenant vault `files_*` + Hermes «подключи Яндекс/Mail/Google» + per-request creds в files broker (**done**) |
 | **F4** | RU LLM path / anonymizer перед foreign LLM; health «residency mode» |
 | **F5** | Isolation e2e test в CI + DR restore drill |
 

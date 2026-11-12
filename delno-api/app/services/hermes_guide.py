@@ -249,6 +249,171 @@ def _lost_user_guide(db: Session, ctx: TenantContext) -> dict[str, Any]:
     return out
 
 
+def _files_cloud_coach(db: Session, ctx: TenantContext, message: str) -> dict[str, Any] | None:
+    """Connect / status / list cloud disks per tenant via vault forms."""
+    from app.services.files_cloud import (
+        CLOUD_SOURCES,
+        cloud_status,
+        detect_source_from_message,
+        probe_cloud_list,
+    )
+
+    lower = (message or "").lower().strip()
+    status_cues = (
+        "какие облака",
+        "статус облак",
+        "облака подключен",
+        "какие диски",
+        "файловые коннектор",
+    )
+    connect_cues = (
+        "подключи диск",
+        "подключи облак",
+        "подключить диск",
+        "подключить облак",
+        "подключи яндекс",
+        "подключи yandex",
+        "подключи mail",
+        "подключи google",
+        "подключи onedrive",
+        "подключи гугл",
+        "яндекс.диск",
+        "я.диск",
+        "облако mail",
+        "google drive",
+        "гугл диск",
+    )
+    list_cues = (
+        "покажи файлы",
+        "список файлов",
+        "что на диске",
+        "файлы на яндекс",
+        "файлы на google",
+        "файлы на mail",
+        "файлы на onedrive",
+    )
+
+    wants_status = any(k in lower for k in status_cues) or lower in (
+        "облака",
+        "диски",
+        "файлы облако",
+    )
+    wants_connect = any(k in lower for k in connect_cues)
+    wants_list = any(k in lower for k in list_cues)
+    if not (wants_status or wants_connect or wants_list):
+        return None
+
+    source = detect_source_from_message(message)
+    status = cloud_status(db, ctx)
+
+    if wants_list:
+        src = source or next(
+            (i["source"] for i in status.get("items") or [] if i.get("ready")),
+            None,
+        )
+        if not src:
+            return {
+                "reply": (
+                    "Пока ни одно облако не подключено. "
+                    "Скажите «подключи Яндекс.Диск» или «подключи Mail.ru» (рекомендуем РФ)."
+                ),
+                "tool_calls": [{"tool": "hermes.files.status", "ok": True}],
+                "suggested_actions": [
+                    {"title": "Яндекс.Диск", "text": "Подключи Яндекс.Диск"},
+                    {"title": "Mail.ru", "text": "Подключи облако Mail.ru"},
+                    {"title": "Статус", "text": "Какие облака подключены"},
+                ],
+            }
+        probe = probe_cloud_list(db, ctx, source=src, path="/")
+        return {
+            "reply": probe.get("message_ru") or "Готово.",
+            "tool_calls": [{"tool": "hermes.files.list", "ok": bool(probe.get("ok")), "source": src}],
+            "suggested_actions": probe.get("next_actions")
+            or [
+                {"title": "Другое облако", "text": "Подключи Яндекс.Диск"},
+                {"title": "Статус", "text": "Какие облака подключены"},
+            ],
+        }
+
+    if wants_status and not wants_connect:
+        lines = [status.get("message_ru") or "Статус облаков:", ""]
+        for item in status.get("items") or []:
+            mark = "готово" if item.get("ready") else ("токен есть, нет согласия" if item.get("configured") else "не подключено")
+            res = "РФ" if item.get("residency") == "ru" else "зарубежье"
+            lines.append(f"- {item['title']} ({res}): {mark}")
+        lines.append("")
+        lines.append(
+            "Чтобы подключить: «подключи Яндекс.Диск» / «Mail.ru» / «Google Drive» (с согласием) / «OneDrive»."
+        )
+        return {
+            "reply": "\n".join(lines),
+            "tool_calls": [{"tool": "hermes.files.status", "ok": True}],
+            "suggested_actions": [
+                {"title": "Яндекс.Диск", "text": "Подключи Яндекс.Диск"},
+                {"title": "Mail.ru", "text": "Подключи облако Mail.ru"},
+                {"title": "Google", "text": "Подключи Google Drive"},
+            ],
+        }
+
+    # Connect flow
+    if not source:
+        return {
+            "reply": (
+                "Какое облако подключаем?\n"
+                "1) Яндекс.Диск (РФ) — предпочтительно\n"
+                "2) Облако Mail.ru (РФ)\n"
+                "3) Google Drive — только с согласием (данные у Google вне РФ)\n"
+                "4) OneDrive — только с согласием (Microsoft вне РФ)\n\n"
+                "Скажите, например: «подключи Яндекс.Диск»."
+            ),
+            "tool_calls": [{"tool": "hermes.files.connect", "ok": True, "step": "choose"}],
+            "suggested_actions": [
+                {"title": "Яндекс.Диск", "text": "Подключи Яндекс.Диск"},
+                {"title": "Mail.ru", "text": "Подключи облако Mail.ru"},
+                {"title": "Google Drive", "text": "Подключи Google Drive"},
+            ],
+        }
+
+    meta = CLOUD_SOURCES[source]
+    kind = meta["vault_kind"]
+    form = credential_form_spec(kind)
+    item = next((i for i in status.get("items") or [] if i.get("source") == source), {})
+    if item.get("ready"):
+        return {
+            "reply": (
+                f"{meta['title']} уже подключён"
+                + (f" ({item.get('login_masked')})" if item.get("login_masked") else "")
+                + ". Могу показать файлы в корне или заменить токен — скажите «форма снова»."
+            ),
+            "tool_calls": [{"tool": "hermes.files.connect", "ok": True, "source": source, "already": True}],
+            "pending_credential_form": form,
+            "suggested_actions": [
+                {"title": "Файлы", "text": f"Покажи файлы на {meta['title']}"},
+                {"title": "Статус", "text": "Какие облака подключены"},
+            ],
+        }
+
+    foreign_note = ""
+    if meta["residency"] == "foreign":
+        foreign_note = (
+            "\n\nВажно: это зарубежный провайдер. В форме отметьте согласие — "
+            "без него токен не сохранится (152‑ФЗ / резидентность)."
+        )
+    return {
+        "reply": (
+            f"Открываю безопасную форму для «{meta['title']}». "
+            f"{meta['hint']} Токен/пароль в ленту чата не попадёт."
+            f"{foreign_note}"
+        ),
+        "tool_calls": [{"tool": "hermes.files.connect", "ok": True, "source": source}],
+        "pending_credential_form": form,
+        "suggested_actions": [
+            {"title": "Статус облаков", "text": "Какие облака подключены"},
+            {"title": "Другое облако", "text": "Подключи Яндекс.Диск"},
+        ],
+    }
+
+
 def _script_coach(db: Session, ctx: TenantContext, message: str) -> dict[str, Any] | None:
     """Onboarding: company templates + telephony script/tools for any tenant."""
     from app.services.onboarding_templates import get_template, list_templates
@@ -539,6 +704,10 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
         )
     ):
         return _setup_status_coach(db, ctx)
+
+    files_cloud = _files_cloud_coach(db, ctx, message)
+    if files_cloud:
+        return files_cloud
 
     scripted = _script_coach(db, ctx, message)
     if scripted:

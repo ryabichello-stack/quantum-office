@@ -17,7 +17,8 @@ router = APIRouter(prefix="/tenant/vault", tags=["tenant-vault"])
 class SaveCredentialRequest(BaseModel):
     kind: str = Field(default="mango_sip", max_length=64)
     login: str | None = Field(default=None, max_length=120)
-    password: str | None = Field(default=None, max_length=200)
+    password: str | None = Field(default=None, max_length=4096)
+    foreign_consent: bool = False
 
 
 def _require_admin(ctx: TenantContext) -> None:
@@ -56,6 +57,7 @@ def credentials_save(
         kind=body.kind,
         login=body.login,
         password=body.password,
+        foreign_consent=bool(body.foreign_consent),
     )
     if not out.get("ok"):
         raise HTTPException(status_code=400, detail=out.get("error") or "failed")

@@ -18,32 +18,56 @@ export type CredentialFormSpec = {
   fields: CredentialFormField[];
   submit_label?: string;
   prefill?: Record<string, string>;
+  password_required?: boolean;
+  login_optional?: boolean;
+  require_foreign_consent?: boolean;
+  consent_label?: string;
 };
 
 type Props = {
   form: CredentialFormSpec;
   busy?: boolean;
-  onSubmit: (values: { login?: string; password?: string }) => Promise<void> | void;
+  onSubmit: (values: {
+    login?: string;
+    password?: string;
+    foreign_consent?: boolean;
+  }) => Promise<void> | void;
   onCancel: () => void;
   className?: string;
 };
 
 export function CredentialFormCard({ form, busy, onSubmit, onCancel, className }: Props) {
+  const hasLogin = form.fields.some((f) => f.name === "login");
   const [login, setLogin] = useState(form.prefill?.login || "");
   const [password, setPassword] = useState("");
+  const [foreignConsent, setForeignConsent] = useState(false);
   const [localError, setLocalError] = useState("");
 
   async function handleSubmit() {
     setLocalError("");
+    const loginOptional = form.login_optional === true || !hasLogin;
+    const passwordRequired = form.password_required !== false;
+    if (!loginOptional && !login.trim()) {
+      setLocalError("Введите логин.");
+      return;
+    }
+    if (passwordRequired && !password.trim()) {
+      setLocalError(hasLogin ? "Пароль обязателен." : "Токен обязателен.");
+      return;
+    }
     if (!login.trim() && !password.trim()) {
-      setLocalError("Введите логин и пароль.");
+      setLocalError("Заполните поля формы.");
       return;
     }
-    if (!password.trim()) {
-      setLocalError("SIP-пароль обязателен.");
+    if (form.require_foreign_consent && !foreignConsent) {
+      setLocalError("Нужно согласие на обработку у зарубежного провайдера.");
       return;
     }
-    await onSubmit({ login: login.trim() || undefined, password: password.trim() });
+    await onSubmit({
+      login: login.trim() || undefined,
+      password: password.trim() || undefined,
+      foreign_consent: form.require_foreign_consent ? foreignConsent : undefined,
+    });
   }
 
   return (
@@ -77,6 +101,21 @@ export function CredentialFormCard({ form, busy, onSubmit, onCancel, className }
           );
         })}
       </div>
+      {form.require_foreign_consent ? (
+        <label className="hx-secret-field" style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <input
+            type="checkbox"
+            checked={foreignConsent}
+            disabled={busy}
+            onChange={(e) => setForeignConsent(e.target.checked)}
+            style={{ marginTop: 3 }}
+          />
+          <span style={{ fontSize: 12, lineHeight: 1.4 }}>
+            {form.consent_label ||
+              "Согласен на обработку данных у зарубежного облачного провайдера."}
+          </span>
+        </label>
+      ) : null}
       {localError ? <p className="hx-secret-error">{localError}</p> : null}
       <div className="hx-confirm-actions">
         <Button type="button" size="sm" disabled={busy} onClick={() => void handleSubmit()}>

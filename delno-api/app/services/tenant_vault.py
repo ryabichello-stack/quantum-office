@@ -12,7 +12,25 @@ from app.models.tenant import Tenant
 from app.services.audit import write_audit
 from app.services.events import emit_event
 
-SUPPORTED_KINDS = frozenset({"mango_sip"})
+SUPPORTED_KINDS = frozenset(
+    {
+        "mango_sip",
+        "files_yadisk",
+        "files_mailru",
+        "files_gdrive",
+        "files_onedrive",
+    }
+)
+
+CLOUD_KINDS = frozenset(
+    {
+        "files_yadisk",
+        "files_mailru",
+        "files_gdrive",
+        "files_onedrive",
+    }
+)
+FOREIGN_CLOUD_KINDS = frozenset({"files_gdrive", "files_onedrive"})
 
 MANGO_SIP_FORM = {
     "kind": "mango_sip",
@@ -23,16 +41,101 @@ MANGO_SIP_FORM = {
         {"name": "password", "label": "SIP-пароль", "type": "password", "autocomplete": "current-password"},
     ],
     "submit_label": "Сохранить безопасно",
+    "password_required": True,
+    "login_optional": False,
+}
+
+CLOUD_FORMS: dict[str, dict[str, Any]] = {
+    "files_yadisk": {
+        "kind": "files_yadisk",
+        "title": "Яндекс.Диск — токен",
+        "hint": "OAuth-токен Диска. В чат не попадёт. Хранение в РФ у Яндекса + кэш у DELNO в вашем тенанте.",
+        "fields": [
+            {
+                "name": "password",
+                "label": "OAuth-токен Яндекс.Диска",
+                "type": "password",
+                "autocomplete": "off",
+            }
+        ],
+        "submit_label": "Подключить Диск",
+        "password_required": True,
+        "login_optional": True,
+        "require_foreign_consent": False,
+    },
+    "files_mailru": {
+        "kind": "files_mailru",
+        "title": "Облако Mail.ru — WebDAV",
+        "hint": "Логин и пароль приложения WebDAV. В чат не попадут.",
+        "fields": [
+            {"name": "login", "label": "Логин Mail.ru", "type": "text", "autocomplete": "username"},
+            {
+                "name": "password",
+                "label": "Пароль приложения / WebDAV",
+                "type": "password",
+                "autocomplete": "current-password",
+            },
+        ],
+        "submit_label": "Подключить Mail.ru",
+        "password_required": True,
+        "login_optional": False,
+        "require_foreign_consent": False,
+    },
+    "files_gdrive": {
+        "kind": "files_gdrive",
+        "title": "Google Drive — токен",
+        "hint": "Access token Google. Данные обрабатываются у Google вне РФ — нужно согласие.",
+        "fields": [
+            {
+                "name": "password",
+                "label": "Google Drive access token",
+                "type": "password",
+                "autocomplete": "off",
+            }
+        ],
+        "submit_label": "Подключить Google Drive",
+        "password_required": True,
+        "login_optional": True,
+        "require_foreign_consent": True,
+        "consent_label": (
+            "Понимаю, что файлы Google Drive обрабатываются у Google вне РФ "
+            "на условиях Google; DELNO хранит только токен и кэш в моём тенанте."
+        ),
+    },
+    "files_onedrive": {
+        "kind": "files_onedrive",
+        "title": "OneDrive — токен",
+        "hint": "Microsoft Graph token. Данные у Microsoft вне РФ — нужно согласие.",
+        "fields": [
+            {
+                "name": "password",
+                "label": "OneDrive / Graph access token",
+                "type": "password",
+                "autocomplete": "off",
+            }
+        ],
+        "submit_label": "Подключить OneDrive",
+        "password_required": True,
+        "login_optional": True,
+        "require_foreign_consent": True,
+        "consent_label": (
+            "Понимаю, что OneDrive обрабатывается у Microsoft вне РФ; "
+            "DELNO хранит только токен и кэш в моём тенанте."
+        ),
+    },
 }
 
 
 def credential_form_spec(kind: str = "mango_sip", *, prefill: dict[str, str] | None = None) -> dict[str, Any]:
-    if kind != "mango_sip":
-        kind = "mango_sip"
-    form = dict(MANGO_SIP_FORM)
-    form["kind"] = kind
+    kind = (kind or "mango_sip").strip()
+    if kind in CLOUD_FORMS:
+        form = dict(CLOUD_FORMS[kind])
+    else:
+        form = dict(MANGO_SIP_FORM)
+        form["kind"] = "mango_sip" if kind not in SUPPORTED_KINDS else kind
+        if kind != "mango_sip" and kind not in CLOUD_FORMS:
+            form = dict(MANGO_SIP_FORM)
     if prefill:
-        # only non-secret prefill to the client
         safe = {}
         if prefill.get("login"):
             safe["login"] = prefill["login"][:120]
@@ -46,7 +149,6 @@ def looks_like_credential_paste(message: str) -> bool:
         return False
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     if len(lines) == 1:
-        # single line password-ish: length + mixed charset, no spaces
         s = lines[0]
         if " " in s or len(s) < 8:
             return False
@@ -60,7 +162,6 @@ def looks_like_credential_paste(message: str) -> bool:
         )
         return classes >= 3 and not any(w in s.lower() for w in ("http", "www.", ".ru", ".com"))
     if 2 <= len(lines) <= 4:
-        # login + password block
         joined = " ".join(lines).lower()
         if any(w in joined for w in ("добавь", "найди", "какой", "скажи", "привет", "настрой")):
             return False
@@ -75,7 +176,6 @@ def parse_credential_paste(message: str) -> dict[str, str]:
         return {}
     if len(lines) == 1:
         return {"password": lines[0][:200]}
-    # Prefer last line as password, first as login
     return {"login": lines[0][:120], "password": lines[-1][:200]}
 
 
@@ -106,11 +206,17 @@ def wants_sip_secret_form(message: str) -> bool:
         "ввести пароль",
     )
     if any(k in lower for k in keys):
+        # Don't steal cloud-connect phrases into SIP form
+        if any(k in lower for k in ("яндекс", "yadisk", "mail.ru", "google", "onedrive", "диск", "облак")):
+            if "sip" not in lower and "mango" not in lower and "манго" not in lower:
+                return False
         return True
-    # «форму» + (логин|пароль|sip|mango|телефон)
     if "форм" in lower and any(
         k in lower for k in ("логин", "парол", "sip", "mango", "манго", "телефон", "секрет", "введ")
     ):
+        if any(k in lower for k in ("яндекс", "google", "onedrive", "mail.ru", "облак")):
+            if "sip" not in lower and "mango" not in lower and "манго" not in lower:
+                return False
         return True
     if "пароль" in lower and any(k in lower for k in ("sip", "mango", "манго", "линии", "телефон")):
         return True
@@ -131,6 +237,7 @@ def list_secret_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
                 "kind": kind,
                 "configured": bool(row.get("password") or row.get("login")),
                 "login_masked": _mask(str(row.get("login") or "")),
+                "foreign_consent": bool(row.get("foreign_consent_at")),
                 "updated_at": row.get("updated_at"),
             }
         )
@@ -144,16 +251,22 @@ def save_secret(
     kind: str,
     login: str | None = None,
     password: str | None = None,
+    foreign_consent: bool = False,
 ) -> dict[str, Any]:
     kind = (kind or "").strip()
     if kind not in SUPPORTED_KINDS:
         return {"ok": False, "error": "unsupported_kind"}
     login_s = (login or "").strip()
     password_s = (password or "").strip()
+    max_pw = 4096 if kind in CLOUD_KINDS else 200
     if not login_s and not password_s:
         return {"ok": False, "error": "empty"}
+    if kind == "files_mailru" and not login_s:
+        return {"ok": False, "error": "login_required"}
     if password_s and len(password_s) < 4:
         return {"ok": False, "error": "password_too_short"}
+    if kind in FOREIGN_CLOUD_KINDS and not foreign_consent:
+        return {"ok": False, "error": "foreign_consent_required"}
 
     tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
     settings = dict(tenant.settings) if isinstance(tenant.settings, dict) else {}
@@ -162,11 +275,14 @@ def save_secret(
     old_public = {
         "login_masked": _mask(str(current.get("login") or "")),
         "has_password": bool(current.get("password")),
+        "foreign_consent": bool(current.get("foreign_consent_at")),
     }
     if login_s:
         current["login"] = login_s[:120]
     if password_s:
-        current["password"] = password_s[:200]
+        current["password"] = password_s[:max_pw]
+    if kind in FOREIGN_CLOUD_KINDS and foreign_consent:
+        current["foreign_consent_at"] = datetime.now(timezone.utc).isoformat()
     current["updated_at"] = datetime.now(timezone.utc).isoformat()
     blob[kind] = current
     settings["secrets"] = blob
@@ -181,6 +297,7 @@ def save_secret(
         new_value={
             "login_masked": _mask(str(current.get("login") or "")),
             "has_password": bool(current.get("password")),
+            "foreign_consent": bool(current.get("foreign_consent_at")),
         },
     )
     emit_event(
@@ -197,7 +314,11 @@ def save_secret(
         "kind": kind,
         "configured": True,
         "login_masked": _mask(str(current.get("login") or "")),
-        "message": "SIP-данные сохранены в кабинете. В чат не попали.",
+        "message": (
+            "Данные сохранены в сейфе тенанта. В чат не попали."
+            if kind in CLOUD_KINDS
+            else "SIP-данные сохранены в кабинете. В чат не попали."
+        ),
     }
     if kind == "mango_sip":
         try:
@@ -219,12 +340,23 @@ def save_secret(
                 if k in probe
             }
             if probe.get("message_ru"):
-                out["message"] = (
-                    out["message"] + " " + str(probe.get("message_ru"))
-                ).strip()
+                out["message"] = (out["message"] + " " + str(probe.get("message_ru"))).strip()
         except Exception:  # noqa: BLE001
-            logger = __import__("logging").getLogger(__name__)
-            logger.exception("sip probe after vault save failed")
+            __import__("logging").getLogger(__name__).exception("sip probe after vault save failed")
+    elif kind in CLOUD_KINDS:
+        try:
+            from app.services.files_cloud import after_vault_cloud_save
+
+            cloud = after_vault_cloud_save(db, ctx, kind=kind)
+            out["cloud_probe"] = {
+                k: cloud.get(k)
+                for k in ("source", "title", "probe", "message_ru")
+                if k in cloud
+            }
+            if cloud.get("message_ru"):
+                out["message"] = (out["message"] + " " + str(cloud.get("message_ru"))).strip()
+        except Exception:  # noqa: BLE001
+            __import__("logging").getLogger(__name__).exception("cloud probe after vault save failed")
     return out
 
 

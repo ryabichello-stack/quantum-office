@@ -92,6 +92,11 @@ SETUP_STEPS: list[dict[str, str]] = [
     },
     {"id": "telegram", "title": "Telegram", "hint": "Подключите branded bot token"},
     {"id": "max", "title": "MAX", "hint": "Опционально: MAX bot access token"},
+    {
+        "id": "files",
+        "title": "Облако файлов",
+        "hint": "Яндекс.Диск / Mail.ru (РФ) или Google/OneDrive с согласием — через Гермеса",
+    },
     {"id": "calendar", "title": "Календарь", "hint": "Включите connector calendar + креды"},
     {"id": "mail", "title": "Почта", "hint": "Включите connector mail + SMTP"},
     {"id": "conference", "title": "ВКС", "hint": "Включите connector conference (Telemost/Meet/Jitsi)"},
@@ -185,6 +190,7 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
         },
         "telegram": {"ok": tg > 0, "detail": f"accounts={tg}"},
         "max": {"ok": max_n > 0, "detail": f"accounts={max_n}", "optional": True},
+        "files": {"ok": False, "detail": {}, "optional": True},
         "calendar": {"ok": _conn_ok("calendar"), "detail": (by_kind.get("calendar") or {}).get("status")},
         "mail": {"ok": _conn_ok("mail"), "detail": (by_kind.get("mail") or {}).get("status")},
         "conference": {
@@ -197,6 +203,17 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
             "optional": True,
         },
     }
+    try:
+        from app.services.files_cloud import cloud_status
+
+        clouds = cloud_status(db, ctx)
+        checks["files"] = {
+            "ok": int(clouds.get("ready_count") or 0) > 0,
+            "detail": clouds,
+            "optional": True,
+        }
+    except Exception:  # noqa: BLE001
+        pass
 
     required = [s for s in SETUP_STEPS if not checks[s["id"]].get("optional")]
     done_req = sum(1 for s in required if checks[s["id"]]["ok"])

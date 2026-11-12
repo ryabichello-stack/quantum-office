@@ -11,15 +11,55 @@ import xml.etree.ElementTree as ET
 import urllib.error
 import urllib.parse
 import urllib.request
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Iterator, Optional
 
 from allowlist import default_local_allowlist, parse_allowlist, resolve_under_allowlist
 from models import FetchedFile, ListedEntry, SourceError
 
 logger = logging.getLogger(__name__)
+
+# Per-request tenant credentials from delno-api (override env globals).
+_CREDS: ContextVar[dict[str, Any] | None] = ContextVar("files_request_creds", default=None)
+
+
+@contextmanager
+def credentials_override(creds: dict[str, Any] | None) -> Iterator[None]:
+    """Temporarily use tenant OAuth/WebDAV creds for one list/fetch/search call."""
+    token = _CREDS.set(creds if isinstance(creds, dict) else None)
+    try:
+        yield
+    finally:
+        _CREDS.reset(token)
+
+
+def _ov() -> dict[str, Any]:
+    raw = _CREDS.get()
+    return raw if isinstance(raw, dict) else {}
+
+
+def _yadisk_token() -> str:
+    return str(_ov().get("token") or YADISK_TOKEN or "").strip()
+
+
+def _mailru_user() -> str:
+    return str(_ov().get("username") or _ov().get("login") or MAILRU_WEBDAV_USER or "").strip()
+
+
+def _mailru_password() -> str:
+    return str(_ov().get("password") or MAILRU_WEBDAV_PASSWORD or "").strip()
+
+
+def _gdrive_token() -> str:
+    return str(_ov().get("token") or GOOGLE_DRIVE_TOKEN or "").strip()
+
+
+def _onedrive_token() -> str:
+    return str(_ov().get("token") or ONEDRIVE_TOKEN or "").strip()
 
 GITHUB_REPO = os.getenv("FILES_GITHUB_REPO", "ryabichello-stack/quantum-office").strip()
 GITHUB_REF = os.getenv("FILES_GITHUB_REF", "main").strip()
@@ -146,8 +186,9 @@ def fetch_repo(path: str, *, ref: Optional[str] = None, repo: Optional[str] = No
 
 
 def fetch_yadisk(path: str) -> FetchedFile:
-    if not YADISK_TOKEN:
-        raise SourceError("yadisk_not_configured", "Set YADISK_TOKEN in .env")
+    token = _yadisk_token()
+    if not token:
+        raise SourceError("yadisk_not_configured", "Set YADISK_TOKEN in .env or pass credentials.token")
     # Normalize to disk path
     disk_path = path if path.startswith("disk:") or path.startswith("/") else f"/{path}"
     if not disk_path.startswith("disk:"):
@@ -157,7 +198,7 @@ def fetch_yadisk(path: str) -> FetchedFile:
         f"{YADISK_API}/resources/download?"
         + urllib.parse.urlencode({"path": disk_path})
     )
-    headers = {"Authorization": f"OAuth {YADISK_TOKEN}", "Accept": "application/json"}
+    headers = {"Authorization": f"OAuth {token}", "Accept": "application/json"}
     req = urllib.request.Request(meta_url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -184,7 +225,7 @@ def fetch_yadisk(path: str) -> FetchedFile:
 
 def _mailru_auth_header() -> str:
     token = base64.b64encode(
-        f"{MAILRU_WEBDAV_USER}:{MAILRU_WEBDAV_PASSWORD}".encode()
+        f"{_mailru_user()}:{_mailru_password()}".encode()
     ).decode()
     return f"Basic {token}"
 
@@ -197,10 +238,10 @@ def _mailru_url(path: str) -> str:
 
 
 def fetch_mailru(path: str) -> FetchedFile:
-    if not (MAILRU_WEBDAV_USER and MAILRU_WEBDAV_PASSWORD):
+    if not (_mailru_user() and _mailru_password()):
         raise SourceError(
             "mailru_not_configured",
-            "Set MAILRU_WEBDAV_USER/PASSWORD (or MAIL_USERNAME/MAIL_PASSWORD) in .env",
+            "Set MAILRU_WEBDAV_USER/PASSWORD (or pass credentials.username/password)",
         )
     clean = path if path.startswith("/") else f"/{path}"
     url = _mailru_url(clean)
@@ -287,10 +328,10 @@ def _prop_text(prop: Optional[ET.Element], tag: str, ns: dict[str, str]) -> Opti
 
 def list_mailru(path: str = "/") -> list[ListedEntry]:
     """List one directory level on Mail.ru Cloud via WebDAV PROPFIND Depth:1."""
-    if not (MAILRU_WEBDAV_USER and MAILRU_WEBDAV_PASSWORD):
+    if not (_mailru_user() and _mailru_password()):
         raise SourceError(
             "mailru_not_configured",
-            "Set MAILRU_WEBDAV_USER/PASSWORD (or MAIL_USERNAME/MAIL_PASSWORD) in .env",
+            "Set MAILRU_WEBDAV_USER/PASSWORD (or pass credentials.username/password)",
         )
     clean = _normalize_dir_path(path)
     # WebDAV collections usually want a trailing slash
@@ -435,8 +476,9 @@ def _fs_mtime(ts: float) -> str:
 
 
 def list_yadisk(path: str = "/") -> list[ListedEntry]:
-    if not YADISK_TOKEN:
-        raise SourceError("yadisk_not_configured", "Set YADISK_TOKEN in .env")
+    token = _yadisk_token()
+    if not token:
+        raise SourceError("yadisk_not_configured", "Set YADISK_TOKEN in .env or pass credentials.token")
     disk_path = path if path.startswith("disk:") or path.startswith("/") else f"/{path}"
     if not disk_path.startswith("disk:"):
         disk_path = f"disk:{disk_path}"
@@ -444,7 +486,7 @@ def list_yadisk(path: str = "/") -> list[ListedEntry]:
         f"{YADISK_API}/resources?"
         + urllib.parse.urlencode({"path": disk_path, "limit": 200})
     )
-    headers = {"Authorization": f"OAuth {YADISK_TOKEN}", "Accept": "application/json"}
+    headers = {"Authorization": f"OAuth {token}", "Accept": "application/json"}
     req = urllib.request.Request(meta_url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -527,13 +569,14 @@ def _is_onedrive_source(source: str) -> bool:
 
 
 def _gdrive_headers() -> dict[str, str]:
-    if not GOOGLE_DRIVE_TOKEN:
+    token = _gdrive_token()
+    if not token:
         raise SourceError(
             "gdrive_not_configured",
-            "Set GOOGLE_DRIVE_TOKEN (or GOOGLE_DRIVE_ACCESS_TOKEN) in .env",
+            "Set GOOGLE_DRIVE_TOKEN or pass credentials.token",
         )
     return {
-        "Authorization": f"Bearer {GOOGLE_DRIVE_TOKEN}",
+        "Authorization": f"Bearer {token}",
         "Accept": "application/json",
         "User-Agent": "ava-files/gdrive",
     }
@@ -713,13 +756,14 @@ def search_gdrive(query: str, *, limit: int = 40) -> list[ListedEntry]:
 
 
 def _onedrive_headers() -> dict[str, str]:
-    if not ONEDRIVE_TOKEN:
+    token = _onedrive_token()
+    if not token:
         raise SourceError(
             "onedrive_not_configured",
-            "Set ONEDRIVE_TOKEN (or MICROSOFT_GRAPH_TOKEN) in .env",
+            "Set ONEDRIVE_TOKEN or pass credentials.token",
         )
     return {
-        "Authorization": f"Bearer {ONEDRIVE_TOKEN}",
+        "Authorization": f"Bearer {token}",
         "Accept": "application/json",
         "User-Agent": "ava-files/onedrive",
     }
@@ -920,8 +964,9 @@ def search_local(query: str, *, path: str = "/", limit: int = 40) -> list[Listed
 
 
 def search_yadisk(query: str, *, limit: int = 40) -> list[ListedEntry]:
-    if not YADISK_TOKEN:
-        raise SourceError("yadisk_not_configured", "Set YADISK_TOKEN in .env")
+    token = _yadisk_token()
+    if not token:
+        raise SourceError("yadisk_not_configured", "Set YADISK_TOKEN in .env or pass credentials.token")
     q = (query or "").strip()
     if len(q) < 2:
         raise SourceError("query_too_short", "query must be at least 2 characters")
@@ -934,7 +979,7 @@ def search_yadisk(query: str, *, limit: int = 40) -> list[ListedEntry]:
         f"{YADISK_API}/search?"
         + urllib.parse.urlencode({"query": q, "limit": max(1, min(limit, 100))})
     )
-    headers = {"Authorization": f"OAuth {YADISK_TOKEN}", "Accept": "application/json"}
+    headers = {"Authorization": f"OAuth {token}", "Accept": "application/json"}
     items = []
     try:
         req = urllib.request.Request(search_url, headers=headers)

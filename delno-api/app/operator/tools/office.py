@@ -131,7 +131,16 @@ class ListFilesTool:
         path = str(params.get("path") or "/").strip() or "/"
         connector = get_connector("files")
         assert connector is not None
-        config = connector_config_for(db, ctx, "files")
+        config = dict(connector_config_for(db, ctx, "files"))
+        try:
+            from app.services.files_cloud import credentials_for_source, normalize_source
+
+            src = normalize_source(source) or source
+            creds = credentials_for_source(db, ctx, src)
+            if creds:
+                config["_request_credentials"] = creds
+        except Exception:  # noqa: BLE001
+            pass
         result = connector.list_entries(  # type: ignore[attr-defined]
             tenant_slug=ctx.tenant_slug,
             config=config,

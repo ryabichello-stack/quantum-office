@@ -84,6 +84,16 @@ class FileFetchRequest(BaseModel):
     path: str = Field(..., min_length=1, max_length=1000)
     ref: Optional[str] = None
     repo: Optional[str] = None
+    credentials: Optional[FileCredentials] = None
+
+
+class FileCredentials(BaseModel):
+    """Optional per-tenant override (from delno-api vault). Never logged."""
+
+    token: Optional[str] = Field(default=None, max_length=4096)
+    username: Optional[str] = Field(default=None, max_length=200)
+    login: Optional[str] = Field(default=None, max_length=200)
+    password: Optional[str] = Field(default=None, max_length=4096)
 
 
 class FileListRequest(BaseModel):
@@ -92,6 +102,7 @@ class FileListRequest(BaseModel):
         description="Cloud/local source to browse",
     )
     path: str = Field(default="/", max_length=1000, description="Directory path, default root")
+    credentials: Optional[FileCredentials] = None
 
 
 class FileSearchRequest(BaseModel):
@@ -99,6 +110,7 @@ class FileSearchRequest(BaseModel):
     query: str = Field(..., min_length=2, max_length=200, description="Substring in name/path")
     path: str = Field(default="/", max_length=1000, description="Start folder for search")
     limit: int = Field(default=40, ge=1, le=100)
+    credentials: Optional[FileCredentials] = None
 
 
 @app.get("/health")
@@ -126,6 +138,13 @@ def _list_payload(source: str, path: str, entries: list) -> dict:
     }
 
 
+def _creds_dict(creds: Optional[FileCredentials]) -> Optional[dict]:
+    if not creds:
+        return None
+    data = creds.model_dump(exclude_none=True)
+    return data or None
+
+
 @app.post("/api/files/list")
 def files_list(
     req: FileListRequest,
@@ -135,7 +154,8 @@ def files_list(
     _check_token(x_webhook_token)
     path = (req.path or "/").strip() or "/"
     try:
-        entries = sources.list_entries(req.source, path)
+        with sources.credentials_override(_creds_dict(req.credentials)):
+            entries = sources.list_entries(req.source, path)
     except SourceError as exc:
         raise HTTPException(
             status_code=400,
@@ -153,12 +173,13 @@ def files_search(
     _check_token(x_webhook_token)
     path = (req.path or "/").strip() or "/"
     try:
-        entries = sources.search_entries(
-            req.source,
-            req.query,
-            path=path,
-            limit=req.limit,
-        )
+        with sources.credentials_override(_creds_dict(req.credentials)):
+            entries = sources.search_entries(
+                req.source,
+                req.query,
+                path=path,
+                limit=req.limit,
+            )
     except SourceError as exc:
         raise HTTPException(
             status_code=400,
@@ -178,7 +199,8 @@ def files_fetch(
     """Resolve/fetch metadata (does not deliver). Returns size + filename, not raw bytes."""
     _check_token(x_webhook_token)
     try:
-        f = sources.fetch(req.source, req.path, ref=req.ref, repo=req.repo)
+        with sources.credentials_override(_creds_dict(req.credentials)):
+            f = sources.fetch(req.source, req.path, ref=req.ref, repo=req.repo)
     except SourceError as exc:
         raise HTTPException(status_code=400, detail={"error": exc.code, "message": exc.message}) from exc
     return {

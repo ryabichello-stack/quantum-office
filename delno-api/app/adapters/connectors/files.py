@@ -97,10 +97,14 @@ class FilesConnector:
                     "tenant_slug": tenant_slug,
                 },
             )
+        payload: dict[str, Any] = {"source": source, "path": path}
+        req_creds = config.get("_request_credentials")
+        if isinstance(req_creds, dict) and req_creds:
+            payload["credentials"] = req_creds
         code, resp, err = post_json(
             base,
             "/api/files/list",
-            json={"source": source, "path": path},
+            json=payload,
             token=self._token(config),
         )
         if err:

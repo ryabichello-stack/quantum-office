@@ -9,6 +9,9 @@
   F0 helpers `tenant_files.py` (path traversal guard, object keys);
   onboarding writes under `tenants/{id}/uploads`; prod stack volumes
   `delno-tenant-files` + `delno-onboarding-uploads` on api
+- F3 cloud disks via Hermes: vault kinds `files_yadisk|mailru|gdrive|onedrive`,
+  foreign consent for Google/OneDrive, per-request credentials to files
+  broker (no shared env token for SaaS tenants), coach «подключи / статус / файлы»
 - Site privacy/terms (152‑ФЗ): residency, tenant isolation, subject rights,
   cross-border minimization; cabinet login links + register consent (152‑ФЗ)
 - Onboarding for any tenant via Hermes: blank MD templates (company

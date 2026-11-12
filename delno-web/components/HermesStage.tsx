@@ -515,32 +515,45 @@ export function HermesStage({ token }: { token: string }) {
     }
   }
 
-  async function onSecretSave(values: { login?: string; password?: string }) {
+  async function onSecretSave(values: {
+    login?: string;
+    password?: string;
+    foreign_consent?: boolean;
+  }) {
     if (!activeSecretForm || secretBusy) return;
     setSecretBusy(true);
     setError("");
     try {
+      const secretKind = activeSecretForm.kind || "mango_sip";
       const result = await apiTenantSecretSave(token, {
-        kind: activeSecretForm.kind || "mango_sip",
+        kind: secretKind,
         login: values.login,
         password: values.password,
+        foreign_consent: values.foreign_consent,
       });
       setActiveSecretForm(null);
-      const probe = (result as { sip_probe?: { message_ru?: string; ok?: boolean; cursor_task?: string } })
-        .sip_probe;
+      const probe = result.sip_probe;
+      const cloud = result.cloud_probe;
       const ack =
         result.message ||
         `Сохранил ${result.kind}: ${result.login_masked || "••••"}. Пароль в чат не попал.`;
       const probeLine = probe?.message_ru
         ? `\nАвтотест линии: ${probe.message_ru}`
-        : "";
+        : cloud?.message_ru
+          ? `\nОблако: ${cloud.message_ru}`
+          : "";
       setLines((prev) => [...prev, { role: "assistant", text: `${ack}${probeLine}` }]);
       void refreshPanels();
       // Follow-up in the same thread so Hermes re-reads vault + setup (no more loop).
       try {
-        const followAsk = probe?.ok
-          ? "SIP сохранён и линия Registered. Что дальше — тестовый звонок или сменить голос?"
-          : "SIP сохранён. Проверь регистрацию. Если Rejected — дай задание для Cursor или снова форму.";
+        const isCloud = secretKind.startsWith("files_");
+        const followAsk = isCloud
+          ? cloud?.probe?.ok
+            ? "Облако подключено. Какие облака подключены?"
+            : "Облако сохранено. Какие облака подключены?"
+          : probe?.ok
+            ? "SIP сохранён и линия Registered. Что дальше — тестовый звонок или сменить голос?"
+            : "SIP сохранён. Проверь регистрацию. Если Rejected — дай задание для Cursor или снова форму.";
         const follow = await apiOperatorChat(
           token,
           followAsk,
@@ -810,7 +823,7 @@ export function HermesStage({ token }: { token: string }) {
                         />
                       ) : line.credentialForm ? (
                         <p className="hx-confirm-expired">
-                          Форма уже закрыта — напишите «SIP-пароль Mango», чтобы открыть снова.
+                          Форма уже закрыта — напишите «пришли форму» или «подключи Яндекс.Диск».
                         </p>
                       ) : null}
                       {line.pending && activePending?.confirmation_id === line.pending.confirmation_id ? (
