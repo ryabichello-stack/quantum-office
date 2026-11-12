@@ -30,9 +30,9 @@
 
 ### Changed
 
-- Hermes cabinet agent loop is multi-step (search→fetch→answer), not one-shot;
-  open-web asks («сходи в интернет») force `web.*` and block `get_knowledge`;
-  DuckDuckGo search retries proxy→direct so SSL blips don't dump into KB
+- Hermes cabinet is a real multi-step agent loop (plan→tool→observe→next),
+  not hand-coded phrase routers; capability catalog in system prompt only.
+  Removed keyword «web research» blocks. DuckDuckGo search retries proxy→direct.
 - Hermes debug: tool/LLM failures are appended to the cabinet reply
   (`— отладка (сбои) —`); `HERMES_DEBUG_FAILURES=false` to hide. No silent
   stub/proxy fallthrough without telling the owner

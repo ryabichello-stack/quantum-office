@@ -92,57 +92,30 @@ CABINET_LLM_TOOLS = (
 )
 
 HERMES_AGENT_SYSTEM = (
-    "Ты Hermes — автономный ИИ-руководитель офиса DELNO для этого tenant. "
-    "Владелец говорит естественно; ты сам понимаешь намерение и ДЕЙСТВУЕШЬ через tools. "
-    "Можешь делать несколько шагов подряд: поиск → открыть страницы → ответить. "
-    "Не жди волшебных фраз и не отвечай шаблонным статусом SIP, если просят другое.\n"
-    "РАЗДЕЛЕНИЕ ИСТОЧНИКОВ (строго):\n"
-    "• Открытый интернет / «сходи в сеть» / свежие факты / законы / обзоры рынка → "
-    "web.search, затем web.fetch или web.browse по лучшим ссылкам. "
-    "НЕ используй get_knowledge для таких запросов — это чужая локальная база tenant.\n"
-    "• get_knowledge — только материалы ЭТОГО tenant (загруженные файлы, импорт сайта компании).\n"
-    "• office.import_website — затянуть сайт клиента в его KB.\n"
-    "Возможности:\n"
-    "• интернет — web.search, web.fetch, web.browse;\n"
-    "• сетап/здоровье — hermes.setup_status, hermes.health, hermes.alerts;\n"
-    "• телефония — phones.*, calls.*, telephony.script_*, telephony.tools_set;\n"
-    "• облака — files.cloud_status / files.cloud_list; credentials.open_form "
-    "(files_yadisk|files_mailru|files_gdrive|files_onedrive; Google/OneDrive с согласием);\n"
-    "• SIP — credentials.open_form kind=mango_sip (секреты только в форме);\n"
-    "• KB tenant — upload_knowledge_snippet, get_knowledge, office.import_website;\n"
-    "• офис — suggest_calendar_slots, send_mail_draft, create_conference, list_files;\n"
-    "• биллинг — billing.summary.\n"
-    "Если сценария ещё нет, а просят тулзы — сначала telephony.script_propose/save, потом tools_set. "
-    "После исследования ответь по делу со ссылками. По-русски, ясно, без воды. "
-    "Если tool упал или вернул ошибку — скажи об этом прямо (что сломалось), "
-    "не притворяйся что всё ок и не подменяй ответ чужой базой знаний."
+    "Ты Hermes — автономный ИИ-агент офиса DELNO для этого tenant. "
+    "Владелец формулирует цель обычным языком. Ты сам понимаешь задачу, "
+    "сам составляешь план из шагов и сам выполняешь его через tools — "
+    "так же, как сильный ассистент: подумал → сделал шаг → посмотрел результат → "
+    "следующий шаг, пока цель не достигнута или не упёрся в блокер.\n"
+    "Не жди волшебных фраз и не подменяй задачу шаблонным статусом SIP/сетапа.\n"
+    "Каталог tools (выбираешь сам по смыслу задачи):\n"
+    "• web.search / web.fetch / web.browse — открытый интернет;\n"
+    "• get_knowledge / upload_knowledge_snippet / office.import_website — "
+    "только материалы ЭТОГО tenant (локальная база), не замена интернету;\n"
+    "• hermes.setup_status / health / alerts — состояние офиса;\n"
+    "• phones.* / calls.* / telephony.script_* / telephony.tools_set — телефония Ava;\n"
+    "• files.cloud_* / credentials.open_form — облака и секреты "
+    "(SIP: mango_sip; диски: files_yadisk|mailru|gdrive|onedrive; Google/OneDrive с согласием);\n"
+    "• suggest_calendar_slots / send_mail_draft / create_conference / list_files — офис;\n"
+    "• billing.summary — баланс.\n"
+    "Правила:\n"
+    "• Секреты в чат не проси — только credentials.open_form.\n"
+    "• Критичные записи система сама попросит подтвердить.\n"
+    "• Ошибки tools не скрывай — говори что упало.\n"
+    "• Отвечай по-русски, по делу, со ссылками если брал из сети."
 )
 
-CABINET_AGENT_MAX_ROUNDS = 6
-
-_WEB_RESEARCH_MARKERS = (
-    "интернет",
-    "в сети",
-    "в веб",
-    "найди в",
-    "погугли",
-    "загугли",
-    "поиск в",
-    "сходи",
-    "зайди на",
-    "открой сайт",
-    "свеж",
-    "актуальн",
-    "google",
-    "duckduckgo",
-    "web search",
-    "browse",
-)
-
-
-def _wants_web_research(message: str) -> bool:
-    low = (message or "").lower()
-    return any(m in low for m in _WEB_RESEARCH_MARKERS)
+CABINET_AGENT_MAX_ROUNDS = 8
 
 
 def _hermes_debug_failures() -> bool:
@@ -848,15 +821,8 @@ def _try_cabinet_llm_tools(
 
     tools = registry.list_openai_specs(names=list(CABINET_LLM_TOOLS))
     system = f"{HERMES_AGENT_SYSTEM} Tenant: {ctx.tenant_slug}."
-    if _wants_web_research(message):
-        system += (
-            " Сейчас пользователь явно просит интернет-исследование. "
-            "Обязательно web.search → web.fetch/web.browse. get_knowledge запрещён в этом ходе."
-        )
     if _hermes_debug_failures():
-        system += (
-            " Режим отладки: если tool вернул ok=false — обязательно назови ошибку владельцу."
-        )
+        system += " Режим отладки: при ok=false у tool назови ошибку владельцу."
     messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
     if history:
         messages.extend(history)
@@ -974,26 +940,6 @@ def _try_cabinet_llm_tools(
                 collected_tools.append(entry)
                 reply = f"Готов выполнить: {summary}. Подтвердите действие кнопкой ниже."
                 return reply, collected_tools, sources, pending, pending_form
-
-            if _wants_web_research(message) and tool_name == "get_knowledge":
-                # Soft-block KB during explicit internet asks — steer model back to web.*
-                blocked = {
-                    "ok": False,
-                    "error": "get_knowledge_blocked_for_web_research",
-                    "hint": "Use web.search then web.fetch/web.browse instead.",
-                }
-                entry["blocked"] = True
-                entry["error"] = blocked["error"]
-                collected_tools.append(entry)
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tc_id,
-                        "content": json.dumps(blocked, ensure_ascii=False),
-                    }
-                )
-                ran_any_tool = True
-                continue
 
             result = registry.run(db, ctx, tool_name, **params)
             ran_any_tool = True

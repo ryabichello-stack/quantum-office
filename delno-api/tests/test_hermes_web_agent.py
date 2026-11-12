@@ -1,20 +1,9 @@
-"""Hermes cabinet: web research preference + search HTML parse."""
+"""Hermes cabinet: search HTML parse + debug failure surfacing."""
 
 from __future__ import annotations
 
-from app.operator.agent import (
-    _format_debug_failures,
-    _wants_web_research,
-    _with_debug_failures,
-)
+from app.operator.agent import _format_debug_failures, _with_debug_failures
 from app.services.web_browser import _parse_ddg_html
-
-
-def test_wants_web_research_markers():
-    assert _wants_web_research("Сходи в интернет и найди про выплаты физлицам")
-    assert _wants_web_research("Погугли актуальные правила")
-    assert not _wants_web_research("Покажи статус SIP")
-    assert not _wants_web_research("Что у нас в базе знаний про компанию?")
 
 
 def test_parse_ddg_html_result_a():
@@ -49,6 +38,9 @@ def test_debug_failures_block_lists_tool_errors(monkeypatch):
     assert "get_knowledge: заблокирован" in block
     assert "get_knowledge: ok" not in block
 
-    reply = _with_debug_failures("Краткий ответ", tools=[{"tool": "web.fetch", "ok": False, "error": "timeout"}])
+    reply = _with_debug_failures(
+        "Краткий ответ",
+        tools=[{"tool": "web.fetch", "ok": False, "error": "timeout"}],
+    )
     assert reply.startswith("Краткий ответ")
     assert "web.fetch: timeout" in reply
