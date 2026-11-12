@@ -4,6 +4,9 @@
 
 ### Added
 
+- Cabinet costs: tokens + OpenAI USD себестоимость + client RUB per tenant;
+  `/dashboard/billing`, Hermes panel, `GET /v1/admin/billing/overview` (platform),
+  vendor price table in `billing.estimate_llm_vendor_usd`
 - Hermes prod model: `gpt-5.4-mini` + OpenAI provider uses `max_completion_tokens` for gpt-5/o-series
 - Phone → live inbox memory: `end_call` keeps thread open with summary/preview,
   syncs CallSession to Second Brain (`telephony.call`), inbox detail shows

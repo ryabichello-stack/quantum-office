@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   Sparkles,
   UserRound,
+  Wallet,
 } from "lucide-react";
 import { DelnoMark } from "@/components/DelnoMark";
 import { clearToken } from "@/lib/auth";
@@ -22,6 +23,7 @@ const nav = [
   { href: "/dashboard/leads", label: "Клиенты", Icon: UserRound },
   { href: "/dashboard/calendar", label: "Календарь", Icon: CalendarDays },
   { href: "/dashboard/knowledge", label: "Знания", Icon: FileText },
+  { href: "/dashboard/billing", label: "Затраты", Icon: Wallet },
   { href: "/dashboard/hermes", label: "Hermes", Icon: Sparkles, operatorOrb: true },
 ];
 

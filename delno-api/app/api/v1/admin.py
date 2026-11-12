@@ -107,3 +107,14 @@ def admin_party_lookup(
         raise HTTPException(status_code=400, detail="INN must be 10 or 12 digits")
     db.commit()
     return result
+
+
+@router.get("/billing/overview")
+def admin_billing_overview(
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_platform_admin),
+) -> dict:
+    """Tokens + vendor USD COGS + client RUB charge across all tenants."""
+    from app.services import billing as billing_svc
+
+    return billing_svc.platform_cost_overview(db)

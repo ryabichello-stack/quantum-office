@@ -181,7 +181,11 @@ def parse_hermes_intent(message: str) -> dict[str, Any] | None:
     if any(t in lower for t in _HERMES_CALLS_TRIGGERS):
         return {"tool": "calls.list", "params": {"limit": 10}, "summary": "Список звонков"}
     if any(t in lower for t in _HERMES_BILLING_TRIGGERS):
-        return {"tool": "billing.summary", "params": {}, "summary": "Баланс и тариф токенов"}
+        return {
+            "tool": "billing.summary",
+            "params": {},
+            "summary": "Токены, себестоимость USD и баланс",
+        }
     if any(t in lower for t in _HERMES_SETUP_TRIGGERS):
         return {"tool": "hermes.setup_status", "params": {}, "summary": "Статус сетапа офиса"}
     # Owner onboarding phrase from Hermes UI bootstrap
