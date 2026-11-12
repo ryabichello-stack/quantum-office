@@ -28,6 +28,15 @@ _OWNER_KB_SOURCES = {
     "cabinet.upload",
 }
 
+_SEED_KB_SOURCES = {
+    "onboarding:welcome",
+    "dogfood",
+    "dogfood seed",
+    "seed",
+    "vault.seed",
+    "delno-demo.seed",
+}
+
 
 def company_knowledge_ready(db: Session, ctx: TenantContext, *, hermes: dict[str, Any] | None = None) -> dict[str, Any]:
     """True only when the owner actually provided company facts — not dogfood seed."""
@@ -37,7 +46,7 @@ def company_knowledge_ready(db: Session, ctx: TenantContext, *, hermes: dict[str
     if h.get("kb_ready") and (h.get("kb_source") or "") in _OWNER_KB_SOURCES:
         return {"ok": True, "detail": "kb_ready", "source": h.get("kb_source")}
 
-    # Real owner uploads (ignore empty / seed)
+    # Real owner uploads (ignore welcome/seed events)
     events = (
         db.query(PlatformEvent)
         .filter(
@@ -45,16 +54,22 @@ def company_knowledge_ready(db: Session, ctx: TenantContext, *, hermes: dict[str
             PlatformEvent.event_type == "knowledge.document_upserted",
         )
         .order_by(PlatformEvent.created_at.desc())
-        .limit(20)
+        .limit(30)
         .all()
     )
     for ev in events:
         payload = ev.payload if isinstance(ev.payload, dict) else {}
-        source = str(payload.get("source") or "")
+        source = str(payload.get("source") or "").strip()
         title = str(payload.get("title") or "").lower()
-        if source in _OWNER_KB_SOURCES or source.startswith("tenant.knowledge") or source.startswith("onboarding"):
+        source_l = source.lower()
+        if source_l in _SEED_KB_SOURCES or source_l.startswith("onboarding:welcome") or "seed" in source_l:
+            continue
+        if source in _OWNER_KB_SOURCES or source.startswith("tenant.knowledge"):
             return {"ok": True, "detail": "knowledge_event", "source": source or title}
+        # Explicit company-profile titles from owner uploads
         if any(k in title for k in ("профиль компании", "о компании", "company profile", "о нас")):
+            if source_l.startswith("onboarding") and "welcome" in source_l:
+                continue
             return {"ok": True, "detail": "knowledge_title", "source": title}
     return {"ok": False, "detail": "need_company_profile", "source": None}
 
