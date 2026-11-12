@@ -6,9 +6,11 @@
 
 - Tenant files + ПДн architecture (`docs/DELNO_TENANT_FILES_AND_PDN.md`):
   per-tenant prefix isolation, RU residency, encryption/retention roadmap;
-  F0 helpers `tenant_files.py` (path traversal guard, object keys)
+  F0 helpers `tenant_files.py` (path traversal guard, object keys);
+  onboarding writes under `tenants/{id}/uploads`; prod stack volumes
+  `delno-tenant-files` + `delno-onboarding-uploads` on api
 - Site privacy/terms (152‑ФЗ): residency, tenant isolation, subject rights,
-  cross-border minimization; cabinet login links to dlno.ru legal pages
+  cross-border minimization; cabinet login links + register consent (152‑ФЗ)
 - Onboarding for any tenant via Hermes: blank MD templates (company
   profile + telephony script), cabinet download, save script/tools in
   `tenant.settings.telephony`, inject inbound script on calls

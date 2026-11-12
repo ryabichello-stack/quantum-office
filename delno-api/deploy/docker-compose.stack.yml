@@ -73,6 +73,14 @@ services:
       ALL_PROXY: ${ALL_PROXY:-}
       NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,postgres,knowledge,mail,calendar,files,conference,api,web}
       TELEPHONY_WEBHOOK_TOKEN: ${TELEPHONY_WEBHOOK_TOKEN:-}
+      ONBOARDING_UPLOAD_DIR: ${ONBOARDING_UPLOAD_DIR:-/data/onboarding}
+      TENANT_FILES_ROOT: ${TENANT_FILES_ROOT:-/data/tenants}
+      TENANT_FILES_BACKEND: ${TENANT_FILES_BACKEND:-local}
+      TENANT_FILES_REGION: ${TENANT_FILES_REGION:-ru}
+    volumes:
+      # Persist per-tenant blobs (onboarding + F0 tenant_files tree). Missing = data loss on recreate.
+      - delno-onboarding-uploads:/data/onboarding
+      - delno-tenant-files:/data/tenants
     ports:
       - "127.0.0.1:18020:8020"
     depends_on:
@@ -265,3 +273,7 @@ volumes:
     name: delno-brain-data
   delno-files-assets:
     name: delno-files-assets
+  delno-onboarding-uploads:
+    name: delno-onboarding-uploads
+  delno-tenant-files:
+    name: delno-tenant-files

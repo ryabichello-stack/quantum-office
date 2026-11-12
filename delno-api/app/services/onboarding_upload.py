@@ -78,11 +78,10 @@ def validate_upload_file(filename: str, size_bytes: int) -> str | None:
 
 
 def _storage_dir(tenant_id: uuid.UUID) -> Path:
-    settings = get_settings()
-    root = Path(settings.onboarding_upload_dir)
-    path = root / str(tenant_id)
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    """Store under tenants/{id}/uploads (F0 isolation); legacy onboarding dir unused for new writes."""
+    from app.services.tenant_files import resolve_tenant_path
+
+    return resolve_tenant_path(tenant_id, zone="uploads", create_parents=True)
 
 
 def _extract_via_brain(

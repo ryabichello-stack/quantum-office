@@ -43,7 +43,10 @@ Slug допустим только как **метаданные** в индек
 | БД метаданных | Postgres DELNO (`tenant_files`) | ACL, hash, retention, audit |
 | Локальный диск | только `tmp/` и кэш извлечения | не primary source of truth |
 
-До перехода на object store допустим том `/data/tenants/{tenant_id}/` **внутри** compose DELNO (уже зачат как `onboarding_upload_dir`), с теми же правилами путей.
+До перехода на object store допустим том `/data/tenants/{tenant_id}/` **внутри** compose DELNO
+(`TENANT_FILES_ROOT`, volume `delno-tenant-files` в `deploy/docker-compose.stack.yml`), с теми же
+правилами путей. Онбординг-загрузки пишут в `uploads/`. Legacy `/data/onboarding` volume
+сохраняется для уже лежащих файлов, новые — только под `tenants/`.
 
 ### 2.3 Шифрование
 

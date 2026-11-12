@@ -13,6 +13,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [company, setCompany] = useState("");
   const [inn, setInn] = useState("");
+  const [consent, setConsent] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -26,6 +27,10 @@ export default function LoginPage() {
         localStorage.setItem("delno_token", access_token);
         router.push("/dashboard");
       } else {
+        if (!consent) {
+          setError("Нужно согласие с политикой конфиденциальности и пользовательским соглашением.");
+          return;
+        }
         const result = await apiRegister({
           email,
           password,
@@ -98,8 +103,30 @@ export default function LoginPage() {
               <input value={inn} onChange={(e) => setInn(e.target.value)} placeholder="10 или 12 цифр" />
             </label>
           )}
+          {mode === "register" && (
+            <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, lineHeight: 1.4 }}>
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                required
+                style={{ marginTop: 2 }}
+              />
+              <span>
+                Согласен с{" "}
+                <a href="https://dlno.ru/privacy" target="_blank" rel="noreferrer">
+                  политикой конфиденциальности
+                </a>{" "}
+                и{" "}
+                <a href="https://dlno.ru/terms" target="_blank" rel="noreferrer">
+                  пользовательским соглашением
+                </a>
+                . ПДн обрабатываются в соответствии с 152‑ФЗ.
+              </span>
+            </label>
+          )}
           {error && <p className="form-error">{error}</p>}
-          <button type="submit" className="btn-primary" disabled={busy}>
+          <button type="submit" className="btn-primary" disabled={busy || (mode === "register" && !consent)}>
             {busy ? "…" : mode === "login" ? "Войти в кабинет" : "Создать аккаунт"}
           </button>
         </form>
