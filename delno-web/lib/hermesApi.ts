@@ -107,11 +107,37 @@ export function apiCallDial(token: string, body: { to_e164: string; script?: str
   );
 }
 
+export type LlmCostTotals = {
+  events: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  tokens_total: number;
+  cost_client_rub: number;
+  cost_vendor_usd: number;
+  margin_rub_approx?: number;
+};
+
 export type BillingSummary = {
   ok: boolean;
   balance: { currency: string; token_credits: number; granted_credits: number; spent_credits: number };
   tariff: Record<string, number | string>;
+  llm?: LlmCostTotals;
   by_metric: Array<{ metric: string; quantity: number; events: number }>;
+  message_ru: string;
+};
+
+export type PlatformBillingOverview = {
+  ok: boolean;
+  currency_client: string;
+  currency_vendor: string;
+  totals: LlmCostTotals;
+  tenants: Array<{
+    tenant_id: string;
+    tenant_slug: string;
+    tenant_name: string;
+    llm: LlmCostTotals;
+    balance: BillingSummary["balance"];
+  }>;
   message_ru: string;
 };
 
@@ -121,6 +147,10 @@ export function apiBillingSummary(token: string) {
 
 export function apiBillingEnsure(token: string) {
   return apiFetch<BillingSummary>("/v1/tenant/billing/ensure", token, { method: "POST" });
+}
+
+export function apiAdminBillingOverview(token: string) {
+  return apiFetch<PlatformBillingOverview>("/v1/admin/billing/overview", token);
 }
 
 export function apiChannelQrStart(token: string, channel_type: string, label?: string) {

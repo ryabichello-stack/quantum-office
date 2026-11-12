@@ -834,7 +834,7 @@ export function HermesStage({ token }: { token: string }) {
 
               <section className="hx-card">
                 <header>
-                  <span>Тариф</span>
+                  <span>Затраты</span>
                 </header>
                 {billing ? (
                   <>
@@ -842,11 +842,23 @@ export function HermesStage({ token }: { token: string }) {
                     <ul className="hermes-calls">
                       <li>
                         <strong>
-                          {billing.balance.token_credits.toFixed(2)} {billing.balance.currency}
+                          {billing.llm?.tokens_total?.toLocaleString("ru-RU") ?? "0"} ток.
                         </strong>
                         <small>
-                          выдано {billing.balance.granted_credits.toFixed(2)} · потрачено{" "}
-                          {billing.balance.spent_credits.toFixed(2)}
+                          in {billing.llm?.prompt_tokens?.toLocaleString("ru-RU") ?? 0} / out{" "}
+                          {billing.llm?.completion_tokens?.toLocaleString("ru-RU") ?? 0}
+                        </small>
+                      </li>
+                      <li>
+                        <strong>${(billing.llm?.cost_vendor_usd ?? 0).toFixed(4)}</strong>
+                        <small>себестоимость OpenAI</small>
+                      </li>
+                      <li>
+                        <strong>
+                          {(billing.llm?.cost_client_rub ?? 0).toFixed(2)} {billing.balance.currency}
+                        </strong>
+                        <small>
+                          клиенту · баланс {billing.balance.token_credits.toFixed(2)}
                         </small>
                       </li>
                     </ul>

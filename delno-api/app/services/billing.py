@@ -14,10 +14,10 @@ from app.models.tenant import Tenant
 from app.models.usage_record import UsageRecord
 from app.services.usage import record_usage
 
-# Default dogfood tariff (RUB). Owner can override in tenant.settings.billing
+# Default dogfood tariff (RUB, client-facing). Owner can override in tenant.settings.billing
 DEFAULT_TARIFF = {
     "currency": "RUB",
-    "llm_input_per_1k": 0.50,  # ≈ cost+margin for gpt-4o-mini class
+    "llm_input_per_1k": 0.50,  # client price, not vendor cost
     "llm_output_per_1k": 2.00,
     "tts_per_1k_chars": 0.80,
     "stt_per_minute": 3.00,
@@ -26,6 +26,49 @@ DEFAULT_TARIFF = {
     "web_search": 0.10,
     "browse_page": 0.25,
 }
+
+# OpenAI standard list price USD / 1M tokens (себестоимость). Keep in sync with platform pricing page.
+VENDOR_USD_PER_1M: dict[str, tuple[float, float]] = {
+    "gpt-5.4-mini": (0.75, 4.50),
+    "gpt-5.4-nano": (0.20, 1.25),
+    "gpt-5.4": (2.50, 15.00),
+    "gpt-5.2": (1.75, 14.00),
+    "gpt-5.1": (1.25, 10.00),
+    "gpt-5-mini": (0.25, 2.00),
+    "gpt-5-nano": (0.05, 0.40),
+    "gpt-5": (1.25, 10.00),
+    "gpt-4.1-mini": (0.40, 1.60),
+    "gpt-4.1": (2.00, 8.00),
+    "gpt-4o-mini": (0.15, 0.60),
+    "gpt-4o": (2.50, 10.00),
+}
+_VENDOR_DEFAULT_USD = (0.75, 4.50)  # assume current Hermes default class
+
+
+def _normalize_model(model: str | None) -> str:
+    name = (model or "").strip().lower()
+    if not name:
+        return ""
+    # strip dated suffixes: gpt-5.4-mini-2026-03-17
+    for key in sorted(VENDOR_USD_PER_1M.keys(), key=len, reverse=True):
+        if name == key or name.startswith(key + "-"):
+            return key
+    return name
+
+
+def estimate_llm_vendor_usd(
+    *,
+    prompt_tokens: int,
+    completion_tokens: int,
+    model: str | None = None,
+) -> float:
+    key = _normalize_model(model)
+    inp, out = VENDOR_USD_PER_1M.get(key, _VENDOR_DEFAULT_USD)
+    return round(
+        (int(prompt_tokens) / 1_000_000.0) * inp
+        + (int(completion_tokens) / 1_000_000.0) * out,
+        6,
+    )
 
 
 def _billing_blob(tenant: Tenant) -> dict[str, Any]:
@@ -130,20 +173,32 @@ def record_llm_usage(
     tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
     tariff = get_tariff(tenant)
     cost = estimate_llm_cost(tariff, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+    cost_usd = estimate_llm_vendor_usd(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        model=model,
+    )
     total_tokens = int(prompt_tokens) + int(completion_tokens)
-    return charge(
+    out = charge(
         db,
         ctx,
         metric="llm.tokens",
         quantity=float(total_tokens),
         cost=cost,
         meta={
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
+            "prompt_tokens": int(prompt_tokens),
+            "completion_tokens": int(completion_tokens),
             "model": model,
             "channel": channel,
+            "cost_usd": cost_usd,
+            "cost_rub": cost,
+            "currency_client": tariff.get("currency") or "RUB",
         },
     )
+    out["cost_usd"] = cost_usd
+    out["prompt_tokens"] = int(prompt_tokens)
+    out["completion_tokens"] = int(completion_tokens)
+    return out
 
 
 def record_web_usage(db: Session, ctx: TenantContext, *, kind: str) -> dict[str, Any]:
@@ -151,6 +206,42 @@ def record_web_usage(db: Session, ctx: TenantContext, *, kind: str) -> dict[str,
     tariff = get_tariff(tenant)
     key = {"search": "web_search", "fetch": "web_fetch", "browse": "browse_page"}.get(kind, "web_fetch")
     return charge(db, ctx, metric=f"web.{kind}", quantity=1.0, cost=float(tariff.get(key) or 0), meta={"kind": kind})
+
+
+def _llm_totals_from_rows(rows: list[UsageRecord]) -> dict[str, Any]:
+    prompt = 0
+    completion = 0
+    cost_rub = 0.0
+    cost_usd = 0.0
+    events = 0
+    for r in rows:
+        if r.metric != "llm.tokens":
+            continue
+        events += 1
+        meta = r.meta if isinstance(r.meta, dict) else {}
+        p = int(meta.get("prompt_tokens") or 0)
+        c = int(meta.get("completion_tokens") or 0)
+        prompt += p
+        completion += c
+        cost_rub += float(meta.get("cost_rub") or meta.get("cost") or 0)
+        if meta.get("cost_usd") is not None:
+            cost_usd += float(meta.get("cost_usd") or 0)
+        elif p or c:
+            # backfill for rows recorded before cost_usd existed
+            cost_usd += estimate_llm_vendor_usd(
+                prompt_tokens=p,
+                completion_tokens=c,
+                model=str(meta.get("model") or "") or None,
+            )
+    return {
+        "events": events,
+        "prompt_tokens": prompt,
+        "completion_tokens": completion,
+        "tokens_total": prompt + completion,
+        "cost_client_rub": round(cost_rub, 4),
+        "cost_vendor_usd": round(cost_usd, 6),
+        "margin_rub_approx": round(cost_rub, 4),  # client charge; USD is COGS
+    }
 
 
 def usage_summary(db: Session, ctx: TenantContext, *, limit: int = 50) -> dict[str, Any]:
@@ -165,6 +256,12 @@ def usage_summary(db: Session, ctx: TenantContext, *, limit: int = 50) -> dict[s
         .group_by(UsageRecord.metric)
         .all()
     )
+    llm_rows = (
+        db.query(UsageRecord)
+        .filter(UsageRecord.tenant_id == ctx.tenant_id, UsageRecord.metric == "llm.tokens")
+        .all()
+    )
+    llm = _llm_totals_from_rows(llm_rows)
     recent = (
         db.query(UsageRecord)
         .filter(UsageRecord.tenant_id == ctx.tenant_id)
@@ -177,6 +274,7 @@ def usage_summary(db: Session, ctx: TenantContext, *, limit: int = 50) -> dict[s
         "tenant_slug": ctx.tenant_slug,
         "balance": balance,
         "tariff": tariff,
+        "llm": llm,
         "by_metric": [
             {"metric": m, "quantity": float(q or 0), "events": int(c or 0)} for m, q, c in grouped
         ],
@@ -191,9 +289,59 @@ def usage_summary(db: Session, ctx: TenantContext, *, limit: int = 50) -> dict[s
             for r in recent
         ],
         "message_ru": (
-            f"Баланс {balance['token_credits']:.2f} {balance['currency']}. "
-            f"Тариф LLM: {tariff['llm_input_per_1k']}/{tariff['llm_output_per_1k']} "
-            f"за 1k input/output токенов."
+            f"Токены: {llm['tokens_total']} (in {llm['prompt_tokens']} / out {llm['completion_tokens']}). "
+            f"Себестоимость ≈ ${llm['cost_vendor_usd']:.4f}. "
+            f"Клиенту начислено {llm['cost_client_rub']:.2f} {balance['currency']}. "
+            f"Баланс {balance['token_credits']:.2f} {balance['currency']}."
+        ),
+    }
+
+
+def platform_cost_overview(db: Session) -> dict[str, Any]:
+    """All tenants: tokens + vendor USD + client RUB (platform admin)."""
+    tenants = db.query(Tenant).filter(Tenant.is_active.is_(True)).order_by(Tenant.slug.asc()).all()
+    items: list[dict[str, Any]] = []
+    totals = {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "tokens_total": 0,
+        "cost_vendor_usd": 0.0,
+        "cost_client_rub": 0.0,
+        "events": 0,
+    }
+    for tenant in tenants:
+        rows = (
+            db.query(UsageRecord)
+            .filter(UsageRecord.tenant_id == tenant.id, UsageRecord.metric == "llm.tokens")
+            .all()
+        )
+        llm = _llm_totals_from_rows(rows)
+        bal = get_balance(tenant)
+        items.append(
+            {
+                "tenant_id": str(tenant.id),
+                "tenant_slug": tenant.slug,
+                "tenant_name": tenant.name,
+                "llm": llm,
+                "balance": bal,
+            }
+        )
+        for k in ("prompt_tokens", "completion_tokens", "tokens_total", "events"):
+            totals[k] += int(llm.get(k) or 0)
+        totals["cost_vendor_usd"] += float(llm.get("cost_vendor_usd") or 0)
+        totals["cost_client_rub"] += float(llm.get("cost_client_rub") or 0)
+    totals["cost_vendor_usd"] = round(totals["cost_vendor_usd"], 6)
+    totals["cost_client_rub"] = round(totals["cost_client_rub"], 4)
+    return {
+        "ok": True,
+        "currency_client": "RUB",
+        "currency_vendor": "USD",
+        "totals": totals,
+        "tenants": items,
+        "message_ru": (
+            f"Всего токенов {totals['tokens_total']}, "
+            f"себестоимость ${totals['cost_vendor_usd']:.4f}, "
+            f"клиентам {totals['cost_client_rub']:.2f} RUB."
         ),
     }
 

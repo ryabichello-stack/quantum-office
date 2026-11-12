@@ -514,6 +514,9 @@ def _try_cabinet_llm_tools(
     except (KeyError, IndexError, TypeError):
         return None
 
+    # Always meter the routing LLM turn (tools or text).
+    _charge_llm_if_any(db, ctx, completion, channel="hermes")
+
     tool_calls_raw = choice_msg.get("tool_calls") or []
     if tool_calls_raw:
         first = tool_calls_raw[0]
@@ -525,7 +528,6 @@ def _try_cabinet_llm_tools(
 
     content = str(choice_msg.get("content") or "").strip()
     if content:
-        _charge_llm_if_any(db, ctx, completion, channel="hermes")
         return content, [{"tool": "llm", "ok": True, "provider": provider.name}], [], None
     return None
 

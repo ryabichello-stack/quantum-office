@@ -935,6 +935,81 @@ p {
   margin-bottom: 12px;
 }
 
+.billing-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0 18px;
+}
+
+.billing-kpis > div {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.billing-kpis strong {
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.billing-kpis span {
+  font-size: 12px;
+  color: #666;
+  text-transform: lowercase;
+}
+
+.billing-kpis small {
+  font-size: 11px;
+  color: #888;
+}
+
+.billing-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.billing-table th,
+.billing-table td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.billing-table th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #777;
+  font-weight: 600;
+}
+
+.billing-table td small,
+.billing-table td strong + small {
+  display: block;
+  margin-top: 2px;
+  color: #888;
+  font-weight: 400;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  margin-top: 12px;
+}
+
+@media (max-width: 720px) {
+  .billing-kpis {
+    grid-template-columns: 1fr;
+  }
+}
+
 .legal-box {
   margin-bottom: 16px;
   padding: 14px;
