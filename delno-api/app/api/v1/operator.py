@@ -153,6 +153,66 @@ def get_conversation(
     return detail
 
 
+@router.delete("/conversations/{conversation_id}")
+def delete_conversation(
+    conversation_id: UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """Delete one conversation and its messages for this tenant."""
+    conv = (
+        db.query(Conversation)
+        .filter(Conversation.id == conversation_id, Conversation.tenant_id == ctx.tenant_id)
+        .one_or_none()
+    )
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    deleted_messages = (
+        db.query(Message)
+        .filter(Message.conversation_id == conversation_id, Message.tenant_id == ctx.tenant_id)
+        .delete(synchronize_session=False)
+    )
+    db.delete(conv)
+    db.commit()
+    return {"ok": True, "deleted_id": str(conversation_id), "deleted_messages": deleted_messages}
+
+
+class BulkDeleteConversations(BaseModel):
+    ids: list[UUID] = Field(default_factory=list, max_length=200)
+    channel: str | None = Field(default=None, max_length=32)
+    keep_latest_hermes: bool = False
+
+
+@router.post("/conversations/bulk-delete")
+def bulk_delete_conversations(
+    body: BulkDeleteConversations,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """Delete many conversations by id list and/or channel (junk cleanup)."""
+    q = db.query(Conversation).filter(Conversation.tenant_id == ctx.tenant_id)
+    if body.ids:
+        q = q.filter(Conversation.id.in_(body.ids))
+    elif body.channel:
+        q = q.filter(Conversation.channel == body.channel.strip().lower())
+    else:
+        raise HTTPException(status_code=400, detail="Provide ids or channel")
+
+    rows = q.order_by(Conversation.updated_at.desc()).all()
+    if body.keep_latest_hermes and body.channel == "hermes" and rows:
+        rows = rows[1:]
+
+    deleted_ids: list[str] = []
+    for conv in rows:
+        db.query(Message).filter(
+            Message.conversation_id == conv.id, Message.tenant_id == ctx.tenant_id
+        ).delete(synchronize_session=False)
+        deleted_ids.append(str(conv.id))
+        db.delete(conv)
+    db.commit()
+    return {"ok": True, "deleted": len(deleted_ids), "ids": deleted_ids}
+
+
 @router.get("/conversations/{conversation_id}/messages")
 def list_messages(
     conversation_id: UUID,

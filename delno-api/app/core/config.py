@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
 
+    # Public DELNO site lead notifications (SMTP)
+    lead_notify_to: str | None = None
+    lead_smtp_host: str | None = None
+    lead_smtp_port: int = 465
+    lead_smtp_user: str | None = None
+    lead_smtp_password: str | None = None
+    lead_smtp_from: str | None = None
+
     openai_api_key: str | None = None
     openai_model: str = "gpt-4.1-mini"
     model_provider: str = "openai"

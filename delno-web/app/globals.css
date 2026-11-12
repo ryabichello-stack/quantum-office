@@ -3186,6 +3186,52 @@ aside a.nav-operator.selected .nav-orb-icon {
   backdrop-filter: blur(8px);
 }
 
+.inbox-cleanup {
+  padding: 0 12px 10px;
+}
+
+.inbox-cleanup button {
+  width: 100%;
+  border: 1px solid rgba(180, 35, 24, 0.25);
+  background: #fff5f5;
+  color: #b42318;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.inbox-row-wrap {
+  position: relative;
+  display: grid;
+}
+
+.inbox-row-wrap .inbox-row {
+  padding-right: 36px;
+}
+
+.inbox-delete {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: #9aa8b8;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.inbox-delete:hover {
+  background: #fff0f0;
+  color: #b42318;
+}
+
 @media (max-width: 960px) {
   .console-shell.cabinet-shell.hx-shell,
   .console-shell.cabinet-shell.hx-shell.with-inbox {

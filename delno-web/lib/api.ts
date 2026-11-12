@@ -325,6 +325,29 @@ export function apiConversationMessages(token: string, conversationId: string) {
   return apiFetch<{ items: MessageItem[] }>(`/v1/operator/conversations/${conversationId}/messages`, token);
 }
 
+export function apiConversationDelete(token: string, conversationId: string) {
+  return apiFetch<{ ok: boolean; deleted_id: string }>(
+    `/v1/operator/conversations/${conversationId}`,
+    token,
+    { method: "DELETE" },
+  );
+}
+
+export function apiConversationsBulkDelete(
+  token: string,
+  body: { ids?: string[]; channel?: string; keep_latest_hermes?: boolean },
+) {
+  return apiFetch<{ ok: boolean; deleted: number; ids: string[] }>(
+    "/v1/operator/conversations/bulk-delete",
+    token,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
 export type OperatorChatAttachment = {
   filename: string;
   content_type: string;

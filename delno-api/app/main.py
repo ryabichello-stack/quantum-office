@@ -42,6 +42,7 @@ async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
     seed_demo_tenant()
     register_builtin_tools()
+    import app.services.lead_email  # noqa: F401 — register SMTP notify hooks
     yield
 
 

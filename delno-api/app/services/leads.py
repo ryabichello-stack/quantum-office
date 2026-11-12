@@ -81,6 +81,13 @@ def create_lead_record(
     )
 
     notified = notify_lead_telegram(lead)
+    try:
+        from app.services.lead_email import queue_lead_email
+
+        queue_lead_email(db, lead)
+    except Exception:  # noqa: BLE001
+        # Email is best-effort; never block lead creation.
+        pass
     write_audit(
         db,
         ctx,

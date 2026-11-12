@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Globe, Mail, MessageCircle, Phone, Search, Send, X } from "lucide-react";
+import { Globe, Mail, MessageCircle, Phone, Search, Send, Trash2, X } from "lucide-react";
 import type { ConversationItem } from "@/lib/api";
 
 function channelMeta(channel: string) {
@@ -11,6 +11,8 @@ function channelMeta(channel: string) {
   if (c.includes("mail") || c.includes("email")) return { tone: "mail", Icon: Mail };
   if (c.includes("telegram")) return { tone: "chat", Icon: Send };
   if (c.includes("web") || c.includes("site") || c.includes("widget")) return { tone: "web", Icon: Globe };
+  if (c.includes("hermes") || c.includes("cabinet") || c.includes("operator"))
+    return { tone: "chat", Icon: MessageCircle };
   return { tone: "chat", Icon: MessageCircle };
 }
 
@@ -21,7 +23,7 @@ function formatTime(iso: string | null | undefined) {
     const diff = Date.now() - d.getTime();
     if (diff < 60_000) return "сейчас";
     if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} мин`;
-    return d.toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" });
+    return d.toLocaleString("ru-RU", { timeZone: "Europe/Moscow", dateStyle: "short", timeStyle: "short" });
   } catch {
     return iso;
   }
@@ -30,6 +32,7 @@ function formatTime(iso: string | null | undefined) {
 function displayName(row: ConversationItem) {
   if (row.visitor_name) return row.visitor_name;
   if (row.contact_ref) return row.contact_ref;
+  if (row.channel === "hermes") return "Hermes";
   if (row.channel_label?.includes("сайт")) return "Новый посетитель";
   return row.channel_label || row.channel;
 }
@@ -48,8 +51,11 @@ export function InboxPanel({
   newCount = 0,
   query,
   filter,
+  busyId,
   onQueryChange,
   onFilterChange,
+  onDelete,
+  onCleanupJunk,
 }: {
   items: ConversationItem[];
   activeId?: string;
@@ -58,11 +64,15 @@ export function InboxPanel({
   newCount?: number;
   query?: string;
   filter?: string;
+  busyId?: string | null;
   onQueryChange?: (q: string) => void;
   onFilterChange?: (f: string) => void;
+  onDelete?: (id: string) => void;
+  onCleanupJunk?: () => void;
 }) {
   const [searchOpen, setSearchOpen] = useState(Boolean(query?.trim()));
   const activeFilter = filter || "all";
+  const hermesJunk = items.filter((i) => i.channel === "hermes").length;
 
   return (
     <section className="inbox">
@@ -124,6 +134,14 @@ export function InboxPanel({
         </button>
       </div>
 
+      {hermesJunk > 3 && onCleanupJunk ? (
+        <div className="inbox-cleanup">
+          <button type="button" onClick={onCleanupJunk}>
+            Очистить мусор Hermes ({hermesJunk - 1})
+          </button>
+        </div>
+      ) : null}
+
       {error && <p className="inbox-empty inbox-error">{error}</p>}
       {loading && <p className="inbox-empty">Загрузка…</p>}
       {!loading && !error && items.length === 0 && <p className="inbox-empty">Диалогов пока нет</p>}
@@ -131,20 +149,34 @@ export function InboxPanel({
         const { tone, Icon } = channelMeta(row.channel);
         const hot = activeId === row.id;
         return (
-          <Link
-            key={row.id}
-            href={`/dashboard/inbox/${row.id}`}
-            className={hot ? "inbox-row hot" : "inbox-row"}
-          >
-            <div className={`source ${tone}`}>
-              <Icon />
-            </div>
-            <div>
-              <b>{displayName(row)}</b>
-              <p>{previewText(row)}</p>
-            </div>
-            <time>{formatTime(row.updated_at || row.created_at)}</time>
-          </Link>
+          <div key={row.id} className={hot ? "inbox-row-wrap hot" : "inbox-row-wrap"}>
+            <Link href={`/dashboard/inbox/${row.id}`} className={hot ? "inbox-row hot" : "inbox-row"}>
+              <div className={`source ${tone}`}>
+                <Icon />
+              </div>
+              <div>
+                <b>{displayName(row)}</b>
+                <p>{previewText(row)}</p>
+              </div>
+              <time>{formatTime(row.updated_at || row.created_at)}</time>
+            </Link>
+            {onDelete ? (
+              <button
+                type="button"
+                className="inbox-delete"
+                title="Удалить диалог"
+                aria-label="Удалить диалог"
+                disabled={busyId === row.id}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (window.confirm("Удалить этот диалог безвозвратно?")) onDelete(row.id);
+                }}
+              >
+                <Trash2 size={14} />
+              </button>
+            ) : null}
+          </div>
         );
       })}
     </section>

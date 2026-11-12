@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Inbox: delete conversation + bulk cleanup of junk Hermes threads
+- Public DELNO leads: restore SMTP owner notify (`lead_email`); site
+  tenant must be `delno-demo` (not Quantum Labs)
+
 ### Changed
 
 - Cabinet UX: one Hermes-language shell for all pages — labeled nav
