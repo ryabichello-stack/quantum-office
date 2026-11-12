@@ -384,7 +384,7 @@ export function apiTenantSecretSave(
     configured: boolean;
     login_masked?: string;
     message?: string;
-  }>("/v1/tenant/secrets", token, {
+  }>("/v1/tenant/credentials", token, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

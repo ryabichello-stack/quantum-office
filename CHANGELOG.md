@@ -5,7 +5,7 @@
 ### Fixed
 
 - Hermes: SIP/Mango secrets via secure form (not chat paste);
-  `POST /v1/tenant/secrets`, pending_credential_form in operator chat,
+  `POST /v1/tenant/credentials`, pending_credential_form in operator chat,
   CredentialFormCard in UI; pasted passwords redacted from transcript
 - Hermes conversation memory: LLM gets prior turns; UI restores last
   hermes thread on reload; credential questions search KB first;

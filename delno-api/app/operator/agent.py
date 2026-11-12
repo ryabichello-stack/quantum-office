@@ -114,7 +114,7 @@ def run_operator_turn(
                 "modality": input_modality,
             }
 
-        from app.services.tenant_secrets import looks_like_credential_paste
+        from app.services.tenant_credentials import looks_like_credential_paste
 
         conversation = _get_or_create_conversation(db, ctx, channel, conversation_id)
         display_message = message.strip()
@@ -299,7 +299,7 @@ def _conversation_history_for_llm(
 def _try_secret_form_turn(
     message: str,
 ) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None, dict[str, Any] | None] | None:
-    from app.services.tenant_secrets import (
+    from app.services.tenant_credentials import (
         credential_form_spec,
         looks_like_credential_paste,
         parse_credential_paste,
