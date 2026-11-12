@@ -261,7 +261,7 @@ export function useDictateToInput(
         return;
       }
       // Server Whisper first — browser SpeechRecognition often fails silently on HTTPS apps.
-      if (tokenRef.current && navigator.mediaDevices?.getUserMedia) {
+      if (tokenRef.current && typeof navigator.mediaDevices?.getUserMedia === "function") {
         void startServer(currentFieldValue);
         return;
       }
