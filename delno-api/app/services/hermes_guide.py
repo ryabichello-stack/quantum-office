@@ -91,7 +91,7 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
             f"Сетап: {setup.get('message_ru')}",
             f"Здоровье: {health.get('message_ru')}",
         ]
-        from app.services.tenant_credentials import credential_form_spec
+        from app.services.tenant_vault import credential_form_spec
 
         return {
             "reply": "\n".join(body),
