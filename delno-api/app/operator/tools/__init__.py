@@ -18,6 +18,8 @@ from app.operator.tools.crm import (
     CrmSuggestNextTool,
 )
 from app.operator.tools.office import (
+    CheckCalendarTool,
+    CreateCalendarEventTool,
     CreateConferenceTool,
     ListFilesTool,
     SendMailDraftTool,
@@ -70,6 +72,8 @@ def register_builtin_tools() -> None:
     registry.register(UploadKnowledgeSnippetTool())
     registry.register(SetFeatureFlagTool())
     # Office connectors (tools-first stubs)
+    registry.register(CheckCalendarTool())
+    registry.register(CreateCalendarEventTool())
     registry.register(SuggestCalendarSlotsTool())
     registry.register(SendMailDraftTool())
     registry.register(ListFilesTool())

@@ -4,6 +4,10 @@
 
 ### Added
 
+- Universal secretary tools restored for all tenants: `check_calendar`,
+  `create_calendar_event` (AVA-compatible → calendar broker check/create +
+  optional Telemost); wired into Hermes cabinet catalog alongside existing
+  suggest/mail/conference tools. Cancel/reschedule still open (no broker API yet).
 - Agent coordination register Cursor↔Codex: `docs/AGENT_CHANGE_REGISTER.md`
   (+ rule in `AGENTS.md` / `delno-api/AGENTS.md`); sync with `/opt/delno/docs/`
 - Tenant files + ПДн architecture (`docs/DELNO_TENANT_FILES_AND_PDN.md`):
