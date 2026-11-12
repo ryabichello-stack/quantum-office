@@ -1,10 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRequireAuth } from "@/lib/auth";
 import {
   apiFeatureFlags,
-  apiKnowledgeUpload,
   apiPartySuggest,
   apiPatchFeatureFlag,
   apiTenantLegalGet,
@@ -15,6 +15,7 @@ import {
   type PartySuggestion,
 } from "@/lib/api";
 import { DashboardFrame } from "@/components/DashboardFrame";
+import { CabinetCard, CabinetPage } from "@/components/CabinetPage";
 import { TelegramConnectWizard } from "@/components/TelegramConnectWizard";
 import { MaxConnectWizard } from "@/components/MaxConnectWizard";
 
@@ -27,8 +28,6 @@ export default function SettingsPage() {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [widgetEmbed, setWidgetEmbed] = useState("");
-  const [kbTitle, setKbTitle] = useState("О компании");
-  const [kbBody, setKbBody] = useState("");
   const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -91,124 +90,82 @@ export default function SettingsPage() {
     setFlags((prev) => prev.map((f) => (f.flag_key === updated.flag_key ? updated : f)));
   }
 
-  async function uploadKnowledge(e: FormEvent) {
-    e.preventDefault();
-    if (!token || kbBody.trim().length < 20) {
-      setError("Текст базы знаний — минимум 20 символов");
-      return;
-    }
-    setError("");
-    setStatus("");
-    try {
-      await apiKnowledgeUpload(token, kbTitle.trim(), kbBody.trim());
-      setStatus("База знаний обновлена — проверьте Operator");
-    } catch {
-      setError("Не удалось сохранить документ в KB");
-    }
-  }
-
   return (
     <DashboardFrame>
-      <div className="page-head">
-        <small>Настройки tenant</small>
-        <h1>Настройки</h1>
-        <p>Юридический профиль и feature flags</p>
-      </div>
-
-      <section className="settings-section panel-card">
-        <h2>Юридический профиль (ИНН)</h2>
-        {legal?.company_name && (
-          <div className="legal-box">
-            <div style={{ fontWeight: 700 }}>{legal.company_name}</div>
-            {legal.inn && <div style={{ fontSize: 12, color: "#888" }}>ИНН {legal.inn}</div>}
-            {legal.address && <div style={{ fontSize: 13, marginTop: 6 }}>{legal.address}</div>}
-            {legal.okved && <div style={{ fontSize: 12, color: "#888" }}>ОКВЭД {legal.okved}</div>}
-          </div>
-        )}
-        <form onSubmit={onSubmit} style={{ display: "grid", gap: 12, maxWidth: 480 }}>
-          <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 700 }}>
-            Компания или ИНН
-            <input
-              value={innQuery}
-              onChange={(e) => setInnQuery(e.target.value)}
-              placeholder="Название или ИНН"
-              style={{ padding: "11px 13px", borderRadius: 10, border: "1px solid var(--line)" }}
-            />
-          </label>
-          {suggestions.length > 0 && (
-            <ul className="suggest-list">
-              {suggestions.map((s) => (
-                <li key={`${s.inn}-${s.company_name}`}>
-                  <button type="button" onClick={() => s.inn && saveInn(s.inn)}>
-                    <div style={{ fontWeight: 600 }}>{s.company_name || s.value}</div>
-                    {s.inn && <div style={{ fontSize: 11, color: "#888" }}>ИНН {s.inn}</div>}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <button type="submit" className="btn-primary" style={{ width: "fit-content" }}>
-            Сохранить по ИНН
-          </button>
-        </form>
-        {status && <p className="status-ok">{status}</p>}
-        {error && <p className="status-error">{error}</p>}
-      </section>
-
-      <section className="settings-section panel-card">
-        <h2>База знаний (P2)</h2>
-        <p className="muted tight">Загрузите текст о компании — Operator и виджет начнут отвечать по нему.</p>
-        <form onSubmit={uploadKnowledge} style={{ display: "grid", gap: 12, maxWidth: 560 }}>
-          <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 700 }}>
-            Заголовок
-            <input
-              value={kbTitle}
-              onChange={(e) => setKbTitle(e.target.value)}
-              style={{ padding: "11px 13px", borderRadius: 10, border: "1px solid var(--line)" }}
-            />
-          </label>
-          <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 700 }}>
-            Текст
-            <textarea
-              value={kbBody}
-              onChange={(e) => setKbBody(e.target.value)}
-              rows={8}
-              placeholder="Услуги, цены, контакты, FAQ…"
-              style={{ padding: "11px 13px", borderRadius: 10, border: "1px solid var(--line)", resize: "vertical" }}
-            />
-          </label>
-          <button type="submit" className="btn-primary" style={{ width: "fit-content" }}>
-            Сохранить в KB
-          </button>
-        </form>
-      </section>
-
-      <section className="settings-section panel-card">
-        <h2>Виджет для сайта</h2>
-        <p className="muted tight">Вставьте код на свой сайт — site_key привязан к вашему tenant.</p>
-        {widgetEmbed ? (
-          <pre className="embed-code">{widgetEmbed}</pre>
-        ) : (
-          <p className="inbox-empty">Загрузка…</p>
-        )}
-      </section>
-
-      {token && <TelegramConnectWizard token={token} />}
-
-      {token && <MaxConnectWizard token={token} />}
-
-      <section className="settings-section panel-card">
-        <h2>Feature flags</h2>
-        {flags.length === 0 && <p className="inbox-empty">Нет флагов или нет доступа</p>}
-        {flags.map((flag) => (
-          <div key={flag.flag_key} className="flag-row">
-            <span>{flag.flag_key}</span>
-            <button type="button" className="btn-ghost" onClick={() => toggleFlag(flag)}>
-              {flag.enabled ? "Вкл" : "Выкл"}
+      <CabinetPage
+        kicker="Кабинет"
+        title="Настройки"
+        lead="Профиль компании, каналы и виджет. Базу знаний лучше вести в разделе «Знания» или через Hermes."
+        actions={
+          <Link href="/dashboard/hermes" className="hx-chip-link">
+            Настроить голосом в Hermes
+          </Link>
+        }
+      >
+        <CabinetCard title="Компания" hint="ИНН и юридический профиль">
+          {legal?.company_name ? (
+            <div className="hx-legal-box">
+              <strong>{legal.company_name}</strong>
+              {legal.inn ? <small>ИНН {legal.inn}</small> : null}
+              {legal.address ? <p>{legal.address}</p> : null}
+            </div>
+          ) : null}
+          <form className="hx-form" onSubmit={onSubmit}>
+            <label>
+              Компания или ИНН
+              <input
+                value={innQuery}
+                onChange={(e) => setInnQuery(e.target.value)}
+                placeholder="Название или ИНН"
+              />
+            </label>
+            {suggestions.length > 0 ? (
+              <ul className="hx-suggest">
+                {suggestions.map((s) => (
+                  <li key={`${s.inn}-${s.company_name}`}>
+                    <button type="button" onClick={() => s.inn && void saveInn(s.inn)}>
+                      <strong>{s.company_name || s.value}</strong>
+                      {s.inn ? <small>ИНН {s.inn}</small> : null}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <button type="submit" className="hx-primary-btn">
+              Сохранить
             </button>
+          </form>
+          {status ? <p className="hx-inline-ok">{status}</p> : null}
+          {error ? <p className="hx-inline-error">{error}</p> : null}
+        </CabinetCard>
+
+        <CabinetCard title="Виджет на сайт" hint="Вставьте код — посетители смогут писать вам">
+          {widgetEmbed ? <pre className="hx-embed">{widgetEmbed}</pre> : <p className="hx-muted">Загрузка…</p>}
+        </CabinetCard>
+
+        {token ? (
+          <CabinetCard title="Каналы" hint="Telegram и MAX">
+            <div className="hx-wizards">
+              <TelegramConnectWizard token={token} />
+              <MaxConnectWizard token={token} />
+            </div>
+          </CabinetCard>
+        ) : null}
+
+        <CabinetCard title="Флаги" hint="Технические переключатели">
+          {flags.length === 0 ? <p className="hx-muted">Нет флагов или нет доступа</p> : null}
+          <div className="hx-flag-list">
+            {flags.map((flag) => (
+              <div key={flag.flag_key} className="hx-flag-row">
+                <span>{flag.flag_key}</span>
+                <button type="button" className="hx-chip-link" onClick={() => void toggleFlag(flag)}>
+                  {flag.enabled ? "Вкл" : "Выкл"}
+                </button>
+              </div>
+            ))}
           </div>
-        ))}
-      </section>
+        </CabinetCard>
+      </CabinetPage>
     </DashboardFrame>
   );
 }

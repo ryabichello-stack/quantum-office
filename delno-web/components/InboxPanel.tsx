@@ -68,7 +68,7 @@ export function InboxPanel({
     <section className="inbox">
       <div className="inbox-title">
         <div>
-          <small>Рабочее пространство</small>
+          <small>Каналы</small>
           <b>Диалоги</b>
         </div>
         <button

@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { DashboardFrame } from "@/components/DashboardFrame";
+import { CabinetCard, CabinetPage } from "@/components/CabinetPage";
 import { useRequireAuth } from "@/lib/auth";
 import {
   apiAdminBillingOverview,
@@ -49,8 +51,7 @@ export default function BillingPage() {
     setBusy(true);
     setError("");
     try {
-      const r = await apiBillingEnsure(token);
-      setSummary(r);
+      setSummary(await apiBillingEnsure(token));
     } catch {
       setError("Не удалось выдать стартовый баланс");
     } finally {
@@ -62,79 +63,63 @@ export default function BillingPage() {
 
   return (
     <DashboardFrame>
-      <main className="cabinet-main">
-        <div className="page-head">
-          <small>Биллинг</small>
-          <h1>Затраты</h1>
-          <p>Токены и деньги по клиенту</p>
+      <CabinetPage
+        kicker="Деньги"
+        title="Затраты"
+        lead="Токены, себестоимость и сколько начислено этому кабинету."
+        actions={
+          <Link href="/dashboard/hermes" className="hx-chip-link">
+            Спросить Hermes
+          </Link>
+        }
+      >
+        <div className="hx-kpi-row">
+          <div className="hx-kpi">
+            <strong>{fmtTokens(llm?.tokens_total)}</strong>
+            <span>токенов</span>
+            <small>
+              in {fmtTokens(llm?.prompt_tokens)} · out {fmtTokens(llm?.completion_tokens)}
+            </small>
+          </div>
+          <div className="hx-kpi">
+            <strong>{fmtUsd(llm?.cost_vendor_usd)}</strong>
+            <span>себестоимость</span>
+            <small>OpenAI USD</small>
+          </div>
+          <div className="hx-kpi">
+            <strong>{fmtRub(llm?.cost_client_rub, summary?.balance.currency)}</strong>
+            <span>клиенту</span>
+            <small>
+              баланс {fmtRub(summary?.balance.token_credits, summary?.balance.currency)}
+            </small>
+          </div>
         </div>
 
-        <section className="settings-section panel-card">
-          <h2>Этот кабинет</h2>
-          <p className="muted tight">
-            Токены LLM, себестоимость OpenAI (USD) и начисление клиенту (RUB).
-          </p>
-          {error ? <p className="status-error">{error}</p> : null}
-          {summary ? (
-            <>
-              <div className="billing-kpis">
-                <div>
-                  <strong>{fmtTokens(llm?.tokens_total)}</strong>
-                  <span>токенов всего</span>
-                  <small>
-                    in {fmtTokens(llm?.prompt_tokens)} · out {fmtTokens(llm?.completion_tokens)} ·{" "}
-                    {llm?.events ?? 0} ходов
-                  </small>
-                </div>
-                <div>
-                  <strong>{fmtUsd(llm?.cost_vendor_usd)}</strong>
-                  <span>себестоимость</span>
-                  <small>vendor USD · OpenAI list</small>
-                </div>
-                <div>
-                  <strong>{fmtRub(llm?.cost_client_rub, summary.balance.currency)}</strong>
-                  <span>клиенту</span>
-                  <small>
-                    баланс {fmtRub(summary.balance.token_credits, summary.balance.currency)}
-                  </small>
-                </div>
-              </div>
-              <p>{summary.message_ru}</p>
-              <button
-                type="button"
-                className="btn-primary"
-                style={{ width: "fit-content" }}
-                disabled={busy}
-                onClick={() => void ensureCredits()}
-              >
-                {busy ? "…" : "Выдать стартовый баланс"}
-              </button>
-            </>
-          ) : (
-            <p>Загружаю…</p>
-          )}
-        </section>
+        <CabinetCard title="Этот кабинет" hint={summary?.message_ru || "Сводка по LLM"}>
+          {error ? <p className="hx-inline-error">{error}</p> : null}
+          <button type="button" className="hx-primary-btn" disabled={busy} onClick={() => void ensureCredits()}>
+            {busy ? "…" : "Выдать стартовый баланс"}
+          </button>
+        </CabinetCard>
 
         {isPlatform && overview ? (
-          <section className="settings-section panel-card">
-            <h2>Все клиенты</h2>
-            <p className="muted tight">{overview.message_ru}</p>
-            <div className="billing-kpis">
-              <div>
+          <CabinetCard title="Все клиенты" hint={overview.message_ru}>
+            <div className="hx-kpi-row compact">
+              <div className="hx-kpi">
                 <strong>{fmtTokens(overview.totals.tokens_total)}</strong>
                 <span>токенов платформы</span>
               </div>
-              <div>
+              <div className="hx-kpi">
                 <strong>{fmtUsd(overview.totals.cost_vendor_usd)}</strong>
-                <span>себестоимость всего</span>
+                <span>себестоимость</span>
               </div>
-              <div>
+              <div className="hx-kpi">
                 <strong>{fmtRub(overview.totals.cost_client_rub)}</strong>
-                <span>начислено клиентам</span>
+                <span>начислено</span>
               </div>
             </div>
-            <div className="table-wrap">
-              <table className="billing-table">
+            <div className="hx-table-wrap">
+              <table className="hx-table">
                 <thead>
                   <tr>
                     <th>Клиент</th>
@@ -149,27 +134,20 @@ export default function BillingPage() {
                     <tr key={t.tenant_id}>
                       <td>
                         <strong>{t.tenant_name || t.tenant_slug}</strong>
-                        <small>{t.tenant_slug}</small>
+                        <small className="hx-td-sub">{t.tenant_slug}</small>
                       </td>
-                      <td>
-                        {fmtTokens(t.llm.tokens_total)}
-                        <small>
-                          in {fmtTokens(t.llm.prompt_tokens)} / out {fmtTokens(t.llm.completion_tokens)}
-                        </small>
-                      </td>
+                      <td>{fmtTokens(t.llm.tokens_total)}</td>
                       <td>{fmtUsd(t.llm.cost_vendor_usd)}</td>
                       <td>{fmtRub(t.llm.cost_client_rub)}</td>
-                      <td>
-                        {fmtRub(t.balance.token_credits, t.balance.currency)}
-                      </td>
+                      <td>{fmtRub(t.balance.token_credits, t.balance.currency)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </section>
+          </CabinetCard>
         ) : null}
-      </main>
+      </CabinetPage>
     </DashboardFrame>
   );
 }

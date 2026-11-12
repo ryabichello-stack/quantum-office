@@ -1,32 +1,34 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarDays } from "lucide-react";
 import { DashboardFrame } from "@/components/DashboardFrame";
+import { CabinetCard, CabinetEmpty, CabinetPage } from "@/components/CabinetPage";
 
 export default function CalendarPage() {
   return (
     <DashboardFrame>
-      <div className="page-head">
-        <small>DELNO Кабинет</small>
-        <h1>Календарь</h1>
-        <p>Запись клиентов и слоты — в следующем релизе (E4/E8).</p>
-      </div>
-      <div className="delno-result stub-panel">
-        <CalendarDays style={{ width: 28, height: 28, color: "#bd8900", marginBottom: 12 }} />
-        <p style={{ margin: "0 0 12px" }}>
-          Сейчас DELNO принимает заявки и ведёт диалоги. Карточки записи появятся здесь, когда подключим booking.
-        </p>
-        <p style={{ margin: 0 }}>
-          <Link href="/dashboard/inbox" style={{ fontWeight: 700 }}>
-            Открыть диалоги →
-          </Link>
-          {" · "}
-          <Link href="/dashboard/operator" style={{ fontWeight: 700 }}>
-            Настроить через Operator →
-          </Link>
-        </p>
-      </div>
+      <CabinetPage
+        kicker="Скоро"
+        title="Календарь"
+        lead="Запись клиентов подключим отдельно. Пока всё управление — через Hermes."
+      >
+        <CabinetCard>
+          <CabinetEmpty
+            title="Календарь ещё не подключён"
+            lead="Когда будет готово — слоты появятся здесь в том же стиле, что и Hermes."
+            action={
+              <div className="hx-suggestions" style={{ marginTop: 16 }}>
+                <Link href="/dashboard/hermes" className="hx-chip-link">
+                  Открыть Hermes
+                </Link>
+                <Link href="/dashboard/leads" className="hx-chip-link">
+                  Смотреть заявки
+                </Link>
+              </div>
+            }
+          />
+        </CabinetCard>
+      </CabinetPage>
     </DashboardFrame>
   );
 }

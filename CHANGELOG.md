@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Cabinet UX: one Hermes-language shell for all pages — labeled nav
+  (Hermes / Диалоги / Заявки / Знания / Затраты / Настройки), shared
+  `CabinetPage` chrome; home/onboarding/operator → Hermes; stubs cleaned
+
 ### Fixed
 
 - Hermes: SIP/Mango secrets via secure form (not chat paste);
