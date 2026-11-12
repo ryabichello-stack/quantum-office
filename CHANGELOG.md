@@ -4,6 +4,11 @@
 
 ### Added
 
+- Restored archived Quantum Office MCP (`office-mcp` @ `9f715c4`, 90 tools)
+  into DELNO: vendored `third_party/quantum_office_mcp`, Hermes bridge
+  `qo_mcp_bridge` (~83 live tools → qo-* brokers), catalog doc
+  `docs/QUANTUM_OFFICE_MCP_CATALOG.md`. API joins `quantum-office_default`
+  network; NO_PROXY includes qo-* hosts.
 - Universal secretary tools restored for all tenants: `check_calendar`,
   `create_calendar_event` (AVA-compatible → calendar broker check/create +
   optional Telemost); wired into Hermes cabinet catalog alongside existing

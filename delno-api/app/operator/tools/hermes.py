@@ -91,12 +91,12 @@ class HermesCapabilitiesTool:
     parameters_schema = {"type": "object", "properties": {}}
 
     def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult:
-        from app.operator.agent import CABINET_LLM_TOOLS
+        from app.operator.agent import _cabinet_llm_tools
         from app.operator.tools.registry import registry
         from app.services.connectors import list_tenant_connector_readiness
 
         connectors = list_tenant_connector_readiness(db, ctx)
-        allowed = set(CABINET_LLM_TOOLS)
+        allowed = set(_cabinet_llm_tools())
         tools = [
             {"name": t["name"], "confirmation_class": t["confirmation_class"]}
             for t in registry.list_catalog() if t["name"] in allowed

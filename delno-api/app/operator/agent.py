@@ -95,6 +95,25 @@ CABINET_LLM_TOOLS = (
     "billing.summary",
 )
 
+# Extended at runtime with archived Quantum Office MCP tools (see qo_mcp_bridge).
+def _cabinet_llm_tools() -> tuple[str, ...]:
+    try:
+        from app.operator.tools.qo_mcp_bridge import qo_mcp_cabinet_tools
+
+        extra = qo_mcp_cabinet_tools()
+        if not extra:
+            return CABINET_LLM_TOOLS
+        core = list(CABINET_LLM_TOOLS)
+        seen = set(core)
+        for name in extra:
+            if name not in seen:
+                core.append(name)
+                seen.add(name)
+        return tuple(core)
+    except Exception:
+        return CABINET_LLM_TOOLS
+
+
 HERMES_AGENT_SYSTEM = (
     "Ты Hermes — автономный ИИ-агент офиса DELNO для этого tenant. "
     "Владелец формулирует цель обычным языком. Ты сам понимаешь задачу, "
@@ -116,6 +135,9 @@ HERMES_AGENT_SYSTEM = (
     "(SIP: mango_sip; диски: files_yadisk|mailru|gdrive|onedrive; Google/OneDrive с согласием);\n"
     "• секретарь: check_calendar → create_calendar_event (встреча + Telemost), "
     "suggest_calendar_slots, send_mail_draft, create_conference, list_files;\n"
+    "• Quantum Office MCP (полный каталог): telephony.*, campaign.*, kb.*, "
+    "calendar.*/conference.*, messenger.*/telegram.*/max.*, outreach.*, "
+    "files.*/mailru.*, mail.send, crm.* — живые qo-* брокеры;\n"
     "• billing.summary — баланс.\n"
     "Правила:\n"
     "• Секреты в чат не проси — только credentials.open_form.\n"
@@ -914,7 +936,7 @@ def _try_cabinet_llm_tools(
 
         register_builtin_tools()
 
-    tools = registry.list_openai_specs(names=list(CABINET_LLM_TOOLS))
+    tools = registry.list_openai_specs(names=list(_cabinet_llm_tools()))
     if not tools:
         err = "cabinet_tools_empty"
         reply = _with_debug_failures(

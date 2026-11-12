@@ -1,0 +1,13 @@
+[project]
+name = "quantum-office-mcp"
+version = "0.1.0"
+description = "MCP stdio bridge for Quantum Labs office stack"
+requires-python = ">=3.10"
+readme = "README.md"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

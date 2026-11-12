@@ -11,6 +11,7 @@ COPY alembic ./alembic
 COPY alembic.ini ./alembic.ini
 COPY scripts ./scripts
 COPY deploy ./deploy
+COPY third_party ./third_party
 
 EXPOSE 8020
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8020"]

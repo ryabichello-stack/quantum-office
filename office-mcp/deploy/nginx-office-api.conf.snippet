@@ -1,0 +1,82 @@
+# Public HTTPS API paths for remote MCP / Grok (a.47z.ru).
+# Append inside the HTTPS server block — BEFORE any catch-all that redirects to /login.
+# Auth is enforced by each app (X-Console-Token / X-Webhook-Token / Bearer) — not by site session.
+#
+# After edit:
+#   nginx -t && systemctl reload nginx
+# Smoke:
+#   curl -sf https://a.47z.ru/_ava_files/health
+#   curl -sf https://a.47z.ru/_ava_knowledge/health
+
+# --- already typically present (keep if exists) ---
+# /_quantum_console/ → 8013
+# /_ava_outreach/    → 8012
+# /_ava_secretary/   → 8011
+
+location /_ava_files/ {
+    proxy_pass http://127.0.0.1:8015/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 120s;
+    client_max_body_size 32m;
+}
+location = /_ava_files { return 301 /_ava_files/; }
+
+location /_ava_knowledge/ {
+    proxy_pass http://127.0.0.1:8017/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 120s;
+}
+location = /_ava_knowledge { return 301 /_ava_knowledge/; }
+
+location /_ava_calendar/ {
+    proxy_pass http://127.0.0.1:8014/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 60s;
+}
+location = /_ava_calendar { return 301 /_ava_calendar/; }
+
+location /_ava_conference/ {
+    proxy_pass http://127.0.0.1:8016/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 60s;
+}
+location = /_ava_conference { return 301 /_ava_conference/; }
+
+location /_ava_sheets_campaign/ {
+    proxy_pass http://127.0.0.1:8018/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 120s;
+}
+location = /_ava_sheets_campaign { return 301 /_ava_sheets_campaign/; }
+
+# Single entry for Grok / remote agents (Bearer OFFICE_MCP_API_KEY)
+location /_office_mcp/ {
+    proxy_pass http://127.0.0.1:8021/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 180s;
+}
+location = /_office_mcp { return 301 /_office_mcp/; }

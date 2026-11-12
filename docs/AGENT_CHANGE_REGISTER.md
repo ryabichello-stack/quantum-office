@@ -127,3 +127,11 @@
 - Изменение: Asterisk связывает входящий Mango-вызов с конкретной регистрацией через `line=yes` и `endpoint=mango-trunk`; одинаковые IP-идентификаторы Mango удалены. AGI передаёт endpoint как `trunk_id` в DELNO. API выбирает только DID, привязанные к этому транку, и отклоняет транк без привязки или разделяемый между tenant. Регистрация чужого номера на уже занятом транке блокируется. Резервное правило «единственный номер во всей системе» удалено; при отсутствии DID допустим только один активный номер в идентифицированном транке.
 - Проверка: официальный механизм `line`/`endpoint` сверён с документацией Asterisk; тест API с двумя tenant и разными транками подтвердил изоляцию и отказ при попытке разделить транк. После `pjsip reload` регистрация Mango стала `Registered`; новый реальный входящий звонок создал/завершил сессию DELNO, а владелец услышал приветствие. IP identify Mango отсутствует в работающей конфигурации.
 - Статус: действующая линия работает. Для каждого нового Mango-аккаунта нужен отдельный SIP registration с `line=yes`, собственный endpoint и привязанный к нему номер tenant. Если провайдер не вернёт `line` для нового аккаунта, входящий вызов будет отклонён, а не направлен в чужой tenant.
+
+### Cursor — archive MCP inventory + restore
+- Extracted office-mcp catalog (90 tools) → `docs/QUANTUM_OFFICE_MCP_CATALOG.md` from commit `9f715c4`.
+- AVA `/root/ava/src/mcp` is framework only (weather/aviation sample servers), not Quantum Office MCP.
+- Restored package under `office-mcp/` + vendored `delno-api/third_party/quantum_office_mcp`.
+- Hermes: `qo_mcp_bridge` registers ~83 tools into registry/CABINET (skips calls.*/line.* aliases).
+- Deploy needs: `CONSOLE_TOKEN`, `WEBHOOK_TOKEN`/`OFFICE_WEBHOOK_TOKEN`, `OUTREACH_UI_TOKEN` in `/opt/delno/.env`;
+  api on `quantum-office_default`; NO_PROXY must list qo-* (HTTP_PROXY otherwise 503s).
