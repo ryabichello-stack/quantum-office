@@ -550,8 +550,9 @@ export function HermesStage({ token }: { token: string }) {
     }
   }
 
-  function onMicToggle(e: ReactPointerEvent<HTMLButtonElement>) {
+  function onMicToggle(e: React.SyntheticEvent) {
     e.preventDefault();
+    e.stopPropagation();
     clearDictateError();
     toggleDictate(messageRef.current);
   }
@@ -901,7 +902,7 @@ export function HermesStage({ token }: { token: string }) {
                         disabled={sending || !dictateSupported}
                         aria-label={dictating ? "Остановить диктовку" : "Диктовка"}
                         aria-pressed={dictating}
-                        onPointerDown={onMicToggle}
+                        onClick={onMicToggle}
                         onContextMenu={(e) => e.preventDefault()}
                         className="hx-tool-btn touch-none"
                       />

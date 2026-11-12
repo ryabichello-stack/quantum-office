@@ -11,6 +11,9 @@
 
 ### Fixed
 
+- Hermes: «пришли форму» / «введу логин» open SIP form (not KB dump);
+  «ничего не понимаю» → step-by-step coach; cabinet chat skips RAG for
+  dialogue; mic prefers server Whisper + reliable click handler
 - Hermes: stop re-asking SIP form after vault save; status questions
   acknowledge saved credentials; phone setup needs DID + SIP
 - Root cause: vault SIP was never written to Asterisk (placeholder

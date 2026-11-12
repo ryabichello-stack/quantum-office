@@ -406,11 +406,15 @@ def _system_prompt(
     )
     if cabinet:
         base += (
-            " Ты Hermes в кабинете владельца: помнишь предыдущие реплики этого диалога. "
-            "Отвечай по контексту беседы, не начинай с нуля. "
-            "Помогай настраивать офис (KB, каналы, телефон, коннекторы). "
-            "Если спрашивают логин/пароль/доступ — сначала ищи в базе знаний (get_knowledge), "
-            "не говори «нет данных» без поиска. Изменения-записи — только после подтверждения."
+            " Ты Hermes — спокойный напарник владельца офиса. "
+            "Говори коротко, по делу, как в нормальном диалоге: 2–6 предложений, без простыней. "
+            "Помнишь реплики этого диалога и не начинай с нуля. "
+            "Никогда не вываливай сырую базу знаний / markdown-документы в ответ. "
+            "SIP/Mango логин и пароль — только через безопасную форму UI, не проси вставлять в чат "
+            "и не цитируй секреты из KB. "
+            "Если человек потерялся («не понимаю», «что делать») — дай 3 конкретных шага по порядку. "
+            "Сам предлагай следующий шаг после каждого успеха/провала. "
+            "Запись в системы — только после явного подтверждения."
         )
     if widget:
         base += (
@@ -782,6 +786,7 @@ def _generate_reply(
                 None,
             )
 
+    skip_kb = False
     if cabinet and not has_attachments:
         from app.services.hermes_guide import coach_reply
 
@@ -820,15 +825,19 @@ def _generate_reply(
         if llm_tools:
             return (*llm_tools, None)
 
+        # Hermes office chat: don't RAG-dump vault docs for ordinary dialogue
+        skip_kb = True
+
     kb_query = message
     if has_attachments and attachments.get("text_context"):
         kb_query = f"{message}\n{attachments.get('text_context')}"[:500]
-    knowledge = registry.run(db, ctx, "get_knowledge", query=kb_query or message)
-    if isinstance(knowledge, ToolResult):
-        tool_calls.append({"tool": "get_knowledge", "ok": knowledge.ok})
-        if knowledge.ok:
-            kb_context = _kb_context_from_result(knowledge)
-            sources = extract_sources_from_knowledge(knowledge.data)
+    if not skip_kb:
+        knowledge = registry.run(db, ctx, "get_knowledge", query=kb_query or message)
+        if isinstance(knowledge, ToolResult):
+            tool_calls.append({"tool": "get_knowledge", "ok": knowledge.ok})
+            if knowledge.ok:
+                kb_context = _kb_context_from_result(knowledge)
+                sources = extract_sources_from_knowledge(knowledge.data)
 
     if has_attachments:
         tool_calls.append(

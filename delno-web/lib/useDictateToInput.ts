@@ -47,7 +47,7 @@ function errorMessage(code?: string): string {
 
 /**
  * Click-to-toggle dictation.
- * Prefer browser SpeechRecognition; on failure/unsupported use MediaRecorder → server Whisper STT.
+ * Prefer server Whisper STT (reliable on Safari/Chrome); browser SpeechRecognition as secondary.
  */
 export function useDictateToInput(
   onPartialOrFinal: (text: string, isFinal: boolean) => void,
@@ -260,9 +260,14 @@ export function useDictateToInput(
         stop();
         return;
       }
+      // Server Whisper first — browser SpeechRecognition often fails silently on HTTPS apps.
+      if (tokenRef.current && navigator.mediaDevices?.getUserMedia) {
+        void startServer(currentFieldValue);
+        return;
+      }
       startBrowser(currentFieldValue);
     },
-    [dictating, startBrowser, stop],
+    [dictating, startBrowser, startServer, stop],
   );
 
   const clearError = useCallback(() => setError(""), []);

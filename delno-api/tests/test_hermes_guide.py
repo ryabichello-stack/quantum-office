@@ -75,3 +75,22 @@ def test_coach_does_not_steal_calls_list():
     db = MagicMock()
     ctx = MagicMock()
     assert coach_reply(db, ctx, "Какие звонки были сегодня?") is None
+
+
+def test_coach_lost_user_steps():
+    db = MagicMock()
+    ctx = MagicMock()
+    with (
+        patch("app.services.hermes_guide.phone_provision.list_phones") as phones,
+        patch("app.services.hermes_guide.hermes_ops.office_setup_status") as setup,
+        patch("app.services.hermes_guide.list_secret_status") as secrets,
+        patch("app.services.sip_probe.probe_registration") as probe,
+    ):
+        phones.return_value = {"items": [{"e164": "+79699665899", "status": "active"}]}
+        setup.return_value = {"next_steps": [{"id": "telegram", "title": "Telegram", "hint": "токен"}]}
+        secrets.return_value = {"items": [{"kind": "mango_sip", "configured": False}]}
+        probe.return_value = {"ok": False, "status": "rejected"}
+        out = coach_reply(db, ctx, "Я ничего не понимаю, скажи что нужно делать")
+    assert out is not None
+    assert "по порядку" in out["reply"].lower() or "шаг" in out["reply"].lower()
+    assert out.get("pending_credential_form")

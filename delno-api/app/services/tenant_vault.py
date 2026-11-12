@@ -91,12 +91,30 @@ def wants_sip_secret_form(message: str) -> bool:
         "mango sip",
         "sip mango",
         "дай форму",
-        "форму для парол",
+        "дай-ка форму",
+        "пришли форму",
+        "скинь форму",
+        "открой форму",
+        "покажи форму",
+        "форму для",
+        "форму sip",
+        "форму логин",
         "безопасн",
+        "введу логин",
+        "введу пароль",
+        "ввести логин",
+        "ввести пароль",
     )
     if any(k in lower for k in keys):
         return True
+    # «форму» + (логин|пароль|sip|mango|телефон)
+    if "форм" in lower and any(
+        k in lower for k in ("логин", "парол", "sip", "mango", "манго", "телефон", "секрет", "введ")
+    ):
+        return True
     if "пароль" in lower and any(k in lower for k in ("sip", "mango", "манго", "линии", "телефон")):
+        return True
+    if "логин" in lower and any(k in lower for k in ("sip", "mango", "манго", "телефон", "форм", "секрет")):
         return True
     return False
 

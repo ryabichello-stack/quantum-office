@@ -159,6 +159,62 @@ def _voice_block(db: Session, ctx: TenantContext, message: str) -> dict[str, Any
     }
 
 
+def _lost_user_guide(db: Session, ctx: TenantContext) -> dict[str, Any]:
+    """Plain-language next steps when the owner is confused."""
+    from app.services.sip_probe import probe_registration
+
+    setup = hermes_ops.office_setup_status(db, ctx)
+    sip = _sip_status(db, ctx)
+    probe = probe_registration()
+    phones = phone_provision.list_phones(db, ctx).get("items") or []
+    active = [p for p in phones if p.get("status") == "active"]
+
+    lines = [
+        "Ок, без воды — вот что делаем по порядку.",
+        "",
+    ]
+    step = 1
+    if not active:
+        lines.append(f"{step}) Привязать телефонный номер (DID). Скажите: «привяжи номер +7…».")
+        step += 1
+    else:
+        lines.append(f"{step}) Номер уже есть: {active[0].get('e164')} — этот шаг закрыт.")
+        step += 1
+    if not sip.get("configured"):
+        lines.append(
+            f"{step}) Сохранить SIP Mango в безопасной форме (логин вида `номер/сотрудник` + SIP-пароль). "
+            "Скажите «пришли форму» — открою форму, в чат пароль не пишите."
+        )
+        step += 1
+    elif not probe.get("ok"):
+        lines.append(
+            f"{step}) SIP в сейфе есть, но линия {probe.get('status') or 'не Registered'}. "
+            "Пересохраните полный логин/пароль в форме или скажите «дай задание Cursor»."
+        )
+        step += 1
+    else:
+        lines.append(f"{step}) Линия Registered — можно тестовый звонок.")
+        step += 1
+    nxt = (setup.get("next_steps") or [None])[0]
+    if nxt and nxt.get("id") not in ("phone",):
+        lines.append(f"{step}) Дальше по офису: {nxt.get('title')} — {nxt.get('hint')}.")
+    lines.append("")
+    lines.append("Напишите «пришли форму» или «тестовый звонок» — пойдём в выбранный шаг.")
+
+    out: dict[str, Any] = {
+        "reply": "\n".join(lines),
+        "tool_calls": [{"tool": "hermes.guide.lost", "ok": True}],
+        "suggested_actions": [
+            {"title": "Форма SIP", "text": "Пришли форму, я введу логин"},
+            {"title": "Статус линии", "text": "Телефон уже настроен?"},
+            {"title": "Что дальше", "text": "Статус сетапа"},
+        ],
+    }
+    if not sip.get("configured") or not probe.get("ok"):
+        out["pending_credential_form"] = credential_form_spec("mango_sip")
+    return out
+
+
 def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any] | None:
     lower = (message or "").lower().strip()
     if not lower:
@@ -186,6 +242,24 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
         )
     ):
         return None
+
+    lost_cues = (
+        "ничего не понимаю",
+        "не понимаю",
+        "что делать",
+        "что мне делать",
+        "подскажи что",
+        "с чего начать",
+        "помоги разобраться",
+        "я запутался",
+        "я запуталась",
+        "объясни по шагам",
+        "по шагам",
+        "что нужно сделать",
+        "что дальше делать",
+    )
+    if any(c in lower for c in lost_cues):
+        return _lost_user_guide(db, ctx)
 
     voice = _voice_block(db, ctx, message)
     if voice:

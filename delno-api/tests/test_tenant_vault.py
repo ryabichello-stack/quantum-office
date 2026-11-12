@@ -27,6 +27,8 @@ def test_detect_credential_paste():
     assert looks_like_credential_paste("400348777/garik\nmD0Q^m8HsBgK")
     assert not looks_like_credential_paste("какой пароль от почты?")
     assert wants_sip_secret_form("Открой безопасную форму SIP-пароля Mango")
+    assert wants_sip_secret_form("так пришли форму я введу логин")
+    assert wants_sip_secret_form("скинь форму")
     parsed = parse_credential_paste("400348777/garik\nmD0Q^m8HsBgK")
     assert parsed["login"] == "400348777/garik"
     assert parsed["password"] == "mD0Q^m8HsBgK"
