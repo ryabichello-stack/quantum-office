@@ -45,8 +45,10 @@ def _http_json(
     if payload is not None:
         data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers=req_headers, method=method)
+    # Never send tenant Hermes calls through corporate HTTP(S)_PROXY.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with opener.open(req, timeout=timeout) as resp:
             raw = resp.read().decode("utf-8")
             body: Any = json.loads(raw) if raw.strip() else {}
             return int(resp.status), body
