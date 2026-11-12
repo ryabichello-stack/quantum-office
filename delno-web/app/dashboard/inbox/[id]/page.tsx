@@ -36,11 +36,13 @@ export default function InboxThreadPage() {
       .catch(() => setError("Не удалось загрузить диалог"));
   }, [token, conversationId]);
 
-  const summaryBlock = detail?.summary ? (
+  const call = detail?.call_session;
+  const summaryText = detail?.summary || call?.summary || null;
+  const summaryBlock = summaryText ? (
     <DelnoResultCard
-      subtitle="Итог разговора"
-      body={detail.summary}
-      tags={detail.tags}
+      subtitle={call ? "Память звонка" : "Итог разговора"}
+      body={summaryText}
+      tags={detail?.tags}
     />
   ) : null;
 
@@ -56,12 +58,19 @@ export default function InboxThreadPage() {
 
       <VoicePlayback
         recordingUrl={detail?.recording_url}
-        durationSec={detail?.recording_duration_sec}
+        durationSec={detail?.recording_duration_sec ?? call?.duration_sec ?? undefined}
       />
 
       {summaryBlock}
 
-      {detail?.tags && detail.tags.length > 0 && !detail.summary && (
+      {call?.transcript ? (
+        <details className="call-transcript">
+          <summary>Транскрипт звонка</summary>
+          <pre className="call-transcript-body">{call.transcript}</pre>
+        </details>
+      ) : null}
+
+      {detail?.tags && detail.tags.length > 0 && !summaryText && (
         <DelnoResultCard body="Краткий итог пока не сформирован." tags={detail.tags} />
       )}
 

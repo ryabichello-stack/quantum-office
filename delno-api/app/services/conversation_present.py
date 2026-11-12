@@ -252,4 +252,41 @@ def get_conversation_detail(db: Session, tenant_id: uuid.UUID, conversation_id: 
         .filter(Message.conversation_id == conv.id, Message.tenant_id == tenant_id)
         .count()
     )
-    return serialize_conversation_detail(conv, lead=lead, message_count=message_count)
+    detail = serialize_conversation_detail(conv, lead=lead, message_count=message_count)
+
+    # Live phone memory: attach CallSession when this is a call thread
+    if "phone" in (conv.channel or "").lower():
+        from app.models.call_session import CallSession
+
+        session = (
+            db.query(CallSession)
+            .filter(
+                CallSession.tenant_id == tenant_id,
+                CallSession.conversation_id == conv.id,
+            )
+            .order_by(CallSession.created_at.desc())
+            .first()
+        )
+        if session:
+            detail["call_session"] = {
+                "id": str(session.id),
+                "direction": session.direction,
+                "status": session.status,
+                "from_e164": session.from_e164,
+                "to_e164": session.to_e164,
+                "did_e164": session.did_e164,
+                "outcome": session.outcome,
+                "duration_sec": session.duration_sec,
+                "summary": session.summary,
+                "has_transcript": bool(session.transcript),
+                "transcript": session.transcript,
+                "started_at": session.started_at.isoformat() if session.started_at else None,
+                "ended_at": session.ended_at.isoformat() if session.ended_at else None,
+            }
+            if not detail.get("summary") and session.summary:
+                detail["summary"] = session.summary
+            if not detail.get("recording_url") and (session.meta or {}).get("recording_url"):
+                detail["recording_url"] = session.meta.get("recording_url")
+            if detail.get("call_status") is None and session.status == "ended":
+                detail["call_status"] = "completed" if (session.outcome or "") != "failed" else "failed"
+    return detail
