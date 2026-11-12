@@ -160,59 +160,307 @@ def _voice_block(db: Session, ctx: TenantContext, message: str) -> dict[str, Any
 
 
 def _lost_user_guide(db: Session, ctx: TenantContext) -> dict[str, Any]:
-    """Plain-language next steps when the owner is confused."""
+    """Plain-language next steps when the owner is confused — any new tenant."""
     from app.services.sip_probe import probe_registration
+    from app.services.telephony_script import get_telephony_config
 
     setup = hermes_ops.office_setup_status(db, ctx)
     sip = _sip_status(db, ctx)
     probe = probe_registration()
     phones = phone_provision.list_phones(db, ctx).get("items") or []
     active = [p for p in phones if p.get("status") == "active"]
+    script = get_telephony_config(db, ctx)
+    checks = setup.get("checks") or {}
+    kb_ok = bool((checks.get("kb") or {}).get("ok"))
 
     lines = [
-        "Ок, без воды — вот что делаем по порядку.",
+        "Ок, с нуля — делаем по порядку. Я подскажу каждый шаг.",
         "",
     ]
     step = 1
-    if not active:
-        lines.append(f"{step}) Привязать телефонный номер (DID). Скажите: «привяжи номер +7…».")
+    if not kb_ok:
+        lines.append(
+            f"{step}) Знания о компании. Скачайте шаблон в «Знания» или скажите "
+            "«дай шаблон профиля компании» / надиктуйте факты — сохраню в базу."
+        )
         step += 1
     else:
-        lines.append(f"{step}) Номер уже есть: {active[0].get('e164')} — этот шаг закрыт.")
+        lines.append(f"{step}) База знаний уже есть — этот шаг закрыт.")
+        step += 1
+    if not active:
+        lines.append(f"{step}) Привязать номер (DID). Скажите: «привяжи номер +7…».")
+        step += 1
+    else:
+        lines.append(f"{step}) Номер есть: {active[0].get('e164')}.")
         step += 1
     if not sip.get("configured"):
         lines.append(
-            f"{step}) Сохранить SIP Mango в безопасной форме (логин вида `номер/сотрудник` + SIP-пароль). "
-            "Скажите «пришли форму» — открою форму, в чат пароль не пишите."
+            f"{step}) SIP в безопасной форме (логин + пароль). Скажите «пришли форму» — в чат пароль не пишите."
         )
         step += 1
     elif not probe.get("ok"):
         lines.append(
-            f"{step}) SIP в сейфе есть, но линия {probe.get('status') or 'не Registered'}. "
-            "Пересохраните полный логин/пароль в форме или скажите «дай задание Cursor»."
+            f"{step}) SIP сохранён, но линия {probe.get('status') or 'не Registered'}. "
+            "Пересохраните форму или «дай задание Cursor»."
         )
         step += 1
     else:
-        lines.append(f"{step}) Линия Registered — можно тестовый звонок.")
+        lines.append(f"{step}) Линия Registered.")
+        step += 1
+    if not script.get("configured"):
+        lines.append(
+            f"{step}) Сценарий секретаря: «предложи сценарий из базы знаний», "
+            "или надиктуйте своими словами и скажите «формализуй сценарий» / «сохрани сценарий»."
+        )
+        step += 1
+    else:
+        lines.append(f"{step}) Сценарий уже сохранён. Tools: {', '.join(script.get('tools') or [])}.")
         step += 1
     nxt = (setup.get("next_steps") or [None])[0]
-    if nxt and nxt.get("id") not in ("phone",):
-        lines.append(f"{step}) Дальше по офису: {nxt.get('title')} — {nxt.get('hint')}.")
+    if nxt and nxt.get("id") not in ("phone", "telephony_script", "kb"):
+        lines.append(f"{step}) Дальше: {nxt.get('title')} — {nxt.get('hint')}.")
     lines.append("")
-    lines.append("Напишите «пришли форму» или «тестовый звонок» — пойдём в выбранный шаг.")
+    lines.append("Напишите, с какого шага идём — или «статус сетапа».")
 
     out: dict[str, Any] = {
         "reply": "\n".join(lines),
         "tool_calls": [{"tool": "hermes.guide.lost", "ok": True}],
         "suggested_actions": [
+            {"title": "Шаблон компании", "text": "Дай шаблон профиля компании"},
+            {"title": "Сценарий", "text": "Предложи сценарий из базы знаний"},
             {"title": "Форма SIP", "text": "Пришли форму, я введу логин"},
-            {"title": "Статус линии", "text": "Телефон уже настроен?"},
-            {"title": "Что дальше", "text": "Статус сетапа"},
+            {"title": "Статус", "text": "Статус сетапа"},
         ],
     }
     if not sip.get("configured") or not probe.get("ok"):
         out["pending_credential_form"] = credential_form_spec("mango_sip")
     return out
+
+
+def _script_coach(db: Session, ctx: TenantContext, message: str) -> dict[str, Any] | None:
+    """Onboarding: company templates + telephony script/tools for any tenant."""
+    from app.services.onboarding_templates import get_template, list_templates
+    from app.services.telephony_script import (
+        AVAILABLE_TOOLS,
+        formalize_rough_script,
+        get_telephony_config,
+        propose_script_from_knowledge,
+        save_telephony_script,
+        set_telephony_tools,
+    )
+
+    lower = (message or "").lower().strip()
+    cfg = get_telephony_config(db, ctx)
+
+    if any(
+        k in lower
+        for k in (
+            "дай шаблон",
+            "скачай шаблон",
+            "шаблон профиля",
+            "шаблон компании",
+            "шаблон сценария",
+            "шаблон секретаря",
+        )
+    ):
+        items = list_templates(include_examples=True)
+        want_script = "сценари" in lower or "секретар" in lower or "телефон" in lower
+        tid = "telephony-script" if want_script else "company-profile"
+        tpl = get_template(tid)
+        if not tpl:
+            return {
+                "reply": "Шаблоны временно недоступны на сервере. Откройте раздел «Знания» в кабинете.",
+                "tool_calls": [{"tool": "hermes.templates", "ok": False}],
+            }
+        lines = [
+            f"Шаблон «{tpl['title']}» — заполните и загрузите в Знания, либо надиктуйте мне содержимое.",
+            "",
+            "Также доступны:",
+        ]
+        for it in items:
+            mark = "← этот" if it["id"] == tid else ""
+            lines.append(f"- {it['title']} (`{it['id']}`) {mark}".rstrip())
+        lines.append("")
+        lines.append("Скачать в кабинете: Знания → Шаблоны. Ниже текст шаблона:")
+        lines.append("")
+        lines.append(tpl["body"][:6000])
+        return {
+            "reply": "\n".join(lines),
+            "tool_calls": [{"tool": "hermes.templates", "ok": True, "template_id": tid}],
+            "suggested_actions": [
+                {"title": "Сценарий", "text": "Дай шаблон сценария секретаря"},
+                {"title": "Предложи сценарий", "text": "Предложи сценарий из базы знаний"},
+            ],
+        }
+
+    if any(
+        k in lower
+        for k in (
+            "предложи сценарий",
+            "сгенерируй сценарий",
+            "сценарий из базы",
+            "сценарий из знаний",
+            "черновик сценария",
+        )
+    ):
+        draft = propose_script_from_knowledge(db, ctx)
+        return {
+            "reply": draft["message_ru"] + "\n\n" + draft["draft"][:7000],
+            "tool_calls": [{"tool": "hermes.telephony.propose", "ok": True}],
+            "suggested_actions": [
+                {"title": "Сохранить", "text": "Сохрани сценарий"},
+                {"title": "Tools", "text": "Какие tools можно включить"},
+            ],
+            "_pending_script_draft": draft["draft"],
+        }
+
+    if any(k in lower for k in ("формализуй сценарий", "оформи сценарий", "структурируй сценарий")):
+        # Strip the cue; remainder is owner dictation
+        rough = message
+        for cue in ("формализуй сценарий", "оформи сценарий", "структурируй сценарий"):
+            idx = lower.find(cue)
+            if idx >= 0:
+                rough = message[idx + len(cue) :].strip(" :\n") or message
+                break
+        if len(rough.strip()) < 40:
+            return {
+                "reply": (
+                    "Надиктуйте или вставьте текст сценария после фразы «формализуй сценарий …». "
+                    "Я приведу к шаблону и предложу сохранить."
+                ),
+                "tool_calls": [{"tool": "hermes.telephony.formalize", "ok": False}],
+            }
+        formal = formalize_rough_script(rough)
+        saved = save_telephony_script(db, ctx, script=formal, source="hermes.formalize")
+        return {
+            "reply": (
+                f"{saved.get('message_ru')}\n\nВот формализованный сценарий:\n\n{formal[:6500]}"
+            ),
+            "tool_calls": [{"tool": "hermes.telephony.formalize", "ok": bool(saved.get("ok"))}],
+            "suggested_actions": [
+                {"title": "Tools", "text": "Включи календарь и письмо в сценарии"},
+                {"title": "Статус", "text": "Статус сетапа"},
+            ],
+        }
+
+    if any(k in lower for k in ("сохрани сценарий", "сохранить сценарий", "зафиксируй сценарий")):
+        # Prefer body after cue; else keep existing draft request
+        body = message
+        for cue in ("сохрани сценарий", "сохранить сценарий", "зафиксируй сценарий"):
+            idx = lower.find(cue)
+            if idx >= 0:
+                body = message[idx + len(cue) :].strip(" :\n")
+                break
+        if len(body) < 40:
+            if cfg.get("configured"):
+                return {
+                    "reply": "Сценарий уже сохранён. Чтобы заменить — пришлите новый текст после «сохрани сценарий».",
+                    "tool_calls": [{"tool": "hermes.telephony.save", "ok": True, "already": True}],
+                }
+            draft = propose_script_from_knowledge(db, ctx)
+            saved = save_telephony_script(db, ctx, script=draft["draft"], source="hermes.propose_save")
+            return {
+                "reply": saved.get("message_ru") + "\n\nСохранил черновик из знаний/шаблона. Можете править.",
+                "tool_calls": [{"tool": "hermes.telephony.save", "ok": bool(saved.get("ok"))}],
+            }
+        saved = save_telephony_script(db, ctx, script=body, source="hermes.save")
+        return {
+            "reply": saved.get("message_ru") or "Сохранено.",
+            "tool_calls": [{"tool": "hermes.telephony.save", "ok": bool(saved.get("ok"))}],
+        }
+
+    if any(
+        k in lower
+        for k in (
+            "какие tools",
+            "какие тулзы",
+            "tools для",
+            "тулы для",
+            "подключи tools",
+            "включи календарь",
+            "включи письмо",
+            "tools сценари",
+        )
+    ):
+        catalog = "\n".join(f"- `{t['id']}` — {t['title']}: {t['hint']}" for t in AVAILABLE_TOOLS)
+        current = cfg.get("tools") or []
+        # Heuristic enable from message
+        enable: list[str] = list(current)
+        if "календар" in lower:
+            for t in ("check_calendar", "create_calendar_event"):
+                if t not in enable:
+                    enable.append(t)
+        if "письм" in lower or "email" in lower or "презентац" in lower:
+            for t in ("send_welcome_email", "send_email"):
+                if t not in enable:
+                    enable.append(t)
+        if "вкс" in lower or "телемост" in lower or "конференц" in lower:
+            if "create_conference" not in enable:
+                enable.append("create_conference")
+        if "баз" in lower or "знан" in lower:
+            if "get_company_knowledge" not in enable:
+                enable.insert(0, "get_company_knowledge")
+
+        if enable != current and cfg.get("configured"):
+            upd = set_telephony_tools(db, ctx, tools=enable)
+            return {
+                "reply": (
+                    f"{upd.get('message_ru')}\n\nДоступный каталог:\n{catalog}\n\n"
+                    "Скажите точнее («включи только календарь и знания»), если нужно сузить."
+                ),
+                "tool_calls": [{"tool": "hermes.telephony.tools", "ok": True, "tools": enable}],
+            }
+        status = "Сценарий ещё не сохранён — сначала «сохрани сценарий»." if not cfg.get("configured") else (
+            "Сейчас включено: " + (", ".join(current) if current else "—")
+        )
+        return {
+            "reply": f"{status}\n\nКаталог tools:\n{catalog}",
+            "tool_calls": [{"tool": "hermes.telephony.tools", "ok": True, "list_only": True}],
+            "suggested_actions": [
+                {"title": "Календарь+почта", "text": "Включи календарь и письмо в сценарии"},
+                {"title": "Сохранить сценарий", "text": "Сохрани сценарий"},
+            ],
+        }
+
+    if any(
+        k in lower
+        for k in (
+            "сценарий секретар",
+            "сценарий телефон",
+            "сценарий авы",
+            "сценарий ava",
+            "где сценарий",
+            "покажи сценарий",
+            "наш сценарий",
+        )
+    ):
+        if cfg.get("configured"):
+            preview = (cfg.get("script") or "")[:3500]
+            return {
+                "reply": (
+                    "Сценарий входящей линии уже в кабинете (сохранён через онбординг Hermes).\n"
+                    f"Приветствие: {cfg.get('greeting') or '—'}\n"
+                    f"Tools: {', '.join(cfg.get('tools') or [])}\n\n{preview}"
+                ),
+                "tool_calls": [{"tool": "hermes.telephony.status", "ok": True}],
+            }
+        return {
+            "reply": (
+                "Сценария ещё нет — это нормально для нового кабинета.\n"
+                "Варианты:\n"
+                "1) «дай шаблон сценария секретаря» — скачать/заполнить\n"
+                "2) «предложи сценарий из базы знаний» — черновик из ваших Знаний\n"
+                "3) Надиктуйте своими словами: «формализуй сценарий: …»\n"
+                "Потом «сохрани сценарий» и при необходимости «включи календарь и письмо»."
+            ),
+            "tool_calls": [{"tool": "hermes.telephony.status", "ok": True, "configured": False}],
+            "suggested_actions": [
+                {"title": "Шаблон", "text": "Дай шаблон сценария секретаря"},
+                {"title": "Из знаний", "text": "Предложи сценарий из базы знаний"},
+            ],
+        }
+
+    return None
 
 
 def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any] | None:
@@ -264,6 +512,11 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
     voice = _voice_block(db, ctx, message)
     if voice:
         return voice
+
+    scripted = _script_coach(db, ctx, message)
+    if scripted:
+        scripted.pop("_pending_script_draft", None)
+        return scripted
 
     if any(k in lower for k in ("задание cursor", "задачу cursor", "дай задание", "почини через cursor")):
         from app.services.sip_probe import CURSOR_TASK_SIP_REJECTED, probe_registration

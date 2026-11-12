@@ -253,6 +253,91 @@ def tenant_widget_config(
     }
 
 
+@router.get("/knowledge/templates")
+def list_knowledge_templates(
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+    include_examples: bool = Query(default=True),
+) -> dict:
+    """Blank onboarding templates for any tenant (company profile + telephony script)."""
+    from app.services.onboarding_templates import list_templates
+
+    _require_tenant_admin(ctx)
+    items = list_templates(include_examples=include_examples)
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/knowledge/templates/{template_id}")
+def download_knowledge_template(
+    template_id: str,
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    from app.services.onboarding_templates import get_template
+
+    _require_tenant_admin(ctx)
+    tpl = get_template(template_id)
+    if not tpl:
+        raise HTTPException(status_code=404, detail="template_not_found")
+    return tpl
+
+
+@router.get("/telephony/script")
+def get_telephony_script(
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    from app.services.telephony_script import get_telephony_config
+
+    _require_tenant_admin(ctx)
+    return get_telephony_config(db, ctx)
+
+
+class TelephonyScriptSave(BaseModel):
+    script: str = Field(min_length=40, max_length=80000)
+    greeting: str | None = Field(default=None, max_length=500)
+    tools: list[str] | None = None
+
+
+class TelephonyToolsUpdate(BaseModel):
+    tools: list[str] = Field(min_length=1)
+
+
+@router.put("/telephony/script")
+def put_telephony_script(
+    body: TelephonyScriptSave,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    from app.services.telephony_script import save_telephony_script
+
+    _require_tenant_admin(ctx)
+    result = save_telephony_script(
+        db,
+        ctx,
+        script=body.script,
+        greeting=body.greeting,
+        tools=body.tools,
+        source="cabinet.api",
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error") or "save_failed")
+    return result
+
+
+@router.put("/telephony/tools")
+def put_telephony_tools(
+    body: TelephonyToolsUpdate,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    from app.services.telephony_script import set_telephony_tools
+
+    _require_tenant_admin(ctx)
+    result = set_telephony_tools(db, ctx, tools=body.tools)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error") or "tools_failed")
+    return result
+
+
 @router.post("/knowledge/documents")
 def create_knowledge_document(
     body: KnowledgeDocumentCreate,
@@ -273,6 +358,13 @@ def create_knowledge_document(
     )
     if not result.get("ok"):
         raise HTTPException(status_code=502, detail=result.get("detail") or result.get("reason") or "knowledge_failed")
+    # Mark KB ready for Hermes onboarding checklist
+    settings = dict(tenant.settings) if isinstance(tenant.settings, dict) else {}
+    hermes = dict(settings.get("hermes") or {}) if isinstance(settings.get("hermes"), dict) else {}
+    hermes["kb_ready"] = True
+    settings["hermes"] = hermes
+    tenant.settings = settings
+    db.add(tenant)
     db.commit()
     return result
 

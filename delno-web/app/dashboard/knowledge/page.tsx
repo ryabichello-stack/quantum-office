@@ -6,11 +6,24 @@ import { useRequireAuth } from "@/lib/auth";
 import {
   apiInstantDemoImport,
   apiKnowledgeList,
+  apiKnowledgeTemplateDownload,
+  apiKnowledgeTemplates,
   apiKnowledgeUpload,
   type KnowledgeDocumentItem,
+  type KnowledgeTemplateItem,
 } from "@/lib/api";
 import { DashboardFrame } from "@/components/DashboardFrame";
 import { CabinetCard, CabinetEmpty, CabinetPage } from "@/components/CabinetPage";
+
+function downloadTextFile(filename: string, body: string) {
+  const blob = new Blob([body], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function KnowledgePage() {
   const { token } = useRequireAuth();
@@ -19,6 +32,8 @@ export default function KnowledgePage() {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [documents, setDocuments] = useState<KnowledgeDocumentItem[]>([]);
+  const [templates, setTemplates] = useState<KnowledgeTemplateItem[]>([]);
+  const [templateStatus, setTemplateStatus] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [importStatus, setImportStatus] = useState("");
   const [importError, setImportError] = useState("");
@@ -34,9 +49,32 @@ export default function KnowledgePage() {
     }
   }, [token]);
 
+  const loadTemplates = useCallback(async () => {
+    if (!token) return;
+    try {
+      const result = await apiKnowledgeTemplates(token, true);
+      setTemplates(result.items);
+    } catch {
+      /* optional */
+    }
+  }, [token]);
+
   useEffect(() => {
     void loadDocuments();
-  }, [loadDocuments]);
+    void loadTemplates();
+  }, [loadDocuments, loadTemplates]);
+
+  async function onDownloadTemplate(id: string) {
+    if (!token) return;
+    setTemplateStatus("");
+    try {
+      const tpl = await apiKnowledgeTemplateDownload(token, id);
+      downloadTextFile(tpl.filename || `${id}.md`, tpl.body);
+      setTemplateStatus(`Скачан: ${tpl.title}`);
+    } catch {
+      setTemplateStatus("Не удалось скачать шаблон");
+    }
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -82,11 +120,41 @@ export default function KnowledgePage() {
           </Link>
         }
       >
+        <CabinetCard
+          title="Шаблоны для онбординга"
+          hint="Скачайте → заполните → загрузите. Или скажите Hermes голосом."
+        >
+          {templates.length === 0 ? (
+            <CabinetEmpty
+              title="Шаблоны подгрузятся с API"
+              lead="Пока можно попросить Hermes: «дай шаблон профиля компании»."
+            />
+          ) : (
+            <ul className="hx-doc-list">
+              {templates.map((tpl) => (
+                <li key={tpl.id}>
+                  <div>
+                    <strong>
+                      {tpl.title}
+                      {tpl.example ? " (пример)" : ""}
+                    </strong>
+                    <small>{tpl.description}</small>
+                  </div>
+                  <button type="button" className="hx-chip-link" onClick={() => void onDownloadTemplate(tpl.id)}>
+                    Скачать .md
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {templateStatus ? <p className="hx-inline-ok">{templateStatus}</p> : null}
+        </CabinetCard>
+
         <CabinetCard title="Документы" hint={documents.length ? `${documents.length} в базе` : "Пока пусто"}>
           {documents.length === 0 ? (
             <CabinetEmpty
               title="Знаний ещё нет"
-              lead="Добавьте текст ниже или скажите Hermes: «зайди на мой сайт»."
+              lead="Скачайте шаблон выше, заполните, или скажите Hermes: «дай шаблон профиля компании»."
             />
           ) : (
             <ul className="hx-doc-list">

@@ -258,6 +258,32 @@ export function apiTenantWidget(token: string) {
   }>("/v1/tenant/widget", token);
 }
 
+export type KnowledgeTemplateItem = {
+  id: string;
+  title: string;
+  description: string;
+  doc_type: string;
+  example?: boolean;
+  filename: string;
+};
+
+export function apiKnowledgeTemplates(token: string, includeExamples = true) {
+  return apiFetch<{ items: KnowledgeTemplateItem[]; total: number }>(
+    `/v1/tenant/knowledge/templates?include_examples=${includeExamples ? "true" : "false"}`,
+    token,
+  );
+}
+
+export function apiKnowledgeTemplateDownload(token: string, templateId: string) {
+  return apiFetch<{
+    id: string;
+    title: string;
+    filename: string;
+    body: string;
+    content_type: string;
+  }>(`/v1/tenant/knowledge/templates/${encodeURIComponent(templateId)}`, token);
+}
+
 export function apiKnowledgeUpload(token: string, title: string, body: string) {
   return apiFetch<{ ok: boolean; document_id?: string }>("/v1/tenant/knowledge/documents", token, {
     method: "POST",

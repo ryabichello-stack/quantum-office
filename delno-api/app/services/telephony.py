@@ -371,11 +371,22 @@ def frontline_turn(
     )
 
     prompt = text.strip()
-    if session.call_job_id:
-        job = db.query(CallJob).filter(CallJob.id == session.call_job_id).one_or_none()
-        if job and job.script and session.meta.get("script_injected") is not True:
+    if session.meta.get("script_injected") is not True:
+        injected = None
+        if session.call_job_id:
+            job = db.query(CallJob).filter(CallJob.id == session.call_job_id).one_or_none()
+            if job and job.script:
+                injected = ("Исходящий сценарий от Hermes", job.script)
+        if not injected:
+            from app.services.telephony_script import inbound_script_for_tenant
+
+            inbound = inbound_script_for_tenant(db, session.tenant_id)
+            if inbound.get("script"):
+                injected = ("Сценарий входящей линии (настроен через Hermes)", inbound["script"])
+        if injected:
+            label, script_body = injected
             prompt = (
-                f"[Исходящий сценарий от Hermes]\n{job.script}\n\n"
+                f"[{label}]\n{script_body}\n\n"
                 f"[Реплика собеседника]\n{text.strip()}"
             )
             meta = dict(session.meta or {})

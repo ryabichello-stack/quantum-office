@@ -85,12 +85,48 @@ def test_coach_lost_user_steps():
         patch("app.services.hermes_guide.hermes_ops.office_setup_status") as setup,
         patch("app.services.hermes_guide.list_secret_status") as secrets,
         patch("app.services.sip_probe.probe_registration") as probe,
+        patch("app.services.telephony_script.get_telephony_config") as tel,
     ):
         phones.return_value = {"items": [{"e164": "+79699665899", "status": "active"}]}
-        setup.return_value = {"next_steps": [{"id": "telegram", "title": "Telegram", "hint": "токен"}]}
+        setup.return_value = {
+            "next_steps": [{"id": "telegram", "title": "Telegram", "hint": "токен"}],
+            "checks": {"kb": {"ok": False}},
+        }
         secrets.return_value = {"items": [{"kind": "mango_sip", "configured": False}]}
         probe.return_value = {"ok": False, "status": "rejected"}
+        tel.return_value = {"configured": False, "tools": []}
         out = coach_reply(db, ctx, "Я ничего не понимаю, скажи что нужно делать")
     assert out is not None
     assert "по порядку" in out["reply"].lower() or "шаг" in out["reply"].lower()
+    assert "сценарий" in out["reply"].lower()
     assert out.get("pending_credential_form")
+
+
+def test_coach_offers_blank_template():
+    db = MagicMock()
+    ctx = MagicMock()
+    with patch("app.services.telephony_script.get_telephony_config") as tel:
+        tel.return_value = {"configured": False, "tools": []}
+        out = coach_reply(db, ctx, "Дай шаблон профиля компании")
+    assert out is not None
+    assert "Профиль компании" in out["reply"]
+    assert "Название компании" in out["reply"]
+
+
+def test_coach_proposes_generic_script():
+    db = MagicMock()
+    ctx = MagicMock()
+    tenant = MagicMock()
+    tenant.name = "Новая Компания"
+    tenant.settings = {}
+    db.query.return_value.filter.return_value.one.return_value = tenant
+    with (
+        patch("app.services.telephony_script.get_telephony_config") as tel,
+        patch("app.services.telephony_script.get_template") as gt,
+    ):
+        tel.return_value = {"configured": False, "tools": []}
+        gt.return_value = {"body": "# Сценарий\nТекст первой фразы (одна короткая реплика):\n…\n"}
+        out = coach_reply(db, ctx, "Предложи сценарий из базы знаний")
+    assert out is not None
+    assert "черновик" in out["reply"].lower() or "сценари" in out["reply"].lower()
+    assert "Quantum Labs" not in out["reply"]

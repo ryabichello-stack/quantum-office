@@ -20,11 +20,20 @@ from app.services.tenant_vault import list_secret_status
 
 
 SETUP_STEPS: list[dict[str, str]] = [
-    {"id": "kb", "title": "База знаний", "hint": "Загрузите описание бизнеса / прайс в KB"},
+    {
+        "id": "kb",
+        "title": "База знаний",
+        "hint": "Скачайте шаблон профиля компании, заполните или надиктуйте Hermes",
+    },
     {
         "id": "phone",
-        "title": "Телефония",
-        "hint": "Привяжите DID и сохраните SIP Mango в сейфе кабинета (безопасная форма)",
+        "title": "Телефония (линия)",
+        "hint": "Привяжите DID и сохраните SIP в сейфе кабинета (безопасная форма)",
+    },
+    {
+        "id": "telephony_script",
+        "title": "Сценарий секретаря",
+        "hint": "Надиктуйте сценарий, предложите из знаний или заполните шаблон",
     },
     {"id": "telegram", "title": "Telegram", "hint": "Подключите branded bot token"},
     {"id": "max", "title": "MAX", "hint": "Опционально: MAX bot access token"},
@@ -80,7 +89,7 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
         item = by_kind.get(kind) or {}
         return bool(item.get("enabled")) and bool(item.get("configured"))
 
-    # KB: treat onboarding completed or hermes flag as done; else unknown→pending
+    # KB: hermes flag, onboarding completed, or explicit company profile marker
     kb_done = bool(hermes.get("kb_ready")) or (onboarding.get("status") == "completed")
 
     sip_items = list_secret_status(db, ctx).get("items") or []
@@ -93,9 +102,20 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
         "sip_login_masked": sip_row.get("login_masked") or "",
     }
 
+    telephony = settings.get("telephony") if isinstance(settings.get("telephony"), dict) else {}
+    script_ok = bool(hermes.get("telephony_script_ready")) or bool((telephony.get("script") or "").strip())
+
     checks = {
         "kb": {"ok": kb_done, "detail": "kb_ready" if kb_done else "upload_knowledge"},
         "phone": {"ok": phone_ok, "detail": phone_detail},
+        "telephony_script": {
+            "ok": script_ok,
+            "detail": {
+                "configured": script_ok,
+                "tools": telephony.get("tools") or [],
+                "greeting": (telephony.get("greeting") or "")[:120],
+            },
+        },
         "telegram": {"ok": tg > 0, "detail": f"accounts={tg}"},
         "max": {"ok": max_n > 0, "detail": f"accounts={max_n}", "optional": True},
         "calendar": {"ok": _conn_ok("calendar"), "detail": (by_kind.get("calendar") or {}).get("status")},

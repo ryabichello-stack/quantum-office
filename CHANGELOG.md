@@ -4,6 +4,11 @@
 
 ### Added
 
+- Onboarding for any tenant via Hermes: blank MD templates (company
+  profile + telephony script), cabinet download, save script/tools in
+  `tenant.settings.telephony`, inject inbound script on calls
+- Hermes coach: «дай шаблон», «предложи/формализуй/сохрани сценарий»,
+  «включи календарь и письмо» — без ручной настройки под одного клиента
 - Hermes proactive SIP: apply+probe after vault save, Cursor task on
   Rejected, voice change (`tenant_voice_profiles`), billing notes for
   platform keys vs BYOK (`docs/DELNO_LLM_KEYS_AND_BILLING.md`)
