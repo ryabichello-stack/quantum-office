@@ -7,6 +7,9 @@
 - Inbox: delete conversation + bulk cleanup of junk Hermes threads
 - Public DELNO leads: restore SMTP owner notify (`lead_email`); site
   tenant must be `delno-demo` (not Quantum Labs)
+- DELNO mail identity: point `MAIL_*` / `LEAD_SMTP_*` at Reg.ru
+  hosting (`mail.hosting.reg.ru`, `office@dlno.ru`), not Quantum Labs
+  `smtp.mail.ru`
 
 ### Changed
 

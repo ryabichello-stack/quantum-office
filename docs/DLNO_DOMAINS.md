@@ -91,3 +91,18 @@ curl -sf -o /dev/null -w '%{http_code}\n' https://wiki.dlno.ru/   # 503
 UI env:
 
 - `NEXT_PUBLIC_DELNO_API_URL=https://api.dlno.ru`
+
+---
+
+## Email бренда (Reg.ru hosting)
+
+| | |
+|--|--|
+| Ящик | `office@dlno.ru` |
+| MX | `mx1.hosting.reg.ru` / `mx2.hosting.reg.ru` |
+| SMTP | `mail.hosting.reg.ru:465` (SSL), логин = полный адрес |
+| IMAP | `mail.hosting.reg.ru:993` |
+
+Env на Cloud4Box (`/opt/delno/.env`): `MAIL_*` + `LEAD_SMTP_*` — **не** `smtp.mail.ru` / `office@quantumlabs.ru` (это почта Quantum Labs).
+
+Пароль ящика в Beget-архиве не найден — задать в панели Reg.ru и прописать `MAIL_PASSWORD` / `LEAD_SMTP_PASSWORD`.
