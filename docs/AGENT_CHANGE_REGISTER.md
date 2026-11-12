@@ -155,3 +155,12 @@
   - Архив ломбардов лежит **только** в tenant `3b9326a4-…` exports; `OUTREACH_ENABLED=false`.
 - Локальная ветка Cursor `cursor/hermes-trace-tenant-archive-9b51` **опасна для деплоя as-is**: в git нет `trunk_id` telephony и нет `hermes_progress`, зато MCP снова регистрируется. **Не выкатывать** на `/opt/delno` без выравнивания с продом/Codex.
 - Статус: зафиксировано. Cursor дальше — verify/docs/tenant-safe archive; runtime телефонии и Hermes progress — зона Codex, пока владелец не скажет иначе.
+
+## 2026-11-13 00:42 МСК — Cursor: глубокий анализ «почему Hermes тупой» (без runtime overwrite)
+
+- Автор: Cursor по запросу владельца (комплексный разбор, не быстрый фикс).
+- Файл: `docs/HERMES_AGENT_ARCHITECTURE_ANALYSIS.md` (+ эта запись).
+- Вывод: корневая причина не «короткий промпт», а архитектура secretary-loop: cabinet allowlist **34** tools; `crm.*` зарегистрированы, но **не в CABINET**; QO MCP на проде отключён Codex (правильно для multi-tenant); web.search ≤10 / fetch ≤12k; **нет субагентов/jobs/artifacts**. Progress UI (`hermes_progress`) уже от Codex. Целевой путь: supervisor + tenant-safe workers (research/mail/phone/social) + batch research jobs; MCP только после TenantContext/vault.
+- Проверка: read-only Cloud4Box (cabinet list, MCP off, web caps, model `gpt-5.4-mini`, progress poll). **API/telephony не менялись.**
+- Следующий шаг (только после согласования с Codex/владельцем): Фаза A из анализа — cabinet+crm readonly, research CSV artifact; не деплоить опасные MCP-ветки поверх `/opt/delno`.
+
