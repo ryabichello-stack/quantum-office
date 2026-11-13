@@ -19,6 +19,7 @@
 - Ava toolkit: `script_ready` + detail «сценарий готов/не задан» (was missing after phone-only checks)
 - Telegram/MAX/files connect intents («подключи телеграм») open vault forms without requiring «открой форму» wording
 - hermes_ops: Telegram marked optional (like MAX) so office can reach ready/conduct without a BotFather token; form CTA remains for when the owner connects later
+- Conduct DIY: «предложи слоты календаря» hits `suggest_calendar_slots` directly (Nous often claimed the tool was unavailable)
 
 ### Changed
 

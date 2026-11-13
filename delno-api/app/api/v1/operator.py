@@ -1,4 +1,6 @@
+from datetime import datetime, timedelta
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field
 
@@ -91,6 +93,66 @@ def _wants_media_generation(message: str) -> bool:
         "обложк",
     )
     return any(v in low for v in verbs) and any(n in low for n in nouns)
+
+
+def _wants_calendar_slots(message: str) -> bool:
+    """Clear «предложи слоты» intents — DIY, do not trust Nous to call the tool."""
+    low = (message or "").lower()
+    has_cal = any(
+        m in low
+        for m in (
+            "слот",
+            "календар",
+            "свободн",
+            "встреч",
+            "meeting slot",
+            "calendar slot",
+        )
+    )
+    has_ask = any(
+        m in low
+        for m in (
+            "предлож",
+            "найди",
+            "покажи",
+            "подбери",
+            "suggest",
+            "свободные",
+        )
+    )
+    return has_cal and has_ask
+
+
+def _calendar_slot_start_iso(message: str) -> str:
+    """Best-effort start ISO in Europe/Moscow from owner wording."""
+    low = (message or "").lower()
+    tz = ZoneInfo("Europe/Moscow")
+    now = datetime.now(tz)
+    day = now.date()
+    if "послезавтра" in low:
+        day = (now + timedelta(days=2)).date()
+    elif "завтра" in low:
+        day = (now + timedelta(days=1)).date()
+    hour = 10
+    for h, keys in (
+        (9, ("утром", "9:", "09:")),
+        (12, ("в обед", "12:")),
+        (15, ("днём", "днев", "15:")),
+        (18, ("вечером", "18:")),
+    ):
+        if any(k in low for k in keys):
+            hour = h
+            break
+    return datetime(day.year, day.month, day.day, hour, 0, tzinfo=tz).isoformat()
+
+
+def _calendar_duration_min(message: str) -> int:
+    low = (message or "").lower()
+    if "30" in low or "полчас" in low:
+        return 30
+    if "2 час" in low or "два час" in low:
+        return 120
+    return 60
 
 
 # hermes_ops checklist id → vault form kind (only when the mapping is unambiguous).
@@ -261,8 +323,12 @@ def operator_chat(
     if not message and not attachments:
         raise HTTPException(status_code=422, detail="message_or_attachment_required")
 
-    # Attachments + media-generation intents stay on DIY (Images API / vision / STT).
-    prefer_diy = bool(attachments) or _wants_media_generation(message)
+    # Attachments + media/calendar intents stay on DIY (Images / vision / STT / slots).
+    prefer_diy = (
+        bool(attachments)
+        or _wants_media_generation(message)
+        or _wants_calendar_slots(message)
+    )
 
     # Vault forms must reach the cabinet as pending_credential_form. Nous text-only
     # runs cannot surface the UI card — open the form server-side when intent is clear.
@@ -337,6 +403,60 @@ def operator_chat(
         err = result.message if isinstance(result, ToolResult) else "image_failed"
         # Fall through to DIY LLM with the error context so the owner sees a clear reply.
         message = f"{message}\n\n[system: generate_image failed: {err}]"
+
+    # Conduct fast-path: calendar slots (Nous often fails to call the MCP tool).
+    if _wants_calendar_slots(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        start = _calendar_slot_start_iso(message)
+        duration = _calendar_duration_min(message)
+        result = registry.run(
+            db,
+            ctx,
+            "suggest_calendar_slots",
+            start=start,
+            duration_min=duration,
+        )
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            suggestions = data.get("suggestions") or (data.get("data") or {}).get("suggestions") or []
+            if not suggestions and isinstance(data.get("data"), dict):
+                suggestions = data["data"].get("suggestions") or []
+            lines = []
+            for i, slot in enumerate(suggestions[:5], 1):
+                if isinstance(slot, dict):
+                    label = slot.get("label") or slot.get("start") or str(slot)
+                else:
+                    label = str(slot)
+                lines.append(f"{i}. {label}")
+            body_txt = "\n".join(lines) if lines else (result.message or "Слоты получены.")
+            stub = bool(
+                data.get("stub")
+                or (data.get("data") or {}).get("stub")
+                or any(isinstance(s, dict) and s.get("stub") for s in suggestions)
+            )
+            note = " (черновик/stub — CalDAV ещё без живых кредов)" if stub else ""
+            return {
+                "ok": True,
+                "engine": "diy_calendar_slots",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": f"Варианты слотов на {start} · {duration} мин{note}:\n{body_txt}",
+                "tool_calls": [
+                    {
+                        "tool": "suggest_calendar_slots",
+                        "ok": True,
+                        "start": start,
+                        "duration_min": duration,
+                        "stub": stub,
+                    }
+                ],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "calendar_failed"
+        message = f"{message}\n\n[system: suggest_calendar_slots failed: {err}]"
 
     # Feature-flagged Nous Hermes runtime (Stage 0+). DIY loop remains fallback.
     try:

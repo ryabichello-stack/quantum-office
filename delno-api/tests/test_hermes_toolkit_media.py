@@ -8,7 +8,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.v1.operator import _wants_media_generation
+from app.api.v1.operator import (
+    _calendar_duration_min,
+    _calendar_slot_start_iso,
+    _wants_calendar_slots,
+    _wants_media_generation,
+)
 from app.core.db import Base
 from app.core.tenant import TenantContext
 from app.models.feature_flag import FeatureFlag
@@ -34,6 +39,16 @@ def test_wants_media_generation_routes():
     assert _wants_media_generation("Please generate an image of a cat")
     assert not _wants_media_generation("Какие звонки были сегодня?")
     assert not _wants_media_generation("Создай конференцию на завтра")
+
+
+def test_wants_calendar_slots_routes():
+    assert _wants_calendar_slots("предложи свободные слоты календаря на завтра на час")
+    assert _wants_calendar_slots("Подбери встречу на завтра утром")
+    assert not _wants_calendar_slots("что в календаре?")
+    assert _calendar_duration_min("на час") == 60
+    assert _calendar_duration_min("на 30 минут") == 30
+    start = _calendar_slot_start_iso("завтра утром")
+    assert "+03:00" in start or "+03" in start
 
 
 def test_generate_image_prefers_proxy_friendly_models(monkeypatch):
