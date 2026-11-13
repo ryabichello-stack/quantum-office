@@ -37,6 +37,7 @@
 
 ### Changed
 
+- Cloud4Box channel-curate: use host `HTTPS_PROXY` (same as delno) for `api.telegram.org`; keep a single getUpdates owner (`TELEGRAM_CURATE_ENABLED=false` on qo-text-bot when systemd `channel-curate` runs)
 - Onboarding tool pack includes `generate_image` so media works before office `ready` (DIY fast-path still preferred)
 - Onboarding pack + office-loop CTA: `office.connector_set` for hermes_ops mail/calendar/conference steps
 
