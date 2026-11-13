@@ -37,10 +37,9 @@ def _check_token(
     x_webhook_token: Optional[str] = None,
     token_query: str = "",
 ) -> None:
-    if not WEBHOOK_TOKEN:
-        return
     provided = (x_webhook_token or token_query or "").strip()
-    if provided != WEBHOOK_TOKEN:
+    # Fail closed: an empty token must not open the API.
+    if not WEBHOOK_TOKEN or provided != WEBHOOK_TOKEN:
         raise HTTPException(status_code=401, detail="unauthorized")
 
 

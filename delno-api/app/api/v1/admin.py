@@ -74,12 +74,18 @@ def create_tenant(
         )
 
     if body.owner_email:
+        owner_password = (body.owner_password or "").strip()
+        if not owner_password:
+            raise HTTPException(
+                status_code=400,
+                detail="owner_password is required when owner_email is set",
+            )
         db.add(
             User(
                 tenant_id=tenant.id,
                 email=body.owner_email.lower(),
                 role="tenant_owner",
-                password_hash=hash_password(body.owner_password or "changeme123"),
+                password_hash=hash_password(owner_password),
             )
         )
 

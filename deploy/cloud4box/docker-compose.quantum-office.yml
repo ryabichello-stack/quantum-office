@@ -1,0 +1,133 @@
+# Quantum Labs office recovery — Cloud4Box (161.104.89.123)
+# Classic QL ports on loopback; nginx publishes /_ava_* and /_quantum_console/
+name: quantum-office
+
+services:
+  mailer:
+    build:
+      context: ../../mailer
+      dockerfile: Dockerfile
+    image: qo-mailer:latest
+    container_name: qo-mailer
+    restart: unless-stopped
+    env_file: [/opt/quantum-office/.env]
+    ports: ["127.0.0.1:8000:8000"]
+
+  text-bot:
+    build:
+      context: ../../text-bot
+      dockerfile: Dockerfile
+    image: qo-text-bot:latest
+    container_name: qo-text-bot
+    restart: unless-stopped
+    env_file: [/opt/quantum-office/.env]
+    environment:
+      DATA_DIR: /data
+      AVA_MAILER_BASE: http://mailer:8000
+    volumes:
+      - qo-text-bot-data:/data
+    ports: ["127.0.0.1:8011:8011"]
+    depends_on: [mailer]
+
+  outreach:
+    build:
+      context: ../../outreach
+      dockerfile: Dockerfile
+    image: qo-outreach:latest
+    container_name: qo-outreach
+    restart: unless-stopped
+    env_file: [/opt/quantum-office/.env]
+    environment:
+      OUTREACH_ENABLED: ${OUTREACH_ENABLED:-false}
+    volumes:
+      - qo-outreach-data:/opt/ava-outreach/data
+    ports: ["127.0.0.1:8012:8012"]
+
+  console:
+    build:
+      context: ../../console
+      dockerfile: Dockerfile
+    image: qo-console:latest
+    container_name: qo-console
+    restart: unless-stopped
+    env_file: [/opt/quantum-office/.env]
+    ports: ["127.0.0.1:8013:8013"]
+
+  calendar:
+    build:
+      context: ../../calendar
+      dockerfile: Dockerfile
+    image: qo-calendar:latest
+    container_name: qo-calendar
+    restart: unless-stopped
+    env_file: [/opt/quantum-office/.env]
+    environment:
+      CONFERENCE_BASE_URL: http://conference:8016
+    ports: ["127.0.0.1:8014:8014"]
+    depends_on: [conference]
+
+  files:
+    build:
+      context: ../../files
+      dockerfile: Dockerfile
+    image: qo-files:latest
+    container_name: qo-files
+    restart: unless-stopped
+    env_file: [/opt/quantum-office/.env]
+    ports: ["127.0.0.1:8015:8015"]
+
+  conference:
+    build:
+      context: ../../conference
+      dockerfile: Dockerfile
+    image: qo-conference:latest
+    container_name: qo-conference
+    restart: unless-stopped
+    env_file: [/opt/quantum-office/.env]
+    environment:
+      CONFERENCE_STUB_WHEN_UNAUTH: "true"
+      TELEMOST_STUB_WHEN_UNAUTH: "true"
+      JITSI_ENABLED: "true"
+    ports: ["127.0.0.1:8016:8016"]
+
+  knowledge:
+    build:
+      context: ../../knowledge
+      dockerfile: Dockerfile
+    image: qo-knowledge:latest
+    container_name: qo-knowledge
+    restart: unless-stopped
+    env_file: [/opt/quantum-office/.env]
+    environment:
+      BRAIN_DATA_DIR: /data
+      BRAIN_DB_PATH: /data/brain.db
+      BRAIN_VAULT_PATH: /app/vault/quantum-brain
+      KNOWLEDGE_CONTENT_DIR: /app/content
+      BRAIN_AUTO_INGEST: "true"
+      KNOWLEDGE_READ_MODE: legacy
+    volumes:
+      - qo-knowledge-data:/data
+    ports: ["127.0.0.1:8017:8017"]
+
+  # Channel curate poller. Cloud4Box host/docker often has no Telegram egress —
+  # leave profile off until proxy/egress works; agent tmux poller is the live path.
+  channel-curate:
+    profiles: ["curate"]
+    build:
+      context: ../../text-bot
+      dockerfile: Dockerfile
+    image: qo-text-bot:latest
+    container_name: qo-channel-curate
+    restart: unless-stopped
+    env_file: [/opt/quantum-office/.env]
+    environment:
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      TELEGRAM_CURATE_CHANNEL_ID: "@epoch_z"
+      TELEGRAM_CURATE_CHANNEL_LINK: "https://t.me/epoch_z"
+      TELEGRAM_CURATE_AUTO_PUBLISH: "true"
+    command: ["python3", "scripts/curate_runner.py"]
+
+volumes:
+  qo-text-bot-data:
+  qo-outreach-data:
+  qo-knowledge-data:

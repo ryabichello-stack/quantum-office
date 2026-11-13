@@ -62,9 +62,8 @@ if BRAIN_ENABLED:
 
 
 def _check_token(x_webhook_token: Optional[str] = None) -> None:
-    if not WEBHOOK_TOKEN:
-        return
-    if (x_webhook_token or "").strip() != WEBHOOK_TOKEN:
+    # Fail closed: an empty token must not open the API.
+    if not WEBHOOK_TOKEN or (x_webhook_token or "").strip() != WEBHOOK_TOKEN:
         raise HTTPException(status_code=401, detail="unauthorized")
 
 

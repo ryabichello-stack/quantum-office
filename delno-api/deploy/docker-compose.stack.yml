@@ -79,7 +79,9 @@ services:
       CONSOLE_TOKEN: ${CONSOLE_TOKEN:-}
       WEBHOOK_TOKEN: ${WEBHOOK_TOKEN:-}
       OUTREACH_UI_TOKEN: ${OUTREACH_UI_TOKEN:-}
-      QO_MCP_OVERWRITE: ${QO_MCP_OVERWRITE:-1}
+      # Off unless explicitly enabled. Shared QO tokens are not tenant-isolated;
+      # 1 replaces DELNO crm/outreach stubs with live qo-* handlers.
+      QO_MCP_OVERWRITE: ${QO_MCP_OVERWRITE:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
       MODEL_PROVIDER: ${MODEL_PROVIDER:-openai}

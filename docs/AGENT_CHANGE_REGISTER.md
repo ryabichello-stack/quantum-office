@@ -7,6 +7,15 @@
 **Где лежит:** git `docs/AGENT_CHANGE_REGISTER.md` ↔ прод `/opt/delno/docs/AGENT_CHANGE_REGISTER.md` (держать в синхроне).
 
 
+## 2026-11-13 ~20:30 МСК — Cursor: сводная ветка в main (не мёржить)
+
+- Ветка: `cursor/consolidate-main-2026-11-13` от `b908b5bc8cf7e9f159b67c7cd8d9cdbc1bd0b820` (head PR #87 на старте). PR в `main`, без мёржа.
+- Вошло из #81/#82: `check_calendar` / `create_calendar_event`, `office-mcp/`, `qo_mcp_bridge`, `third_party/quantum_office_mcp`, каталог. Регистрация MCP fill-gaps; `QO_MCP_OVERWRITE` в compose по умолчанию выключен (общие токены не tenant-isolated).
+- Точечно: standalone `text-bot/channel_curate.py` + runner, `deploy/cloud4box/`, `docs/QL_*`, публичная карточка `delno-knowledge/vault/delno-demo/public/about-company.md`.
+- Security: пустой `WEBHOOK_TOKEN` больше не открывает calendar/files/conference/knowledge/mail/mailer; JWT не подписывается placeholder `change-me` / `dev-secret`; пароль `changeme123` убран.
+- Не возвращены старые корни `calendar/` и `console/`. #87 после `b908b5b` в эту ветку не влит — перед мёржем подтянуть новые коммиты основного агента.
+- Проверка: `pytest tests` в `delno-api` — 317 passed; `text-bot/tests/test_channel_curate.py` — 4 passed. Прод не трогался.
+
 ## 2026-11-13 ~04:05 МСК — Cursor: fix SIP probe host.docker.internal
 
 - Что: на C4B в `/opt/delno/docker-compose.yml` у `api.extra_hosts` была склеена строка `host.docker.internal,delno-hermes-tenant-a,delno-hermes-tenant-b:host-gateway` → DNS внутри контейнера не резолвил `host.docker.internal`, `sip_probe` всегда `reachable=false`, hermes_ops phone не мог стать Registered.

@@ -11,6 +11,28 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 ALGORITHM = "HS256"
 
+# Known placeholders must never sign or verify tokens.
+_JWT_PLACEHOLDERS = frozenset(
+    {
+        "",
+        "change-me",
+        "change-me-in-production",
+        "change-me-long-random",
+        "dev-secret",
+        "changeme",
+        "changeme123",
+    }
+)
+
+
+def jwt_signing_key() -> str:
+    secret = (get_settings().jwt_secret or "").strip()
+    if secret.lower() in _JWT_PLACEHOLDERS or secret.lower().startswith("change-me"):
+        raise RuntimeError(
+            "JWT_SECRET is unset or a placeholder; refusing to sign or verify tokens"
+        )
+    return secret
+
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
@@ -31,12 +53,11 @@ def create_access_token(*, subject: str, tenant_id: UUID, role: str, expires_min
         "role": role,
         "exp": expire,
     }
-    return jwt.encode(payload, settings.jwt_secret, algorithm=ALGORITHM)
+    return jwt.encode(payload, jwt_signing_key(), algorithm=ALGORITHM)
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
-    settings = get_settings()
     try:
-        return jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])
+        return jwt.decode(token, jwt_signing_key(), algorithms=[ALGORITHM])
     except JWTError as exc:
         raise ValueError("invalid_token") from exc

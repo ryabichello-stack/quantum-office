@@ -24,14 +24,14 @@ def _db():
 
 
 def test_detect_credential_paste():
-    assert looks_like_credential_paste("400348777/garik\nmD0Q^m8HsBgK")
+    assert looks_like_credential_paste("400348777/garik\nexample-sip-password")
     assert not looks_like_credential_paste("какой пароль от почты?")
     assert wants_sip_secret_form("Открой безопасную форму SIP-пароля Mango")
     assert wants_sip_secret_form("так пришли форму я введу логин")
     assert wants_sip_secret_form("скинь форму")
-    parsed = parse_credential_paste("400348777/garik\nmD0Q^m8HsBgK")
+    parsed = parse_credential_paste("400348777/garik\nexample-sip-password")
     assert parsed["login"] == "400348777/garik"
-    assert parsed["password"] == "mD0Q^m8HsBgK"
+    assert parsed["password"] == "example-sip-password"
 
 
 def test_save_secret_masks_login():
@@ -46,10 +46,10 @@ def test_save_secret_masks_login():
         user_id=None,
         role="tenant_owner",
     )
-    out = save_secret(db, ctx, kind="mango_sip", login="400348777/garik", password="mD0Q^m8HsBgK")
+    out = save_secret(db, ctx, kind="mango_sip", login="400348777/garik", password="example-sip-password")
     assert out["ok"] is True
-    assert "mD0Q" not in str(out)
+    assert "example-sip-password" not in str(out)
     assert out["login_masked"]
     db.refresh(tenant)
     secrets = (tenant.settings or {}).get("secrets") or {}
-    assert secrets["mango_sip"]["password"] == "mD0Q^m8HsBgK"
+    assert secrets["mango_sip"]["password"] == "example-sip-password"

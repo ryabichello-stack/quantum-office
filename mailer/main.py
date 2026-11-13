@@ -85,6 +85,14 @@ WEBHOOK_TOKEN = os.getenv("WEBHOOK_TOKEN", "")
 LOG_FILE = "/opt/ava-mailer/webhook.log"
 
 
+def _webhook_ok(presented: Optional[str]) -> bool:
+    """Empty WEBHOOK_TOKEN must not authorize any caller."""
+    expected = (WEBHOOK_TOKEN or "").strip()
+    if not expected:
+        return False
+    return (presented or "").strip() == expected
+
+
 def _env_float(name: str, default: float) -> float:
     try:
         return float(os.getenv(name, str(default)))
@@ -1133,7 +1141,7 @@ def health():
 
 @app.get("/oauth/yandex/status")
 def yandex_oauth_status(x_webhook_token: str = Header(None)):
-    if x_webhook_token != WEBHOOK_TOKEN:
+    if not _webhook_ok(x_webhook_token):
         raise HTTPException(status_code=401, detail="bad token")
     status = yandex_oauth.oauth_status()
     status["authorize_url_hint"] = "/oauth/yandex/start?token=<WEBHOOK_TOKEN>"
@@ -1142,7 +1150,7 @@ def yandex_oauth_status(x_webhook_token: str = Header(None)):
 
 @app.get("/oauth/yandex/start")
 def yandex_oauth_start(token: str = ""):
-    if token != WEBHOOK_TOKEN:
+    if not _webhook_ok(token):
         raise HTTPException(status_code=401, detail="bad token")
     if not yandex_oauth.oauth_configured():
         raise HTTPException(
@@ -1159,7 +1167,7 @@ def yandex_oauth_callback(code: str = "", error: str = "", error_description: st
 
 @app.get("/oauth/yandex/manual")
 def yandex_oauth_manual_page(token: str = ""):
-    if token != WEBHOOK_TOKEN:
+    if not _webhook_ok(token):
         raise HTTPException(status_code=401, detail="bad token")
     auth_url = yandex_oauth.build_authorize_url()
     return HTMLResponse(
@@ -1181,14 +1189,14 @@ def yandex_oauth_manual_page(token: str = ""):
 @app.get("/oauth/yandex/exchange")
 def yandex_oauth_exchange(code: str = "", token: str = ""):
     """Альтернатива форме: ?token=...&code=..."""
-    if token != WEBHOOK_TOKEN:
+    if not _webhook_ok(token):
         raise HTTPException(status_code=401, detail="bad token")
     return _yandex_oauth_finish(code=code.strip())
 
 
 @app.post("/oauth/yandex/manual")
 async def yandex_oauth_manual_submit(request: Request, token: str = ""):
-    if token != WEBHOOK_TOKEN:
+    if not _webhook_ok(token):
         raise HTTPException(status_code=401, detail="bad token")
     form = await request.form()
     code = str(form.get("code") or "").strip()
@@ -1418,7 +1426,7 @@ async def calendar_create(request: Request, background_tasks: BackgroundTasks):
 @app.post("/api/ava/post-call")
 async def post_call(request: Request, background_tasks: BackgroundTasks, x_webhook_token: str = Header(None)):
 
-    if x_webhook_token != WEBHOOK_TOKEN:
+    if not _webhook_ok(x_webhook_token):
         raise HTTPException(status_code=401, detail="bad token")
 
     raw = await request.body()
