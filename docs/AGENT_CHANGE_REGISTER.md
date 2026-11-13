@@ -264,3 +264,9 @@
 - Live smoke: QL with FACTS → «кабинет пустой, 0/6, начать с знаний»; demo create_run ok на A.
 - Telephony не трогали. Полный e2e двух новых регистраций / multiplex — ещё впереди.
 
+## 2026-11-13 20:35 МСК — Cursor: shared profile homes live on A/B + isolation proof
+
+- Workers recreated: `HERMES_HOME=/data/hermes-profiles/<profile_id>` (shared volume with API); state migrated from old volumes.
+- Proof: demo progress 6/6 vs QL 0/6; MCP keys 1:1; beta `resolve` + `/v1/operator/chat` → `hermes_unavailable` (not DIY).
+- Goal criteria (map, no fallback, provision/MCP lock, honest unavailable, worker-visible profiles) verified on C4B. Multiplex >1 profile/worker still unproven (capacity=1).
+
