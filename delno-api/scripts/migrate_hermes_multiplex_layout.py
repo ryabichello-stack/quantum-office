@@ -81,7 +81,9 @@ def main() -> int:
         moved += 1
 
     # Seed worker roots for known workers
-    for wid in sorted(set(mapping.values()) | {"tenant-a", "tenant-b"}):
+    for wid in sorted(set(mapping.values()) | {"pool"}):
+        if wid == "unassigned":
+            continue
         wroot = root / "workers" / wid
         (wroot / "profiles").mkdir(parents=True, exist_ok=True)
         cfg = wroot / "config.yaml"

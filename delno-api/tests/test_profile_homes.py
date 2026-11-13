@@ -1,4 +1,4 @@
-"""Worker-visible Hermes profile homes (multiplex layout)."""
+"""Worker-visible Hermes profile homes (single pool multiplex layout)."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ def test_ensure_live_profile_home(tmp_path, monkeypatch):
     get_settings.cache_clear()
     home = ensure_live_profile_home(
         "tenant_acme__company_main",
-        worker_id="tenant-a",
+        worker_id="pool",
         api_server_key="key-a-xxxxxxxxxxxxxxx",
     )
     assert home.exists()
@@ -27,12 +27,12 @@ def test_ensure_live_profile_home(tmp_path, monkeypatch):
         "tenant_acme__company_main"
     )
     assert (home / ".env").read_text(encoding="utf-8").count("API_SERVER_KEY=") == 1
-    assert live_profile_path("tenant_acme__company_main", worker_id="tenant-a") == home
-    assert "workers/tenant-a/profiles/" in str(home)
-    root = worker_multiplex_root("tenant-a")
+    assert live_profile_path("tenant_acme__company_main", worker_id="pool") == home
+    assert "workers/pool/profiles/" in str(home)
+    root = worker_multiplex_root("pool")
     assert (root / "config.yaml").exists()
-    hint = worker_bind_hint("tenant_acme__company_main", worker_id="tenant-a")
-    assert hint["HERMES_WORKER_ID"] == "tenant-a"
+    hint = worker_bind_hint("tenant_acme__company_main", worker_id="pool")
+    assert hint["HERMES_WORKER_ID"] == "pool"
     assert Path(hint["HERMES_HOME"]) == root
     assert hint["api_path_prefix"] == "/p/tenant_acme__company_main"
     get_settings.cache_clear()
@@ -50,11 +50,9 @@ def test_placement_uses_live_home(tmp_path, monkeypatch):
 
     monkeypatch.setenv("TENANT_FILES_ROOT", str(tmp_path / "tenants"))
     monkeypatch.setenv("HERMES_PROFILES_ROOT", str(tmp_path / "profiles"))
-    monkeypatch.setenv("HERMES_NOUS_RUNTIME_URL", "http://delno-hermes-tenant-a:8642")
-    monkeypatch.setenv("HERMES_NOUS_RUNTIME_URL_B", "http://delno-hermes-tenant-b:8642")
+    monkeypatch.setenv("HERMES_NOUS_RUNTIME_URL", "http://delno-hermes-pool:8642")
     monkeypatch.setenv("HERMES_API_SERVER_KEY", "key-a-xxxxxxxxxxxxxxx")
-    monkeypatch.setenv("HERMES_API_SERVER_KEY_B", "key-b-xxxxxxxxxxxxxxx")
-    monkeypatch.setenv("HERMES_WORKER_MAX_PROFILES", "64")
+    monkeypatch.setenv("HERMES_WORKER_MAX_PROFILES", "256")
     get_settings.cache_clear()
     monkeypatch.setattr(
         "app.services.hermes_nous.placement.ensure_mcp_api_key",
@@ -75,8 +73,8 @@ def test_placement_uses_live_home(tmp_path, monkeypatch):
     profile = ensure_tenant_placement(
         db, TenantContext(tenant_id=t.id, tenant_slug=t.slug, role="tenant_owner")
     )
-    assert "workers/" in profile.state_location
-    assert "/profiles/" in profile.state_location
+    assert profile.worker_id == "pool"
+    assert "workers/pool/profiles/" in profile.state_location
     assert Path(profile.state_location).exists()
     assert (Path(profile.state_location) / ".delno_profile_id").exists()
     db.close()

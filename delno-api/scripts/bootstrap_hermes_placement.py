@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""Pin dogfood tenants onto multiplex pool workers (platform bootstrap).
+"""Place dogfood/combat tenants onto the single Hermes pool.
 
-Usage (inside delno-api container or with DATABASE_URL):
-  python scripts/bootstrap_hermes_placement.py --demo delno-demo --ql quantum-labs
+Usage (inside delno-api container with PYTHONPATH=/app):
+  python scripts/bootstrap_hermes_placement.py
   python scripts/bootstrap_hermes_placement.py --also tenant-beta
-
-Many tenants may share a worker (HERMES_WORKER_MAX_PROFILES). Prefer spreading
-demo/QL across A/B for dogfood isolation demos.
 """
 
 from __future__ import annotations
@@ -26,60 +23,54 @@ from app.services.hermes_nous.placement import (
 )
 from app.core.tenant import TenantContext
 
+POOL = "pool"
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--demo", default="delno-demo")
     parser.add_argument("--ql", default="quantum-labs")
-    parser.add_argument("--demo-worker", default="tenant-a")
-    parser.add_argument("--ql-worker", default="tenant-b")
     parser.add_argument(
         "--also",
         action="append",
         default=[],
-        help="Extra tenant slug(s) to auto-place on least-loaded worker",
+        help="Extra tenant slug(s) to place on the pool",
     )
+    parser.add_argument("--worker", default=POOL, help="Worker id (default: pool)")
     args = parser.parse_args()
 
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         ensure_worker_catalog(db)
-        mapping = (
-            (args.demo, args.demo_worker),
-            (args.ql, args.ql_worker),
-        )
-        for slug, worker_id in mapping:
+        slugs = [args.demo, args.ql, *args.also]
+        for slug in slugs:
             tenant = db.query(Tenant).filter(Tenant.slug == slug).one_or_none()
             if not tenant:
                 print(f"skip missing tenant slug={slug}")
                 continue
             try:
-                profile = admin_assign_worker(db, tenant_id=tenant.id, worker_id=worker_id)
+                profile = admin_assign_worker(
+                    db, tenant_id=tenant.id, worker_id=args.worker
+                )
                 print(
                     f"ok {slug} → worker={profile.worker_id} profile={profile.profile_id} "
                     f"status={profile.status} home={profile.state_location}"
                 )
             except PlacementError as exc:
-                print(f"FAIL {slug}: {exc.code} {exc.detail}", file=sys.stderr)
-                return 1
-        for slug in args.also:
-            tenant = db.query(Tenant).filter(Tenant.slug == slug).one_or_none()
-            if not tenant:
-                print(f"skip missing tenant slug={slug}")
-                continue
-            ctx = TenantContext(
-                tenant_id=tenant.id, tenant_slug=tenant.slug, role="platform_admin"
-            )
-            try:
-                profile = ensure_tenant_placement(db, ctx)
-                print(
-                    f"ok {slug} → worker={profile.worker_id} profile={profile.profile_id} "
-                    f"status={profile.status} home={profile.state_location}"
+                # Fallback: auto least-loaded (should be the only pool)
+                ctx = TenantContext(
+                    tenant_id=tenant.id, tenant_slug=tenant.slug, role="platform_admin"
                 )
-            except PlacementError as exc:
-                print(f"FAIL {slug}: {exc.code} {exc.detail}", file=sys.stderr)
-                return 1
+                try:
+                    profile = ensure_tenant_placement(db, ctx)
+                    print(
+                        f"ok {slug} → worker={profile.worker_id} profile={profile.profile_id} "
+                        f"status={profile.status} home={profile.state_location}"
+                    )
+                except PlacementError as exc2:
+                    print(f"FAIL {slug}: {exc.code}/{exc2.code} {exc.detail}", file=sys.stderr)
+                    return 1
         snap = list_placement_snapshot(db)
         print("snapshot_mode=", snap.get("mode"))
         print("snapshot_workers=", snap.get("workers"))

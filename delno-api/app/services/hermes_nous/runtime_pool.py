@@ -1,8 +1,8 @@
 """Compatibility façade over placement (tenant → profile → worker).
 
 Legacy name kept so onboarding / tests keep importing assign_isolated_runtime.
-Workers are multiplex pool nodes: many company profiles per gateway
-(HERMES_WORKER_MAX_PROFILES, default 64).
+Combat default: one multiplex pool gateway for all companies
+(HERMES_WORKER_MAX_PROFILES, default 256).
 """
 
 from __future__ import annotations
@@ -22,23 +22,16 @@ from app.services.hermes_nous.placement import (
 
 
 def list_runtime_slots() -> list[dict[str, str]]:
-    """Diagnostic list of configured workers (not a free-for-all assign menu)."""
+    """Diagnostic list of configured workers (combat: single pool)."""
     import os
 
     return [
         {
-            "id": "tenant-a",
+            "id": "pool",
             "base_url": os.environ.get("HERMES_NOUS_RUNTIME_URL")
-            or "http://delno-hermes-tenant-a:8642",
+            or "http://delno-hermes-pool:8642",
             "api_server_key_env": "HERMES_API_SERVER_KEY",
             "mcp_key_env": "DELNO_MCP_KEY",
-        },
-        {
-            "id": "tenant-b",
-            "base_url": os.environ.get("HERMES_NOUS_RUNTIME_URL_B")
-            or "http://delno-hermes-tenant-b:8642",
-            "api_server_key_env": "HERMES_API_SERVER_KEY_B",
-            "mcp_key_env": "DELNO_MCP_KEY_B",
         },
     ]
 
@@ -46,7 +39,7 @@ def list_runtime_slots() -> list[dict[str, str]]:
 def assign_isolated_runtime(
     db: Session, ctx: TenantContext, *, prefer_slot: str | None = None
 ) -> dict[str, Any]:
-    """Ensure company_main profile exists and is placed on a free worker when possible."""
+    """Ensure company_main profile exists and is placed on the pool when possible."""
     ensure_worker_catalog(db)
     try:
         profile = ensure_tenant_placement(db, ctx, prefer_worker_id=prefer_slot)

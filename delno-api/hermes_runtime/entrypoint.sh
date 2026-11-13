@@ -10,7 +10,7 @@ if [[ -n "${HERMES_WORKER_ID:-}" ]]; then
 elif [[ -n "${HERMES_PROFILE_ID:-}" ]]; then
   # Legacy single-profile bind (pre-multiplex dogfood). Prefer worker root when present.
   LEGACY_FLAT="${PROFILES_ROOT}/${HERMES_PROFILE_ID}"
-  WORKER_GUESS="${PROFILES_ROOT}/workers/tenant-a"
+  WORKER_GUESS="${PROFILES_ROOT}/workers/pool"
   if [[ -d "${PROFILES_ROOT}/workers" ]]; then
     # Prefer an existing workers/* root that already hosts this profile.
     FOUND=""

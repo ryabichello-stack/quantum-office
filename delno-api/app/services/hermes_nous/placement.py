@@ -32,29 +32,40 @@ AGENT_COMPANY_MAIN = "company_main"
 
 
 def default_max_profiles() -> int:
-    raw = (os.environ.get("HERMES_WORKER_MAX_PROFILES") or "64").strip()
+    # Single combat pool: high default; raise via env when approaching the ceiling.
+    raw = (os.environ.get("HERMES_WORKER_MAX_PROFILES") or "256").strip()
     try:
         n = int(raw)
     except ValueError:
-        n = 64
+        n = 256
     return max(1, n)
 
 
-# Pool sticky IDs (not tenant names). Env can override catalog / capacity.
-_DEFAULT_WORKERS = (
-    {
-        "worker_id": "tenant-a",
-        "base_url_env": "HERMES_NOUS_RUNTIME_URL",
-        "base_url_default": "http://delno-hermes-tenant-a:8642",
-        "api_server_key_env": "HERMES_API_SERVER_KEY",
-    },
-    {
-        "worker_id": "tenant-b",
-        "base_url_env": "HERMES_NOUS_RUNTIME_URL_B",
-        "base_url_default": "http://delno-hermes-tenant-b:8642",
-        "api_server_key_env": "HERMES_API_SERVER_KEY_B",
-    },
-)
+# Combat default: ONE multiplex gateway for all companies.
+# Extra workers only when HERMES_ENABLE_EXTRA_WORKERS=1 (scale-out), not dogfood A/B.
+_PRIMARY_WORKER = {
+    "worker_id": "pool",
+    "base_url_env": "HERMES_NOUS_RUNTIME_URL",
+    "base_url_default": "http://delno-hermes-pool:8642",
+    "api_server_key_env": "HERMES_API_SERVER_KEY",
+}
+
+
+def _worker_specs() -> tuple[dict[str, str], ...]:
+    specs: list[dict[str, str]] = [dict(_PRIMARY_WORKER)]
+    extra = (os.environ.get("HERMES_ENABLE_EXTRA_WORKERS") or "").strip().lower()
+    if extra in ("1", "true", "yes"):
+        # Optional scale-out slots (not enabled in combat by default).
+        if (os.environ.get("HERMES_NOUS_RUNTIME_URL_B") or "").strip():
+            specs.append(
+                {
+                    "worker_id": "pool-b",
+                    "base_url_env": "HERMES_NOUS_RUNTIME_URL_B",
+                    "base_url_default": "http://delno-hermes-pool-b:8642",
+                    "api_server_key_env": "HERMES_API_SERVER_KEY_B",
+                }
+            )
+    return tuple(specs)
 
 
 class PlacementError(RuntimeError):
@@ -79,11 +90,13 @@ def _worker_api_key(spec_or_row: dict[str, Any] | HermesWorker) -> str:
 
 
 def ensure_worker_catalog(db: Session) -> list[HermesWorker]:
-    """Upsert pool workers from env. Idempotent; refreshes max_profiles from env."""
+    """Upsert the combat pool worker(s). Marks legacy A/B slots offline."""
     out: list[HermesWorker] = []
     cap = default_max_profiles()
-    for spec in _DEFAULT_WORKERS:
+    active_ids: set[str] = set()
+    for spec in _worker_specs():
         wid = spec["worker_id"]
+        active_ids.add(wid)
         row = db.query(HermesWorker).filter(HermesWorker.worker_id == wid).one_or_none()
         base = (os.environ.get(spec["base_url_env"]) or spec["base_url_default"]).rstrip("/")
         if row is None:
@@ -97,7 +110,8 @@ def ensure_worker_catalog(db: Session) -> list[HermesWorker]:
                 meta={
                     "source": "default_catalog",
                     "isolation": "multiplex_profiles",
-                    "layout": "workers/<id>/profiles/<profile_id>",
+                    "layout": "workers/pool/profiles/<profile_id>",
+                    "role": "combat_pool",
                 },
             )
             db.add(row)
@@ -105,11 +119,28 @@ def ensure_worker_catalog(db: Session) -> list[HermesWorker]:
             row.base_url = base
             row.api_server_key_env = spec["api_server_key_env"]
             row.max_profiles = cap
+            row.status = "ready"
             meta = dict(row.meta or {})
             meta["isolation"] = "multiplex_profiles"
-            meta["layout"] = "workers/<id>/profiles/<profile_id>"
+            meta["layout"] = "workers/pool/profiles/<profile_id>"
+            meta["role"] = "combat_pool"
             row.meta = meta
         out.append(row)
+
+    # Retire dogfood A/B (and any other) workers so placement never picks them.
+    legacy = (
+        db.query(HermesWorker)
+        .filter(HermesWorker.worker_id.notin_(list(active_ids)))
+        .all()
+    )
+    for row in legacy:
+        if row.status != "offline":
+            row.status = "offline"
+            meta = dict(row.meta or {})
+            meta["retired"] = "single_pool_combat"
+            row.meta = meta
+            db.add(row)
+
     db.commit()
     for row in out:
         db.refresh(row)

@@ -48,7 +48,7 @@ def safe_profile_id(profile_id: str) -> str:
 
 
 def worker_multiplex_root(worker_id: str) -> Path:
-    wid = safe_profile_id(worker_id or "tenant-a")
+    wid = safe_profile_id(worker_id or "pool")
     return _writable_profiles_root() / "workers" / wid
 
 
@@ -210,7 +210,7 @@ def ensure_live_profile_home(
 
 def worker_bind_hint(profile_id: str, *, worker_id: str | None = None) -> dict[str, str]:
     """Env the worker container should use (multiplex root, not a single company home)."""
-    wid = worker_id or "tenant-a"
+    wid = worker_id or "pool"
     root = str(worker_multiplex_root(wid))
     path = str(live_profile_path(profile_id, worker_id=wid))
     return {
