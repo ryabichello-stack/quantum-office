@@ -397,6 +397,18 @@ def _wants_get_knowledge(message: str) -> bool:
     return kb and ask
 
 
+def _wants_channel_connect_flow(message: str) -> bool:
+    """Telegram/MAX connect chooser, bot help, or QR path — DIY before Nous."""
+    from app.services.channel_chooser import wants_channel_connect_intent
+
+    if wants_channel_connect_intent(message) is not None:
+        return True
+    low = (message or "").lower()
+    return _asks_setup_progress(low) and any(
+        m in low for m in ("телеграм", "telegram", "макс", "max", "тг")
+    )
+
+
 def _wants_files_cloud_status(message: str) -> bool:
     low = (message or "").lower()
     # Imperative connect («подключи / настрой») → vault form, not status DIY.
@@ -670,8 +682,11 @@ def _credential_form_kind_from_message(
         return None
     # PRODUCT_LOOP: «что дальше / настроим офис» on a vault step → open the form
     # instead of a Nous text waffle that cannot surface CredentialFormCard.
+    # Messenger steps (telegram/max) use the dual-path chooser DIY, not the vault yet.
     progress_kind = _form_kind_for_setup_next(setup_next_id, setup_substep)
     if progress_kind and _asks_setup_progress(low):
+        if progress_kind in ("telegram_bot", "max_bot"):
+            return None
         return progress_kind
     # Only auto-open SIP while vault is still empty (need_sip). Later micro-steps
     # are DID provision / registration — Hermes tools, not the form.
@@ -709,14 +724,18 @@ def _credential_form_kind_from_message(
             "настроить:",
         )
     )
-    if connectish or setup_next_id == "telegram":
-        if any(m in low for m in ("telegram", "телеграм", "tg bot", "тг бот")):
-            return "telegram_bot"
-    if connectish or setup_next_id == "max":
-        if any(m in low for m in ("max_bot", "макс бот", "бот max", "бот макс")) or (
-            setup_next_id == "max" and ("max" in low or "макс" in low)
-        ):
-            return "max_bot"
+    # Telegram / MAX: vault form only after bot-path choice (or explicit open_form).
+    # Bare «подключи телеграм» → channel chooser DIY (pros/cons), not the token form.
+    from app.services.channel_chooser import explicit_bot_form_kind
+
+    bot_kind = explicit_bot_form_kind(message)
+    if bot_kind:
+        return bot_kind
+    # Legacy: open_form kind name spoken aloud.
+    if "telegram_bot" in low or "форму telegram" in low:
+        return "telegram_bot"
+    if "max_bot" in low or "форму max" in low:
+        return "max_bot"
     # Status inventory («какие облака подключены») → DIY, never vault form —
     # even when setup_next is still files.
     if _wants_files_cloud_status(message):
@@ -778,6 +797,7 @@ def operator_chat(
         or _wants_get_knowledge(message)
         or _wants_hermes_capabilities(message)
         or _wants_files_cloud_status(message)
+        or _wants_channel_connect_flow(message)
     )
 
     # Vault forms must reach the cabinet as pending_credential_form. Nous text-only
@@ -793,6 +813,111 @@ def operator_chat(
         loop_preview = None
         setup_next_id = None
         setup_substep = None
+
+    # Telegram / MAX: chooser → bot steps / QR before vault form.
+    if not attachments and (
+        _wants_channel_connect_flow(message) or setup_next_id in ("telegram", "max")
+    ):
+        from app.services import channel_chooser, channel_qr
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        channel = channel_chooser.wants_channel_connect_intent(message)
+        if channel is None and setup_next_id in ("telegram", "max"):
+            low_msg = (message or "").lower()
+            # Only steal the turn for connect / progress / explicit path words.
+            if (
+                _asks_setup_progress(low_msg)
+                or channel_chooser.wants_bot_path(message)
+                or channel_chooser.wants_qr_path(message)
+                or channel_chooser.wants_bot_help(message)
+                or any(m in low_msg for m in ("подключи", "подключить", "настрой", "настроить"))
+            ):
+                channel = "telegram" if setup_next_id == "telegram" else "max"
+        if channel:
+            # Explicit bot / help → form (+ steps). QR → start session. Else chooser.
+            if channel_chooser.wants_qr_path(message) and not channel_chooser.wants_bot_path(message):
+                channel_chooser.cancel_stale_pending_qr(db, ctx, channel)
+                qr_start = channel_qr.start_qr_login(db, ctx, channel_type=channel)
+                blob = channel_chooser.qr_path_reply(channel, qr_start=qr_start)
+                out: dict = {
+                    "ok": True,
+                    "engine": "diy_channel_qr",
+                    "channel": body.channel,
+                    "conversation_id": body.conversation_id,
+                    "reply": blob["reply"],
+                    "tool_calls": [
+                        {
+                            "tool": "channels.qr.start",
+                            "ok": bool(qr_start.get("ok")),
+                            "channel": channel,
+                            "account_id": qr_start.get("account_id"),
+                        }
+                    ],
+                    "suggested_actions": blob.get("suggested_actions") or [],
+                    "modality": modality,
+                    "office_loop": loop_preview,
+                }
+                fallback = blob.get("fallback_form_kind")
+                if fallback:
+                    register_builtin_tools()
+                    form_res = registry.run(db, ctx, "credentials.open_form", kind=fallback)
+                    if isinstance(form_res, ToolResult) and form_res.ok:
+                        form = (form_res.data or {}).get("pending_credential_form")
+                        out["pending_credential_form"] = form if isinstance(form, dict) else None
+                        out["tool_calls"].append(
+                            {"tool": "credentials.open_form", "ok": True, "kind": fallback}
+                        )
+                return out
+
+            if channel_chooser.wants_bot_path(message) or channel_chooser.wants_bot_help(message):
+                channel_chooser.cancel_stale_pending_qr(db, ctx, channel)
+                blob = (
+                    channel_chooser.bot_help_reply(channel)
+                    if channel_chooser.wants_bot_help(message)
+                    else channel_chooser.bot_path_reply(channel)
+                )
+                register_builtin_tools()
+                form_kind_bot = str(blob["form_kind"])
+                form_res = registry.run(db, ctx, "credentials.open_form", kind=form_kind_bot)
+                form = None
+                if isinstance(form_res, ToolResult) and form_res.ok:
+                    form = (form_res.data or {}).get("pending_credential_form")
+                return {
+                    "ok": True,
+                    "engine": "diy_channel_bot_path",
+                    "channel": body.channel,
+                    "conversation_id": body.conversation_id,
+                    "reply": blob["reply"],
+                    "tool_calls": [
+                        {
+                            "tool": "credentials.open_form",
+                            "ok": isinstance(form_res, ToolResult) and bool(form_res.ok),
+                            "kind": form_kind_bot,
+                        }
+                    ],
+                    "pending_credential_form": form if isinstance(form, dict) else None,
+                    "suggested_actions": blob.get("suggested_actions") or [],
+                    "pending_channel_chooser": {"channel": channel, "mode": "bot"},
+                    "modality": modality,
+                    "office_loop": loop_preview,
+                }
+
+            # Generic connect → ask which mode.
+            blob = channel_chooser.chooser_reply(channel)
+            return {
+                "ok": True,
+                "engine": "diy_channel_chooser",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": blob["reply"],
+                "tool_calls": [{"tool": "channel.chooser", "ok": True, "channel": channel}],
+                "suggested_actions": blob.get("suggested_actions") or [],
+                "pending_channel_chooser": blob.get("pending_channel_chooser"),
+                "modality": modality,
+                "office_loop": loop_preview,
+            }
+
     form_kind = _credential_form_kind_from_message(
         message, setup_next_id=setup_next_id, setup_substep=setup_substep
     )

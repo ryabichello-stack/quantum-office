@@ -74,8 +74,8 @@ def test_kind_setup_progress_opens_form_on_need_sip():
             "Давайте настроим офис",
             setup_next_id="telegram",
         )
-        == "telegram_bot"
-    )
+        is None
+    )  # messenger → dual-path chooser DIY, not vault yet
     assert (
         _credential_form_kind_from_message(
             "следующий шаг",

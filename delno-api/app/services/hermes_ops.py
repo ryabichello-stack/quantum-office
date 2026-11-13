@@ -101,9 +101,13 @@ SETUP_STEPS: list[dict[str, str]] = [
     {
         "id": "telegram",
         "title": "Telegram",
-        "hint": "Рекомендуется: branded bot token (@BotFather) — можно после ready",
+        "hint": "Спросите: бот (@BotFather) или QR как веб — плюсы/минусы, помогите создать бота",
     },
-    {"id": "max", "title": "MAX", "hint": "Опционально: MAX bot access token"},
+    {
+        "id": "max",
+        "title": "MAX",
+        "hint": "Спросите: бот (access token) или QR — плюсы/минусы, помогите создать бота",
+    },
     {
         "id": "files",
         "title": "Облако файлов",
@@ -418,15 +422,32 @@ def office_health_report(db: Session, ctx: TenantContext) -> dict[str, Any]:
                 }
             )
     for ch in channels:
-        if ch.status not in ("active",):
+        if ch.status in ("active", "cancelled", "disconnected"):
+            continue
+        if ch.status == "pending_qr":
             alerts.append(
                 {
-                    "code": f"channel.{ch.type}.degraded",
-                    "severity": "warning",
-                    "message_ru": f"Канал {ch.type} в статусе «{ch.status}».",
-                    "fix": "Проверьте токен бота / переподключите канал.",
+                    "code": f"channel.{ch.type}.pending_qr",
+                    "severity": "info",
+                    "message_ru": (
+                        f"Канал {ch.type}: QR-сессия не завершена. "
+                        f"Скажите «подключи {ch.type}» и выберите бота или QR."
+                    ),
+                    "fix": (
+                        "Рекомендуем бота (токен) — стабильнее для клиентов. "
+                        "Или завершите QR, когда появится картинка."
+                    ),
                 }
             )
+            continue
+        alerts.append(
+            {
+                "code": f"channel.{ch.type}.degraded",
+                "severity": "warning",
+                "message_ru": f"Канал {ch.type} в статусе «{ch.status}».",
+                "fix": f"Скажите «подключи {ch.type}» — выберем бота или QR.",
+            }
+        )
     if stuck_jobs >= 3:
         alerts.append(
             {
@@ -473,14 +494,15 @@ def office_health_report(db: Session, ctx: TenantContext) -> dict[str, Any]:
         )
     db.commit()
 
+    blocking = [a for a in alerts if a.get("severity") in ("warning", "critical")]
     user_summary = (
         "Все основные компоненты в порядке."
-        if not alerts
-        else "Есть проблемы: " + "; ".join(a["message_ru"] for a in alerts[:3])
+        if not blocking
+        else "Есть проблемы: " + "; ".join(a["message_ru"] for a in blocking[:3])
     )
     return {
         "ok": True,
-        "healthy": len(alerts) == 0,
+        "healthy": len(blocking) == 0,
         "alerts": alerts,
         "telephony": {
             "active_dids": active_dids,

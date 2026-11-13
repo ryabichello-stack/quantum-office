@@ -101,11 +101,12 @@ export function MaxConnectWizard({ token }: { token: string }) {
     <section className="settings-section panel-card">
       <h2>
         <MessageCircle size={18} style={{ verticalAlign: "middle", marginRight: 8 }} />
-        MAX-бот (Branded)
+        MAX
       </h2>
       <p className="muted tight">
-        Подключите своего бота из MAX для бизнеса — DELNO будет отвечать клиентам в мессенджере MAX. Бот остаётся вашим,
-        мы только настраиваем webhook и обработку сообщений.
+        Два способа: <strong>бот (access token)</strong> из MAX для бизнеса — рекомендуем, или{" "}
+        <strong>QR / web-login</strong> через чат с Гермесом («подключи MAX через QR»). Ниже — путь бота: токен только в
+        форму. Сообщения появятся в «Диалоги».
       </p>
 
       {loading ? (

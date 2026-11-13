@@ -46,11 +46,14 @@ def test_matcher_and_form_max_bot():
 
 
 def test_matcher_telegram_connect_intent():
+    # Generic connect → chooser (no vault yet).
     assert (
         _credential_form_kind_from_message("подключи телеграм", setup_next_id="telegram")
-        == "telegram_bot"
+        is None
     )
+    assert _credential_form_kind_from_message("подключи телеграм через бота") == "telegram_bot"
     assert _credential_form_kind_from_message("настрой телеграм бота") == "telegram_bot"
+    assert _credential_form_kind_from_message("помоги создать телеграм бота") == "telegram_bot"
 
 
 def test_save_telegram_calls_connect():
