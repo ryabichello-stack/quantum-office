@@ -17,6 +17,8 @@ services:
       API_SERVER_HOST: 0.0.0.0
       API_SERVER_PORT: "8642"
       API_SERVER_KEY: ${API_SERVER_KEY:-dev-hermes-key-aaaa}
+      # Stage-0: tenant mcp_api_key so delno_office MCP connects (see config.yaml).
+      DELNO_MCP_KEY: ${DELNO_MCP_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       HTTPS_PROXY: ${OPENAI_HTTP_PROXY:-}
@@ -28,6 +30,7 @@ services:
     init: true
     networks:
       - hermes-lab
+      - delno-internal
 
   hermes-tenant-b:
     build:
@@ -43,6 +46,7 @@ services:
       API_SERVER_HOST: 0.0.0.0
       API_SERVER_PORT: "8642"
       API_SERVER_KEY: ${API_SERVER_KEY_B:-dev-hermes-key-bbbb}
+      DELNO_MCP_KEY: ${DELNO_MCP_KEY_B:-${DELNO_MCP_KEY:-}}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       HTTPS_PROXY: ${OPENAI_HTTP_PROXY:-}
@@ -54,10 +58,14 @@ services:
     init: true
     networks:
       - hermes-lab
+      - delno-internal
 
 networks:
   hermes-lab:
     name: delno-hermes-lab
+  delno-internal:
+    external: true
+    name: delno-internal
 
 volumes:
   hermes-tenant-a-data:

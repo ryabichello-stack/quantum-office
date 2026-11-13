@@ -25,6 +25,8 @@
 - Chat attachments: PDF/DOCX/XLSX text via brain extract (same path as onboarding upload), not raw utf-8 garbage
 - Conduct DIY: `hermes.health` / `crm.funnel` on clear status/funnel asks; Nous instructions insist on calling granted tools by name
 - Office health: do not flag `phone.sip_login_partial` when live SIP probe is Registered (slash heuristic only when registration fails)
+- Conduct DIY: `phones.list` / `billing.summary` (+ SIP registration asks → `hermes.health`) — Nous was calling bare names / terminal instead of MCP
+- Hermes runtime: seed `mcp_servers.delno_office` → `http://delno-api:8020/v1/mcp` with `${DELNO_MCP_KEY}`; bridge instructions require `tool_search` → `mcp__delno_office__…`
 
 ### Changed
 

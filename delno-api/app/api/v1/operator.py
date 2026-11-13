@@ -224,6 +224,63 @@ def _wants_office_health(message: str) -> bool:
             "office health",
             "проверь офис",
             "health офиса",
+            "регистраци",  # «проверь регистрацию SIP»
+            "sip registered",
+            "проверь sip",
+            "статус sip",
+        )
+    )
+
+
+def _wants_phones_list(message: str) -> bool:
+    low = (message or "").lower()
+    asks = any(
+        m in low
+        for m in (
+            "phones.list",
+            "телефонн",
+            "мои номер",
+            "номера did",
+            "list phones",
+            "какие номер",
+            "покажи номер",
+            "перечисли номер",
+            "список номер",
+        )
+    )
+    phoneish = any(m in low for m in ("телефон", "номер", "did", "phones", "линии"))
+    return asks or (
+        phoneish
+        and any(m in low for m in ("перечисл", "покажи", "список", "какие", "list"))
+    )
+
+
+def _wants_billing_summary(message: str) -> bool:
+    low = (message or "").lower()
+    return any(
+        m in low
+        for m in (
+            "billing.summary",
+            "баланс биллинг",
+            "баланс токен",
+            "покажи баланс",
+            "billing",
+            "тариф",
+            "сколько токен",
+            "usage summary",
+        )
+    ) and any(
+        m in low
+        for m in (
+            "баланс",
+            "биллинг",
+            "billing",
+            "тариф",
+            "токен",
+            "usage",
+            "summary",
+            "покажи",
+            "показать",
         )
     )
 
@@ -483,6 +540,8 @@ def operator_chat(
         or _wants_mail_draft(message)
         or _wants_office_health(message)
         or _wants_crm_funnel(message)
+        or _wants_phones_list(message)
+        or _wants_billing_summary(message)
     )
 
     # Vault forms must reach the cabinet as pending_credential_form. Nous text-only
@@ -804,6 +863,67 @@ def operator_chat(
             }
         err = result.message if isinstance(result, ToolResult) else "crm_failed"
         message = f"{message}\n\n[system: crm.funnel failed: {err}]"
+
+    if _wants_phones_list(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        result = registry.run(db, ctx, "phones.list")
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            items = data.get("items") or data.get("phones") or data.get("numbers") or []
+            if isinstance(data, list):
+                items = data
+            lines = []
+            for p in items[:20] if isinstance(items, list) else []:
+                if isinstance(p, dict):
+                    lines.append(
+                        f"- {p.get('e164') or p.get('number') or p}: "
+                        f"{p.get('status') or '—'} ({p.get('label') or 'did'})"
+                    )
+                else:
+                    lines.append(f"- {p}")
+            body_txt = "\n".join(lines) if lines else "Активных DID пока нет."
+            return {
+                "ok": True,
+                "engine": "diy_phones_list",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": f"Телефонные номера:\n{body_txt}\n{result.message or ''}".strip(),
+                "tool_calls": [{"tool": "phones.list", "ok": True, "count": len(lines)}],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "phones_failed"
+        message = f"{message}\n\n[system: phones.list failed: {err}]"
+
+    if _wants_billing_summary(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        result = registry.run(db, ctx, "billing.summary")
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            reply = (
+                result.message
+                or data.get("message_ru")
+                or (
+                    f"Баланс: {data.get('balance') if 'balance' in data else data.get('tokens_remaining', '—')}\n"
+                    f"Тариф: {data.get('tariff') or data.get('rub_per_1k') or '—'}"
+                )
+            )
+            return {
+                "ok": True,
+                "engine": "diy_billing_summary",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": str(reply).strip(),
+                "tool_calls": [{"tool": "billing.summary", "ok": True}],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "billing_failed"
+        message = f"{message}\n\n[system: billing.summary failed: {err}]"
 
     # Feature-flagged Nous Hermes runtime (Stage 0+). DIY loop remains fallback.
     try:

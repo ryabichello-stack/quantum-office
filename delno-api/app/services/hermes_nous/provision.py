@@ -48,24 +48,25 @@ def ensure_tenant_hermes_home(
             if src.is_file() and not dst.exists():
                 shutil.copy2(src, dst)
 
-    # Inject MCP stub pointing at DELNO (URL only — token per run at bridge time)
+    # Inject MCP pointing at DELNO API (internal docker DNS). Auth via DELNO_MCP_KEY
+    # in the runtime env (tenant mcp_api_key). Per-run X-Delno-Run-Token is preferred
+    # once Hermes forwards it into MCP headers — until then Stage-0 uses the key.
     config_path = home / "config.yaml"
     if config_path.is_file():
         text = config_path.read_text(encoding="utf-8")
-        if "delno_office:" not in text:
-            mcp_url = f"{_public_mcp_base()}/v1/mcp"
-            block = (
-                "\nmcp_servers:\n"
-                "  delno_office:\n"
-                f'    url: "{mcp_url}"\n'
-                "    headers:\n"
-                '      Authorization: "Bearer ${DELNO_RUN_TOKEN}"\n'
-            )
-            # Replace empty mcp_servers: {} if present
+        mcp_url = _internal_mcp_url()
+        block = (
+            "mcp_servers:\n"
+            "  delno_office:\n"
+            f'    url: "{mcp_url}"\n'
+            "    headers:\n"
+            '      Authorization: "Bearer ${DELNO_MCP_KEY}"\n'
+        )
+        if "delno_office:" not in text or "mcp_servers: {}" in text:
             if "mcp_servers: {}" in text:
-                text = text.replace("mcp_servers: {}", block.strip())
-            else:
-                text = text.rstrip() + "\n" + block
+                text = text.replace("mcp_servers: {}", block.rstrip())
+            elif "delno_office:" not in text:
+                text = text.rstrip() + "\n\n" + block
             config_path.write_text(text, encoding="utf-8")
 
     base = (runtime_base_url or os.environ.get("HERMES_NOUS_RUNTIME_URL") or "").strip().rstrip("/")
@@ -108,3 +109,11 @@ def _public_mcp_base() -> str:
     settings = get_settings()
     base = (settings.api_public_base_url or "").strip().rstrip("/")
     return base or "http://127.0.0.1:18020"
+
+
+def _internal_mcp_url() -> str:
+    """URL Hermes containers use to reach DELNO MCP (docker DNS, in-container port)."""
+    override = (os.environ.get("DELNO_MCP_INTERNAL_URL") or "").strip().rstrip("/")
+    if override:
+        return override if override.endswith("/v1/mcp") else f"{override}/v1/mcp"
+    return "http://delno-api:8020/v1/mcp"

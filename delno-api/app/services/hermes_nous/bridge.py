@@ -174,17 +174,18 @@ def create_run(
         mission = (
             "Office is being conducted: plan → DELNO MCP tools → report. "
             "For pictures call generate_image. Ava telephony: phones.*/calls.*/telephony.*. "
-            "Use exact granted tool names (hermes.health, suggest_calendar_slots, "
-            "send_mail_draft, create_conference, crm.funnel, …). "
-            "Never claim a granted tool is unavailable — call it, then report the result. "
-            "Critical writes need confirmation policy."
+            "DELNO tools are MCP deferred: first call tool_search with the logical name "
+            "(e.g. phones.list), then invoke the exact mcp__delno_office__… name it returns. "
+            "Never call bare names via terminal. Never claim a granted tool is unavailable — "
+            "search → call → report. Critical writes need confirmation policy."
         )
     payload: dict[str, Any] = {
         "input": message,
         "session_id": session_id or f"delno-{ctx.tenant_id}-{ctx.user_id or 'owner'}",
         "instructions": (
             f"You are the company Hermes agent for THIS tenant only. {mission}{context_line} "
-            f"Use DELNO MCP tools only (delno_office). Granted tools include: {tool_hint}. "
+            f"Use DELNO MCP server delno_office only. Logical grants: {tool_hint}. "
+            "Resolve each via tool_search → mcp__delno_office__<tool>. "
             "Do not invent credentials. Show observable plan steps in Russian."
         ),
     }
