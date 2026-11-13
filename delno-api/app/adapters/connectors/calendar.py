@@ -113,10 +113,26 @@ class CalendarConnector:
         )
         if err:
             return ConnectorResult(ok=False, configured=True, kind=self.kind, error="suggest_failed", message=err)
+        upstream = resp if isinstance(resp, dict) else {}
+        suggestions = (
+            upstream.get("suggestions")
+            or upstream.get("slots")
+            or upstream.get("items")
+            or []
+        )
+        if not isinstance(suggestions, list):
+            suggestions = []
         return ConnectorResult(
             ok=True,
             configured=True,
             kind=self.kind,
             message="Calendar suggestions",
-            data={"upstream": resp or {}, "status_code": code, "source": source},
+            data={
+                "upstream": upstream,
+                "status_code": code,
+                "source": source,
+                "suggestions": suggestions,
+                "count": len(suggestions),
+                "stub": bool(upstream.get("stub")),
+            },
         )

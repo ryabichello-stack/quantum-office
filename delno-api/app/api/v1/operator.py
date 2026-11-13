@@ -421,20 +421,38 @@ def operator_chat(
         )
         if isinstance(result, ToolResult) and result.ok:
             data = result.data or {}
-            suggestions = data.get("suggestions") or (data.get("data") or {}).get("suggestions") or []
-            if not suggestions and isinstance(data.get("data"), dict):
-                suggestions = data["data"].get("suggestions") or []
+            nested = data.get("data") if isinstance(data.get("data"), dict) else {}
+            upstream = data.get("upstream") if isinstance(data.get("upstream"), dict) else {}
+            if not upstream and isinstance(nested.get("upstream"), dict):
+                upstream = nested["upstream"]
+            suggestions = (
+                data.get("suggestions")
+                or nested.get("suggestions")
+                or upstream.get("suggestions")
+                or upstream.get("slots")
+                or upstream.get("items")
+                or []
+            )
+            if not isinstance(suggestions, list):
+                suggestions = []
             lines = []
             for i, slot in enumerate(suggestions[:5], 1):
                 if isinstance(slot, dict):
-                    label = slot.get("label") or slot.get("start") or str(slot)
+                    label = (
+                        slot.get("label")
+                        or slot.get("start")
+                        or slot.get("when")
+                        or slot.get("datetime")
+                        or str(slot)
+                    )
                 else:
                     label = str(slot)
                 lines.append(f"{i}. {label}")
             body_txt = "\n".join(lines) if lines else (result.message or "Слоты получены.")
             stub = bool(
                 data.get("stub")
-                or (data.get("data") or {}).get("stub")
+                or nested.get("stub")
+                or upstream.get("stub")
                 or any(isinstance(s, dict) and s.get("stub") for s in suggestions)
             )
             note = " (черновик/stub — CalDAV ещё без живых кредов)" if stub else ""
