@@ -440,14 +440,18 @@ export function HermesStage({ token }: { token: string }) {
 
   useEffect(() => {
     if (bootstrapped || !setup || !historyReady) return;
-    // Wait for office-loop when Nous is on so welcome follows PRODUCT_LOOP CTA.
+    // Wait for office-loop when Nous is on so welcome follows PRODUCT_LOOP phase.
     if (nousStatus?.enabled && !officeLoop) return;
     setBootstrapped(true);
     if (!setup.setup_complete && lines.length === 0) {
-      const cta =
-        officeLoop?.ui?.primary_cta?.text ||
-        "Я владелец. Давайте настроим офис: следующий шаг по пути знания → инструменты → ready.";
-      void sendText(cta, "text");
+      // Never auto-send primary_cta text — it may pretend the owner already
+      // gave a website URL. Ask Hermes for the real next step instead.
+      const nextTitle = officeLoop?.next_step?.title;
+      const welcome =
+        nextTitle && nextTitle !== "Старт"
+          ? `Я владелец. Офис ещё не ready. Следующий шаг по чеклисту: «${nextTitle}». Покажи статус и что нужно от меня (без выдуманных ссылок/секретов).`
+          : "Я владелец. Давайте настроим офис по пути знания → инструменты → ready. Покажи статус и первый реальный шаг.";
+      void sendText(welcome, "text");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot welcome
   }, [setup, bootstrapped, historyReady, officeLoop, nousStatus?.enabled]);

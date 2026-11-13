@@ -174,6 +174,13 @@ def confirm_kb_draft(db: Session, ctx: TenantContext) -> dict[str, Any]:
         loop["phase"] = loop.get("phase") or "connectors"
         nous["office_loop"] = loop
         _save_nous(db, tenant, nous)
+        # Idempotent: still align settings.hermes if KB step was confirmed earlier.
+        hermes_ops.mark_setup_progress(
+            db,
+            ctx,
+            kb_ready=True,
+            note="office_loop.kb_draft_already_committed",
+        )
         return {"ok": True, "committed": True, "already": True, "loop": get_office_loop(db, ctx)}
 
     title = str(draft.get("title") or "Профиль компании")
@@ -202,11 +209,14 @@ def confirm_kb_draft(db: Session, ctx: TenantContext) -> dict[str, Any]:
     loop["kb_draft"] = draft
     loop["phase"] = "connectors"
     nous["office_loop"] = loop
-    # Mark PRODUCT_LOOP KB step complete for hermes_ops.company_knowledge_ready
-    nous["company_profile_ready"] = True
-    nous["kb_ready"] = True
-    nous["kb_source"] = "owner_upload"
     _save_nous(db, tenant, nous)
+    # Canon: readiness lives in settings.hermes (hermes_ops), NOT hermes_nous.
+    hermes_ops.mark_setup_progress(
+        db,
+        ctx,
+        kb_ready=True,
+        note="office_loop.kb_draft_confirm",
+    )
     return {"ok": True, "committed": True, "loop": get_office_loop(db, ctx)}
 
 

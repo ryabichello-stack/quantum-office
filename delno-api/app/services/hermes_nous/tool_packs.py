@@ -8,6 +8,7 @@ META = ("office.health", "office.connectors", "hermes.profile")
 # P1 — онбординг + KB
 ONBOARDING_KB = META + (
     "hermes.setup_status",
+    "hermes.setup_mark",
     "hermes.capabilities",
     "hermes.health",
     "get_knowledge",
