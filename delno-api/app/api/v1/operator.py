@@ -288,6 +288,60 @@ def _wants_calls_list(message: str) -> bool:
     return callish and ask
 
 
+def _wants_telephony_script(message: str) -> bool:
+    """Ava script get/propose — DIY so Nous cannot skip telephony.script_* tools."""
+    low = (message or "").lower()
+    if "telephony.script_get" in low or "telephony.script_propose" in low:
+        return True
+    scriptish = any(
+        m in low
+        for m in (
+            "сценари",
+            "скрипт секретар",
+            "скрипт ava",
+            "скрипт авы",
+            "ava script",
+            "secretary script",
+        )
+    )
+    ask = any(
+        m in low
+        for m in (
+            "покажи",
+            "какой",
+            "какая",
+            "предложи",
+            "сгенерир",
+            "создай",
+            "надиктуй",
+            "готов",
+            "есть ли",
+            "проверь",
+            "get",
+            "propose",
+        )
+    )
+    # Avoid stealing generic «создай конференцию» / CRM — need scriptish.
+    return scriptish and ask
+
+
+def _telephony_script_wants_propose(message: str) -> bool:
+    low = (message or "").lower()
+    if "telephony.script_propose" in low:
+        return True
+    return any(
+        m in low
+        for m in (
+            "предложи",
+            "сгенерир",
+            "создай сценари",
+            "надиктуй",
+            "черновик",
+            "propose",
+        )
+    )
+
+
 def _wants_get_knowledge(message: str) -> bool:
     low = (message or "").lower()
     kb = any(
@@ -696,6 +750,7 @@ def operator_chat(
         or _wants_crm_funnel(message)
         or _wants_phones_list(message)
         or _wants_calls_list(message)
+        or _wants_telephony_script(message)
         or _wants_billing_summary(message)
         or _wants_get_knowledge(message)
         or _wants_hermes_capabilities(message)
@@ -1094,6 +1149,48 @@ def operator_chat(
             }
         err = result.message if isinstance(result, ToolResult) else "calls_failed"
         message = f"{message}\n\n[system: calls.list failed: {err}]"
+
+    if _wants_telephony_script(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        tool_name = (
+            "telephony.script_propose"
+            if _telephony_script_wants_propose(message)
+            else "telephony.script_get"
+        )
+        result = registry.run(db, ctx, tool_name)
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            if tool_name == "telephony.script_propose":
+                draft = str(data.get("draft") or "")[:3500]
+                reply = (result.message or "Черновик сценария готов.").strip()
+                if draft and draft not in reply:
+                    reply = f"{reply}\n\n{draft}".strip()
+            else:
+                script = str(
+                    data.get("script")
+                    or data.get("body")
+                    or (data.get("telephony") or {}).get("script")
+                    or ""
+                )[:3500]
+                configured = bool(data.get("configured"))
+                head = result.message or (
+                    "Сценарий сохранён." if configured else "Сценария ещё нет."
+                )
+                reply = f"{head}\n\n{script}".strip() if script else str(head)
+            return {
+                "ok": True,
+                "engine": "diy_telephony_script",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": reply,
+                "tool_calls": [{"tool": tool_name, "ok": True}],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "script_failed"
+        message = f"{message}\n\n[system: {tool_name} failed: {err}]"
 
     if _wants_billing_summary(message) and not attachments:
         from app.operator.tools import register_builtin_tools

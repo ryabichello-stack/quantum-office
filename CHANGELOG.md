@@ -33,6 +33,7 @@
 - Conduct: «подключи Яндекс.Диск» opens `files_yadisk` vault form even after setup_complete (was stolen by cloud-status DIY)
 - Conduct: «какие облака подключены» stays on `files.cloud_status` DIY (form connectish no longer matches participle «подключены»)
 - Conduct DIY: `calls.list` for «покажи звонки / история звонков» (Nous often skipped MCP)
+- Conduct DIY: `telephony.script_get` / `script_propose` for Ava secretary script asks
 
 ### Changed
 

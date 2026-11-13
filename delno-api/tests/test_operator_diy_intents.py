@@ -1,6 +1,7 @@
 """Unit tests for operator DIY intent matchers (no DB)."""
 
 from app.api.v1.operator import (
+    _telephony_script_wants_propose,
     _wants_billing_summary,
     _wants_calls_list,
     _wants_files_cloud_status,
@@ -8,6 +9,7 @@ from app.api.v1.operator import (
     _wants_hermes_capabilities,
     _wants_office_health,
     _wants_phones_list,
+    _wants_telephony_script,
 )
 
 
@@ -24,6 +26,16 @@ def test_wants_calls_list():
     assert _wants_calls_list("calls.list")
     assert not _wants_calls_list("позвони клиенту")
     assert not _wants_calls_list("перечисли мои телефонные номера")
+
+
+def test_wants_telephony_script():
+    assert _wants_telephony_script("покажи сценарий Ava")
+    assert _wants_telephony_script("предложи сценарий секретаря")
+    assert _wants_telephony_script("telephony.script_get")
+    assert _telephony_script_wants_propose("предложи сценарий")
+    assert not _telephony_script_wants_propose("покажи сценарий")
+    assert not _wants_telephony_script("создай конференцию")
+    assert not _wants_telephony_script("покажи последние звонки")
 
 
 def test_wants_billing_summary():
