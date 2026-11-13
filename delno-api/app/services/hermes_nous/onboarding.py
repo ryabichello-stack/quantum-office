@@ -262,10 +262,12 @@ def _cta(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> d
         if sid == "phone":
             return {
                 "title": f"Настроить: {title}",
+                # Owner-facing CTA: DIY chat path opens pending_credential_form;
+                # if it falls through to Nous, same text is a clear tool instruction.
                 "text": (
-                    "База знаний уже есть. Следующий шаг hermes_ops — телефония (DID + SIP). "
-                    "Вызови hermes.setup_status, объясни что нужно, открой credentials.open_form "
-                    "для mango_sip если секрета нет. Не предлагай снова импортировать KB."
+                    "Открой безопасную форму credentials.open_form для mango_sip. "
+                    "Это следующий шаг hermes_ops — телефония (DID + SIP). "
+                    "Не предлагай снова импортировать KB."
                 ),
             }
         if sid in {"telegram", "max", "mail", "calendar", "conference", "files"}:

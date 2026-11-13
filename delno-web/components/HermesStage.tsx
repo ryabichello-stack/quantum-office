@@ -1109,6 +1109,12 @@ export function HermesStage({ token }: { token: string }) {
                 {officeLoop ? (
                   <>
                     <p>{officeLoop.ui?.headline || "Настройка офиса"}</p>
+                    {officeLoop.setup_next ? (
+                      <p className="text-muted-foreground mt-1 text-xs leading-snug">
+                        hermes_ops: <strong>{officeLoop.setup_next.title}</strong>
+                        {officeLoop.setup_next.hint ? ` — ${officeLoop.setup_next.hint}` : ""}
+                      </p>
+                    ) : null}
                     <ul className="hermes-checklist">
                       {(officeLoop.steps || []).map((step) => (
                         <li key={step.id} data-done={step.done ? "1" : "0"}>

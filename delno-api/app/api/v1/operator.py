@@ -64,6 +64,61 @@ def _wants_media_generation(message: str) -> bool:
     return any(m in low for m in markers)
 
 
+# hermes_ops checklist id → vault form kind (only when the mapping is unambiguous).
+_SETUP_NEXT_TO_FORM_KIND: dict[str, str] = {
+    "phone": "mango_sip",
+}
+
+
+def _credential_form_kind_from_message(message: str, *, setup_next_id: str | None = None) -> str | None:
+    """Map owner intent → vault form kind. Secrets never belong in chat text.
+
+    Aligns with PRODUCT_LOOP: credentials.open_form must reach the cabinet as
+    pending_credential_form. Nous text-only replies cannot surface the card, so
+    the API opens the form when intent (or the office-loop CTA) is clear.
+    Do not over-match generic «подключи …» — that would open the wrong vault.
+    """
+    low = (message or "").lower()
+    wants_form = (
+        "credentials.open_form" in low
+        or "открой форму" in low
+        or "открой безопасную форму" in low
+        or "пришли форму" in low
+    )
+    if wants_form:
+        if "yadisk" in low or "яндекс" in low:
+            return "files_yadisk"
+        if "mail.ru" in low or "mailru" in low:
+            return "files_mailru"
+        if "gdrive" in low or "google drive" in low or "гугл диск" in low:
+            return "files_gdrive"
+        if "onedrive" in low or "one drive" in low:
+            return "files_onedrive"
+        if "sip" in low or "mango" in low or "телефон" in low:
+            return "mango_sip"
+        # CTA / open_form without kind → use hermes_ops next step when unambiguous.
+        mapped = _SETUP_NEXT_TO_FORM_KIND.get(str(setup_next_id or ""))
+        if mapped:
+            return mapped
+        return None
+    # Phone step of hermes_ops: owner asks to configure the line → open SIP form.
+    if setup_next_id == "phone" and any(
+        m in low
+        for m in (
+            "sip",
+            "mango",
+            "телефон",
+            "did",
+            "линию",
+            "линия",
+            "телефони",
+            "настроить: телефон",
+        )
+    ):
+        return "mango_sip"
+    return None
+
+
 @router.post("/chat")
 def operator_chat(
     body: OperatorChatRequest,
@@ -78,6 +133,38 @@ def operator_chat(
 
     # Attachments + media-generation intents stay on DIY (Images API / vision / STT).
     prefer_diy = bool(attachments) or _wants_media_generation(message)
+
+    # Vault forms must reach the cabinet as pending_credential_form. Nous text-only
+    # runs cannot surface the UI card — open the form server-side when intent is clear.
+    try:
+        from app.services.hermes_nous.onboarding import get_office_loop
+
+        loop_preview = get_office_loop(db, ctx)
+        setup_next_id = str(((loop_preview.get("setup_next") or {}) if isinstance(loop_preview, dict) else {}).get("id") or "") or None
+    except Exception:  # noqa: BLE001
+        loop_preview = None
+        setup_next_id = None
+    form_kind = _credential_form_kind_from_message(message, setup_next_id=setup_next_id)
+    if form_kind and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        result = registry.run(db, ctx, "credentials.open_form", kind=form_kind)
+        if isinstance(result, ToolResult) and result.ok:
+            form = (result.data or {}).get("pending_credential_form")
+            return {
+                "ok": True,
+                "engine": "diy_credential_form",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": result.message
+                or "Открыл безопасную форму. Секрет не пишите в чат — только в форме.",
+                "tool_calls": [{"tool": "credentials.open_form", "ok": True, "kind": form_kind}],
+                "pending_credential_form": form if isinstance(form, dict) else None,
+                "modality": modality,
+                "office_loop": loop_preview,
+            }
 
     # Fast-path: never rely on the LLM to "agree" to draw — call generate_image now.
     if _wants_media_generation(message) and not attachments:

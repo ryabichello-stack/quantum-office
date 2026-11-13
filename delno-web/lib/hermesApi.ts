@@ -181,6 +181,8 @@ export type OfficeLoopStatus = {
   phase: string;
   steps: OfficeLoopStep[];
   next_step?: OfficeLoopStep;
+  /** Concrete hermes_ops checklist item (source of truth for «что дальше»). */
+  setup_next?: { id: string; title: string; hint?: string } | null;
   kb_ok?: boolean;
   kb_draft?: { title?: string; body?: string; status?: string; source_url?: string } | null;
   connectors_ready_count?: number;
