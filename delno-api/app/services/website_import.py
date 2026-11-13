@@ -103,6 +103,70 @@ def _ip_blocked(ip: str) -> bool:
     )
 
 
+def _host_resolves(host: str, *, port: int = 443) -> bool:
+    try:
+        socket.getaddrinfo(host, port)
+        return True
+    except socket.gaierror:
+        return False
+
+
+def suggest_reachable_host(host: str, *, max_checks: int = 80) -> str | None:
+    """Best-effort typo fix when DNS fails (e.g. quntumpayouts → quantumpayouts)."""
+    raw = (host or "").strip().lower().removeprefix("www.")
+    if not raw or "." not in raw or _hostname_blocked(raw):
+        return None
+    if _host_resolves(raw):
+        return None
+
+    # Known dogfood / frequent misspellings (cheap, no DNS storm).
+    known = {
+        "quntumpayouts.ru": "quantumpayouts.ru",
+        "quantumpayout.ru": "quantumpayouts.ru",
+        "quantum-payouts.ru": "quantumpayouts.ru",
+        "qantumpayouts.ru": "quantumpayouts.ru",
+        "quantumlabs.ru": "quantumlabs.ru",
+        "quntumlabs.ru": "quantumlabs.ru",
+        "dlno.ru": "dlno.ru",
+        "delno.ru": "dlno.ru",
+    }
+    if raw in known and known[raw] != raw and _host_resolves(known[raw]):
+        return known[raw]
+
+    label, dot, rest = raw.partition(".")
+    if not label or not rest or len(label) > 40:
+        return None
+
+    candidates: list[str] = []
+    # Adjacent letter swaps (common typos).
+    for i in range(len(label) - 1):
+        swapped = label[:i] + label[i + 1] + label[i] + label[i + 2 :]
+        candidates.append(f"{swapped}{dot}{rest}")
+    # Drop one character.
+    for i in range(len(label)):
+        candidates.append(f"{label[:i]}{label[i + 1 :]}{dot}{rest}")
+    # Insert a limited alphabet (covers missing 'a' in quntum…).
+    insert_chars = "aeiouyntrslmdpkgcbhwfvjxqz0123456789-"
+    for i in range(len(label) + 1):
+        for ch in insert_chars:
+            candidates.append(f"{label[:i]}{ch}{label[i:]}{dot}{rest}")
+
+    seen: set[str] = set()
+    checks = 0
+    for cand in candidates:
+        if cand in seen or cand == raw:
+            continue
+        seen.add(cand)
+        checks += 1
+        if checks > max_checks:
+            break
+        if _hostname_blocked(cand):
+            continue
+        if _host_resolves(cand):
+            return cand
+    return None
+
+
 def assert_website_url_safe(url: str) -> None:
     parsed = urlparse(url)
     host = parsed.hostname

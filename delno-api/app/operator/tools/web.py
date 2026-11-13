@@ -158,5 +158,17 @@ class WebResearchTool:
             return ToolResult(ok=True, data=out, message="\n".join(lines))
         err = out.get("error") or "research_failed"
         detail = out.get("detail")
-        msg = f"{err}" + (f": {detail}" if detail else "")
+        suggestion = out.get("suggestion_url") or out.get("suggestion")
+        if err == "url_unreachable" and suggestion:
+            msg = (
+                f"Не удалось открыть сайт: домен не найден. "
+                f"Похоже на опечатку — попробуйте {suggestion}"
+            )
+        elif err == "url_unreachable":
+            msg = (
+                f"Не удалось открыть сайт: {out.get('url') or url} — домен не резолвится "
+                f"(проверьте опечатку в адресе)."
+            )
+        else:
+            msg = f"{err}" + (f": {detail}" if detail else "")
         return ToolResult(ok=False, data=out, message=msg)

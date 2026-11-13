@@ -359,7 +359,23 @@ def research_site(
         seed = f"https://{seed}"
     blocked = _assert_public_url(seed)
     if blocked:
-        return {"ok": False, "error": blocked, "url": seed}
+        out: dict[str, Any] = {"ok": False, "error": blocked, "url": seed}
+        if blocked == "url_unreachable":
+            try:
+                from app.services.website_import import suggest_reachable_host
+
+                host = (urlparse(seed).hostname or "").lower()
+                suggestion = suggest_reachable_host(host)
+                if suggestion:
+                    out["suggestion"] = suggestion
+                    out["suggestion_url"] = f"https://{suggestion}/"
+                    out["detail"] = (
+                        f"Домен «{host}» не резолвится. Похоже на опечатку — "
+                        f"имели в виду https://{suggestion}/ ?"
+                    )
+            except Exception:  # noqa: BLE001
+                pass
+        return out
 
     pages: list[dict[str, Any]] = []
     tool_trace: list[dict[str, Any]] = []
