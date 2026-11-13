@@ -6,6 +6,24 @@ import httpx
 
 from app.core.config import get_settings
 
+# Whisper often invents YouTube/subtitle credits on silence / near-silence.
+_SILENCE_HALLUCINATION_MARKERS = (
+    "редактор субтитров",
+    "корректор а.",
+    "синецкая",
+    "thank you for watching",
+    "thanks for watching",
+    "thanks for listening",
+    "subscribe to",
+    "www.youtube.com",
+    "amara.org",
+)
+
+
+def _looks_like_silence_hallucination(text: str) -> bool:
+    low = (text or "").lower()
+    return any(m in low for m in _SILENCE_HALLUCINATION_MARKERS)
+
 
 def transcribe_audio(audio_bytes: bytes, *, filename: str = "audio.webm") -> tuple[str | None, str | None]:
     """Return (text, error_code)."""
@@ -43,6 +61,6 @@ def transcribe_audio(audio_bytes: bytes, *, filename: str = "audio.webm") -> tup
     except Exception:  # noqa: BLE001
         return None, "STT_FAILED"
     text = str(data.get("text") or "").strip()
-    if not text:
+    if not text or _looks_like_silence_hallucination(text):
         return None, "STT_EMPTY"
     return text, None
