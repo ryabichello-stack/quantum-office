@@ -25,6 +25,8 @@
 
 ### Fixed
 
+- Website import: do not stop at a single short `<p>` — fall back to full visible page text (li/div) so marketing sites like Quantum Payouts yield real KB, not only meta description
+
 - Hermes cabinet: when ``hermes_nous_runtime`` is on but profile/worker missing, return honest ``engine=hermes_unavailable`` — no silent DIY reply posing as Hermes
 - Hermes tenant isolation: sticky runtime slots (tenant-a / tenant-b) so each cabinet has its own HERMES space + MCP key — shared ``DELNO_MCP_KEY`` no longer makes one tenant see another's ``setup_status``. Bridge grounds Nous with per-tenant FACTS; new registrations assign an isolated slot. Placement table is now source of truth over env default URL
 - Cold-start office status: platform upstream ``configured: true`` (mail/calendar/files/conference Docker) no longer looks like the tenant already set them up; Hermes only treats ``tenant_usable`` / ``checks.*.ok`` as ready. Global Mango Registered is ignored until this cabinet has SIP in vault. New self-service/admin tenants start with empty hermes/connectors + welcome phase

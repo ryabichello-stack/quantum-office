@@ -28,26 +28,39 @@ class _HeadingParser(HTMLParser):
         self._buffer: list[str] = []
         self.headings: list[tuple[str, str]] = []
         self.paragraphs: list[str] = []
+        self._skip_depth = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in ("h1", "h2", "h3", "p"):
+        if tag in ("script", "style", "noscript", "svg"):
+            self._skip_depth += 1
+            return
+        if self._skip_depth:
+            return
+        # Many marketing sites put body copy in div/span/li, not <p>.
+        if tag in ("h1", "h2", "h3", "p", "li", "td", "th", "figcaption", "blockquote"):
             self._capture_tag = tag
             self._buffer = []
 
     def handle_endtag(self, tag: str) -> None:
+        if tag in ("script", "style", "noscript", "svg") and self._skip_depth:
+            self._skip_depth -= 1
+            return
+        if self._skip_depth:
+            return
         if tag != self._capture_tag:
             return
         text = _WS_RE.sub(" ", "".join(self._buffer)).strip()
+        self._capture_tag = None
         if not text:
-            self._capture_tag = None
             return
         if tag in ("h1", "h2", "h3"):
             self.headings.append((tag, text))
-        elif tag == "p" and len(text) >= 24:
+        elif len(text) >= 24:
             self.paragraphs.append(text)
-        self._capture_tag = None
 
     def handle_data(self, data: str) -> None:
+        if self._skip_depth:
+            return
         if self._capture_tag:
             self._buffer.append(data)
 
@@ -128,11 +141,31 @@ def extract_website_content(html: str, *, url: str) -> dict[str, Any]:
     sections: list[dict[str, str]] = []
     for tag, heading in parser.headings[:12]:
         sections.append({"heading": heading, "level": tag})
-    paragraphs = parser.paragraphs[:20]
-    if not paragraphs:
-        plain = _strip_html(html)
-        if plain:
-            paragraphs = [plain[i : i + 400] for i in range(0, min(len(plain), 2400), 400)]
+
+    # Dedupe while preserving order.
+    seen: set[str] = set()
+    paragraphs: list[str] = []
+    for raw in parser.paragraphs:
+        text = _WS_RE.sub(" ", str(raw)).strip()
+        if len(text) < 24 or text in seen:
+            continue
+        seen.add(text)
+        paragraphs.append(text)
+
+    plain = _strip_html(html)
+    tagged_chars = sum(len(p) for p in paragraphs)
+    # One short <p>/<li> used to block the plain-text fallback — marketing SPAs
+    # often have almost no <p> but thousands of chars in other tags.
+    if tagged_chars < 800 and plain:
+        # Prefer longer plain extract; keep unique tagged bits that aren't inside it.
+        chunks = [plain[i : i + 500] for i in range(0, min(len(plain), 8000), 500)]
+        for chunk in chunks:
+            chunk = chunk.strip()
+            if len(chunk) < 24 or chunk in seen:
+                continue
+            seen.add(chunk)
+            paragraphs.append(chunk)
+    paragraphs = paragraphs[:40]
 
     return {
         "url": url,
@@ -140,6 +173,8 @@ def extract_website_content(html: str, *, url: str) -> dict[str, Any]:
         "description": description,
         "sections": sections,
         "paragraphs": paragraphs,
+        "plain_chars": len(plain or ""),
+        "tagged_chars": tagged_chars,
     }
 
 
