@@ -16,6 +16,7 @@
 - Hermes web.research: on `url_unreachable` suggest a reachable near-match host (e.g. `quntumpayouts.ru` → `quantumpayouts.ru`) instead of a bare DNS error
 - Hermes instructions (SOUL / onboarding skill / Nous mission / DIY system): commercial KB playbook — `office.build_kb_draft`, show services/ICP/pricing/terms/FAQ draft in reply; forbid research→import→confirm stub as a substitute
 - Hermes: company URL / «собери·обогати базу» goes to the **agent loop** (Nous/tool agent), not DIY web-research robot shortcuts
+- Hermes «обогати базу»: agent acts as commercial director — browser max research on topic → strong company profile in reply (SOUL / skill / mission)
 - Hermes **any-N companies** multiplex pool: combat default is **one** gateway (`delno-hermes-pool` / worker `pool`); companies under `workers/pool/profiles/<profile_id>`; API `/p/<profile_id>/v1/...`; capacity `HERMES_WORKER_MAX_PROFILES` (default 256); dogfood A/B retired (offline); optional second worker only with `HERMES_ENABLE_EXTRA_WORKERS=1`
 - Hermes multiplex layout + bootstrap `--also` (superseded dogfood dual A/B capacity=1)
 - Hermes multi-tenant placement map: `hermes_workers` + `hermes_profiles` + `hermes_run_bindings` (tenant → profile → worker). Pool exhausted → `provisioning`/`unavailable`, never silent fallback to worker A / `HERMES_NOUS_RUNTIME_URL`. Admin assign + placement snapshot; MCP auth via `X-Delno-Run-Id` binding; owner `/provision` no longer accepts client `runtime_base_url`; `tool_ids` clamped to pack
