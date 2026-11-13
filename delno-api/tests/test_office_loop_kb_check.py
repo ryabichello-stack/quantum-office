@@ -232,3 +232,40 @@ def test_office_loop_telephony_script_cta(monkeypatch):
     assert "telephony.script" in (loop["ui"]["primary_cta"]["text"] or "")
     assert "импортировать kb" in (loop["ui"]["primary_cta"]["text"] or "").lower()
     db.close()
+
+
+def test_office_loop_files_cta_opens_yadisk_form(monkeypatch):
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    tenant = Tenant(id=uuid.uuid4(), slug="loop-files", name="Loop", settings={}, is_active=True)
+    db.add(tenant)
+    db.commit()
+    ctx = TenantContext(tenant_id=tenant.id, tenant_slug=tenant.slug, role="tenant_owner")
+    monkeypatch.setattr(
+        "app.services.hermes_nous.onboarding.hermes_ops.office_setup_status",
+        lambda *_a, **_k: {
+            "setup_complete": False,
+            "message_ru": "next",
+            "progress": {},
+            "checks": {"kb": {"ok": True}, "phone": {"ok": True}, "files": {"ok": False, "optional": True}},
+            "next_steps": [
+                {
+                    "id": "files",
+                    "title": "Облако файлов",
+                    "hint": "Яндекс/Mail/Drive",
+                    "status": "todo",
+                    "check": {"ok": False, "optional": True, "detail": {}},
+                }
+            ],
+        },
+    )
+    loop = office_onboarding.get_office_loop(db, ctx)
+    assert loop["setup_next"]["id"] == "files"
+    assert "files_yadisk" in (loop["ui"]["primary_cta"]["text"] or "")
+    assert "credentials.open_form" in (loop["ui"]["primary_cta"]["text"] or "")
+    db.close()

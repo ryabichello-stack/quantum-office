@@ -28,6 +28,7 @@
 - Whisper STT: drop known silence hallucinations (subtitle credits / thanks-for-watching) as `STT_EMPTY` so mic fallback does not invent chat text
 - Vault form `telegram_bot` + DIY `credentials.open_form` for hermes_ops Telegram step; save calls `connect_telegram_branded`
 - Vault form `max_bot` similarly → `connect_max_branded`
+- Office-loop CTA for `files` prefers `credentials.open_form` `files_yadisk` (RF default)
 - Hermes Nous: `lead.created` → `events_dispatch.on_lead_created` (durable AgentTask + queued AgentRun when `hermes_nous_runtime` on)
 - Hermes Nous: detailed sqlite integration suite (`test_hermes_nous_integration.py`) — A/B run tokens, MCP fail-closed tool call, KB confirm, bridge runs+fallback, flag gate, hermes profile without long-lived key
 - Hermes runtime Dockerfile: Python 3.14 + `uv sync --frozen --extra messaging`; lab smoke A/B on `:18642`/`:18643` (`scripts/lab_smoke.sh`); verified live `/v1/runs` → `completed` on C4B lab

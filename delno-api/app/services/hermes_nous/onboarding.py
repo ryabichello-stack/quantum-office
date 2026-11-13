@@ -355,12 +355,21 @@ def _cta(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> d
                     "(access token). Не проси токен в чат и не предлагай импортировать KB."
                 ),
             }
-        if sid in {"mail", "calendar", "conference", "files"}:
+        if sid == "files":
+            return {
+                "title": "Подключить облако",
+                "text": (
+                    "Открой безопасную форму credentials.open_form для files_yadisk "
+                    "(РФ по умолчанию; иначе files_mailru / files_gdrive / files_onedrive). "
+                    "Не проси токен в чат и не предлагай импортировать KB."
+                ),
+            }
+        if sid in {"mail", "calendar", "conference"}:
             return {
                 "title": f"Подключить: {title}",
                 "text": (
                     f"KB готова. Следующий шаг сетапа — «{title}». {hint} "
-                    "Проведи по шагам через hermes.setup_status и credentials.open_form. "
+                    "Проведи по шагам через hermes.setup_status и credentials.open_form / connectors. "
                     "Не предлагай снова собирать базу знаний."
                 ),
             }
