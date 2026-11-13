@@ -131,7 +131,8 @@ HERMES_AGENT_SYSTEM = (
     "\n"
     "Каталог tools (выбираешь сам по смыслу задачи):\n"
     "• office.build_kb_draft — сбор KB из сайта ИЛИ соцссылки (t.me/IG/VK/MAX) ИЛИ "
-    "свободного текста «кто мы/услуги/цены» ИЛИ микса; отдельная настройка соцсетей не нужна "
+    "свободного текста «кто мы/услуги/цены» ИЛИ картинки/файла (КП, презентация, прайс → "
+    "vision/extract → free_text) ИЛИ микса; отдельная настройка соцсетей/медиа не нужна "
     "(login-wall → честно скажи); предпочтительно при онбординге;\n"
     "• office.confirm_kb_draft — «положи в кб» после черновика (закрывает шаг знаний);\n"
     "• web.search / web.fetch / web.browse / web.research — открытый интернет; "
@@ -1558,6 +1559,33 @@ def _generate_reply(
                 None,
             )
 
+    # КП / презентация / PDF / DOCX → commercial KB draft (same as site/text).
+    if has_attachments and (cabinet or onboarding):
+        from app.services.hermes_kb_from_attachments import try_kb_draft_from_attachments
+
+        kb_attach = try_kb_draft_from_attachments(db, ctx, message, attachments)
+        if kb_attach and kb_attach.get("reply"):
+            tool_calls = list(kb_attach.get("tool_calls") or [])
+            suggested = kb_attach.get("suggested_actions")
+            if suggested and tool_calls:
+                tool_calls[0] = dict(tool_calls[0])
+                tool_calls[0]["suggested_actions"] = suggested
+            elif suggested:
+                tool_calls.append(
+                    {
+                        "tool": "office.build_kb_draft",
+                        "ok": True,
+                        "suggested_actions": suggested,
+                    }
+                )
+            return (
+                str(kb_attach["reply"]),
+                tool_calls,
+                list(kb_attach.get("sources") or []),
+                None,
+                None,
+            )
+
     skip_kb = False
     if cabinet and not has_attachments:
         from app.services.hermes_guide import coach_reply
@@ -1650,8 +1678,9 @@ def _generate_reply(
                 widget=widget,
             )
             + (
-                "\nПользователь может прикладывать фото и файлы. "
-                "Для изображений опиши увиденное и предложи конкретное действие в офисе."
+                "\nПользователь может прикладывать фото и файлы (КП, презентация, прайс). "
+                "Если это материалы компании — извлеки факты для KB и предложи "
+                "собрать/подтвердить коммерческий профиль. Иначе опиши и предложи действие."
                 if has_attachments
                 else ""
             ),
@@ -1663,7 +1692,7 @@ def _generate_reply(
     completion = provider.chat_completion(
         messages=llm_messages,
         model=model_override,
-        max_tokens=450 if vision else (220 if widget else None),
+        max_tokens=1200 if vision else (220 if widget else None),
     )
 
     if completion.get("ok"):

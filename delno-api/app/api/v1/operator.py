@@ -1281,7 +1281,12 @@ def operator_chat(
     )
     if _kb_agent_goal:
         agent_mode = True
-        prefer_diy = False
+        # Attachments stay DIY: Nous is text-only; vision/PDF extract runs in DIY.
+        if not attachments:
+            prefer_diy = False
+    # Binary media never goes through Nous — DIY normalizes + KB-from-attachments.
+    if attachments:
+        prefer_diy = True
 
     # «положи в кб» with an existing draft → commit immediately (text IS the confirm).
     # Do not open a second upload_knowledge_snippet card.

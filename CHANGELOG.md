@@ -12,6 +12,7 @@
 
 ### Added
 
+- Hermes KB from attachments: image (КП / презентация / прайс via vision) or file (PDF/DOCX/TXT) → extract → `office.build_kb_draft` free_text; DIY keeps media (Nous text-only); SOUL / onboarding skill document the scenario
 - Hermes deep KB onboarding: `office.build_kb_draft` — multi-page site crawl, Telegram/Instagram/VK/MAX harvest, open-web enrichment by company profile, structured draft + clarifying questions; DIY URL path and setup intents use draft co-build (not shallow auto-publish) when KB is missing; SOUL / onboarding skill / Nous mission updated
 - Hermes web.research: on `url_unreachable` suggest a reachable near-match host (e.g. `quntumpayouts.ru` → `quantumpayouts.ru`) instead of a bare DNS error
 - Hermes instructions (SOUL / onboarding skill / Nous mission / DIY system): commercial KB playbook — `office.build_kb_draft`, show services/ICP/pricing/terms/FAQ draft in reply; forbid research→import→confirm stub as a substitute
