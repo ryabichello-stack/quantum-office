@@ -79,6 +79,43 @@ def operator_chat(
     # Attachments + media-generation intents stay on DIY (Images API / vision / STT).
     prefer_diy = bool(attachments) or _wants_media_generation(message)
 
+    # Fast-path: never rely on the LLM to "agree" to draw — call generate_image now.
+    if _wants_media_generation(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        prompt = message
+        for prefix in (
+            "сгенерируй картинку:",
+            "сгенерируй изображение:",
+            "создай картинку:",
+            "нарисуй:",
+            "generate_image:",
+            "generate an image:",
+            "generate image:",
+        ):
+            if message.lower().startswith(prefix):
+                prompt = message[len(prefix) :].strip() or message
+                break
+        result = registry.run(db, ctx, "generate_image", prompt=prompt)
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            md = str(data.get("markdown") or "")
+            caption = f"Готово — сгенерировал изображение по запросу: «{prompt[:120]}»."
+            return {
+                "ok": True,
+                "engine": "diy_generate_image",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": f"{caption}\n\n{md}".strip() if md else caption,
+                "tool_calls": [{"tool": "generate_image", "ok": True, "model": data.get("model")}],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "image_failed"
+        # Fall through to DIY LLM with the error context so the owner sees a clear reply.
+        message = f"{message}\n\n[system: generate_image failed: {err}]"
+
     # Feature-flagged Nous Hermes runtime (Stage 0+). DIY loop remains fallback.
     try:
         from app.services.hermes_nous.bridge import HermesBridgeError, create_run

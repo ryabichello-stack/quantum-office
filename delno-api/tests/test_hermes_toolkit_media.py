@@ -33,8 +33,8 @@ def test_wants_media_generation_routes():
     assert not _wants_media_generation("Какие звонки были сегодня?")
 
 
-def test_generate_image_tries_fallback_without_response_format(monkeypatch):
-    """Proxies that reject response_format must still succeed via URL payload."""
+def test_generate_image_prefers_proxy_friendly_models(monkeypatch):
+    """RU proxy often exposes gpt-image-1-mini / chatgpt-image-latest only."""
     register_builtin_tools()
     calls: list[dict] = []
 
@@ -59,24 +59,32 @@ def test_generate_image_tries_fallback_without_response_format(monkeypatch):
 
         def post(self, url, headers=None, json=None):
             calls.append(json or {})
-            if "response_format" in (json or {}):
-                return _Resp(400, {"error": {"message": "Unknown parameter: 'response_format'."}})
-            if (json or {}).get("model") == "gpt-image-1":
-                return _Resp(404, {"error": {"message": "model_not_found"}})
-            return _Resp(200, {"data": [{"url": "https://cdn.example/img.png"}]})
+            model = (json or {}).get("model")
+            if model == "gpt-image-1-mini":
+                return _Resp(200, {"data": [{"b64_json": "aaa"}]})
+            return _Resp(400, {"error": {"message": f"The model '{model}' does not exist."}})
 
     monkeypatch.setattr("app.operator.tools.media.httpx.Client", _Client)
     monkeypatch.setattr(
         "app.operator.tools.media.get_settings",
-        lambda: type("S", (), {"openai_api_key": "sk-test", "openai_base_url": "https://api.openai.com/v1", "openai_http_proxy": ""})(),
+        lambda: type(
+            "S",
+            (),
+            {
+                "openai_api_key": "sk-test",
+                "openai_base_url": "https://api.openai.com/v1",
+                "openai_http_proxy": "http://127.0.0.1:10808",
+            },
+        )(),
     )
 
     tool = GenerateImageTool()
     result = tool.run(None, None, prompt="yellow circle logo")  # type: ignore[arg-type]
     assert isinstance(result, ToolResult)
     assert result.ok is True
-    assert "cdn.example" in (result.data or {}).get("markdown", "")
-    assert any("response_format" not in c and c.get("model") == "dall-e-3" for c in calls)
+    assert (result.data or {}).get("model") == "gpt-image-1-mini"
+    assert str((result.data or {}).get("markdown") or "").startswith("![Hermes image](data:image/png;base64,")
+    assert calls and calls[0].get("model") == "gpt-image-1-mini"
 
 
 def test_toolkit_includes_ava_tools(monkeypatch):

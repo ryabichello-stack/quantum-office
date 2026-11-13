@@ -12,6 +12,16 @@ from app.core.tenant import TenantContext
 from app.operator.tools.registry import ToolResult
 
 
+# Proxied OpenAI accounts (RU egress) often expose gpt-image-* / chatgpt-image-*
+# and reject legacy dall-e-* ids. Prefer working modern ids first.
+_IMAGE_MODEL_ATTEMPTS: tuple[tuple[str, dict[str, Any]], ...] = (
+    ("gpt-image-1-mini", {"model": "gpt-image-1-mini", "size": "1024x1024", "n": 1}),
+    ("chatgpt-image-latest", {"model": "chatgpt-image-latest", "size": "1024x1024", "n": 1}),
+    ("gpt-image-1", {"model": "gpt-image-1", "size": "1024x1024", "n": 1}),
+    ("dall-e-3", {"model": "dall-e-3", "size": "1024x1024", "n": 1}),
+)
+
+
 class GenerateImageTool:
     name = "generate_image"
     description = (
@@ -52,54 +62,17 @@ class GenerateImageTool:
         base = (settings.openai_base_url or "https://api.openai.com/v1").rstrip("/")
         proxy = (getattr(settings, "openai_http_proxy", None) or "").strip() or None
 
-        # Prefer payloads that work on both OpenAI and strict proxies
-        # (some gateways reject legacy `response_format`).
-        attempts: list[tuple[str, dict[str, Any]]] = [
-            (
-                "gpt-image-1",
-                {
-                    "model": "gpt-image-1",
-                    "prompt": prompt[:4000],
-                    "size": size if size == "1024x1024" else "1024x1024",
-                    "n": 1,
-                },
-            ),
-            (
-                "dall-e-3",
-                {
-                    "model": "dall-e-3",
-                    "prompt": prompt[:4000],
-                    "size": "1024x1024",
-                    "n": 1,
-                },
-            ),
-            (
-                "dall-e-3-b64",
-                {
-                    "model": "dall-e-3",
-                    "prompt": prompt[:4000],
-                    "size": "1024x1024",
-                    "n": 1,
-                    "response_format": "b64_json",
-                },
-            ),
-            (
-                "dall-e-2",
-                {
-                    "model": "dall-e-2",
-                    "prompt": prompt[:1000],
-                    "size": "1024x1024",
-                    "n": 1,
-                },
-            ),
-        ]
-
         last_error = "image_generation_failed"
         client_kwargs: dict[str, Any] = {"timeout": 120.0}
         if proxy:
             client_kwargs["proxy"] = proxy
 
-        for label, payload in attempts:
+        for label, base_payload in _IMAGE_MODEL_ATTEMPTS:
+            payload = {
+                **base_payload,
+                "prompt": prompt[:4000],
+                "size": size if label.startswith("gpt-image") or label.startswith("chatgpt-image") else "1024x1024",
+            }
             model = str(payload.get("model") or label)
             try:
                 with httpx.Client(**client_kwargs) as client:
@@ -113,7 +86,6 @@ class GenerateImageTool:
                     )
                 if res.status_code >= 400:
                     last_error = f"http_{res.status_code}: {(res.text or '')[:240]}"
-                    # Unknown parameter / model → try next shape.
                     continue
                 body = res.json()
                 data = (body.get("data") or [{}])[0]
