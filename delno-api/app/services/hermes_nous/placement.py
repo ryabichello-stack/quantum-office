@@ -211,7 +211,7 @@ def ensure_tenant_placement(
     """
     ensure_worker_catalog(db)
     tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
-    ensure_mcp_api_key(db, tenant)
+    tenant_mcp_key = ensure_mcp_api_key(db, tenant)
     db.refresh(tenant)
 
     # API-side skeleton (backup) + worker-visible live home (shared volume).
@@ -304,6 +304,7 @@ def ensure_tenant_placement(
         worker_id=worker.worker_id if worker else None,
         mcp_url=_internal_mcp_url(),
         api_server_key=api_key or None,
+        delno_mcp_key=tenant_mcp_key,
     )
     live_path = str(live_home)
 
@@ -360,12 +361,15 @@ def resolve_placement(db: Session, ctx: TenantContext) -> dict[str, Any]:
             detail={"env": key_env, "worker_id": worker.worker_id},
         )
 
-    # Ensure multiplex home + profile-scoped key exist before traffic.
+    tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
+    tenant_mcp_key = ensure_mcp_api_key(db, tenant)
+    # Ensure multiplex home + profile-scoped keys exist before traffic.
     ensure_live_profile_home(
         profile.profile_id,
         worker_id=worker.worker_id,
         mcp_url=_internal_mcp_url(),
         api_server_key=api_key,
+        delno_mcp_key=tenant_mcp_key,
     )
 
     prefix = f"/p/{profile.profile_id}"
@@ -441,11 +445,13 @@ def admin_assign_worker(
     profile.status = "ready"
     profile.last_checked_at = datetime.now(timezone.utc)
     api_key = _worker_api_key(worker)
+    tenant_mcp_key = ensure_mcp_api_key(db, tenant)
     live = ensure_live_profile_home(
         profile.profile_id,
         worker_id=worker.worker_id,
         mcp_url=_internal_mcp_url(),
         api_server_key=api_key or None,
+        delno_mcp_key=tenant_mcp_key,
     )
     profile.state_location = str(live)
     db.add(profile)

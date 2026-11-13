@@ -99,7 +99,13 @@ def ensure_worker_multiplex_root(worker_id: str, *, api_server_key: str | None =
     return root
 
 
-def _seed_profile_files(home: Path, *, mcp_url: str | None, api_server_key: str | None) -> None:
+def _seed_profile_files(
+    home: Path,
+    *,
+    mcp_url: str | None,
+    api_server_key: str | None,
+    delno_mcp_key: str | None = None,
+) -> None:
     for sub in ("memories", "skills", "cron", "sessions"):
         (home / sub).mkdir(exist_ok=True)
 
@@ -132,15 +138,24 @@ def _seed_profile_files(home: Path, *, mcp_url: str | None, api_server_key: str 
                 text = text.rstrip() + "\n\n" + block
         config_path.write_text(text, encoding="utf-8")
 
-    # Hermes /p/<profile>/ auth requires a profile-scoped API_SERVER_KEY (≥16 chars).
+    # Profile-scoped secrets (Hermes multiplex get_secret). Never share across companies.
+    env_path = home / ".env"
+    existing = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
+    lines = [
+        ln
+        for ln in existing.splitlines()
+        if not ln.startswith("API_SERVER_KEY=") and not ln.startswith("DELNO_MCP_KEY=")
+    ]
     key = (api_server_key or "").strip()
     if key:
-        env_path = home / ".env"
-        existing = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
-        lines = [ln for ln in existing.splitlines() if not ln.startswith("API_SERVER_KEY=")]
-        # Never put a long-lived shared MCP key here — run tokens only.
-        lines = [ln for ln in lines if not ln.startswith("DELNO_MCP_KEY=")]
+        # /p/<profile>/ auth requires a profile-scoped API_SERVER_KEY (≥16 chars).
         lines.append(f"API_SERVER_KEY={key}")
+    mcp_key = (delno_mcp_key or "").strip()
+    if mcp_key:
+        # Per-tenant legacy MCP key for Hermes MCP client connect at boot.
+        # Run tokens / X-Delno-Run-Id still preferred for tool ACL.
+        lines.append(f"DELNO_MCP_KEY={mcp_key}")
+    if lines:
         env_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
@@ -164,6 +179,7 @@ def ensure_live_profile_home(
     worker_id: str | None = None,
     mcp_url: str | None = None,
     api_server_key: str | None = None,
+    delno_mcp_key: str | None = None,
 ) -> Path:
     """Create/seed the directory Hermes workers mount. Idempotent."""
     safe = safe_profile_id(profile_id)
@@ -181,7 +197,12 @@ def ensure_live_profile_home(
             except OSError:
                 shutil.copytree(staging, home, dirs_exist_ok=True)
     home.mkdir(parents=True, exist_ok=True)
-    _seed_profile_files(home, mcp_url=mcp_url, api_server_key=api_server_key)
+    _seed_profile_files(
+        home,
+        mcp_url=mcp_url,
+        api_server_key=api_server_key,
+        delno_mcp_key=delno_mcp_key,
+    )
     marker = home / ".delno_profile_id"
     marker.write_text(profile_id + "\n", encoding="utf-8")
     return home
