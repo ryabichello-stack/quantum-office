@@ -1110,21 +1110,14 @@ def operator_chat(
         register_builtin_tools()
         result = registry.run(db, ctx, "files.cloud_status")
         if isinstance(result, ToolResult) and result.ok:
-            data = result.data or {}
-            items = data.get("items") or []
-            lines = []
-            if isinstance(items, list):
-                for it in items[:8]:
-                    if isinstance(it, dict):
-                        mark = "готово" if it.get("ready") or it.get("configured") else "нет"
-                        lines.append(f"- {it.get('title') or it.get('kind') or '?'}: {mark}")
-            body_txt = "\n".join(lines) if lines else (result.message or "Облака не настроены.")
+            # Tool message already lists each cloud; prefer it over re-formatting.
+            reply = (result.message or "").strip() or "Облака не настроены."
             return {
                 "ok": True,
                 "engine": "diy_files_cloud_status",
                 "channel": body.channel,
                 "conversation_id": body.conversation_id,
-                "reply": f"Облачные диски:\n{body_txt}\n{result.message or ''}".strip(),
+                "reply": reply,
                 "tool_calls": [{"tool": "files.cloud_status", "ok": True}],
                 "modality": modality,
             }
