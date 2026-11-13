@@ -331,9 +331,32 @@ def build_company_kb_draft(
     also_search: bool = True,
     research_social: bool = True,
 ) -> dict[str, Any]:
-    """Deep multi-source research → structured KB draft + owner questions."""
+    """Deep multi-source research → structured KB draft + owner questions.
+
+    Accepts any mix the owner may paste:
+    - website URL / domain
+    - social URL (Telegram / Instagram / VK / MAX / …) — best-effort public scrape
+    - free-text company description
+    - combination of the above in one message
+    """
     url_list = _normalize_url_list(urls, message)
     owner_text = (free_text or "").strip()
+    # Residual prose in ``message`` (after stripping URLs) is owner free-text.
+    if message:
+        residual = message.strip()
+        for u in url_list:
+            residual = residual.replace(u, " ")
+            residual = residual.replace(u.removeprefix("https://").removeprefix("http://"), " ")
+        residual = re.sub(r"https?://\S+", " ", residual, flags=re.I)
+        residual = re.sub(
+            r"\b[\w.-]+\.(?:ru|com|org|net|io|ai)\b",
+            " ",
+            residual,
+            flags=re.I,
+        )
+        residual = re.sub(r"\s+", " ", residual).strip(" \t:-—.,")
+        if len(residual) >= 20:
+            owner_text = f"{owner_text}\n{residual}".strip() if owner_text else residual
     if not url_list and not owner_text:
         return {
             "ok": False,

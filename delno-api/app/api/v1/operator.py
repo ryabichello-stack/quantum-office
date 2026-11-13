@@ -717,6 +717,45 @@ def _wants_show_kb_findings(message: str) -> bool:
     return show and about
 
 
+def _looks_like_company_blurb(message: str) -> bool:
+    """Owner pasted a free-text company description (no URL required)."""
+    text = (message or "").strip()
+    if len(text) < 40:
+        return False
+    low = text.lower()
+    # Affirmations / confirmations are not blurbs.
+    if re.fullmatch(
+        r"(да|нет|ок|окей|подтверждаю|подтверди|положи в кб|добавь в kb)[\s!.…]*",
+        low,
+    ):
+        return False
+    markers = (
+        "услуг",
+        "клиент",
+        "цен",
+        "комисс",
+        "тариф",
+        "для кого",
+        "делаем",
+        "предлагаем",
+        "компания",
+        "бизнес",
+        "выплат",
+        "прода",
+        "продукт",
+        "аудитор",
+        "сегмент",
+        "оферт",
+        "sla",
+        "контакт",
+        "телефон",
+        "мы —",
+        "мы -",
+        "наш ",
+    )
+    return sum(1 for m in markers if m in low) >= 2
+
+
 def _wants_kb_agent_work(message: str) -> bool:
     """Company KB build/enrich — Hermes must act as an agent, not a DIY one-shot robot."""
     low = (message or "").lower()
@@ -748,7 +787,10 @@ def _wants_kb_agent_work(message: str) -> bool:
     )
     if any(v in low for v in build_verbs) and any(k in low for k in kb_words):
         return True
-    # Bare company URL / domain during onboarding-style phrasing → agent (not diy summary).
+    # Free-text company profile (no link) — still KB agent work.
+    if _looks_like_company_blurb(message):
+        return True
+    # Bare company URL / domain / social during onboarding-style phrasing → agent.
     if _extract_http_urls(message) or re.search(
         r"(?<!@)\b[a-z0-9][a-z0-9.-]+\.(?:ru|com|org|net|io|ai)\b", low
     ):
@@ -766,7 +808,7 @@ def _wants_kb_agent_work(message: str) -> bool:
             )
         ):
             return True
-        # A lone company URL in chat is usually "learn this company" — agent owns the plan.
+        # A lone company / social URL in chat is usually "learn this company".
         if _extract_http_urls(message) and len((message or "").strip()) < 180:
             return True
         if re.fullmatch(

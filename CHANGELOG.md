@@ -30,6 +30,7 @@
 
 ### Fixed
 
+- Hermes KB onboarding inputs: site URL, social URL (TG/IG/VK/MAX), free-text company blurb, or mix — all route to `office.build_kb_draft` as agent work; message residual prose merges into free_text; SOUL/skill document the three scenarios (no extra social setup; login-wall = honest gap)
 - Hermes telephony prompts: after DID → open SIP form in the same turn; on Mango Rejected → `credentials.open_form` again (never «проверьте пароль» without the form); SOUL / onboarding / Nous bridge / setup hints updated
 - Hermes «делай / продолжай / давай»: treat as act-now on current `setup_next` — open the vault form (SIP) or run the next tool instead of re-narrating the path; SOUL / onboarding skill / DIY match updated
 - Hermes `phones.provision` confirm: no more dead card + raw `phone_provisioned` bubble — RU next-step reply, SIP form, suggestion chips, verbal «да» confirms the open card, and a follow-up setup turn continues telephony instead of hanging
