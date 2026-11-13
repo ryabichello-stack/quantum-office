@@ -1,7 +1,8 @@
 """Compatibility façade over placement (tenant → profile → worker).
 
 Legacy name kept so onboarding / tests keep importing assign_isolated_runtime.
-Dogfood slots A/B remain capacity=1 workers until multiplex isolation is proven.
+Workers are multiplex pool nodes: many company profiles per gateway
+(HERMES_WORKER_MAX_PROFILES, default 64).
 """
 
 from __future__ import annotations
@@ -22,7 +23,6 @@ from app.services.hermes_nous.placement import (
 
 def list_runtime_slots() -> list[dict[str, str]]:
     """Diagnostic list of configured workers (not a free-for-all assign menu)."""
-    # Lazy: no DB — mirror defaults for unit tests without session.
     import os
 
     return [
@@ -56,14 +56,15 @@ def assign_isolated_runtime(
             "error": exc.code,
             "status": "unavailable",
             "detail": exc.detail,
-            "isolation": "profile_map",
+            "isolation": "multiplex_profiles",
         }
     base_url = None
     if profile.worker_id and profile.status == "ready":
         from app.models.hermes_runtime import HermesWorker
 
         w = db.query(HermesWorker).filter(HermesWorker.worker_id == profile.worker_id).one_or_none()
-        base_url = (w.base_url.rstrip("/") if w else None)
+        if w:
+            base_url = f"{w.base_url.rstrip('/')}/p/{profile.profile_id}"
     return {
         "ok": True,
         "slot_id": profile.worker_id,
@@ -71,10 +72,11 @@ def assign_isolated_runtime(
         "profile_id": profile.profile_id,
         "agent_id": profile.agent_id,
         "runtime_base_url": base_url,
+        "api_path_prefix": f"/p/{profile.profile_id}" if profile.profile_id else None,
         "api_server_key_env": profile.credential_ref,
         "status": profile.status,
         "state_location": profile.state_location,
-        "isolation": "profile_map",
+        "isolation": "multiplex_profiles",
         "pin": profile.pin,
     }
 
@@ -89,7 +91,7 @@ def ensure_tenant_runtime(db: Session, ctx: TenantContext) -> dict[str, Any]:
             detail={
                 "profile_id": out.get("profile_id"),
                 "status": out.get("status"),
-                "hint": "No free worker — do not fall back to another tenant runtime.",
+                "hint": "No free worker capacity — do not fall back to another tenant runtime.",
             },
         )
     return resolve_placement(db, ctx)["record"]

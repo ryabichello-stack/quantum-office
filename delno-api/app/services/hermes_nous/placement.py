@@ -1,10 +1,12 @@
 """tenant_id → profile_id → worker_id placement (source of truth).
 
-Rules (Codex / owner, 2026-11-13):
+Rules (owner, 2026-11-13+):
 - Never silently route a tenant to another company's worker/profile.
 - Never assign two open writers to the same profile home.
-- Dogfood workers A/B stay capacity=1 until multiplex isolation is proven on pin.
-- When no free worker: status=provisioning/unavailable — do NOT fall back to slots[0]/A.
+- Workers are multiplex pool nodes: each hosts many company profiles under
+  HERMES_PROFILES_ROOT/workers/<worker_id>/profiles/<profile_id> (Hermes /p/<id>/).
+- Capacity per worker: HERMES_WORKER_MAX_PROFILES (default 64). When pool full →
+  status=provisioning/unavailable — do NOT fall back to slots[0]/A.
 - Public api.dlno.ru is SNI-routed; Hermes MCP must use internal DELNO URL.
 """
 
@@ -28,21 +30,29 @@ from app.services.mcp_gateway import ensure_mcp_api_key
 PIN = "v0.23.1"
 AGENT_COMPANY_MAIN = "company_main"
 
-# Dogfood sticky IDs (not tenant names). Env can override catalog.
+
+def default_max_profiles() -> int:
+    raw = (os.environ.get("HERMES_WORKER_MAX_PROFILES") or "64").strip()
+    try:
+        n = int(raw)
+    except ValueError:
+        n = 64
+    return max(1, n)
+
+
+# Pool sticky IDs (not tenant names). Env can override catalog / capacity.
 _DEFAULT_WORKERS = (
     {
         "worker_id": "tenant-a",
         "base_url_env": "HERMES_NOUS_RUNTIME_URL",
         "base_url_default": "http://delno-hermes-tenant-a:8642",
         "api_server_key_env": "HERMES_API_SERVER_KEY",
-        "max_profiles": 1,
     },
     {
         "worker_id": "tenant-b",
         "base_url_env": "HERMES_NOUS_RUNTIME_URL_B",
         "base_url_default": "http://delno-hermes-tenant-b:8642",
         "api_server_key_env": "HERMES_API_SERVER_KEY_B",
-        "max_profiles": 1,
     },
 )
 
@@ -60,9 +70,18 @@ def profile_id_for_tenant(slug: str, *, agent_id: str = AGENT_COMPANY_MAIN) -> s
     return f"tenant_{safe}__{agent_id}"
 
 
+def _worker_api_key(spec_or_row: dict[str, Any] | HermesWorker) -> str:
+    if isinstance(spec_or_row, HermesWorker):
+        env_name = spec_or_row.api_server_key_env or ""
+    else:
+        env_name = str(spec_or_row.get("api_server_key_env") or "")
+    return (os.environ.get(env_name) or "").strip()
+
+
 def ensure_worker_catalog(db: Session) -> list[HermesWorker]:
-    """Upsert dogfood/pool workers from env. Idempotent."""
+    """Upsert pool workers from env. Idempotent; refreshes max_profiles from env."""
     out: list[HermesWorker] = []
+    cap = default_max_profiles()
     for spec in _DEFAULT_WORKERS:
         wid = spec["worker_id"]
         row = db.query(HermesWorker).filter(HermesWorker.worker_id == wid).one_or_none()
@@ -73,17 +92,23 @@ def ensure_worker_catalog(db: Session) -> list[HermesWorker]:
                 base_url=base,
                 api_server_key_env=spec["api_server_key_env"],
                 status="ready",
-                max_profiles=int(spec["max_profiles"]),
+                max_profiles=cap,
                 image_digest=os.environ.get("HERMES_IMAGE_DIGEST") or None,
-                meta={"source": "default_catalog", "isolation": "dedicated_until_multiplex_proven"},
+                meta={
+                    "source": "default_catalog",
+                    "isolation": "multiplex_profiles",
+                    "layout": "workers/<id>/profiles/<profile_id>",
+                },
             )
             db.add(row)
         else:
-            # Keep URL/key env in sync with deploy env; never steal profiles.
             row.base_url = base
             row.api_server_key_env = spec["api_server_key_env"]
-            if row.max_profiles is None:
-                row.max_profiles = int(spec["max_profiles"])
+            row.max_profiles = cap
+            meta = dict(row.meta or {})
+            meta["isolation"] = "multiplex_profiles"
+            meta["layout"] = "workers/<id>/profiles/<profile_id>"
+            row.meta = meta
         out.append(row)
     db.commit()
     for row in out:
@@ -103,6 +128,7 @@ def _worker_open_profile_count(db: Session, worker_id: str) -> int:
 
 
 def _pick_free_worker(db: Session) -> HermesWorker | None:
+    """Least-loaded ready worker with free multiplex capacity."""
     ensure_worker_catalog(db)
     workers = (
         db.query(HermesWorker)
@@ -110,14 +136,21 @@ def _pick_free_worker(db: Session) -> HermesWorker | None:
         .order_by(HermesWorker.worker_id.asc())
         .all()
     )
+    ranked: list[tuple[int, str, HermesWorker]] = []
     for w in workers:
         cap = w.max_profiles
         if cap is None:
-            # Unlimited only when multiplex proven — refuse until explicitly set.
+            # Explicit unlimited
+            open_n = _worker_open_profile_count(db, w.worker_id)
+            ranked.append((open_n, w.worker_id, w))
             continue
-        if _worker_open_profile_count(db, w.worker_id) < int(cap):
-            return w
-    return None
+        open_n = _worker_open_profile_count(db, w.worker_id)
+        if open_n < int(cap):
+            ranked.append((open_n, w.worker_id, w))
+    if not ranked:
+        return None
+    ranked.sort(key=lambda t: (t[0], t[1]))
+    return ranked[0][2]
 
 
 def _mirror_settings_runtime(db: Session, tenant: Tenant, profile: HermesProfile, worker: HermesWorker | None) -> None:
@@ -125,6 +158,7 @@ def _mirror_settings_runtime(db: Session, tenant: Tenant, profile: HermesProfile
     settings = dict(tenant.settings) if isinstance(tenant.settings, dict) else {}
     nous = dict(settings.get("hermes_nous") or {})
     runtime = dict(nous.get("runtime") or {})
+    prefix = f"/p/{profile.profile_id}" if profile.profile_id else ""
     runtime.update(
         {
             "engine": "nous_hermes_agent",
@@ -133,13 +167,16 @@ def _mirror_settings_runtime(db: Session, tenant: Tenant, profile: HermesProfile
             "agent_id": profile.agent_id,
             "slot_id": worker.worker_id if worker else None,
             "worker_id": worker.worker_id if worker else None,
-            "runtime_base_url": worker.base_url if worker else None,
+            "runtime_base_url": (
+                f"{worker.base_url.rstrip('/')}{prefix}" if worker else None
+            ),
+            "api_path_prefix": prefix or None,
             "api_server_key_env": (worker.api_server_key_env if worker else profile.credential_ref)
             or "HERMES_API_SERVER_KEY",
             "hermes_home": profile.state_location,
             "state_location": profile.state_location,
             "status": profile.status,
-            "isolation": "profile_map",
+            "isolation": "multiplex_profiles",
             "placement": "hermes_profiles",
         }
     )
@@ -167,9 +204,9 @@ def ensure_tenant_placement(
     prefer_worker_id: str | None = None,
     allow_provision_without_worker: bool = True,
 ) -> HermesProfile:
-    """Create/return the company_main profile. Assign a free worker when available.
+    """Create/return the company_main profile. Assign a free multiplex worker when available.
 
-    Does NOT steal another tenant's worker. If pool is full → status=provisioning
+    Does NOT steal another tenant's profile. If pool is full → status=provisioning
     (or unavailable) and no runtime_base_url — caller must surface that honestly.
     """
     ensure_worker_catalog(db)
@@ -184,23 +221,19 @@ def ensure_tenant_placement(
     profile = get_company_profile(db, ctx.tenant_id)
     pid = profile_id_for_tenant(tenant.slug)
     api_home = str(hermes_home_path(ctx.tenant_id))
-    live_home = ensure_live_profile_home(pid, mcp_url=_internal_mcp_url())
-    live_path = str(live_home)
 
     if profile is None:
         profile = HermesProfile(
             tenant_id=ctx.tenant_id,
             profile_id=pid,
             agent_id=AGENT_COMPANY_MAIN,
-            state_location=live_path,
+            state_location=api_home,
             status="provisioning",
             pin=PIN,
             actor_user_id=ctx.user_id,
             meta={
                 "api_skeleton_home": api_home,
-                "live_profile_home": live_path,
-                "worker_bind": worker_bind_hint(pid),
-                "note": "state_location is worker-visible HERMES_PROFILES_ROOT path",
+                "note": "state_location becomes workers/<id>/profiles/<profile_id> when placed",
             },
         )
         db.add(profile)
@@ -221,7 +254,6 @@ def ensure_tenant_placement(
         if prefer_worker_id:
             cand = db.query(HermesWorker).filter(HermesWorker.worker_id == prefer_worker_id).one_or_none()
             if cand and cand.status == "ready":
-                # Only if free or already ours
                 others = (
                     db.query(HermesProfile)
                     .filter(
@@ -231,8 +263,8 @@ def ensure_tenant_placement(
                     )
                     .count()
                 )
-                cap = int(cand.max_profiles or 1)
-                if others < cap:
+                cap = cand.max_profiles
+                if cap is None or others < int(cap):
                     chosen = cand
         if chosen is None:
             chosen = _pick_free_worker(db)
@@ -258,15 +290,29 @@ def ensure_tenant_placement(
                 detail={
                     "tenant": tenant.slug,
                     "profile_id": profile.profile_id,
-                    "hint": "No free Hermes worker (capacity=1 until multiplex proven). Do not route to another tenant.",
+                    "hint": (
+                        "No free Hermes multiplex capacity. "
+                        "Raise HERMES_WORKER_MAX_PROFILES or add workers. "
+                        "Do not route to another tenant."
+                    ),
                 },
             )
+
+    api_key = _worker_api_key(worker) if worker else ""
+    live_home = ensure_live_profile_home(
+        pid,
+        worker_id=worker.worker_id if worker else None,
+        mcp_url=_internal_mcp_url(),
+        api_server_key=api_key or None,
+    )
+    live_path = str(live_home)
 
     profile.state_location = live_path
     meta = dict(profile.meta or {})
     meta["api_skeleton_home"] = api_home
     meta["live_profile_home"] = live_path
-    meta["worker_bind"] = worker_bind_hint(pid)
+    meta["worker_bind"] = worker_bind_hint(pid, worker_id=worker.worker_id if worker else None)
+    meta["isolation"] = "multiplex_profiles"
     profile.meta = meta
     profile.actor_user_id = profile.actor_user_id or ctx.user_id
     db.add(profile)
@@ -314,20 +360,31 @@ def resolve_placement(db: Session, ctx: TenantContext) -> dict[str, Any]:
             detail={"env": key_env, "worker_id": worker.worker_id},
         )
 
+    # Ensure multiplex home + profile-scoped key exist before traffic.
+    ensure_live_profile_home(
+        profile.profile_id,
+        worker_id=worker.worker_id,
+        mcp_url=_internal_mcp_url(),
+        api_server_key=api_key,
+    )
+
+    prefix = f"/p/{profile.profile_id}"
+    base = f"{worker.base_url.rstrip('/')}{prefix}"
     return {
-        "base_url": worker.base_url.rstrip("/"),
+        "base_url": base,
         "api_key": api_key,
         "record": {
             "profile_id": profile.profile_id,
             "agent_id": profile.agent_id,
             "worker_id": worker.worker_id,
             "slot_id": worker.worker_id,
-            "runtime_base_url": worker.base_url.rstrip("/"),
+            "runtime_base_url": base,
+            "api_path_prefix": prefix,
             "api_server_key_env": key_env,
             "state_location": profile.state_location,
             "status": profile.status,
             "pin": profile.pin,
-            "isolation": "profile_map",
+            "isolation": "multiplex_profiles",
         },
         "profile": profile,
         "worker": worker,
@@ -341,7 +398,7 @@ def admin_assign_worker(
     worker_id: str,
     actor_user_id: UUID | None = None,
 ) -> HermesProfile:
-    """Platform-admin only: pin a tenant profile to a specific worker (exclusive)."""
+    """Platform-admin only: pin a tenant profile to a specific multiplex worker."""
     ensure_worker_catalog(db)
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).one()
     worker = db.query(HermesWorker).filter(HermesWorker.worker_id == worker_id).one_or_none()
@@ -357,8 +414,8 @@ def admin_assign_worker(
         )
         .all()
     )
-    cap = int(worker.max_profiles or 1)
-    if len(others) >= cap:
+    cap = worker.max_profiles
+    if cap is not None and len(others) >= int(cap):
         raise PlacementError(
             "hermes_worker_busy",
             status=409,
@@ -383,6 +440,14 @@ def admin_assign_worker(
     profile.credential_ref = worker.api_server_key_env
     profile.status = "ready"
     profile.last_checked_at = datetime.now(timezone.utc)
+    api_key = _worker_api_key(worker)
+    live = ensure_live_profile_home(
+        profile.profile_id,
+        worker_id=worker.worker_id,
+        mcp_url=_internal_mcp_url(),
+        api_server_key=api_key or None,
+    )
+    profile.state_location = str(live)
     db.add(profile)
     _mirror_settings_runtime(db, tenant, profile, worker)
     db.commit()
@@ -397,6 +462,8 @@ def list_placement_snapshot(db: Session) -> dict[str, Any]:
     return {
         "ok": True,
         "pin": PIN,
+        "mode": "multiplex_pool",
+        "default_max_profiles": default_max_profiles(),
         "workers": [
             {
                 "worker_id": w.worker_id,
@@ -424,7 +491,9 @@ def list_placement_snapshot(db: Session) -> dict[str, Any]:
         "rules": {
             "no_fallback_to_default_worker": True,
             "no_shared_delno_mcp_key_across_tenants": True,
-            "multiplex_unproven_on_pin": PIN,
+            "multiplex_profiles": True,
+            "api_path": "/p/<profile_id>/v1/...",
             "mcp_internal_only": True,
+            "capacity_env": "HERMES_WORKER_MAX_PROFILES",
         },
     }

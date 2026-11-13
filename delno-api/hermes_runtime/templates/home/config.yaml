@@ -21,7 +21,8 @@ mcp_servers:
 # Business data only via DELNO MCP.
 
 gateway:
-  multiplex_profiles: false
+  # Served by the worker multiplex root (not a standalone daemon).
+  multiplex_profiles: true
 
 display:
   tool_progress: true

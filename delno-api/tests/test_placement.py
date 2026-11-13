@@ -1,4 +1,4 @@
-"""tenant → profile → worker placement: no silent fallback to worker A."""
+"""tenant → profile → worker placement: multiplex pool, no silent fallback to worker A."""
 
 from __future__ import annotations
 
@@ -30,8 +30,9 @@ def db(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_PROFILES_ROOT", str(tmp_path / "hermes-profiles"))
     monkeypatch.setenv("HERMES_NOUS_RUNTIME_URL", "http://delno-hermes-tenant-a:8642")
     monkeypatch.setenv("HERMES_NOUS_RUNTIME_URL_B", "http://delno-hermes-tenant-b:8642")
-    monkeypatch.setenv("HERMES_API_SERVER_KEY", "key-a")
-    monkeypatch.setenv("HERMES_API_SERVER_KEY_B", "key-b")
+    monkeypatch.setenv("HERMES_API_SERVER_KEY", "key-a-xxxxxxxxxxxxxxx")
+    monkeypatch.setenv("HERMES_API_SERVER_KEY_B", "key-b-xxxxxxxxxxxxxxx")
+    monkeypatch.setenv("HERMES_WORKER_MAX_PROFILES", "64")
     get_settings.cache_clear()
     engine = create_engine(
         "sqlite://",
@@ -54,7 +55,7 @@ def _tenant(db, slug: str) -> Tenant:
     return t
 
 
-def test_two_tenants_get_distinct_workers(db, monkeypatch):
+def test_two_tenants_get_ready_profiles(db, monkeypatch):
     monkeypatch.setattr(
         "app.services.hermes_nous.placement.ensure_mcp_api_key",
         lambda db, tenant: "dmcp_x",
@@ -67,16 +68,45 @@ def test_two_tenants_get_distinct_workers(db, monkeypatch):
     pb = ensure_tenant_placement(
         db, TenantContext(tenant_id=b.id, tenant_slug=b.slug, role="tenant_owner")
     )
-    assert pa.worker_id != pb.worker_id
+    assert pa.status == "ready" and pb.status == "ready"
     assert pa.profile_id != pb.profile_id
-    assert {pa.worker_id, pb.worker_id} == {"tenant-a", "tenant-b"}
+    assert pa.worker_id in {"tenant-a", "tenant-b"}
+    assert pb.worker_id in {"tenant-a", "tenant-b"}
+    # Least-loaded packs onto A first when both empty → both may share A under multiplex.
+    assert "workers/" in (pa.state_location or "")
+    assert "/profiles/" in (pa.state_location or "")
 
 
-def test_third_tenant_provisioning_not_stolen_slot(db, monkeypatch):
+def test_many_tenants_place_without_unavailable(db, monkeypatch):
     monkeypatch.setattr(
         "app.services.hermes_nous.placement.ensure_mcp_api_key",
         lambda db, tenant: "dmcp_x",
     )
+    monkeypatch.setenv("HERMES_WORKER_MAX_PROFILES", "8")
+    ensure_worker_catalog(db)  # refresh capacity
+    profiles = []
+    for i in range(5):
+        t = _tenant(db, f"co-{i}")
+        p = ensure_tenant_placement(
+            db, TenantContext(tenant_id=t.id, tenant_slug=t.slug, role="tenant_owner")
+        )
+        profiles.append(p)
+        assert p.status == "ready", p.status
+        assert p.worker_id
+        resolved = resolve_placement(
+            db, TenantContext(tenant_id=t.id, tenant_slug=t.slug, role="tenant_owner")
+        )
+        assert resolved["base_url"].endswith(f"/p/{p.profile_id}")
+    assert len({p.profile_id for p in profiles}) == 5
+
+
+def test_pool_exhausted_when_capacity_one(db, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.hermes_nous.placement.ensure_mcp_api_key",
+        lambda db, tenant: "dmcp_x",
+    )
+    monkeypatch.setenv("HERMES_WORKER_MAX_PROFILES", "1")
+    ensure_worker_catalog(db)
     for slug in ("co-a", "co-b", "co-c"):
         t = _tenant(db, slug)
         ensure_tenant_placement(
@@ -102,7 +132,8 @@ def test_resolve_never_uses_env_default_without_profile(db, monkeypatch):
         "app.services.hermes_nous.placement.ensure_mcp_api_key",
         lambda db, tenant: "dmcp_x",
     )
-    # Exhaust pool
+    monkeypatch.setenv("HERMES_WORKER_MAX_PROFILES", "1")
+    ensure_worker_catalog(db)
     for slug in ("x1", "x2"):
         t = _tenant(db, slug)
         ensure_tenant_placement(
@@ -113,7 +144,6 @@ def test_resolve_never_uses_env_default_without_profile(db, monkeypatch):
     ensure_tenant_placement(db, ctx)
     with pytest.raises(PlacementError):
         resolve_placement(db, ctx)
-    # Must not equal worker A just because HERMES_NOUS_RUNTIME_URL is set
     assert os.environ.get("HERMES_NOUS_RUNTIME_URL")
 
 
@@ -123,3 +153,4 @@ def test_worker_catalog_seeded(db):
     ids = {w.worker_id for w in rows}
     assert "tenant-a" in ids and "tenant-b" in ids
     assert all(isinstance(w, HermesWorker) for w in rows)
+    assert all((w.max_profiles or 0) >= 1 for w in rows)

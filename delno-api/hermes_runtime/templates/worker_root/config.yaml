@@ -1,0 +1,16 @@
+# Hermes multiplex root for a DELNO worker pool node.
+# Named company profiles live under ./profiles/<profile_id>/ and are served
+# at /p/<profile_id>/v1/... on this gateway. Do not set gateway.standalone.
+
+model:
+  default: gpt-4.1-mini
+
+# Root has no business MCP — company profiles carry delno_office.
+mcp_servers: {}
+
+gateway:
+  multiplex_profiles: true
+  auto_multiplex_migration: true
+
+display:
+  tool_progress: true

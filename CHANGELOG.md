@@ -12,6 +12,7 @@
 
 ### Added
 
+- Hermes **any-N companies** multiplex pool: each worker hosts many profiles under `workers/<id>/profiles/<profile_id>`; API calls `/p/<profile_id>/v1/...`; capacity via `HERMES_WORKER_MAX_PROFILES` (default 64); third+ tenants place ready without `hermes_unavailable`; run-token MCP only (no shared worker `DELNO_MCP_KEY`); layout migrate script + bootstrap `--also`
 - Hermes multi-tenant placement map: `hermes_workers` + `hermes_profiles` + `hermes_run_bindings` (tenant → profile → worker). Pool exhausted → `provisioning`/`unavailable`, never silent fallback to worker A / `HERMES_NOUS_RUNTIME_URL`. Admin assign + placement snapshot; MCP auth via `X-Delno-Run-Id` binding; owner `/provision` no longer accepts client `runtime_base_url`; `tool_ids` clamped to pack
 - Hermes worker-visible profile homes under `HERMES_PROFILES_ROOT` (shared volume API↔runtimes); entrypoint binds `HERMES_PROFILE_ID`; bootstrap script pins demo/QL; stale `agent_runs` reconciler (+ admin endpoint + background ticker); compose no longer lets tenant-b inherit tenant-a `DELNO_MCP_KEY`
 - Scheduled tasks with ``hermes_nous_runtime`` use upstream ``create_run`` (no silent DIY); MCP ``DELNO_MCP_STRICT`` + profile-id mismatch guard; offline ``isolation_placement_smoke.py``; Hermes lab mem/pids limits

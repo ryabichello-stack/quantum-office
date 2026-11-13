@@ -21,8 +21,9 @@ def db(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_PROFILES_ROOT", str(tmp_path / "hermes-profiles"))
     monkeypatch.setenv("HERMES_NOUS_RUNTIME_URL", "http://delno-hermes-tenant-a:8642")
     monkeypatch.setenv("HERMES_NOUS_RUNTIME_URL_B", "http://delno-hermes-tenant-b:8642")
-    monkeypatch.setenv("HERMES_API_SERVER_KEY", "key-a")
-    monkeypatch.setenv("HERMES_API_SERVER_KEY_B", "key-b")
+    monkeypatch.setenv("HERMES_API_SERVER_KEY", "key-a-xxxxxxxxxxxxxxx")
+    monkeypatch.setenv("HERMES_API_SERVER_KEY_B", "key-b-xxxxxxxxxxxxxxx")
+    monkeypatch.setenv("HERMES_WORKER_MAX_PROFILES", "64")
     get_settings.cache_clear()
     engine = create_engine(
         "sqlite://",
