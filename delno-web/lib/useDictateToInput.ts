@@ -23,7 +23,7 @@ type SpeechRecognitionEventLike = {
 const BENIGN_ERRORS = new Set(["aborted", "no-speech", "interrupted"]);
 const API_URL = process.env.NEXT_PUBLIC_DELNO_API_URL || "http://127.0.0.1:18020";
 /** How often to push audio to Whisper for progressive text in the field. */
-const WHISPER_TICK_MS = 1800;
+const WHISPER_TICK_MS = 1100;
 
 function getSpeechRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
   if (typeof window === "undefined") return null;
@@ -65,6 +65,8 @@ export function useDictateToInput(
   const [dictating, setDictating] = useState(false);
   const [supported, setSupported] = useState(true);
   const [error, setError] = useState("");
+  /** 0..1 mic energy for live wave animation while dictating. */
+  const [level, setLevel] = useState(0);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
   const mediaRecRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -77,6 +79,8 @@ export function useDictateToInput(
   const whisperBusyRef = useRef(false);
   const whisperTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mimeRef = useRef("audio/webm");
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const levelRafRef = useRef<number | null>(null);
   const onPartialRef = useRef(onPartialOrFinal);
   onPartialRef.current = onPartialOrFinal;
   const tokenRef = useRef(authToken);
@@ -94,6 +98,12 @@ export function useDictateToInput(
     return () => {
       activeRef.current = false;
       if (whisperTimerRef.current) clearInterval(whisperTimerRef.current);
+      if (levelRafRef.current != null) cancelAnimationFrame(levelRafRef.current);
+      try {
+        audioCtxRef.current?.close();
+      } catch {
+        /* ignore */
+      }
       try {
         recRef.current?.abort();
       } catch {
@@ -107,6 +117,58 @@ export function useDictateToInput(
       mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
+
+  const stopLevelMeter = useCallback(() => {
+    if (levelRafRef.current != null) {
+      cancelAnimationFrame(levelRafRef.current);
+      levelRafRef.current = null;
+    }
+    setLevel(0);
+    try {
+      void audioCtxRef.current?.close();
+    } catch {
+      /* ignore */
+    }
+    audioCtxRef.current = null;
+  }, []);
+
+  const startLevelMeter = useCallback(
+    (stream: MediaStream) => {
+      stopLevelMeter();
+      try {
+        const AC =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AC) return;
+        const ctx = new AC();
+        audioCtxRef.current = ctx;
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.75;
+        source.connect(analyser);
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        const tick = () => {
+          if (!activeRef.current) {
+            setLevel(0);
+            return;
+          }
+          analyser.getByteFrequencyData(data);
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) sum += data[i];
+          const avg = sum / (data.length * 255);
+          // Soft floor so the mic still "breathes" while listening quietly.
+          setLevel(Math.min(1, 0.12 + avg * 1.6));
+          levelRafRef.current = requestAnimationFrame(tick);
+        };
+        void ctx.resume();
+        levelRafRef.current = requestAnimationFrame(tick);
+      } catch {
+        /* visualizer optional */
+      }
+    },
+    [stopLevelMeter],
+  );
 
   const stopWhisperLoop = useCallback(() => {
     if (whisperTimerRef.current) {
@@ -171,9 +233,10 @@ export function useDictateToInput(
   const stop = useCallback(() => {
     activeRef.current = false;
     setDictating(false);
+    stopLevelMeter();
     stopBrowser();
     stopMedia();
-  }, [stopBrowser, stopMedia]);
+  }, [stopBrowser, stopLevelMeter, stopMedia]);
 
   const startMediaAndWhisper = useCallback(
     async (currentFieldValue: string) => {
@@ -226,20 +289,21 @@ export function useDictateToInput(
           activeRef.current = false;
         };
         mediaRecRef.current = recorder;
+        startLevelMeter(stream);
         // timeslice → progressive blobs for rolling Whisper
-        recorder.start(1000);
+        recorder.start(700);
         whisperTimerRef.current = setInterval(() => {
           void whisperTick();
         }, WHISPER_TICK_MS);
         // Kick first tick a bit earlier so text shows within ~1s of speech.
-        window.setTimeout(() => void whisperTick(), 900);
+        window.setTimeout(() => void whisperTick(), 650);
         return true;
       } catch {
         setError("Нет доступа к микрофону — разрешите его в браузере.");
         return false;
       }
     },
-    [publish, stopWhisperLoop, transcribeBlob, whisperTick],
+    [publish, startLevelMeter, stopWhisperLoop, transcribeBlob, whisperTick],
   );
 
   const startBrowser = useCallback((currentFieldValue: string) => {
@@ -332,5 +396,5 @@ export function useDictateToInput(
 
   const clearError = useCallback(() => setError(""), []);
 
-  return { dictating, supported, error, start, stop, toggle, clearError };
+  return { dictating, supported, error, level, start, stop, toggle, clearError };
 }

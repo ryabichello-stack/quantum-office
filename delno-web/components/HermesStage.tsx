@@ -461,6 +461,7 @@ export function HermesStage({ token }: { token: string }) {
     dictating,
     supported: dictateSupported,
     error: dictateError,
+    level: dictateLevel,
     stop: stopDictate,
     toggle: toggleDictate,
     clearError: clearDictateError,
@@ -470,6 +471,13 @@ export function HermesStage({ token }: { token: string }) {
     }, []),
     token,
   );
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [message, dictating]);
 
   const [historyReady, setHistoryReady] = useState(false);
 
@@ -851,15 +859,22 @@ export function HermesStage({ token }: { token: string }) {
                 <Button
                   variant="outline"
                   size="icon"
-                  className={cn("hx-top-btn", voiceActive && "border-sky-400/60 bg-sky-50")}
-                  onClick={toggleVoice}
-                  aria-label="Голосовой диалог"
+                  className={cn(
+                    "hx-top-btn",
+                    dictating && "hx-mic-live border-sky-400/60 bg-sky-50",
+                  )}
+                  onClick={onMicToggle}
+                  disabled={sending || !dictateSupported}
+                  aria-label={dictating ? "Остановить диктовку" : "Диктовка в поле ввода"}
+                  aria-pressed={dictating}
                 />
               }
             >
-              <Mic size={compact ? 16 : 18} />
+              {dictating ? <X size={compact ? 16 : 18} /> : <Mic size={compact ? 16 : 18} />}
             </TooltipTrigger>
-            <TooltipContent>Голосовой диалог</TooltipContent>
+            <TooltipContent>
+              {dictating ? "Стоп — текст останется в поле" : "Диктовка: слова появятся в поле ввода"}
+            </TooltipContent>
           </Tooltip>
           {!compact && (
             <div className="hx-orb-mini" aria-hidden>
@@ -1145,43 +1160,65 @@ export function HermesStage({ token }: { token: string }) {
                   </TooltipTrigger>
                   <TooltipContent>Снимок с камеры</TooltipContent>
                 </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        type="button"
-                        variant={dictating ? "default" : "ghost"}
-                        size="icon"
-                        disabled={sending || !dictateSupported}
-                        aria-label={dictating ? "Остановить диктовку" : "Диктовка"}
-                        aria-pressed={dictating}
-                        onClick={onMicToggle}
-                        onContextMenu={(e) => e.preventDefault()}
-                        className="hx-tool-btn touch-none"
-                      />
-                    }
-                  >
-                    <Mic size={compact ? 16 : 18} />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {dictateSupported
-                      ? dictating
-                        ? "Нажмите, чтобы остановить"
-                        : "Нажмите, чтобы диктовать"
-                      : "Диктовка недоступна в этом браузере"}
-                  </TooltipContent>
-                </Tooltip>
+                <div className={cn("hx-mic-wrap", dictating && "is-live")}>
+                  {dictating ? (
+                    <span className="hx-mic-waves" aria-hidden>
+                      {[0, 1, 2, 3, 4].map((i) => (
+                        <i
+                          key={i}
+                          style={{
+                            // Center bar tallest; level scales all bars live from mic energy.
+                            height: `${10 + dictateLevel * (10 + Math.abs(2 - i) * 4)}px`,
+                          }}
+                        />
+                      ))}
+                    </span>
+                  ) : null}
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant={dictating ? "default" : "ghost"}
+                          size="icon"
+                          disabled={sending || !dictateSupported}
+                          aria-label={dictating ? "Остановить диктовку" : "Диктовка"}
+                          aria-pressed={dictating}
+                          onClick={onMicToggle}
+                          onContextMenu={(e) => e.preventDefault()}
+                          className={cn("hx-tool-btn touch-none", dictating && "is-live hx-mic-live")}
+                        />
+                      }
+                    >
+                      {dictating ? <X size={compact ? 16 : 18} /> : <Mic size={compact ? 16 : 18} />}
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {dictateSupported
+                        ? dictating
+                          ? "Стоп — текст останется в поле, потом отправьте"
+                          : "Один раз нажмите: слова появятся в поле, пока говорите"
+                        : "Диктовка недоступна в этом браузере"}
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
               </div>
               <Textarea
                 ref={textareaRef}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder={compact ? "Сообщение…" : "Сообщение Hermes…"}
+                placeholder={
+                  dictating
+                    ? "Слушаю… говорите — слова появятся здесь"
+                    : compact
+                      ? "Сообщение…"
+                      : "Сообщение Hermes…"
+                }
                 disabled={sending}
                 rows={1}
                 className={cn(
                   "max-h-40 flex-1 resize-none border-0 bg-transparent px-1 shadow-none focus-visible:ring-0",
                   compact ? "min-h-8 py-1.5 text-[15px]" : "min-h-9 py-2",
+                  dictating && "hx-composer-dictating",
                 )}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
