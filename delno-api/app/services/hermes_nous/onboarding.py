@@ -295,10 +295,10 @@ def _cta(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> d
             "title": "Сайт → знания",
             # Owner must supply a real URL in chat; do not pretend one was given.
             "text": (
-                "Соберём базу знаний вместе: попроси ссылку на сайт, вызови "
-                "office.build_kb_draft (глубокий crawl + поиск в вебе), затем спроси "
-                "Telegram / Instagram / VK / MAX и пробелы (цены, аудитория, часы), "
-                "покажи черновик и дождись правок/подтверждения"
+                "Соберём коммерческую KB по плану: сайт → office.build_kb_draft → "
+                "покажи черновик (услуги, для кого, цены/условия, процесс, FAQ, пробелы) → "
+                "доспроси TG/IG/VK и цены → правки → подтверждение. "
+                "Не подменяй цепочкой research→import→confirm без черновика"
             ),
         }
     if phase == "connectors":

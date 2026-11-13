@@ -669,6 +669,64 @@ def _wants_web_research(message: str) -> bool:
     return False
 
 
+def _wants_kb_agent_work(message: str) -> bool:
+    """Company KB build/enrich — Hermes must act as an agent, not a DIY one-shot robot."""
+    low = (message or "").lower()
+    build_verbs = (
+        "собери",
+        "обогати",
+        "структурируй",
+        "подготовь",
+        "сформируй",
+        "заполни",
+        "положи в базу",
+        "в базу знаний",
+        "единую базу",
+        "коммерческ",
+        "build_kb",
+        "import website",
+        "импорт сайта",
+        "импортируй сайт",
+    )
+    kb_words = (
+        "баз",
+        "знани",
+        "kb",
+        "профиль компан",
+        "о компан",
+        "сайт",
+    )
+    if any(v in low for v in build_verbs) and any(k in low for k in kb_words):
+        return True
+    # Bare company URL / domain during onboarding-style phrasing → agent (not diy summary).
+    if _extract_http_urls(message) or re.search(
+        r"(?<!@)\b[a-z0-9][a-z0-9.-]+\.(?:ru|com|org|net|io|ai)\b", low
+    ):
+        if any(
+            w in low
+            for w in (
+                "баз",
+                "знани",
+                "онборд",
+                "настрой",
+                "офис",
+                "компани",
+                "изучи сайт",
+                "собери",
+            )
+        ):
+            return True
+        # A lone company URL in chat is usually "learn this company" — agent owns the plan.
+        if _extract_http_urls(message) and len((message or "").strip()) < 180:
+            return True
+        if re.fullmatch(
+            r"\s*(https?://)?[a-z0-9][a-z0-9.-]+\.(?:ru|com|org|net|io|ai)/?\s*",
+            low or "",
+        ):
+            return True
+    return False
+
+
 def _summarize_web_dossier(question: str, dossier: str, *, note: str = "") -> str:
     """LLM summary grounded in browsed text; fallback to extract if model unavailable."""
     body = (dossier or "").strip()
@@ -1053,8 +1111,12 @@ def operator_chat(
     schedule_intent = _agent_schedule.parse_schedule_intent(message) if message else None
     wants_sched_list = _agent_schedule.wants_tasks_list(message) if message else False
 
+    # KB co-build / enrichment is agent work (plan → tools → draft), not a DIY robot path.
+    _kb_agent_goal = _wants_kb_agent_work(message)
+
     # Attachments + clear single-intent shortcuts stay on DIY — unless agent_mode.
-    prefer_diy = (not agent_mode) and (
+    # Web research DIY only when NOT building/enriching company KB (that belongs to the agent).
+    prefer_diy = (not agent_mode) and (not _kb_agent_goal) and (
         bool(attachments)
         or _wants_media_generation(message)
         or _wants_calendar_slots(message)
@@ -1074,6 +1136,9 @@ def operator_chat(
         or bool(schedule_intent)
         or wants_sched_list
     )
+    if _kb_agent_goal:
+        agent_mode = True
+        prefer_diy = False
 
     # Periodic поручения — create / list (before agent/Nous).
     if not attachments and (schedule_intent or wants_sched_list):
@@ -1275,10 +1340,9 @@ def operator_chat(
                 office_loop=loop_preview,
             )
 
-    # Fast-path: pasted URL / «зайди на сайт» → deep KB draft when KB missing,
-    # otherwise browser research for an answer (not KB write).
-    # Skip when agent_mode — the agent must plan browse → KB → next tools itself.
-    if _wants_web_research(message) and not attachments and not agent_mode:
+    # Fast-path: pasted URL / «зайди на сайт» → browser research for a one-off answer.
+    # Skip when agent_mode / KB co-build — the agent must plan tools itself (not a robot path).
+    if _wants_web_research(message) and not attachments and not agent_mode and not _kb_agent_goal:
         from app.operator.tools import register_builtin_tools
         from app.operator.tools.registry import ToolResult, registry
         from app.services import web_browser
@@ -1294,44 +1358,6 @@ def operator_chat(
             )
             if m_dom:
                 urls = [f"https://{m_dom.group(1)}"]
-        kb_missing = True
-        if isinstance(loop_preview, dict):
-            kb_missing = not bool(loop_preview.get("kb_ok"))
-        # Onboarding: turn URL into co-built KB draft (site + social + web + Q&A).
-        if urls and kb_missing:
-            built = registry.run(
-                db,
-                ctx,
-                "office.build_kb_draft",
-                urls=urls,
-                message=message,
-                max_pages=10,
-                also_search=True,
-            )
-            if isinstance(built, ToolResult) and built.ok:
-                data = built.data or {}
-                trace = data.get("tool_trace") or []
-                if not isinstance(trace, list):
-                    trace = []
-                trace = list(trace) + [
-                    {
-                        "tool": "office.build_kb_draft",
-                        "ok": True,
-                        "pages_count": data.get("pages_count"),
-                        "kb_draft": bool(data.get("kb_draft")),
-                    }
-                ]
-                return _finish_diy(
-                    db,
-                    ctx,
-                    body,
-                    modality=modality,
-                    engine="diy_kb_build",
-                    reply=built.message
-                    or "Собрал черновик базы знаний — подтвердите или уточните.",
-                    tool_calls=trace,
-                    office_loop=data.get("loop") if isinstance(data.get("loop"), dict) else loop_preview,
-                )
         if urls:
             primary = urls[0]
             result = registry.run(

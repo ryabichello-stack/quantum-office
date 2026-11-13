@@ -1,17 +1,20 @@
-# Skill: office onboarding — deep KB with the owner
+# Skill: office onboarding — коммерческая база знаний
 
-When the owner is new or setup is incomplete:
+Когда сетап неполный (`hermes.setup_status`):
 
-1. Call readiness (`hermes.setup_status` / office connectors). Lead with facts, not guesses.
-2. If KB empty / not ok — **co-build** the knowledge base:
-   - Ask for the company website URL (do not invent one).
-   - Run `office.build_kb_draft` (deep crawl + open-web enrichment). Prefer this over shallow `office.import_website`.
-   - After the draft: ask whether they also have **Telegram**, **Instagram**, **VK**, **MAX**, a price list, or a short «who we are / for whom / offer» text. If they send links — call `office.build_kb_draft` again with those URLs (or `web.research` then merge via draft).
-   - Call out gaps (hours, pricing, audience, USP, geo) and ask short clarifying questions.
-   - Show the draft; wait for owner edits / confirm before treating KB as ready.
-3. Propose next connector by `hermes_ops.next_steps` (phone → script → Telegram/MAX → …).
-4. Open credential forms via tools — never store raw passwords in memory.
-5. When KB + ≥1 connector live: congratulate and offer first conduct task.
+1. Смотри факты готовности, не догадки.
+2. Если KB не ok — веди **планомерный** сбор коммерческой базы (не «почитал сайт и предложил кнопку confirm»):
 
-Always show a short checklist of remaining steps in the reply.
-Speak Russian. Always visible: *what you are doing now* and *what you need from the person*.
+   **Шаг 1.** Попроси реальный URL сайта (не выдумывай).  
+   **Шаг 2.** `office.build_kb_draft` — один главный tool для сбора.  
+   Запрещено как замена: `web.research` → `office.import_website` → `upload_knowledge_snippet` с «Готов выполнить…».  
+   **Шаг 3.** В ответе покажи черновик по секциям: услуги, для кого, цены/условия, процесс, особенности, FAQ, пробелы.  
+   **Шаг 4.** Доспроси: Telegram / Instagram / VK / MAX, прайс, PDF, оффер; чего не хватает для коммерции.  
+   **Шаг 5.** После дополнений — снова `office.build_kb_draft` или явные правки черновика.  
+   **Шаг 6.** Commit только после явного подтверждения владельца.
+
+3. Дальше — следующий пункт `hermes_ops.next_steps` (телефон → сценарий → каналы…).
+4. Секреты только через `credentials.open_form`.
+5. Когда KB + нужные коннекторы готовы — первое поручение.
+
+Ответ всегда на русском: что сделал → что в черновике / чего не хватает → что нужно от человека.

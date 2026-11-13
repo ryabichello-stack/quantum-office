@@ -179,6 +179,29 @@ def _followup_questions(
     return out[:6]
 
 
+_COMMERCIAL_KB_SYSTEM = (
+    "Ты Hermes — готовишь коммерческую базу знаний для секретаря/продаж DELNO. "
+    "По досье сайта, соцсетей и открытого веба собери СТРОГИЙ markdown-черновик "
+    "на русском. Только факты из материалов — не выдумывай цены, SLA, юрлицо. "
+    "Если факта нет — пиши «не найдено в источниках» и вынеси в пробелы.\n"
+    "Обязательные секции (все):\n"
+    "# {company} — коммерческий профиль\n"
+    "## 1. Кто мы (1–3 предложения + юрлицо/ИНН если есть)\n"
+    "## 2. Продукты и услуги (каждая услуга: что / для кого / результат / цена или «по запросу» / срок/SLA)\n"
+    "## 3. Для кого (ICP, сегменты, объёмы, отрасли)\n"
+    "## 4. Цены и условия (комиссии, пороги, тарифы, договор/оферта, ограничения)\n"
+    "## 5. Как работает сервис (шаги клиента: заявка → … → отчётность)\n"
+    "## 6. Особенности и преимущества (только заявленные факты)\n"
+    "## 7. Интеграции и каналы (ЛК, API, 1С, банки, соцсети)\n"
+    "## 8. Контакты\n"
+    "## 9. FAQ (вопрос → короткий ответ; только из источников)\n"
+    "## 10. Возражения и безопасные формулировки (если есть факты)\n"
+    "## 11. Тон и запреты\n"
+    "## 12. Пробелы — что уточнить у владельца\n"
+    "Пиши плотно, списками, без маркетинговой воды и без «если нужно могу…»."
+)
+
+
 def _synthesize_markdown(
     *,
     company: str,
@@ -189,18 +212,8 @@ def _synthesize_markdown(
     search_bits: str,
     gaps: list[str],
 ) -> dict[str, str]:
-    """LLM-structured company profile; deterministic fallback if model unavailable."""
-    system = (
-        "Ты Hermes — помощник владельца офиса DELNO. "
-        "По досье сайта, соцсетей и открытого веба собери СТРУКТУРИРОВАННЫЙ "
-        "черновик базы знаний компании на русском. Только факты из материалов — "
-        "не выдумывай. Формат markdown:\n"
-        "# Профиль компании\n"
-        "## Кто мы\n## Продукты и услуги\n## Для кого\n## Контакты и каналы\n"
-        "## FAQ (если есть факты)\n## Тон и ограничения (если явно)\n"
-        "## Что ещё уточнить у владельца\n"
-        "Кратко, делово, без воды. Если факта нет — пропусти секцию или отметь пробел."
-    )
+    """LLM-structured commercial KB; deterministic fallback if model unavailable."""
+    system = _COMMERCIAL_KB_SYSTEM.replace("{company}", company or "Компания")
     user_parts = [
         f"Компания (ярлык): {company}",
         f"Исходные URL: {', '.join(source_urls) or '—'}",
@@ -226,7 +239,7 @@ def _synthesize_markdown(
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            max_tokens=2200,
+            max_tokens=3500,
         )
         if out.get("ok"):
             data = out.get("data") if isinstance(out.get("data"), dict) else out
@@ -237,31 +250,74 @@ def _synthesize_markdown(
                 text = str(out.get("reply") or out.get("content") or "")
             text = (text or "").strip()
             if len(text) >= 120:
-                title = f"{company} — профиль (черновик)"
+                title = f"{company} — коммерческий профиль (черновик)"
                 return {"title": title[:200], "body": text[:48000]}
     except Exception:  # noqa: BLE001
         pass
 
-    # Deterministic fallback
+    # Deterministic fallback — same commercial skeleton
     lines = [
-        f"# Профиль компании: {company}",
+        f"# {company} — коммерческий профиль",
         "",
-        "## Источники",
+        "## 1. Кто мы",
+        (free_text.strip()[:1500] if free_text.strip() else "не найдено в источниках"),
+        "",
+        "## 2. Продукты и услуги",
+        "не найдено в источниках — разобрать досье ниже",
+        "",
+        "## 3. Для кого",
+        "не найдено в источниках",
+        "",
+        "## 4. Цены и условия",
+        "не найдено в источниках",
+        "",
+        "## 5. Как работает сервис",
+        "не найдено в источниках",
+        "",
+        "## 6. Особенности и преимущества",
+        "не найдено в источниках",
+        "",
+        "## 7. Интеграции и каналы",
     ]
-    for u in source_urls[:12]:
-        lines.append(f"- {u}")
-    if free_text.strip():
-        lines.extend(["", "## От владельца", free_text.strip()[:4000]])
     if social_found:
-        lines.extend(["", "## Каналы"])
         for kind, urls in social_found.items():
             for u in urls:
                 lines.append(f"- {kind}: {u}")
-    lines.extend(["", "## Сводка с сайта и веба", (dossier or search_bits or "—")[:12000]])
+    else:
+        lines.append("не найдено в источниках")
+    lines.extend(
+        [
+            "",
+            "## 8. Контакты",
+            "не найдено в источниках",
+            "",
+            "## 9. FAQ",
+            "не найдено в источниках",
+            "",
+            "## 10. Возражения и безопасные формулировки",
+            "не найдено в источниках",
+            "",
+            "## 11. Тон и запреты",
+            "не найдено в источниках",
+            "",
+            "## 12. Пробелы — что уточнить у владельца",
+        ]
+    )
     if gaps:
-        lines.extend(["", "## Что уточнить", *[f"- {g}" for g in gaps]])
+        lines.extend(f"- {g}" for g in gaps)
+    else:
+        lines.append("- уточнить услуги, цены, ICP")
+    lines.extend(["", "## Источники"])
+    lines.extend(f"- {u}" for u in source_urls[:12])
+    lines.extend(
+        [
+            "",
+            "## Сырьё с сайта и веба",
+            (dossier or search_bits or "—")[:12000],
+        ]
+    )
     body = "\n".join(lines).strip()
-    return {"title": f"{company} — профиль (черновик)"[:200], "body": body[:48000]}
+    return {"title": f"{company} — коммерческий профиль (черновик)"[:200], "body": body[:48000]}
 
 
 def build_company_kb_draft(
@@ -453,8 +509,13 @@ def build_company_kb_draft(
     if social_found:
         social_label = "; ".join(f"{k}: {len(v)}" for k, v in social_found.items())
 
+    # Show the commercial draft in chat (owner must see structure, not a confirm stub).
+    preview = synthesized["body"]
+    if len(preview) > 4500:
+        preview = preview[:4500].rstrip() + "\n\n… (полный черновик сохранён в кабинете)"
+
     lines = [
-        f"Собрал черновик базы знаний для «{company}» "
+        f"Собрал коммерческий черновик KB для «{company}» "
         f"({len(all_pages)} стр., ~{len(synthesized['body'])} символов).",
     ]
     if pages_label:
@@ -464,9 +525,11 @@ def build_company_kb_draft(
     else:
         lines.append("Публичные Telegram / Instagram / VK на сайте не нашёл.")
     lines.append(
-        "Черновик лежит в кабинете — подтвердите или поправьте. "
-        "Пока не публикую в боевую KB."
+        "Это черновик для коммерческой работы (услуги / ICP / цены / условия / FAQ). "
+        "Пока не публикую в боевую KB — проверьте и подтвердите."
     )
+    lines.append("")
+    lines.append(preview)
     lines.append("")
     lines.append("Дальше уточним вместе:")
     for i, q in enumerate(questions, 1):
@@ -489,7 +552,7 @@ def build_company_kb_draft(
         "message": "\n".join(lines),
         "suggested_actions": [
             {"title": "Подтвердить KB", "text": "Подтверди черновик базы знаний"},
-            {"title": "Добавить каналы", "text": "Вот ссылки на Telegram и Instagram"},
-            {"title": "Дополнить текст", "text": "Добавь в базу знаний: "},
+            {"title": "Уточнить цены", "text": "Цены и условия такие: "},
+            {"title": "Добавить каналы", "text": "Вот ссылки на Telegram / Instagram / VK: "},
         ],
     }
