@@ -255,6 +255,38 @@ def _wants_phones_list(message: str) -> bool:
     )
 
 
+def _wants_get_knowledge(message: str) -> bool:
+    low = (message or "").lower()
+    kb = any(
+        m in low
+        for m in (
+            "get_knowledge",
+            "базе знаний",
+            "база знаний",
+            "базу знаний",
+            "knowledge base",
+            "в kb",
+            "из kb",
+            "что известно о компан",
+            "что в баз",
+        )
+    )
+    ask = any(
+        m in low
+        for m in (
+            "найди",
+            "поиск",
+            "кратко",
+            "расскажи",
+            "что ",
+            "покажи",
+            "get_knowledge",
+            "про ",
+        )
+    )
+    return kb and ask
+
+
 def _wants_billing_summary(message: str) -> bool:
     low = (message or "").lower()
     return any(
@@ -542,6 +574,7 @@ def operator_chat(
         or _wants_crm_funnel(message)
         or _wants_phones_list(message)
         or _wants_billing_summary(message)
+        or _wants_get_knowledge(message)
     )
 
     # Vault forms must reach the cabinet as pending_credential_form. Nous text-only
@@ -924,6 +957,45 @@ def operator_chat(
             }
         err = result.message if isinstance(result, ToolResult) else "billing_failed"
         message = f"{message}\n\n[system: billing.summary failed: {err}]"
+
+    if _wants_get_knowledge(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        # Prefer an explicit query after «про/о»; else whole message.
+        import re
+
+        q = message
+        m = re.search(r"(?:про|о|about|query\s*=\s*)\s+(.+)$", message or "", re.I)
+        if m:
+            q = m.group(1).strip(" .,\"'«»")[:400] or message
+        result = registry.run(db, ctx, "get_knowledge", query=q[:400] or "компания")
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            snippets = data.get("snippets") or data.get("hits") or data.get("results") or []
+            lines = []
+            if isinstance(snippets, list):
+                for s in snippets[:5]:
+                    if isinstance(s, dict):
+                        lines.append(
+                            f"- {s.get('title') or s.get('source') or 'doc'}: "
+                            f"{(s.get('text') or s.get('body') or s.get('snippet') or '')[:280]}"
+                        )
+                    else:
+                        lines.append(f"- {str(s)[:280]}")
+            body_txt = "\n".join(lines) if lines else (result.message or str(data)[:800] or "Пусто.")
+            return {
+                "ok": True,
+                "engine": "diy_get_knowledge",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": f"Из базы знаний:\n{body_txt}".strip(),
+                "tool_calls": [{"tool": "get_knowledge", "ok": True, "query": q[:120]}],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "kb_failed"
+        message = f"{message}\n\n[system: get_knowledge failed: {err}]"
 
     # Feature-flagged Nous Hermes runtime (Stage 0+). DIY loop remains fallback.
     try:

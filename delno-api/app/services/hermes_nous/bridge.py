@@ -173,19 +173,21 @@ def create_run(
     else:
         mission = (
             "Office is being conducted: plan → DELNO MCP tools → report. "
-            "For pictures call generate_image. Ava telephony: phones.*/calls.*/telephony.*. "
-            "DELNO tools are MCP deferred: first call tool_search with the logical name "
-            "(e.g. phones.list), then invoke the exact mcp__delno_office__… name it returns. "
-            "Never call bare names via terminal. Never claim a granted tool is unavailable — "
-            "search → call → report. Critical writes need confirmation policy."
+            "ONLY use MCP server delno_office. Do NOT use greptile_mcp, hosted connectors, "
+            "portal.nousresearch.com, or manage_connections. "
+            "Call tools by exact registered names with dots→underscores, e.g. "
+            "mcp__delno_office__get_knowledge, mcp__delno_office__phones_list, "
+            "mcp__delno_office__hermes_health, mcp__delno_office__billing_summary. "
+            "If unsure, tool_search then call the mcp__delno_office__… result. "
+            "Never bare names, never terminal. Never claim a granted tool is unavailable. "
+            "Critical writes need confirmation policy."
         )
     payload: dict[str, Any] = {
         "input": message,
         "session_id": session_id or f"delno-{ctx.tenant_id}-{ctx.user_id or 'owner'}",
         "instructions": (
             f"You are the company Hermes agent for THIS tenant only. {mission}{context_line} "
-            f"Use DELNO MCP server delno_office only. Logical grants: {tool_hint}. "
-            "Resolve each via tool_search → mcp__delno_office__<tool>. "
+            f"Logical grants (map to mcp__delno_office__*): {tool_hint}. "
             "Do not invent credentials. Show observable plan steps in Russian."
         ),
     }

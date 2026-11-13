@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /opt/hermes-agent
 RUN git clone --depth 1 --branch "${HERMES_AGENT_GIT_REF}" "${HERMES_AGENT_GIT_URL}" . \
  && pip install --no-cache-dir -U pip uv \
- && uv sync --frozen --no-dev --extra messaging \
+ && uv sync --frozen --no-dev --extra messaging --extra mcp \
  && /opt/hermes-agent/.venv/bin/python -c "import hermes_cli.main; import ruamel.yaml; import aiohttp; print('hermes_import_ok')"
 
 # Prefer venv binaries (uv sync installs hermes here)
