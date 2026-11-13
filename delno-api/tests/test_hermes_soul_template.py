@@ -13,6 +13,9 @@ def test_soul_template_documents_phone_micro_steps():
     assert "need_did" in soul
     assert "need_reg" in soul
     assert "credentials.open_form" in soul
+    assert "telegram_bot" in soul
+    assert "max_bot" in soul
+    assert "files_yadisk" in soul
     assert "hermes_ops" in soul or "hermes.setup_status" in soul
 
 
