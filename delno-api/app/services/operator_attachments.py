@@ -173,26 +173,53 @@ def normalize_attachments(raw_items: list[dict[str, Any]] | None) -> dict[str, A
             return {"ok": False, "error": "unsupported_type", "items": []}
 
         excerpt = ""
+        extract_method = "utf8"
         if content_type in TEXT_TYPES or ext in {".txt", ".md", ".csv", ".json", ".html", ".htm"}:
             try:
                 excerpt = data.decode("utf-8", errors="replace")
             except Exception:  # noqa: BLE001
                 excerpt = ""
-        if not excerpt:
-            # Best-effort: still try utf-8 for unknown docs; PDF/DOCX need brain later
+        # PDF/DOCX/XLSX — reuse onboarding brain extract (PRODUCT_LOOP attachments).
+        if (not excerpt.strip() or ext in {".pdf", ".docx", ".xlsx"}) and ext in {
+            ".pdf",
+            ".docx",
+            ".xlsx",
+        }:
+            try:
+                from app.services.onboarding_upload import _extract_via_brain
+
+                extracted = _extract_via_brain(
+                    data,
+                    filename=filename,
+                    content_type=content_type or "application/octet-stream",
+                )
+                if extracted.get("ok") and (extracted.get("text") or "").strip():
+                    excerpt = str(extracted.get("text") or "")
+                    extract_method = str(extracted.get("method") or "brain")
+                elif extracted.get("error"):
+                    extract_method = f"brain_error:{extracted.get('error')}"
+            except Exception as exc:  # noqa: BLE001
+                extract_method = f"brain_exc:{type(exc).__name__}"
+        if not excerpt.strip():
+            # Best-effort utf-8 fallback for unknown docs
             try:
                 excerpt = data.decode("utf-8", errors="replace")
+                extract_method = "utf8_fallback"
             except Exception:  # noqa: BLE001
                 excerpt = ""
         excerpt = excerpt.strip()
+        # Drop PDF binary garbage that looks like raw objects, not prose.
+        if extract_method.startswith("utf8") and ext == ".pdf" and "obj" in excerpt[:80].lower():
+            excerpt = ""
         if len(excerpt) > 12000:
             excerpt = excerpt[:12000] + "\n…[обрезано]"
         if excerpt:
-            text_chunks.append(f"--- файл: {filename} ---\n{excerpt}")
+            text_chunks.append(f"--- файл: {filename} ({extract_method}) ---\n{excerpt}")
         else:
             text_chunks.append(
-                f"--- файл: {filename} ({content_type}, {len(data)} байт) ---\n"
-                "(бинарный документ: текст не извлечён; опишите, что с ним сделать)"
+                f"--- файл: {filename} ({content_type}, {len(data)} байт, {extract_method}) ---\n"
+                "(бинарный документ: текст не извлечён; опишите, что с ним сделать "
+                "или пришлите TXT/DOCX)"
             )
         items.append(
             {
