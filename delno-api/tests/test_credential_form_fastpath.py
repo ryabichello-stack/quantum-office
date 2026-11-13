@@ -47,6 +47,24 @@ def test_kind_phone_step_does_not_steal_calendar_intent():
     assert _credential_form_kind_from_message("подключи календарь", setup_next_id="phone") is None
 
 
+def test_kind_post_save_followup_does_not_reopen_form():
+    # HermesStage follow-up after vault save must reach Hermes, not DIY form loop.
+    assert (
+        _credential_form_kind_from_message(
+            "SIP сохранён. Проверь регистрацию. Если Rejected — дай задание для Cursor или снова форму.",
+            setup_next_id="phone",
+        )
+        is None
+    )
+    assert (
+        _credential_form_kind_from_message(
+            "SIP сохранён и линия Registered. Что дальше — тестовый звонок или сменить голос?",
+            setup_next_id="phone",
+        )
+        is None
+    )
+
+
 def test_operator_chat_diy_opens_pending_credential_form():
     ctx = TenantContext(tenant_id=uuid.uuid4(), tenant_slug="delno-demo", role="tenant_owner")
     db = MagicMock()

@@ -102,6 +102,20 @@ def _credential_form_kind_from_message(message: str, *, setup_next_id: str | Non
             return mapped
         return None
     # Phone step of hermes_ops: owner asks to configure the line → open SIP form.
+    # Do NOT match post-save follow-ups («SIP сохранён…») — those must reach Hermes/DIY
+    # for status, not reopen the vault card in a loop.
+    if any(
+        x in low
+        for x in (
+            "сохранён",
+            "сохранен",
+            "проверь регистрац",
+            "телефон настроен",
+            "что дальше",
+            "registered",
+        )
+    ):
+        return None
     if setup_next_id == "phone" and any(
         m in low
         for m in (
