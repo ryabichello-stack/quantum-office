@@ -7,6 +7,14 @@
 **Где лежит:** git `docs/AGENT_CHANGE_REGISTER.md` ↔ прод `/opt/delno/docs/AGENT_CHANGE_REGISTER.md` (держать в синхроне).
 
 
+## 2026-11-13 ~04:05 МСК — Cursor: fix SIP probe host.docker.internal
+
+- Что: на C4B в `/opt/delno/docker-compose.yml` у `api.extra_hosts` была склеена строка `host.docker.internal,delno-hermes-tenant-a,delno-hermes-tenant-b:host-gateway` → DNS внутри контейнера не резолвил `host.docker.internal`, `sip_probe` всегда `reachable=false`, hermes_ops phone не мог стать Registered.
+- Файлы: прод `/opt/delno/docker-compose.yml` (backup `.bak.extra_hosts`); git SoT уже корректен — `delno-api/deploy/docker-compose.stack.yml` (`host.docker.internal:host-gateway` одной записью).
+- Проверка: `docker exec delno-api` → resolve `172.17.0.1`; `probe_registration()` → `ok=true status=registered`; Ava toolkit: «регистрация OK».
+- Статус: выкатано на C4B recreate `delno-api`. Не склеивать несколько hostname в одной `extra_hosts` строке.
+- Следующий шаг: demo tenant всё ещё `need_sip` (нет vault SIP / DID) — это ожидаемо по PRODUCT_LOOP.
+
 ## 2026-11-13 ~02:00 МСК — Cursor: Hermes Nous lead.created + lab image + tests
 
 - Что: `events_dispatch.on_lead_created` wired from `leads.create_lead_record`; sqlite integration suite expanded; hermes_runtime Dockerfile → Python 3.14 + `uv sync --frozen` (pip conflict Pillow/browser-harness); C4B lab under `/opt/delno/lab/hermes_runtime` (не prod API/telephony).
