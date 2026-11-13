@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 import urllib.error
 import urllib.request
@@ -13,7 +12,8 @@ from uuid import UUID, uuid4
 from sqlalchemy.orm import Session
 
 from app.core.tenant import TenantContext
-from app.services.hermes_nous.provision import ensure_tenant_hermes_home, tenant_runtime_record
+from app.services.hermes_nous.placement import PlacementError, resolve_placement
+from app.services.hermes_nous.run_bindings import bind_run_token
 from app.services.hermes_nous.run_tokens import issue_run_token
 from app.services.hermes_nous.tasks import add_step, record_run
 from app.services.hermes_nous.tool_packs import pack_for_mode
@@ -96,36 +96,11 @@ def _http_json(
 
 
 def resolve_runtime(db: Session, ctx: TenantContext) -> dict[str, Any]:
-    # Sticky dedicated slot — never silently fall back to the demo container's MCP identity.
+    """Resolve THIS tenant's profile→worker. Never fall back to env default / worker A."""
     try:
-        from app.services.hermes_nous.runtime_pool import ensure_tenant_runtime
-
-        record = ensure_tenant_runtime(db, ctx)
-    except Exception:  # noqa: BLE001
-        record = tenant_runtime_record(db, ctx)
-        if not record or not record.get("runtime_base_url"):
-            record = ensure_tenant_hermes_home(db, ctx)
-    base = (record or {}).get("runtime_base_url") or os.environ.get("HERMES_NOUS_RUNTIME_URL") or ""
-    base = str(base).rstrip("/")
-    if not base:
-        raise HermesBridgeError(
-            "hermes_runtime_not_configured",
-            body={"hint": "Set HERMES_NOUS_RUNTIME_URL or provision runtime_base_url"},
-        )
-    key_env = str((record or {}).get("api_server_key_env") or "HERMES_API_SERVER_KEY")
-    api_key = os.environ.get(key_env) or ""
-    if not api_key and key_env != "HERMES_API_SERVER_KEY":
-        # Do NOT fall back to tenant-a's key when this tenant is on slot B —
-        # that couples auth across informational spaces.
-        raise HermesBridgeError(
-            "hermes_api_key_missing_for_slot",
-            body={"env": key_env, "slot_id": (record or {}).get("slot_id"), "base_url": base},
-        )
-    if not api_key:
-        api_key = os.environ.get("HERMES_API_SERVER_KEY") or ""
-    if not api_key:
-        raise HermesBridgeError("hermes_api_key_missing", body={"env": key_env})
-    return {"base_url": base, "api_key": api_key, "record": record}
+        return resolve_placement(db, ctx)
+    except PlacementError as exc:
+        raise HermesBridgeError(exc.code, status=exc.status, body=exc.detail) from exc
 
 
 def create_run(
@@ -142,6 +117,15 @@ def create_run(
 ) -> dict[str, Any]:
     """Start a Hermes /v1/runs turn; mint scoped MCP token for this run."""
     runtime = resolve_runtime(db, ctx)
+    record = runtime.get("record") if isinstance(runtime.get("record"), dict) else {}
+    profile_id = str(record.get("profile_id") or f"tenant_{ctx.tenant_slug}__company_main")
+    worker_id = str(record.get("worker_id") or record.get("slot_id") or "") or None
+    # Namespace session to tenant+profile — never share across companies.
+    if session_id:
+        sid = str(session_id)
+        if not sid.startswith(f"{ctx.tenant_slug}:"):
+            sid = f"{ctx.tenant_slug}:{sid}"
+        session_id = sid
     run_id_hint = f"delno_{uuid4().hex[:12]}"
     tools = tool_ids if tool_ids else pack_for_mode(mode)
     issued = issue_run_token(
@@ -150,6 +134,20 @@ def create_run(
         run_id=run_id_hint,
         tool_ids=tools,
         knowledge_scopes=["default"],
+        agent_id=str(record.get("agent_id") or "company_main"),
+    )
+    bind_run_token(
+        db,
+        tenant_id=ctx.tenant_id,
+        profile_id=profile_id,
+        worker_id=worker_id,
+        run_id=run_id_hint,
+        session_id=session_id,
+        actor_user_id=ctx.user_id,
+        agent_id=str(record.get("agent_id") or "company_main"),
+        raw_token=issued.token,
+        tool_ids=list(issued.tool_ids),
+        expires_at_unix=int(issued.expires_at),
     )
     delno_run = record_run(
         db,
@@ -169,8 +167,13 @@ def create_run(
     )
     _meter_run_start(db, ctx, delno_run_id=str(delno_run.id))
     headers = {"Idempotency-Key": idempotency_key or f"delno-{run_id_hint}"}
-    # Pass run token via header Hermes can map into MCP env (DELNO injects at gateway).
+    # Preferred: Hermes MCP client forwards this into MCP Authorization.
+    # Fallback: MCP proxy resolves binding by X-Delno-Run-Id (see /v1/mcp).
     headers["X-Delno-Run-Token"] = issued.token
+    headers["X-Delno-Run-Id"] = run_id_hint
+    headers["X-Delno-Profile-Id"] = profile_id
+    if worker_id:
+        headers["X-Delno-Worker-Id"] = worker_id
     tool_hint = ", ".join(tools[:24])
     pack = (mode or "onboarding").strip().lower()
     ctx_bits: list[str] = []
@@ -266,7 +269,7 @@ def create_run(
         or f"delno-{ctx.tenant_slug or ctx.tenant_id}-{ctx.user_id or 'owner'}",
         "instructions": (
             f"You are the company Hermes agent for THIS tenant only "
-            f"(slug={ctx.tenant_slug}). {mission}{context_line} "
+            f"(slug={ctx.tenant_slug}, profile={profile_id}). {mission}{context_line} "
             f"Logical grants (map to mcp__delno_office__*): {tool_hint}. "
             "Do not invent credentials. "
             "Act as a normal multi-step agent: (1) short numbered plan in Russian, "

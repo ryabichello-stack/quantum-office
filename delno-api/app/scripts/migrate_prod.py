@@ -2,7 +2,7 @@
 
 from sqlalchemy import text
 
-from app.core.db import engine
+from app.core.db import Base, engine
 
 
 def migrate() -> None:
@@ -16,6 +16,10 @@ def migrate() -> None:
     with engine.begin() as conn:
         for sql in stmts:
             conn.execute(text(sql))
+    # Hermes multi-tenant placement map (create_all is idempotent for missing tables).
+    import app.models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
 
 
 if __name__ == "__main__":

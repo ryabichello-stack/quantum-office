@@ -146,10 +146,15 @@ def register_tenant(
 
         runtime_meta = assign_isolated_runtime(
             db,
-            TenantContext(tenant_id=tenant.id, tenant_slug=tenant.slug, role="tenant_owner"),
+            TenantContext(
+                tenant_id=tenant.id,
+                tenant_slug=tenant.slug,
+                user_id=user.id,
+                role="tenant_owner",
+            ),
         )
     except Exception:  # noqa: BLE001
-        runtime_meta = {"ok": False, "error": "runtime_assign_deferred"}
+        runtime_meta = {"ok": False, "error": "runtime_assign_deferred", "status": "provisioning"}
 
     meta = {
         "legal_enriched": legal_enriched,
@@ -157,9 +162,12 @@ def register_tenant(
         "welcome_document": kb_doc,
         "public_key": tenant.public_key,
         "hermes_runtime": {
-            "slot_id": runtime_meta.get("slot_id"),
+            "slot_id": runtime_meta.get("slot_id") or runtime_meta.get("worker_id"),
+            "worker_id": runtime_meta.get("worker_id"),
+            "profile_id": runtime_meta.get("profile_id"),
             "runtime_base_url": runtime_meta.get("runtime_base_url"),
-            "isolation": runtime_meta.get("isolation"),
+            "status": runtime_meta.get("status"),
+            "isolation": runtime_meta.get("isolation") or "profile_map",
         },
     }
     return tenant, user, meta

@@ -12,6 +12,9 @@
 
 ### Added
 
+- Hermes multi-tenant placement map: `hermes_workers` + `hermes_profiles` + `hermes_run_bindings` (tenant → profile → worker). Pool exhausted → `provisioning`/`unavailable`, never silent fallback to worker A / `HERMES_NOUS_RUNTIME_URL`. Admin assign + placement snapshot; MCP auth via `X-Delno-Run-Id` binding; owner `/provision` no longer accepts client `runtime_base_url`; `tool_ids` clamped to pack
+- Hermes worker-visible profile homes under `HERMES_PROFILES_ROOT` (shared volume API↔runtimes); entrypoint binds `HERMES_PROFILE_ID`; bootstrap script pins demo/QL; stale `agent_runs` reconciler (+ admin endpoint + background ticker); compose no longer lets tenant-b inherit tenant-a `DELNO_MCP_KEY`
+- Scheduled tasks with ``hermes_nous_runtime`` use upstream ``create_run`` (no silent DIY); MCP ``DELNO_MCP_STRICT`` + profile-id mismatch guard; offline ``isolation_placement_smoke.py``; Hermes lab mem/pids limits
 - Hermes scheduled поручения: `hermes.tasks_create/list/pause/resume` + DIY («проверяй заявки каждый час»); API background ticker runs due tasks via the tool agent; `/v1/hermes-nous/tasks/tick` for manual kick
 - Hermes browser research: pasted URL / «зайди на сайт» runs `web.research` (browse + same-host crawl + optional search) and answers from the live dossier — visible in thinking as page visits; Playwright Chromium in API image
 - Hermes composer: live dictation (browser word/phrase interim + rolling Whisper ticks while speaking)
@@ -20,7 +23,8 @@
 
 ### Fixed
 
-- Hermes tenant isolation: sticky runtime slots (tenant-a / tenant-b) so each cabinet has its own HERMES space + MCP key — shared ``DELNO_MCP_KEY`` no longer makes one tenant see another's ``setup_status``. Bridge grounds Nous with per-tenant FACTS; new registrations assign an isolated slot
+- Hermes cabinet: when ``hermes_nous_runtime`` is on but profile/worker missing, return honest ``engine=hermes_unavailable`` — no silent DIY reply posing as Hermes
+- Hermes tenant isolation: sticky runtime slots (tenant-a / tenant-b) so each cabinet has its own HERMES space + MCP key — shared ``DELNO_MCP_KEY`` no longer makes one tenant see another's ``setup_status``. Bridge grounds Nous with per-tenant FACTS; new registrations assign an isolated slot. Placement table is now source of truth over env default URL
 - Cold-start office status: platform upstream ``configured: true`` (mail/calendar/files/conference Docker) no longer looks like the tenant already set them up; Hermes only treats ``tenant_usable`` / ``checks.*.ok`` as ready. Global Mango Registered is ignored until this cabinet has SIP in vault. New self-service/admin tenants start with empty hermes/connectors + welcome phase
 - Hermes multi-step agent: compound «по шагам / план / сайт+KB+…» no longer stolen by DIY shortcuts (incl. bare «настрой» → Telegram); routes to in-API LLM tool loop with plan→tools→report
 - DIY Hermes turns now persist to conversation history (tab switch / reload no longer wipes the chat)

@@ -233,3 +233,40 @@
 - Live docker image / telephony / lead.created worker — staging later; prod phone не трогали.
 - Тесты: test_hermes_nous_* + mcp_gateway — 11 passed.
 
+## 2026-11-13 ~20:15 МСК — Cursor: Stage 1 multi-tenant placement (Codex assignment)
+
+- Ветка: `cursor/hermes-multitenant-runtime-9b51` (от `cursor/hermes-live-dictate-thinking-9b51`).
+- Цель: карта `tenant → profile → worker` без silent fallback на worker A; закрыть клиентский `runtime_base_url` / escalate `tool_ids`; честный `hermes_unavailable` вместо DIY-как-Гермес; MCP run-binding proxy (`X-Delno-Run-Id`).
+- Файлы: `delno-api/app/models/hermes_runtime.py`, `services/hermes_nous/placement.py`, `run_bindings.py`, rewrite `runtime_pool.py`/`bridge.resolve_runtime`, `api/v1/hermes_nous.py`, `api/v1/mcp.py`, `api/v1/operator.py`, `provision.py`, `onboarding.py`, `scripts/migrate_prod.py`, tests `test_placement.py` / `test_runtime_pool.py` / `test_run_bindings_mcp.py`, `docs/HERMES_ORIGINAL_INTEGRATION_PLAN.md` status, CHANGELOG.
+- Правила: capacity=1 на dogfood worker до доказанного multiplex на pin v0.23.1; pool exhausted → `provisioning`, не `slots[0]`; MCP internal URL; `api.dlno.ru` = SNI (не полагаться как на «отдельный API host» в DNS).
+- Telephony/Asterisk не трогались. Живой C4B deploy ещё не в этом коммите — сначала git/PR.
+- Следующий шаг: выкат migrate + явная assign demo→A / QL→B через admin; worker-visible HERMES_HOME volume; выключить legacy MCP key для Hermes (`DELNO_MCP_DENY_LEGACY_KEY` / meta-only); tasks reconciler.
+
+## 2026-11-13 ~20:25 МСК — Cursor: live profile homes + reconciler
+
+- Ветка: `cursor/hermes-multitenant-runtime-9b51` (PR #88).
+- `HERMES_PROFILES_ROOT` / `profile_homes.py`: state_location = worker-visible path; shared volume `hermes-profiles` in stack + hermes compose; entrypoint `HERMES_PROFILE_ID`; **убран** fallback `DELNO_MCP_KEY_B←DELNO_MCP_KEY`.
+- `reconcile_stale_runs` + `/v1/hermes-nous/admin/reconcile-runs` + background ticker; `scripts/bootstrap_hermes_placement.py`.
+- Тесты: test_profile_homes, test_reconcile_runs + placement suite.
+- Следующий: C4B migrate/bootstrap; DELNO_MCP_DENY_LEGACY_KEY на Hermes workers; e2e A/B isolation with real containers; DIY ticker → Hermes for scheduled tasks.
+
+## 2026-11-13 ~20:30 МСК — Cursor: schedule→Nous + MCP strict + isolation smoke
+
+- Schedule: при флаге Nous — `create_run`; при unavailable — fail без DIY.
+- MCP: `X-Delno-Profile-Id` vs mcp key tenant check; `DELNO_MCP_STRICT` → legacy meta-only.
+- `scripts/isolation_placement_smoke.py`; hermes compose mem/pids limits.
+- Цель ещё не закрыта без C4B e2e на живых контейнерах.
+
+## 2026-11-13 20:30 МСК — Cursor: C4B deploy multi-tenant placement (PR #88)
+
+- Выкатан код на `/opt/delno/api` (backup `hermes-mt-*`); volume `hermes-profiles`; recreate `delno-api`.
+- Bootstrap: `delno-demo→tenant-a`, `quantum-labs→tenant-b`; **tenant-beta = provisioning** (resolve blocked, no fallback to A).
+- Live smoke: QL with FACTS → «кабинет пустой, 0/6, начать с знаний»; demo create_run ok на A.
+- Telephony не трогали. Полный e2e двух новых регистраций / multiplex — ещё впереди.
+
+## 2026-11-13 20:35 МСК — Cursor: shared profile homes live on A/B + isolation proof
+
+- Workers recreated: `HERMES_HOME=/data/hermes-profiles/<profile_id>` (shared volume with API); state migrated from old volumes.
+- Proof: demo progress 6/6 vs QL 0/6; MCP keys 1:1; beta `resolve` + `/v1/operator/chat` → `hermes_unavailable` (not DIY).
+- Goal criteria (map, no fallback, provision/MCP lock, honest unavailable, worker-visible profiles) verified on C4B. Multiplex >1 profile/worker still unproven (capacity=1).
+
