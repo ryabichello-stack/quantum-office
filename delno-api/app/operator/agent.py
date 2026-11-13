@@ -429,6 +429,58 @@ def _get_or_create_conversation(
     return row
 
 
+def persist_operator_exchange(
+    db: Session,
+    ctx: TenantContext,
+    *,
+    message: str,
+    reply: str,
+    channel: str = "web",
+    conversation_id: uuid.UUID | None = None,
+    input_modality: str = "text",
+    assistant_meta: dict[str, Any] | None = None,
+    commit: bool = True,
+) -> str:
+    """Save user+assistant turn for DIY / Nous fast-paths (same transcript as full agent)."""
+    from app.services.tenant_vault import looks_like_credential_paste
+
+    conversation = _get_or_create_conversation(db, ctx, channel, conversation_id)
+    display = (message or "").strip()
+    if looks_like_credential_paste(display):
+        display = "[логин/пароль — через безопасную форму, не в ленте чата]"
+    db.add(
+        Message(
+            tenant_id=ctx.tenant_id,
+            conversation_id=conversation.id,
+            role="user",
+            body=display or message or "",
+            meta={"modality": input_modality},
+        )
+    )
+    meta = dict(assistant_meta or {})
+    db.add(
+        Message(
+            tenant_id=ctx.tenant_id,
+            conversation_id=conversation.id,
+            role="assistant",
+            body=reply or "",
+            meta=meta,
+        )
+    )
+    write_audit(
+        db,
+        ctx,
+        action="operator.chat",
+        resource=f"conversation:{conversation.id}",
+        new_value={"channel": channel, "modality": input_modality, "diy": True},
+    )
+    if commit:
+        db.commit()
+    else:
+        db.flush()
+    return str(conversation.id)
+
+
 def _kb_context_from_result(result: ToolResult) -> str:
     data = result.data or {}
     text = str(data.get("text") or "").strip()
