@@ -31,6 +31,20 @@ def test_matcher_telegram_cta():
     )
 
 
+def test_matcher_and_form_max_bot():
+    assert credential_form_spec("max_bot")["kind"] == "max_bot"
+    assert (
+        _credential_form_kind_from_message(
+            "Открой безопасную форму credentials.open_form для max_bot"
+        )
+        == "max_bot"
+    )
+    assert (
+        _credential_form_kind_from_message("открой credentials.open_form", setup_next_id="max")
+        == "max_bot"
+    )
+
+
 def test_save_telegram_calls_connect():
     db = MagicMock()
     tenant = MagicMock()

@@ -20,6 +20,7 @@ SUPPORTED_KINDS = frozenset(
         "files_gdrive",
         "files_onedrive",
         "telegram_bot",
+        "max_bot",
     }
 )
 
@@ -50,7 +51,7 @@ CHANNEL_FORMS: dict[str, dict[str, Any]] = {
     "telegram_bot": {
         "kind": "telegram_bot",
         "title": "Telegram bot — токен",
-        "hint": "Токен от @BotFather. В чат не попадёт; Hermес подключит branded webhook для tenant.",
+        "hint": "Токен от @BotFather. В чат не попадёт; Hermes подключит branded webhook для tenant.",
         "fields": [
             {
                 "name": "password",
@@ -60,6 +61,23 @@ CHANNEL_FORMS: dict[str, dict[str, Any]] = {
             }
         ],
         "submit_label": "Подключить Telegram",
+        "password_required": True,
+        "login_optional": True,
+        "require_foreign_consent": False,
+    },
+    "max_bot": {
+        "kind": "max_bot",
+        "title": "MAX bot — access token",
+        "hint": "Access token MAX-бота. В чат не попадёт; Hermes подключит webhook для tenant.",
+        "fields": [
+            {
+                "name": "password",
+                "label": "Access token",
+                "type": "password",
+                "autocomplete": "off",
+            }
+        ],
+        "submit_label": "Подключить MAX",
         "password_required": True,
         "login_optional": True,
         "require_foreign_consent": False,
@@ -289,7 +307,7 @@ def save_secret(
         return {"ok": False, "error": "empty"}
     if kind == "files_mailru" and not login_s:
         return {"ok": False, "error": "login_required"}
-    if kind == "telegram_bot" and not password_s:
+    if kind in ("telegram_bot", "max_bot") and not password_s:
         return {"ok": False, "error": "password_required"}
     if password_s and len(password_s) < 4:
         return {"ok": False, "error": "password_too_short"}
@@ -339,6 +357,8 @@ def save_secret(
     db.commit()
     if kind == "telegram_bot":
         msg = "Токен Telegram сохранён. В чат не попал."
+    elif kind == "max_bot":
+        msg = "Токен MAX сохранён. В чат не попал."
     elif kind in CLOUD_KINDS:
         msg = "Данные сохранены в сейфе тенанта. В чат не попали."
     else:
@@ -375,6 +395,26 @@ def save_secret(
         except Exception as exc:  # noqa: BLE001
             out["channel_connect"] = {"ok": False, "error": "telegram_connect_failed"}
             out["message"] = f"Токен сохранён, connect упал: {str(exc)[:120]}"
+    if kind == "max_bot":
+        try:
+            from app.services.max_connect import connect_max_branded
+
+            connected = connect_max_branded(db, ctx, str(current.get("password") or ""))
+            out["channel_connect"] = {
+                k: connected.get(k)
+                for k in ("ok", "error", "account", "message_ru", "webhook")
+                if k in connected or connected.get(k) is not None
+            }
+            if connected.get("ok"):
+                out["message"] = "MAX бот подключён. Токен в чат не попал."
+            else:
+                out["message"] = (
+                    "Токен сохранён в сейфе, но подключить MAX не удалось: "
+                    + str(connected.get("error") or "ошибка")
+                )
+        except Exception as exc:  # noqa: BLE001
+            out["channel_connect"] = {"ok": False, "error": "max_connect_failed"}
+            out["message"] = f"Токен сохранён, MAX connect упал: {str(exc)[:120]}"
     if kind == "mango_sip":
         try:
             from app.services.sip_probe import after_vault_sip_save

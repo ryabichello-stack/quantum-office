@@ -347,7 +347,15 @@ def _cta(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> d
                     "(токен @BotFather). Не проси токен в чат и не предлагай импортировать KB."
                 ),
             }
-        if sid in {"max", "mail", "calendar", "conference", "files"}:
+        if sid == "max":
+            return {
+                "title": f"Подключить: {title}",
+                "text": (
+                    "Открой безопасную форму credentials.open_form для max_bot "
+                    "(access token). Не проси токен в чат и не предлагай импортировать KB."
+                ),
+            }
+        if sid in {"mail", "calendar", "conference", "files"}:
             return {
                 "title": f"Подключить: {title}",
                 "text": (

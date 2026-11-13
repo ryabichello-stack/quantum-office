@@ -152,8 +152,8 @@ class CredentialsOpenFormTool:
     name = "credentials.open_form"
     description = (
         "Open a secure UI credential form (never ask to paste secrets in chat). "
-        "Kinds: mango_sip, telegram_bot, files_yadisk, files_mailru, files_gdrive, files_onedrive. "
-        "Use for SIP, Telegram bot token, or cloud disks."
+        "Kinds: mango_sip, telegram_bot, max_bot, files_yadisk, files_mailru, files_gdrive, files_onedrive. "
+        "Use for SIP, Telegram/MAX bot tokens, or cloud disks."
     )
     critical_write = False
     parameters_schema = {
@@ -161,7 +161,7 @@ class CredentialsOpenFormTool:
         "properties": {
             "kind": {
                 "type": "string",
-                "description": "mango_sip | telegram_bot | files_yadisk | files_mailru | files_gdrive | files_onedrive",
+                "description": "mango_sip | telegram_bot | max_bot | files_yadisk | files_mailru | files_gdrive | files_onedrive",
             }
         },
         "required": ["kind"],
@@ -173,6 +173,7 @@ class CredentialsOpenFormTool:
         titles = {
             "mango_sip": "SIP Mango",
             "telegram_bot": "Telegram bot",
+            "max_bot": "MAX bot",
             "files_yadisk": "Яндекс.Диск",
             "files_mailru": "Облако Mail.ru",
             "files_gdrive": "Google Drive",

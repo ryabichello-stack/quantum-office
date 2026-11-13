@@ -68,6 +68,7 @@ def _wants_media_generation(message: str) -> bool:
 _SETUP_NEXT_TO_FORM_KIND: dict[str, str] = {
     "phone": "mango_sip",
     "telegram": "telegram_bot",
+    "max": "max_bot",
 }
 
 
@@ -106,6 +107,8 @@ def _credential_form_kind_from_message(
             return "mango_sip"
         if "telegram" in low or "телеграм" in low or "botfather" in low:
             return "telegram_bot"
+        if "max_bot" in low or "макс" in low or (setup_next_id == "max" and "max" in low):
+            return "max_bot"
         if "телефон" in low:
             return "mango_sip"
         # CTA / open_form without kind → use hermes_ops next step when unambiguous.

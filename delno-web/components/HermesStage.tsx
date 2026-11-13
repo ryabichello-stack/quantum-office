@@ -600,6 +600,7 @@ export function HermesStage({ token }: { token: string }) {
       try {
         const isCloud = secretKind.startsWith("files_");
         const isTelegram = secretKind === "telegram_bot";
+        const isMax = secretKind === "max_bot";
         const followAsk = isCloud
           ? cloud?.probe?.ok
             ? "Облако подключено. Какие облака подключены?"
@@ -608,14 +609,20 @@ export function HermesStage({ token }: { token: string }) {
             ? channel?.ok
               ? "Telegram бот подключён. Какой следующий шаг hermes_ops?"
               : "Токен Telegram сохранён. Проверь каналы / hermes.setup_status. Что дальше?"
-            : probe?.ok
-              ? "SIP сохранён и линия Registered. Что дальше — тестовый звонок или сменить голос?"
-              : "SIP сохранён. Проверь регистрацию. Если Rejected — дай задание для Cursor или снова форму.";
+            : isMax
+              ? channel?.ok
+                ? "MAX бот подключён. Какой следующий шаг hermes_ops?"
+                : "Токен MAX сохранён. Проверь каналы / hermes.setup_status. Что дальше?"
+              : probe?.ok
+                ? "SIP сохранён и линия Registered. Что дальше — тестовый звонок или сменить голос?"
+                : "SIP сохранён. Проверь регистрацию. Если Rejected — дай задание для Cursor или снова форму.";
         const followUserLabel = isCloud
           ? "Облако сохранено. Что дальше?"
           : isTelegram
             ? "Telegram сохранён. Канал готов? Что дальше?"
-            : "SIP сохранён. Телефон настроен? Что дальше по линии?";
+            : isMax
+              ? "MAX сохранён. Канал готов? Что дальше?"
+              : "SIP сохранён. Телефон настроен? Что дальше по линии?";
         const follow = await apiOperatorChat(
           token,
           followAsk,
