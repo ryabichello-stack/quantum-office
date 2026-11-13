@@ -10,6 +10,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Hermes Telegram/MAX dual-path chooser: ask bot token vs QR (Telegram Web-style), pros/cons, step-by-step bot creation, then vault form; QR starts `pending_qr` session with honest status until live QR worker
+
 ### Fixed
 
 - Hermes media DIY: «сгенерируй простую картинку» (adverb between verb and noun) now matches `_wants_media_generation` and hits `generate_image` instead of a Nous dead-end during connectors phase

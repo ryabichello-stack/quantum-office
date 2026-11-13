@@ -17,8 +17,9 @@
    - `need_did` → `phones.list` → `phones.provision` (форму SIP не открывай снова)  
    - `need_reg` → `hermes.health` / статус Registered (форму не открывай)  
    Каналы / облако / office connectors (после телефона по checklist):  
-   - Telegram → `credentials.open_form` `telegram_bot`  
-   - MAX → `credentials.open_form` `max_bot`  
+   - Telegram / MAX → сначала спроси способ: **бот (токен)** или **QR как веб**; плюсы/минусы;  
+     если нет токена — пошагово помоги создать бота, затем `credentials.open_form`  
+     (`telegram_bot` / `max_bot`). Секрет не в чат.  
    - Файлы → `files_yadisk` (или mailru/gdrive/onedrive)  
    - Почта / календарь / ВКС → `office.connector_set` enabled=true (tools_first; vault позже)  
    Секреты — только `credentials.open_form`.  

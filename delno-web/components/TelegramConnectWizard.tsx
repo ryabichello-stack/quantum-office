@@ -104,11 +104,12 @@ export function TelegramConnectWizard({ token }: { token: string }) {
     <section className="settings-section panel-card">
       <h2>
         <Bot size={18} style={{ verticalAlign: "middle", marginRight: 8 }} />
-        Telegram-бот (Branded)
+        Telegram
       </h2>
       <p className="muted tight">
-        Подключите своего бота из BotFather — DELNO будет отвечать клиентам от его имени. Сообщения появятся в
-        разделе «Диалоги».
+        Два способа: <strong>бот (@BotFather)</strong> — офисный канал с вебхуком (рекомендуем), или{" "}
+        <strong>QR как Telegram Web</strong> — через чат с Гермесом («подключи телеграм через QR»). Ниже — путь
+        бота: токен в форму, не в чат. Сообщения появятся в «Диалоги».
       </p>
 
       {loading ? (
