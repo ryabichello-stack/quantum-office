@@ -892,12 +892,20 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
                 }
             )
             if not probe.get("ok") and sip.get("configured"):
-                out["pending_credential_form"] = credential_form_spec("mango_sip")
-                out["reply"] += (
-                    "\n\nАвтопроверка: линия ещё не Registered "
-                    f"({probe.get('status') or 'unknown'}). "
-                    "Открываю форму SIP снова — проверьте логин (номер/сотрудник) и пароль."
-                )
+                status = probe.get("status") or "unknown"
+                # Status-only questions must not reopen the vault card (no SIP loop).
+                # Act / «открой форму» / fresh setup → open form on Rejected.
+                if show_form and not status_q:
+                    out["pending_credential_form"] = credential_form_spec("mango_sip")
+                    out["reply"] += (
+                        f"\n\nАвтопроверка: линия ещё не Registered ({status}). "
+                        "Открываю форму SIP снова — проверьте логин (номер/сотрудник) и пароль."
+                    )
+                else:
+                    out["reply"] += (
+                        f"\n\nАвтопроверка: линия ещё не Registered ({status}). "
+                        "Скажите «открой форму SIP» — поправим логин/пароль."
+                    )
             elif probe.get("ok"):
                 out["reply"] += "\n\nАвтопроверка: линия Registered. Следующий шаг — тестовый звонок."
         except Exception:  # noqa: BLE001
