@@ -23,6 +23,18 @@ def profiles_root() -> Path:
     return Path(get_settings().hermes_profiles_root)
 
 
+def _writable_profiles_root() -> Path:
+    """Prefer HERMES_PROFILES_ROOT; if unwritable (CI/unit), fall back under tenant_files_root."""
+    primary = profiles_root()
+    try:
+        primary.mkdir(parents=True, exist_ok=True)
+        return primary
+    except OSError:
+        fallback = Path(get_settings().tenant_files_root) / "_hermes_profiles"
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
 def live_profile_path(profile_id: str) -> Path:
     safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in (profile_id or "unknown"))
     return profiles_root() / safe
@@ -30,7 +42,8 @@ def live_profile_path(profile_id: str) -> Path:
 
 def ensure_live_profile_home(profile_id: str, *, mcp_url: str | None = None) -> Path:
     """Create/seed the directory Hermes workers mount. Idempotent."""
-    home = live_profile_path(profile_id)
+    safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in (profile_id or "unknown"))
+    home = _writable_profiles_root() / safe
     home.mkdir(parents=True, exist_ok=True)
     for sub in ("memories", "skills", "cron", "sessions"):
         (home / sub).mkdir(exist_ok=True)
