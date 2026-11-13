@@ -491,4 +491,17 @@ def admin_assign(
         "worker_id": profile.worker_id,
         "status": profile.status,
         "tenant_id": str(profile.tenant_id),
+        "state_location": profile.state_location,
     }
+
+
+@router.post("/admin/reconcile-runs")
+def admin_reconcile_runs(
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_platform_admin),
+    older_than_minutes: int = Query(default=30, ge=5, le=24 * 60),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    from app.services.hermes_nous.reconcile import reconcile_stale_runs
+
+    return reconcile_stale_runs(db, older_than_minutes=older_than_minutes, limit=limit)

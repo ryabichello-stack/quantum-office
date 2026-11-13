@@ -242,3 +242,11 @@
 - Telephony/Asterisk не трогались. Живой C4B deploy ещё не в этом коммите — сначала git/PR.
 - Следующий шаг: выкат migrate + явная assign demo→A / QL→B через admin; worker-visible HERMES_HOME volume; выключить legacy MCP key для Hermes (`DELNO_MCP_DENY_LEGACY_KEY` / meta-only); tasks reconciler.
 
+## 2026-11-13 ~20:25 МСК — Cursor: live profile homes + reconciler
+
+- Ветка: `cursor/hermes-multitenant-runtime-9b51` (PR #88).
+- `HERMES_PROFILES_ROOT` / `profile_homes.py`: state_location = worker-visible path; shared volume `hermes-profiles` in stack + hermes compose; entrypoint `HERMES_PROFILE_ID`; **убран** fallback `DELNO_MCP_KEY_B←DELNO_MCP_KEY`.
+- `reconcile_stale_runs` + `/v1/hermes-nous/admin/reconcile-runs` + background ticker; `scripts/bootstrap_hermes_placement.py`.
+- Тесты: test_profile_homes, test_reconcile_runs + placement suite.
+- Следующий: C4B migrate/bootstrap; DELNO_MCP_DENY_LEGACY_KEY на Hermes workers; e2e A/B isolation with real containers; DIY ticker → Hermes for scheduled tasks.
+

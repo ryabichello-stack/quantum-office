@@ -13,6 +13,7 @@
 ### Added
 
 - Hermes multi-tenant placement map: `hermes_workers` + `hermes_profiles` + `hermes_run_bindings` (tenant → profile → worker). Pool exhausted → `provisioning`/`unavailable`, never silent fallback to worker A / `HERMES_NOUS_RUNTIME_URL`. Admin assign + placement snapshot; MCP auth via `X-Delno-Run-Id` binding; owner `/provision` no longer accepts client `runtime_base_url`; `tool_ids` clamped to pack
+- Hermes worker-visible profile homes under `HERMES_PROFILES_ROOT` (shared volume API↔runtimes); entrypoint binds `HERMES_PROFILE_ID`; bootstrap script pins demo/QL; stale `agent_runs` reconciler (+ admin endpoint + background ticker); compose no longer lets tenant-b inherit tenant-a `DELNO_MCP_KEY`
 - Hermes scheduled поручения: `hermes.tasks_create/list/pause/resume` + DIY («проверяй заявки каждый час»); API background ticker runs due tasks via the tool agent; `/v1/hermes-nous/tasks/tick` for manual kick
 - Hermes browser research: pasted URL / «зайди на сайт» runs `web.research` (browse + same-host crawl + optional search) and answers from the live dossier — visible in thinking as page visits; Playwright Chromium in API image
 - Hermes composer: live dictation (browser word/phrase interim + rolling Whisper ticks while speaking)

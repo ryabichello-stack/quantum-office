@@ -20,7 +20,9 @@ from sqlalchemy.orm import Session
 from app.core.tenant import TenantContext
 from app.models.hermes_runtime import HermesProfile, HermesWorker
 from app.models.tenant import Tenant
+from app.services.hermes_nous.profile_homes import ensure_live_profile_home, worker_bind_hint
 from app.services.hermes_nous.provision import ensure_tenant_hermes_home, hermes_home_path
+from app.services.hermes_nous.provision import _internal_mcp_url
 from app.services.mcp_gateway import ensure_mcp_api_key
 
 PIN = "v0.23.1"
@@ -175,27 +177,30 @@ def ensure_tenant_placement(
     ensure_mcp_api_key(db, tenant)
     db.refresh(tenant)
 
-    # Seed API-side skeleton (templates). Worker-visible volume is tracked separately
-    # in state_location / meta until the runtime mounts the same path.
+    # API-side skeleton (backup) + worker-visible live home (shared volume).
     ensure_tenant_hermes_home(db, ctx)
     db.refresh(tenant)
 
     profile = get_company_profile(db, ctx.tenant_id)
     pid = profile_id_for_tenant(tenant.slug)
     api_home = str(hermes_home_path(ctx.tenant_id))
+    live_home = ensure_live_profile_home(pid, mcp_url=_internal_mcp_url())
+    live_path = str(live_home)
 
     if profile is None:
         profile = HermesProfile(
             tenant_id=ctx.tenant_id,
             profile_id=pid,
             agent_id=AGENT_COMPANY_MAIN,
-            state_location=api_home,
+            state_location=live_path,
             status="provisioning",
             pin=PIN,
             actor_user_id=ctx.user_id,
             meta={
                 "api_skeleton_home": api_home,
-                "note": "api_skeleton≠worker_home until volume shared or sync proven",
+                "live_profile_home": live_path,
+                "worker_bind": worker_bind_hint(pid),
+                "note": "state_location is worker-visible HERMES_PROFILES_ROOT path",
             },
         )
         db.add(profile)
@@ -257,7 +262,12 @@ def ensure_tenant_placement(
                 },
             )
 
-    profile.state_location = api_home
+    profile.state_location = live_path
+    meta = dict(profile.meta or {})
+    meta["api_skeleton_home"] = api_home
+    meta["live_profile_home"] = live_path
+    meta["worker_bind"] = worker_bind_hint(pid)
+    profile.meta = meta
     profile.actor_user_id = profile.actor_user_id or ctx.user_id
     db.add(profile)
     _mirror_settings_runtime(db, tenant, profile, worker)

@@ -27,6 +27,7 @@ def db(tmp_path, monkeypatch):
     from app.core.config import get_settings
 
     monkeypatch.setenv("TENANT_FILES_ROOT", str(tmp_path / "tenants"))
+    monkeypatch.setenv("HERMES_PROFILES_ROOT", str(tmp_path / "hermes-profiles"))
     monkeypatch.setenv("HERMES_NOUS_RUNTIME_URL", "http://delno-hermes-tenant-a:8642")
     monkeypatch.setenv("HERMES_NOUS_RUNTIME_URL_B", "http://delno-hermes-tenant-b:8642")
     monkeypatch.setenv("HERMES_API_SERVER_KEY", "key-a")
