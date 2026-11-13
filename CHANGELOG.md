@@ -29,6 +29,7 @@
 - Hermes Telegram/MAX dual-path chooser: ask bot token vs QR (Telegram Web-style), pros/cons, step-by-step bot creation, then vault form; QR starts `pending_qr` session with honest status until live QR worker
 
 ### Fixed
+- Hermes virtual onboarding E2E test: KB draft→confirm→phone DID→SIP form on «делай»→vault save (site/social/text routing covered)
 
 - Hermes KB onboarding inputs: site URL, social URL (TG/IG/VK/MAX), free-text company blurb, or mix — all route to `office.build_kb_draft` as agent work; message residual prose merges into free_text; SOUL/skill document the three scenarios (no extra social setup; login-wall = honest gap)
 - Hermes telephony prompts: after DID → open SIP form in the same turn; on Mango Rejected → `credentials.open_form` again (never «проверьте пароль» without the form); SOUL / onboarding / Nous bridge / setup hints updated
