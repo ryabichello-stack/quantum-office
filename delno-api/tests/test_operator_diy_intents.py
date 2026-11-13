@@ -2,6 +2,7 @@
 
 from app.api.v1.operator import (
     _telephony_script_wants_propose,
+    _telephony_script_wants_save,
     _wants_billing_summary,
     _wants_calls_list,
     _wants_files_cloud_status,
@@ -31,8 +32,11 @@ def test_wants_calls_list():
 def test_wants_telephony_script():
     assert _wants_telephony_script("покажи сценарий Ava")
     assert _wants_telephony_script("предложи сценарий секретаря")
+    assert _wants_telephony_script("сохрани сценарий")
     assert _wants_telephony_script("telephony.script_get")
     assert _telephony_script_wants_propose("предложи сценарий")
+    assert _telephony_script_wants_save("сохрани сценарий")
+    assert not _telephony_script_wants_propose("сохрани сценарий")
     assert not _telephony_script_wants_propose("покажи сценарий")
     assert not _wants_telephony_script("создай конференцию")
     assert not _wants_telephony_script("покажи последние звонки")

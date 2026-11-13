@@ -317,8 +317,12 @@ def _wants_telephony_script(message: str) -> bool:
             "готов",
             "есть ли",
             "проверь",
+            "сохрани",
+            "сохранить",
+            "запиши",
             "get",
             "propose",
+            "save",
         )
     )
     # Avoid stealing generic «создай конференцию» / CRM — need scriptish.
@@ -329,6 +333,8 @@ def _telephony_script_wants_propose(message: str) -> bool:
     low = (message or "").lower()
     if "telephony.script_propose" in low:
         return True
+    if _telephony_script_wants_save(message):
+        return False
     return any(
         m in low
         for m in (
@@ -338,6 +344,23 @@ def _telephony_script_wants_propose(message: str) -> bool:
             "надиктуй",
             "черновик",
             "propose",
+        )
+    )
+
+
+def _telephony_script_wants_save(message: str) -> bool:
+    low = (message or "").lower()
+    if "telephony.script_save" in low:
+        return True
+    return any(
+        m in low
+        for m in (
+            "сохрани сценари",
+            "сохранить сценари",
+            "сохрани скрипт",
+            "запиши сценари",
+            "save script",
+            "script_save",
         )
     )
 
@@ -1155,11 +1178,12 @@ def operator_chat(
         from app.operator.tools.registry import ToolResult, registry
 
         register_builtin_tools()
-        tool_name = (
-            "telephony.script_propose"
-            if _telephony_script_wants_propose(message)
-            else "telephony.script_get"
-        )
+        if _telephony_script_wants_save(message):
+            tool_name = "telephony.script_save"
+        elif _telephony_script_wants_propose(message):
+            tool_name = "telephony.script_propose"
+        else:
+            tool_name = "telephony.script_get"
         result = registry.run(db, ctx, tool_name)
         if isinstance(result, ToolResult) and result.ok:
             data = result.data or {}
@@ -1168,6 +1192,8 @@ def operator_chat(
                 reply = (result.message or "Черновик сценария готов.").strip()
                 if draft and draft not in reply:
                     reply = f"{reply}\n\n{draft}".strip()
+            elif tool_name == "telephony.script_save":
+                reply = (result.message or data.get("message_ru") or "Сценарий сохранён.").strip()
             else:
                 script = str(
                     data.get("script")
