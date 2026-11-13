@@ -7,6 +7,14 @@
 **Где лежит:** git `docs/AGENT_CHANGE_REGISTER.md` ↔ прод `/opt/delno/docs/AGENT_CHANGE_REGISTER.md` (держать в синхроне).
 
 
+## 2026-11-13 ~20:45 МСК — Cursor: merge #88 в сводную ветку
+
+- Ветка: `cursor/consolidate-main-2026-11-13` (PR #89). Merge `--no-ff` tip #88 `6015c6df` (не rebase). #87 после `b908b5bc` новых коммитов не было.
+- Сохранено вместе: placement без fallback на слот A, run-id MCP, reconciler, `DELNO_MCP_STRICT`, profile homes; secretary tools и `office-mcp` из #81/#82; fail-closed webhook и пустой JWT. Конфликт был только в `CHANGELOG.md` — оставлены оба списка.
+- `QO_MCP_OVERWRITE` в compose по-прежнему пустой. `DELNO_MCP_STRICT` оставлен как в #88 (`:-0`, включается единицей).
+- Публичные IP убраны из `deploy/cloud4box/*` и `docs/QL_*` → `<C4B_HOST>` / `<OLD_QL_HOST>`, runbook `deploy/cloud4box/README.md`. `office-mcp/.env.example`: `BRAIN_MCP_ADMIN=false`.
+- Прод не трогался. PR не мёржится.
+
 ## 2026-11-13 ~20:30 МСК — Cursor: сводная ветка в main (не мёржить)
 
 - Ветка: `cursor/consolidate-main-2026-11-13` от `b908b5bc8cf7e9f159b67c7cd8d9cdbc1bd0b820` (head PR #87 на старте). PR в `main`, без мёржа.

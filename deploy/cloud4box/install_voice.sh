@@ -7,7 +7,12 @@ set -euo pipefail
 
 AVA_ROOT="${AVA_ROOT:-/root/ava}"
 OFFICE_ENV="${OFFICE_ENV:-/opt/quantum-office/.env}"
-PUBLIC_IP="${PUBLIC_IP:-$(curl -4 -s --max-time 5 ifconfig.me || echo 161.104.89.123)}"
+# <C4B_HOST>: set PUBLIC_IP from the host inventory. See README.md. No address in git.
+PUBLIC_IP="${PUBLIC_IP:-$(curl -4 -s --max-time 5 ifconfig.me || true)}"
+if [ -z "$PUBLIC_IP" ]; then
+  echo "Set PUBLIC_IP to <C4B_HOST> (deploy/cloud4box/README.md). Refusing a hardcoded address." >&2
+  exit 1
+fi
 
 if [ ! -d "$AVA_ROOT/src" ]; then
   echo "missing $AVA_ROOT — clone https://github.com/hkjarral/Asterisk-AI-Voice-Agent first" >&2

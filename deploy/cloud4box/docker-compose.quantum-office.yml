@@ -1,4 +1,4 @@
-# Quantum Labs office recovery — Cloud4Box (161.104.89.123)
+# Quantum Labs office recovery — Cloud4Box (<C4B_HOST>, see README.md)
 # Classic QL ports on loopback; nginx publishes /_ava_* and /_quantum_console/
 name: quantum-office
 

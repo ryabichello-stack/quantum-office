@@ -32,6 +32,7 @@
 
 ### Fixed
 
+- Public Cloud4Box notes (`deploy/cloud4box/`, `docs/QL_*`) no longer contain production IPs; use `<C4B_HOST>` / `<OLD_QL_HOST>` from `deploy/cloud4box/README.md`
 - Office webhooks fail closed: empty `WEBHOOK_TOKEN` no longer skips auth on calendar, files, conference, knowledge, mail gateway, or mailer
 - JWT signing rejects an unset secret and placeholders (`change-me`, `dev-secret`); admin tenant create no longer falls back to `changeme123`
 - Quantum Office MCP bridge stays fill-gaps unless `QO_MCP_OVERWRITE` is set (compose default off; shared QO tokens are not tenant-isolated)

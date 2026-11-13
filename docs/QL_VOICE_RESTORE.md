@@ -1,11 +1,11 @@
 # Voice / AVA restore on Cloud4Box (from scratch)
 
-QL Beget (`5.35.86.62`) is **irrevocably gone**. Asterisk, `/root/ava`, Mango SIP
+QL Beget (`<OLD_QL_HOST>`) is **irrevocably gone**. Asterisk, `/root/ava`, Mango SIP
 objects and AVA docker images lived only there — **not in this git repo**.
 
 ## Target host
 
-`161.104.89.123` (Cloud4Box) — office stack already on ports `8000–8017`.
+`<C4B_HOST>` (Cloud4Box) — office stack already on ports `8000–8017`. Address: `deploy/cloud4box/README.md`.
 
 ## What we need from you
 
@@ -35,7 +35,7 @@ Compose scaffold (placeholders only until AVA tree is restored):
 | Asterisk 20 | **running** — SIP `:5060/udp`, ARI `127.0.0.1:8088`, dialplan `from-mango` |
 | `/root/ava` | **installed** from upstream [Asterisk-AI-Voice-Agent](https://github.com/hkjarral/Asterisk-AI-Voice-Agent) + Quantum `ai-agent.local.yaml` |
 | `ai_engine` | **healthy** — `ari_connected=true`, `openai_realtime` ready, AudioSocket `:8090` |
-| Mango registration | **Rejected** until `MANGO_SIP_PASSWORD` is set + Mango LK trunk IP → `161.104.89.123:5060` |
+| Mango registration | **Rejected** until `MANGO_SIP_PASSWORD` is set + Mango LK trunk IP → `<C4B_HOST>:5060` |
 | Knowledge / mailer | office stack up; calendar/Telemost stubs until SMTP/CalDAV/OAuth filled |
 
 Ops note on server: `/root/QL_VOICE_STATUS.txt`  
@@ -45,5 +45,5 @@ Install helper: `deploy/cloud4box/install_voice.sh`
 
 1. Put Mango SIP password into `/etc/asterisk/pjsip.conf` (replace `__MANGO_SIP_PASSWORD__`) and `/opt/quantum-office/.env` → `MANGO_SIP_PASSWORD=...`
 2. `asterisk -rx 'module reload res_pjsip.so'` then `asterisk -rx 'pjsip send register mango-registration'`
-3. In Mango LK: external SIP trunk / PBX address = **`161.104.89.123:5060`** UDP
+3. In Mango LK: external SIP trunk / PBX address = **`<C4B_HOST>:5060`** UDP
 4. Smoke: inbound to company number → Stasis → greeting

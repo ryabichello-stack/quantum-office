@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Bootstrap Quantum Labs office stack on Cloud4Box after QL loss.
-# Run as root on 161.104.89.123 from a synced repo checkout.
+# Run as root on <C4B_HOST> from a synced repo checkout.
+# Set C4B_HOST from the host inventory (see README.md). Do not commit the address.
 set -euo pipefail
+
+: "${C4B_HOST:?set C4B_HOST to <C4B_HOST> — see deploy/cloud4box/README.md}"
 
 ROOT="${ROOT:-/opt/quantum-office}"
 REPO="${REPO:-/opt/quantum-office/src}"
@@ -92,17 +95,17 @@ done
 cat > /root/QL_RECOVERY.txt <<EOF
 Quantum Labs disaster recovery on Cloud4Box — $(date -u +%Y-%m-%dT%H:%MZ)
 
-Host: 161.104.89.123
+Host: ${C4B_HOST}
 Stack: /opt/quantum-office
 Env:   /opt/quantum-office/.env (mode 600)
 Compose: deploy/cloud4box/docker-compose.quantum-office.yml
 
 Public (HTTP):
-  http://161.104.89.123/_ava_outreach/
-  http://161.104.89.123/_quantum_console/
-  http://161.104.89.123/_ava_secretary/
-  http://161.104.89.123/_ava_knowledge/
-  http://161.104.89.123/_ava_conference/
+  http://${C4B_HOST}/_ava_outreach/
+  http://${C4B_HOST}/_quantum_console/
+  http://${C4B_HOST}/_ava_secretary/
+  http://${C4B_HOST}/_ava_knowledge/
+  http://${C4B_HOST}/_ava_conference/
 
 Lost with QL (must re-enter in .env):
   OPENAI_API_KEY, TELEGRAM_BOT_TOKEN, SMTP, Yandex OAuth/Telemost,

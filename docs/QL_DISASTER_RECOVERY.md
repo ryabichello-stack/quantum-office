@@ -4,8 +4,8 @@
 
 | Host | State |
 |------|--------|
-| `5.35.86.62` (QL Beget / a.47z.ru) | **IRREVOCABLY GONE** — disk and all data lost forever. Do **not** SSH, wait, or plan migration back. |
-| `161.104.89.123` (Cloud4Box) | **New production** — rebuild from git + new secrets. DELNO + office stack + 3x-ui |
+| `<OLD_QL_HOST>` (QL Beget / a.47z.ru) | **IRREVOCABLY GONE** — disk and all data lost forever. Do **not** SSH, wait, or plan migration back. Address is not stored in git; see `deploy/cloud4box/README.md`. |
+| `<C4B_HOST>` (Cloud4Box) | **New production** — rebuild from git + new secrets. DELNO + office stack + 3x-ui. Take the address from the host inventory, not from this file. |
 
 ## Restored on Cloud4Box
 
@@ -55,4 +55,4 @@ Cloud4Box can reach `api.telegram.org` (proxy/VPN).
 
 ## DNS
 
-Point `a.47z.ru` (or new hostname) A-record → `161.104.89.123`, then TLS.
+Point `a.47z.ru` (or new hostname) A-record → `<C4B_HOST>`, then TLS. The address lives in the host inventory (`deploy/cloud4box/README.md`).
