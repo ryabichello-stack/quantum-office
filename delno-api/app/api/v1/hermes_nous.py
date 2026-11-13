@@ -354,3 +354,18 @@ def nous_mint_token(
         "tool_ids": issued.tool_ids,
         "mode": body.mode,
     }
+
+
+@router.post("/tasks/tick")
+def nous_tasks_tick(
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+    limit: int = Query(default=5, ge=1, le=20),
+) -> dict[str, Any]:
+    """Manually claim+run due scheduled tasks for this tenant (also runs on API ticker)."""
+    from app.services.agent_schedule import claim_due_tasks, execute_scheduled_task
+
+    _require_flag(db, ctx)
+    due = claim_due_tasks(db, limit=limit, tenant_id=ctx.tenant_id)
+    results = [execute_scheduled_task(db, t) for t in due]
+    return {"ok": True, "claimed": len(due), "results": results}

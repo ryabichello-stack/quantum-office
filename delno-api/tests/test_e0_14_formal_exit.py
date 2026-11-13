@@ -48,7 +48,11 @@ def test_e0_14_create_tenant_seeds_flags_emits_event_and_audit():
     flag_rows = [obj for obj in added if isinstance(obj, FeatureFlag)]
     assert len(flag_rows) == len(DEFAULT_FLAGS)
     assert {f.flag_key for f in flag_rows} == set(DEFAULT_FLAGS)
-    assert all(f.tenant_id == tenant_id and f.enabled is False for f in flag_rows)
+    # Cold-start cabinets get Hermes product loop on by default.
+    default_on = {"web_voice", "hermes_nous_runtime", "experimental_operator"}
+    assert all(f.tenant_id == tenant_id for f in flag_rows)
+    assert {f.flag_key for f in flag_rows if f.enabled} == default_on
+    assert all(not f.enabled for f in flag_rows if f.flag_key not in default_on)
 
     mock_emit.assert_called_once()
     emit_kwargs = mock_emit.call_args.kwargs

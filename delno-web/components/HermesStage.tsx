@@ -21,8 +21,14 @@ import {
 } from "lucide-react";
 import { CrystalOrb } from "@/components/CrystalOrb";
 import { HermesMessageBody } from "@/components/HermesMessageBody";
+import { HermesThinkingTrace } from "@/components/HermesThinkingTrace";
 import { ConfirmCard } from "@/components/ConfirmCard";
 import { CredentialFormCard, type CredentialFormSpec } from "@/components/CredentialFormCard";
+import {
+  buildThinkingChain,
+  liveThinkingPlan,
+  type ThinkingStep,
+} from "@/lib/hermesThinking";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -94,6 +100,11 @@ type ChatLine = {
   credentialForm?: CredentialFormSpec | null;
   download?: PendingDownload | null;
   suggestions?: SuggestedAction[];
+  thinking?: ThinkingStep[];
+  /** Thinking is still in progress — show before the reply body. */
+  thinkingLive?: boolean;
+  thinkingLiveIndex?: number;
+  thinkingMs?: number;
   previews?: { url: string; name: string; kind?: "image" | "video" | "file" }[];
 };
 
@@ -280,6 +291,7 @@ export function HermesStage({ token }: { token: string }) {
       setSending(true);
       setError("");
       setActivePending(null);
+      const startedAt = Date.now();
       const previews = attachSource
         .filter((a) => a.previewUrl || a.kind === "file")
         .map((a) => ({
@@ -296,9 +308,46 @@ export function HermesStage({ token }: { token: string }) {
               )
               .join(" ")
           : "");
+      const plan = liveThinkingPlan(question || label);
+      // Show user bubble + live thinking placeholder BEFORE any reply text.
       if (modality === "text") {
-        setLines((prev) => [...prev, { role: "user", text: label, previews }]);
+        setLines((prev) => [
+          ...prev,
+          { role: "user", text: label, previews },
+          {
+            role: "assistant",
+            text: "",
+            thinking: plan,
+            thinkingLive: true,
+            thinkingLiveIndex: 1,
+          },
+        ]);
+      } else {
+        setLines((prev) => [
+          ...prev,
+          { role: "user", text: question || label },
+          {
+            role: "assistant",
+            text: "",
+            thinking: plan,
+            thinkingLive: true,
+            thinkingLiveIndex: 1,
+          },
+        ]);
       }
+
+      let liveIdx = 1;
+      const tick = window.setInterval(() => {
+        liveIdx = Math.min(plan.length, liveIdx + 1);
+        const idx = liveIdx;
+        setLines((prev) => {
+          if (!prev.length) return prev;
+          const last = prev[prev.length - 1];
+          if (last?.role !== "assistant" || !last.thinkingLive) return prev;
+          return [...prev.slice(0, -1), { ...last, thinkingLiveIndex: idx }];
+        });
+      }, 700);
+
       try {
         const attachments = await Promise.all(attachSource.map((a) => fileToOperatorAttachment(a.file)));
         if (withPending) {
@@ -313,6 +362,7 @@ export function HermesStage({ token }: { token: string }) {
           "hermes",
           attachments,
         );
+        window.clearInterval(tick);
         setConversationId(result.conversation_id);
         const pending = result.pending_confirmation || null;
         if (pending) setActivePending(pending);
@@ -322,37 +372,77 @@ export function HermesStage({ token }: { token: string }) {
         const suggestions = (result.suggested_actions || []).filter(
           (a) => a?.title && a?.text,
         );
+        const thinking = buildThinkingChain({
+          engine: result.engine,
+          tool_calls: result.tool_calls,
+          hermes_run: result.hermes_run,
+        });
+        const elapsed = Date.now() - startedAt;
         const redactUser = Boolean(secretForm);
         const safeUserLabel = redactUser
           ? "[логин/пароль — через безопасную форму]"
           : question || label;
+
+        // Keep thinking visible a beat with real steps, still without reply —
+        // then reveal the answer (thinking collapses via component).
         setLines((prev) => {
           let base = prev;
-          if (modality === "text" && redactUser && prev.length) {
-            const last = prev[prev.length - 1];
-            if (last?.role === "user") {
-              base = [...prev.slice(0, -1), { ...last, text: safeUserLabel }];
-            }
+          // Replace trailing live assistant stub; fix redacted user if needed.
+          if (base.length && base[base.length - 1]?.role === "assistant") {
+            base = base.slice(0, -1);
           }
-          if (modality === "voice" && (base.length === 0 || base[base.length - 1]?.text !== question)) {
-            base = [...base, { role: "user" as const, text: redactUser ? safeUserLabel : question || label }];
+          if (redactUser && base.length) {
+            const last = base[base.length - 1];
+            if (last?.role === "user") {
+              base = [...base.slice(0, -1), { ...last, text: safeUserLabel }];
+            }
           }
           return [
             ...base,
             {
               role: "assistant" as const,
-              text: result.reply,
-              sources: result.sources || [],
+              text: "",
+              thinking: thinking.length ? thinking : plan,
+              thinkingLive: true,
+              thinkingLiveIndex: (thinking.length ? thinking : plan).length,
+              thinkingMs: elapsed,
               pending,
               credentialForm: secretForm,
               download: download || undefined,
               suggestions: suggestions.length ? suggestions : undefined,
+              sources: result.sources || [],
+            },
+          ];
+        });
+
+        await new Promise((r) => window.setTimeout(r, Math.min(900, Math.max(350, thinking.length * 120))));
+
+        setLines((prev) => {
+          if (!prev.length) return prev;
+          const last = prev[prev.length - 1];
+          if (last?.role !== "assistant") return prev;
+          return [
+            ...prev.slice(0, -1),
+            {
+              ...last,
+              text: result.reply,
+              thinkingLive: false,
+              thinkingMs: Date.now() - startedAt,
             },
           ];
         });
         void refreshPanels();
         return result.reply;
       } catch {
+        window.clearInterval(tick);
+        setLines((prev) => {
+          if (!prev.length) return prev;
+          const last = prev[prev.length - 1];
+          if (last?.role === "assistant" && last.thinkingLive && !last.text) {
+            return prev.slice(0, -1);
+          }
+          return prev;
+        });
         setError("Hermes недоступен. Проверьте API и соединение.");
         return null;
       } finally {
@@ -392,6 +482,7 @@ export function HermesStage({ token }: { token: string }) {
         const preferred =
           (saved && convs.items.find((c) => c.id === saved)) ||
           convs.items.find((c) => c.channel === "hermes") ||
+          convs.items.find((c) => c.channel === "web") ||
           convs.items.find((c) => c.channel === "cabinet" || c.channel === "operator");
         if (!preferred || cancelled) {
           setHistoryReady(true);
@@ -403,23 +494,39 @@ export function HermesStage({ token }: { token: string }) {
         localStorage.setItem("hermes_conversation_id", preferred.id);
         const restored: ChatLine[] = (msgs.items || [])
           .filter((m) => m.role === "user" || m.role === "assistant")
-          .map((m) => ({
-            role: m.role as "user" | "assistant",
-            text: m.body || "",
-            sources:
-              m.role === "assistant" && Array.isArray((m.meta as { sources?: KnowledgeSource[] } | null)?.sources)
-                ? ((m.meta as { sources: KnowledgeSource[] }).sources)
-                : undefined,
-            suggestions:
-              m.role === "assistant" &&
-              Array.isArray((m.meta as { suggested_actions?: SuggestedAction[] } | null)?.suggested_actions)
-                ? ((m.meta as { suggested_actions: SuggestedAction[] }).suggested_actions)
-                : undefined,
-          }))
+          .map((m) => {
+            const meta = (m.meta || {}) as {
+              sources?: KnowledgeSource[];
+              suggested_actions?: SuggestedAction[];
+              engine?: string;
+              tool_calls?: unknown[];
+              hermes_run?: unknown;
+            };
+            const thinking =
+              m.role === "assistant"
+                ? buildThinkingChain({
+                    engine: meta.engine,
+                    tool_calls: meta.tool_calls,
+                    hermes_run: meta.hermes_run,
+                  })
+                : undefined;
+            return {
+              role: m.role as "user" | "assistant",
+              text: m.body || "",
+              sources:
+                m.role === "assistant" && Array.isArray(meta.sources) ? meta.sources : undefined,
+              suggestions:
+                m.role === "assistant" && Array.isArray(meta.suggested_actions)
+                  ? meta.suggested_actions
+                  : undefined,
+              thinking: thinking && thinking.length > 1 ? thinking : undefined,
+            };
+          })
           .filter((l) => l.text.trim());
+        // Always bind the conversation id so the next message continues the thread.
+        setBootstrapped(true);
         if (restored.length) {
           setLines(restored);
-          setBootstrapped(true);
         }
       } catch {
         /* fresh chat */
@@ -443,7 +550,11 @@ export function HermesStage({ token }: { token: string }) {
     // Wait for office-loop when Nous is on so welcome follows PRODUCT_LOOP phase.
     if (nousStatus?.enabled && !officeLoop) return;
     setBootstrapped(true);
-    if (!setup.setup_complete && lines.length === 0) {
+    // Do not auto-welcome over an existing saved thread (even if empty briefly).
+    const savedId =
+      typeof window !== "undefined" ? localStorage.getItem("hermes_conversation_id") : null;
+    if (savedId || conversationId || lines.length > 0) return;
+    if (!setup.setup_complete) {
       // Never auto-send primary_cta text — it may pretend the owner already
       // gave a website URL. Ask Hermes for the real next step instead.
       const nextTitle = officeLoop?.next_step?.title;
@@ -454,7 +565,7 @@ export function HermesStage({ token }: { token: string }) {
       void sendText(welcome, "text");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot welcome
-  }, [setup, bootstrapped, historyReady, officeLoop, nousStatus?.enabled]);
+  }, [setup, bootstrapped, historyReady, officeLoop, nousStatus?.enabled, conversationId]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -849,23 +960,33 @@ export function HermesStage({ token }: { token: string }) {
                   <article key={idx} className="hx-row hx-row-assistant">
                     {!compact && <HermesAvatar />}
                     <div className="hx-assistant-col">
-                      <div className="hx-bubble hx-bubble-assistant">
-                        <HermesMessageBody text={line.text} className="hx-text" />
-                        {(() => {
-                          const sources = dedupeSources(line.sources);
-                          if (!sources.length) return null;
-                          return (
-                            <p className="hx-sources-meta" title="Источники ответа (не кнопки)">
-                              Источники:{" "}
-                              {sources
-                                .map((s) => s.title || s.citation || s.document_id)
-                                .filter(Boolean)
-                                .slice(0, 4)
-                                .join(" · ")}
-                            </p>
-                          );
-                        })()}
-                      </div>
+                      {line.thinking && line.thinking.length > 0 ? (
+                        <HermesThinkingTrace
+                          steps={line.thinking}
+                          live={Boolean(line.thinkingLive)}
+                          liveIndex={line.thinkingLiveIndex}
+                          durationMs={line.thinkingMs}
+                        />
+                      ) : null}
+                      {line.text ? (
+                        <div className="hx-bubble hx-bubble-assistant">
+                          <HermesMessageBody text={line.text} className="hx-text" />
+                          {(() => {
+                            const sources = dedupeSources(line.sources);
+                            if (!sources.length) return null;
+                            return (
+                              <p className="hx-sources-meta" title="Источники ответа (не кнопки)">
+                                Источники:{" "}
+                                {sources
+                                  .map((s) => s.title || s.citation || s.document_id)
+                                  .filter(Boolean)
+                                  .slice(0, 4)
+                                  .join(" · ")}
+                              </p>
+                            );
+                          })()}
+                        </div>
+                      ) : null}
                       {line.suggestions && line.suggestions.length > 0 && (
                         <div className="hx-action-chips">
                           {line.suggestions.map((a) => (

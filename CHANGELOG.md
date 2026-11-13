@@ -12,10 +12,18 @@
 
 ### Added
 
+- Hermes scheduled поручения: `hermes.tasks_create/list/pause/resume` + DIY («проверяй заявки каждый час»); API background ticker runs due tasks via the tool agent; `/v1/hermes-nous/tasks/tick` for manual kick
+- Hermes browser research: pasted URL / «зайди на сайт» runs `web.research` (browse + same-host crawl + optional search) and answers from the live dossier — visible in thinking as page visits; Playwright Chromium in API image
+- Hermes composer: live dictation (browser word/phrase interim + rolling Whisper ticks while speaking)
+- Hermes chat: Claude-style live «Думаю…» before the reply (not a post-hoc checklist)
 - Hermes Telegram/MAX dual-path chooser: ask bot token vs QR (Telegram Web-style), pros/cons, step-by-step bot creation, then vault form; QR starts `pending_qr` session with honest status until live QR worker
 
 ### Fixed
 
+- Hermes tenant isolation: sticky runtime slots (tenant-a / tenant-b) so each cabinet has its own HERMES space + MCP key — shared ``DELNO_MCP_KEY`` no longer makes one tenant see another's ``setup_status``. Bridge grounds Nous with per-tenant FACTS; new registrations assign an isolated slot
+- Cold-start office status: platform upstream ``configured: true`` (mail/calendar/files/conference Docker) no longer looks like the tenant already set them up; Hermes only treats ``tenant_usable`` / ``checks.*.ok`` as ready. Global Mango Registered is ignored until this cabinet has SIP in vault. New self-service/admin tenants start with empty hermes/connectors + welcome phase
+- Hermes multi-step agent: compound «по шагам / план / сайт+KB+…» no longer stolen by DIY shortcuts (incl. bare «настрой» → Telegram); routes to in-API LLM tool loop with plan→tools→report
+- DIY Hermes turns now persist to conversation history (tab switch / reload no longer wipes the chat)
 - Hermes media DIY: «сгенерируй простую картинку» (adverb between verb and noun) now matches `_wants_media_generation` and hits `generate_image` instead of a Nous dead-end during connectors phase
 - Hermes setup progress («что дальше» / «настроим офис») on vault steps (`need_sip`, telegram, max, files) opens `pending_credential_form` instead of a Nous text waffle; post-save «SIP сохранён… что дальше» still skips the form
 - Connector readiness vs tools_first: enabled + reachable upstream is usable for mail/calendar/conference (no longer blocked on missing SMTP/CalDAV/`tenant_account_verified`)

@@ -36,16 +36,29 @@ def get_toolkit(db: Session, ctx: TenantContext) -> dict[str, Any]:
         health = {"ok": False, "healthy": False, "message_ru": "health unavailable", "alerts": []}
 
     connectors_raw = list_tenant_connector_readiness(db, ctx)
-    connectors = [
-        {
-            "kind": c.get("kind"),
-            "label": c.get("label") or c.get("kind"),
-            "ready": bool(c.get("usable") or c.get("ready") or c.get("ok")),
-            "ok": bool(c.get("usable") or c.get("ready") or c.get("ok")),
-            "detail": c.get("detail") or c.get("hint") or "",
-        }
-        for c in (connectors_raw or [])
-    ]
+    connectors = []
+    for c in connectors_raw or []:
+        usable = bool(c.get("usable"))
+        enabled = bool(c.get("enabled"))
+        connectors.append(
+            {
+                "kind": c.get("kind"),
+                "label": c.get("label") or c.get("kind"),
+                "ready": usable,
+                "ok": usable,
+                "configured": usable,
+                "enabled": enabled,
+                "detail": (
+                    "подключено для этого кабинета"
+                    if usable
+                    else (
+                        f"не usable: {c.get('reason') or 'нет кредов'}"
+                        if enabled
+                        else "у этого кабинета НЕ подключено"
+                    )
+                ),
+            }
+        )
     catalog = {t["name"]: t for t in registry.list_catalog()}
 
     ava_tools = []

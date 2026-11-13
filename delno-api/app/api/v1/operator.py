@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -529,6 +530,191 @@ def _wants_crm_funnel(message: str) -> bool:
     )
 
 
+def _extract_http_urls(message: str) -> list[str]:
+    from app.services.web_browser import extract_urls
+
+    return extract_urls(message or "")
+
+
+def _wants_agent_orchestration(message: str) -> bool:
+    """Compound / multi-step goals → full agent loop (Nous or DIY LLM), not a single DIY shortcut."""
+    low = (message or "").lower()
+    markers = (
+        "по шагам",
+        "по шагу",
+        "составь план",
+        "составить план",
+        "разложи задач",
+        "разложи на",
+        "выполни план",
+        "выполняй по",
+        "сначала ",
+        " потом ",
+        " затем ",
+        "после этого",
+        "и потом",
+        "действуй",
+        "сам через tool",
+        "через tools",
+        "агентн",
+        "оркестр",
+    )
+    if any(m in low for m in markers):
+        return True
+    if re.search(
+        r"(?:^|\n)\s*[1][\).\]]\s+\S[\s\S]{0,400}(?:^|\n)\s*[2][\).\]]\s+\S",
+        low,
+    ):
+        return True
+    hits = 0
+    if _extract_http_urls(message) or any(x in low for x in ("сайт", "ссылк", "instagram", "t.me")):
+        hits += 1
+    if any(x in low for x in ("баз знан", "в знани", "knowledge", "в kb", "импорт сайт")):
+        hits += 1
+    if any(x in low for x in ("скрипт", "сценари", "обзвон", "ava")):
+        hits += 1
+    if any(x in low for x in ("письм", "mail", "smtp", "отправь на")):
+        hits += 1
+    if any(x in low for x in ("календар", "встреч", "конферен", "telemost", "слот")):
+        hits += 1
+    if any(x in low for x in ("crm", "лид", "воронк")):
+        hits += 1
+    if any(x in low for x in ("облак", "яндекс диск", "gdrive", "файл")):
+        hits += 1
+    return hits >= 2
+
+
+def _tool_calls_from_nous(nous: dict) -> list:
+    """Surface Hermes/Nous steps as tool_calls for the thinking UI."""
+    out: list = []
+    hermes = nous.get("hermes") if isinstance(nous.get("hermes"), dict) else {}
+    for key in ("steps", "tool_calls", "tools", "actions"):
+        raw = hermes.get(key) or nous.get(key)
+        if not isinstance(raw, list):
+            continue
+        for item in raw[:20]:
+            if not isinstance(item, dict):
+                continue
+            tool = (
+                item.get("tool")
+                or item.get("name")
+                or item.get("tool_id")
+                or item.get("kind")
+                or item.get("safe_summary")
+            )
+            if not tool:
+                continue
+            out.append(
+                {
+                    "tool": str(tool)[:120],
+                    "ok": item.get("ok", item.get("status") in (None, "ok", "completed", "succeeded", "done")),
+                    "detail": str(item.get("safe_summary") or item.get("status") or "")[:160],
+                }
+            )
+    if not out and nous.get("tool_ids"):
+        out.append(
+            {
+                "tool": "hermes.agent_run",
+                "ok": True,
+                "detail": f"pack={nous.get('pack_mode') or '—'} tools={len(nous.get('tool_ids') or [])}",
+            }
+        )
+    return out
+
+
+def _wants_web_research(message: str) -> bool:
+    """User pasted a link or asked Hermes to open/study a site / public channel."""
+    if _extract_http_urls(message):
+        return True
+    low = (message or "").lower()
+    verbs = (
+        "зайди",
+        "зайди на",
+        "зайди в",
+        "открой",
+        "открой сайт",
+        "посмотри",
+        "посмотреть",
+        "просканируй",
+        "проскан",
+        "проанализируй",
+        "изучи",
+        "собери информацию",
+        "что за сайт",
+        "расскажи про сайт",
+        "browse",
+        "fetch",
+    )
+    targets = (
+        "сайт",
+        "ссылк",
+        "url",
+        "instagram",
+        "инстаграм",
+        "телеграм",
+        "telegram",
+        "t.me",
+        "макс",
+        " max",
+        "группу",
+        "канал",
+        "страниц",
+    )
+    if any(v in low for v in verbs) and any(t in low for t in targets):
+        return True
+    # Bare domain-ish without scheme: example.com / company.ru/path
+    if re.search(r"(?<!@)\b[a-z0-9][a-z0-9.-]+\.(ru|com|org|net|io|ai|рф)\b", low):
+        if any(v in low for v in ("сайт", "открой", "зайди", "посмотри", "изучи", "проскан")):
+            return True
+    return False
+
+
+def _summarize_web_dossier(question: str, dossier: str, *, note: str = "") -> str:
+    """LLM summary grounded in browsed text; fallback to extract if model unavailable."""
+    body = (dossier or "").strip()
+    if not body:
+        return note or "Не удалось снять текст со страницы (возможна авторизация или блокировка)."
+    try:
+        from app.services.model_provider import get_model_provider
+
+        provider = get_model_provider()
+        system = (
+            "Ты Hermes. Тебе дали ДОСЬЕ страниц, которые уже открыл браузер. "
+            "Ответь по-русски связно и по делу: чем занимается, продукты/услуги, "
+            "аудитория, контакты, ключевые факты. Только факты из досье — "
+            "не выдумывай. Если данных мало — скажи честно. "
+            "Не упоминай базу знаний tenant, если её не было в досье."
+        )
+        user = f"Запрос владельца:\n{question}\n\n"
+        if note:
+            user += f"Замечание браузера: {note}\n\n"
+        user += f"Досье:\n{body[:28000]}"
+        out = provider.chat_completion(
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            max_tokens=1200,
+        )
+        if out.get("ok"):
+            data = out.get("data") if isinstance(out.get("data"), dict) else out
+            text = ""
+            try:
+                text = str(data["choices"][0]["message"]["content"] or "")
+            except Exception:  # noqa: BLE001
+                text = str(out.get("reply") or out.get("content") or "")
+            text = (text or "").strip()
+            if text:
+                return text
+    except Exception:  # noqa: BLE001
+        pass
+    preview = body[:3500].strip()
+    head = "Открыл страницы в браузере. Краткое содержимое:\n\n"
+    if note:
+        head = f"{note}\n\n" + head
+    return head + preview
+
+
 def _wants_mail_draft(message: str) -> bool:
     """«отправь письмо / черновик» with a clear recipient — DIY send_mail_draft."""
     low = (message or "").lower()
@@ -607,6 +793,12 @@ def _asks_setup_progress(message_low: str) -> bool:
             "настроим офис",
             "настроить офис",
             "статус сетап",
+            "путь (знания",
+            "знания → инструменты",
+            "знания -> инструменты",
+            "покажи путь",
+            "покажи статус",
+            "первый реальный шаг",
         )
     )
 
@@ -769,6 +961,79 @@ def _credential_form_kind_from_message(
     return None
 
 
+def _finish_diy(
+    db: Session,
+    ctx: TenantContext,
+    body: OperatorChatRequest,
+    *,
+    modality: str,
+    engine: str,
+    reply: str,
+    tool_calls: list | None = None,
+    pending_credential_form: dict | None = None,
+    suggested_actions: list | None = None,
+    pending_channel_chooser: dict | None = None,
+    office_loop: dict | None = None,
+    hermes_run: dict | None = None,
+    pending_download: dict | None = None,
+    extra: dict | None = None,
+) -> dict:
+    """Persist DIY/Nous turn into conversation history, then return cabinet payload."""
+    from app.operator.agent import persist_operator_exchange
+
+    calls = list(tool_calls or [])
+    actions = list(suggested_actions or [])
+    meta: dict = {"engine": engine, "tool_calls": calls}
+    if actions:
+        meta["suggested_actions"] = actions
+    if pending_credential_form:
+        meta["pending_credential_form"] = {
+            "kind": pending_credential_form.get("kind"),
+            "title": pending_credential_form.get("title"),
+        }
+    if pending_download:
+        meta["pending_download"] = {
+            "filename": pending_download.get("filename"),
+            "title": pending_download.get("title"),
+        }
+    conv_id = persist_operator_exchange(
+        db,
+        ctx,
+        message=body.message or "",
+        reply=reply or "",
+        channel=body.channel or "web",
+        conversation_id=body.conversation_id,
+        input_modality=modality,
+        assistant_meta=meta,
+    )
+    out: dict = {
+        "ok": True,
+        "engine": engine,
+        "channel": body.channel,
+        "conversation_id": conv_id,
+        "reply": reply,
+        "tool_calls": calls,
+        "modality": modality,
+        "sources": [],
+        "pending_confirmation": None,
+    }
+    if pending_credential_form is not None:
+        out["pending_credential_form"] = pending_credential_form
+    if actions:
+        out["suggested_actions"] = actions
+    if pending_channel_chooser is not None:
+        out["pending_channel_chooser"] = pending_channel_chooser
+    if office_loop is not None:
+        out["office_loop"] = office_loop
+    if hermes_run is not None:
+        out["hermes_run"] = hermes_run
+    if pending_download is not None:
+        out["pending_download"] = pending_download
+    if extra:
+        out.update(extra)
+    return out
+
+
 @router.post("/chat")
 def operator_chat(
     body: OperatorChatRequest,
@@ -781,8 +1046,15 @@ def operator_chat(
     if not message and not attachments:
         raise HTTPException(status_code=422, detail="message_or_attachment_required")
 
-    # Attachments + media/calendar/conference intents stay on DIY.
-    prefer_diy = (
+    # Compound / multi-step goals → agent loop (Nous or DIY LLM), not a single shortcut.
+    agent_mode = _wants_agent_orchestration(message)
+    from app.services import agent_schedule as _agent_schedule
+
+    schedule_intent = _agent_schedule.parse_schedule_intent(message) if message else None
+    wants_sched_list = _agent_schedule.wants_tasks_list(message) if message else False
+
+    # Attachments + clear single-intent shortcuts stay on DIY — unless agent_mode.
+    prefer_diy = (not agent_mode) and (
         bool(attachments)
         or _wants_media_generation(message)
         or _wants_calendar_slots(message)
@@ -798,7 +1070,58 @@ def operator_chat(
         or _wants_hermes_capabilities(message)
         or _wants_files_cloud_status(message)
         or _wants_channel_connect_flow(message)
+        or _wants_web_research(message)
+        or bool(schedule_intent)
+        or wants_sched_list
     )
+
+    # Periodic поручения — create / list (before agent/Nous).
+    if not attachments and (schedule_intent or wants_sched_list):
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        if wants_sched_list and not schedule_intent:
+            result = registry.run(db, ctx, "hermes.tasks_list", limit=30)
+            if isinstance(result, ToolResult) and result.ok:
+                return _finish_diy(
+                    db,
+                    ctx,
+                    body,
+                    modality=modality,
+                    engine="diy_hermes_tasks",
+                    reply=result.message or "Поручений нет.",
+                    tool_calls=[{"tool": "hermes.tasks_list", "ok": True}],
+                )
+        if schedule_intent:
+            result = registry.run(
+                db,
+                ctx,
+                "hermes.tasks_create",
+                goal=schedule_intent["goal"],
+                every_minutes=schedule_intent["every_minutes"],
+                run_immediately=False,
+            )
+            if isinstance(result, ToolResult) and result.ok:
+                data = result.data or {}
+                return _finish_diy(
+                    db,
+                    ctx,
+                    body,
+                    modality=modality,
+                    engine="diy_hermes_tasks",
+                    reply=result.message
+                    or f"Поручение создано (id={data.get('id')}).",
+                    tool_calls=[
+                        {
+                            "tool": "hermes.tasks_create",
+                            "ok": True,
+                            "every_minutes": schedule_intent["every_minutes"],
+                            "task_id": data.get("id"),
+                        }
+                    ],
+                )
+
 
     # Vault forms must reach the cabinet as pending_credential_form. Nous text-only
     # runs cannot surface the UI card — open the form server-side when intent is clear.
@@ -815,8 +1138,11 @@ def operator_chat(
         setup_substep = None
 
     # Telegram / MAX: chooser → bot steps / QR before vault form.
-    if not attachments and (
-        _wants_channel_connect_flow(message) or setup_next_id in ("telegram", "max")
+    # Do NOT steal general «настрой офис / план по шагам» just because setup_next is telegram.
+    if (
+        not attachments
+        and not agent_mode
+        and (_wants_channel_connect_flow(message) or setup_next_id in ("telegram", "max"))
     ):
         from app.services import channel_chooser, channel_qr
         from app.operator.tools import register_builtin_tools
@@ -825,13 +1151,19 @@ def operator_chat(
         channel = channel_chooser.wants_channel_connect_intent(message)
         if channel is None and setup_next_id in ("telegram", "max"):
             low_msg = (message or "").lower()
-            # Only steal the turn for connect / progress / explicit path words.
-            if (
+            channel_named = any(
+                m in low_msg for m in ("телеграм", "telegram", "тг", "макс", "max", "канал")
+            )
+            # Only steal for explicit channel connect — not bare «настрой офис».
+            if channel_named and (
                 _asks_setup_progress(low_msg)
                 or channel_chooser.wants_bot_path(message)
                 or channel_chooser.wants_qr_path(message)
                 or channel_chooser.wants_bot_help(message)
-                or any(m in low_msg for m in ("подключи", "подключить", "настрой", "настроить"))
+                or any(
+                    m in low_msg
+                    for m in ("подключи", "подключить", "настрой телеграм", "настроить телеграм", "настрой max", "настроить max")
+                )
             ):
                 channel = "telegram" if setup_next_id == "telegram" else "max"
         if channel:
@@ -840,35 +1172,36 @@ def operator_chat(
                 channel_chooser.cancel_stale_pending_qr(db, ctx, channel)
                 qr_start = channel_qr.start_qr_login(db, ctx, channel_type=channel)
                 blob = channel_chooser.qr_path_reply(channel, qr_start=qr_start)
-                out: dict = {
-                    "ok": True,
-                    "engine": "diy_channel_qr",
-                    "channel": body.channel,
-                    "conversation_id": body.conversation_id,
-                    "reply": blob["reply"],
-                    "tool_calls": [
-                        {
-                            "tool": "channels.qr.start",
-                            "ok": bool(qr_start.get("ok")),
-                            "channel": channel,
-                            "account_id": qr_start.get("account_id"),
-                        }
-                    ],
-                    "suggested_actions": blob.get("suggested_actions") or [],
-                    "modality": modality,
-                    "office_loop": loop_preview,
-                }
+                tool_calls = [
+                    {
+                        "tool": "channels.qr.start",
+                        "ok": bool(qr_start.get("ok")),
+                        "channel": channel,
+                        "account_id": qr_start.get("account_id"),
+                    }
+                ]
+                form = None
                 fallback = blob.get("fallback_form_kind")
                 if fallback:
                     register_builtin_tools()
                     form_res = registry.run(db, ctx, "credentials.open_form", kind=fallback)
                     if isinstance(form_res, ToolResult) and form_res.ok:
                         form = (form_res.data or {}).get("pending_credential_form")
-                        out["pending_credential_form"] = form if isinstance(form, dict) else None
-                        out["tool_calls"].append(
+                        tool_calls.append(
                             {"tool": "credentials.open_form", "ok": True, "kind": fallback}
                         )
-                return out
+                return _finish_diy(
+                    db,
+                    ctx,
+                    body,
+                    modality=modality,
+                    engine="diy_channel_qr",
+                    reply=blob["reply"],
+                    tool_calls=tool_calls,
+                    pending_credential_form=form if isinstance(form, dict) else None,
+                    suggested_actions=blob.get("suggested_actions") or [],
+                    office_loop=loop_preview,
+                )
 
             if channel_chooser.wants_bot_path(message) or channel_chooser.wants_bot_help(message):
                 channel_chooser.cancel_stale_pending_qr(db, ctx, channel)
@@ -883,45 +1216,45 @@ def operator_chat(
                 form = None
                 if isinstance(form_res, ToolResult) and form_res.ok:
                     form = (form_res.data or {}).get("pending_credential_form")
-                return {
-                    "ok": True,
-                    "engine": "diy_channel_bot_path",
-                    "channel": body.channel,
-                    "conversation_id": body.conversation_id,
-                    "reply": blob["reply"],
-                    "tool_calls": [
+                return _finish_diy(
+                    db,
+                    ctx,
+                    body,
+                    modality=modality,
+                    engine="diy_channel_bot_path",
+                    reply=blob["reply"],
+                    tool_calls=[
                         {
                             "tool": "credentials.open_form",
                             "ok": isinstance(form_res, ToolResult) and bool(form_res.ok),
                             "kind": form_kind_bot,
                         }
                     ],
-                    "pending_credential_form": form if isinstance(form, dict) else None,
-                    "suggested_actions": blob.get("suggested_actions") or [],
-                    "pending_channel_chooser": {"channel": channel, "mode": "bot"},
-                    "modality": modality,
-                    "office_loop": loop_preview,
-                }
+                    pending_credential_form=form if isinstance(form, dict) else None,
+                    suggested_actions=blob.get("suggested_actions") or [],
+                    pending_channel_chooser={"channel": channel, "mode": "bot"},
+                    office_loop=loop_preview,
+                )
 
             # Generic connect → ask which mode.
             blob = channel_chooser.chooser_reply(channel)
-            return {
-                "ok": True,
-                "engine": "diy_channel_chooser",
-                "channel": body.channel,
-                "conversation_id": body.conversation_id,
-                "reply": blob["reply"],
-                "tool_calls": [{"tool": "channel.chooser", "ok": True, "channel": channel}],
-                "suggested_actions": blob.get("suggested_actions") or [],
-                "pending_channel_chooser": blob.get("pending_channel_chooser"),
-                "modality": modality,
-                "office_loop": loop_preview,
-            }
+            return _finish_diy(
+                db,
+                ctx,
+                body,
+                modality=modality,
+                engine="diy_channel_chooser",
+                reply=blob["reply"],
+                tool_calls=[{"tool": "channel.chooser", "ok": True, "channel": channel}],
+                suggested_actions=blob.get("suggested_actions") or [],
+                pending_channel_chooser=blob.get("pending_channel_chooser"),
+                office_loop=loop_preview,
+            )
 
     form_kind = _credential_form_kind_from_message(
         message, setup_next_id=setup_next_id, setup_substep=setup_substep
     )
-    if form_kind and not attachments:
+    if form_kind and not attachments and not agent_mode:
         from app.operator.tools import register_builtin_tools
         from app.operator.tools.registry import ToolResult, registry
 
@@ -929,21 +1262,135 @@ def operator_chat(
         result = registry.run(db, ctx, "credentials.open_form", kind=form_kind)
         if isinstance(result, ToolResult) and result.ok:
             form = (result.data or {}).get("pending_credential_form")
-            return {
-                "ok": True,
-                "engine": "diy_credential_form",
-                "channel": body.channel,
-                "conversation_id": body.conversation_id,
-                "reply": result.message
+            return _finish_diy(
+                db,
+                ctx,
+                body,
+                modality=modality,
+                engine="diy_credential_form",
+                reply=result.message
                 or "Открыл безопасную форму. Секрет не пишите в чат — только в форме.",
-                "tool_calls": [{"tool": "credentials.open_form", "ok": True, "kind": form_kind}],
-                "pending_credential_form": form if isinstance(form, dict) else None,
-                "modality": modality,
-                "office_loop": loop_preview,
-            }
+                tool_calls=[{"tool": "credentials.open_form", "ok": True, "kind": form_kind}],
+                pending_credential_form=form if isinstance(form, dict) else None,
+                office_loop=loop_preview,
+            )
+
+    # Fast-path: pasted URL / «зайди на сайт» → real browser research (not KB).
+    # Skip when agent_mode — the agent must plan browse → KB → next tools itself.
+    if _wants_web_research(message) and not attachments and not agent_mode:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+        from app.services import web_browser
+
+        register_builtin_tools()
+        urls = _extract_http_urls(message)
+        if not urls:
+            # Bare domain in text
+            m_dom = re.search(
+                r"(?<!@)\b([a-z0-9][a-z0-9.-]+\.(?:ru|com|org|net|io|ai))\b",
+                message,
+                flags=re.I,
+            )
+            if m_dom:
+                urls = [f"https://{m_dom.group(1)}"]
+        if urls:
+            primary = urls[0]
+            result = registry.run(
+                db, ctx, "web.research", url=primary, max_pages=5, also_search=True
+            )
+            if isinstance(result, ToolResult) and result.ok:
+                data = result.data or {}
+                reply = _summarize_web_dossier(
+                    message,
+                    str(data.get("dossier") or ""),
+                    note=str(data.get("note") or ""),
+                )
+                pages = data.get("pages") or []
+                page_bits = " · ".join(
+                    f"{p.get('title') or p.get('url')}" for p in pages[:4] if isinstance(p, dict)
+                )
+                if page_bits:
+                    reply = f"Зашёл в браузере: {page_bits}\n\n{reply}"
+                trace = data.get("tool_trace") or [{"tool": "web.research", "ok": True, "url": primary}]
+                return _finish_diy(
+                    db,
+                    ctx,
+                    body,
+                    modality=modality,
+                    engine="diy_web_research",
+                    reply=reply,
+                    tool_calls=trace if isinstance(trace, list) else [{"tool": "web.research", "ok": True}],
+                )
+            # If research tool failed, try a single browse then search.
+            browsed = web_browser.browse_page(primary)
+            calls = [
+                {
+                    "tool": "web.browse",
+                    "ok": bool(browsed.get("ok")),
+                    "url": browsed.get("url") or primary,
+                    "title": browsed.get("title") or "",
+                    "engine": browsed.get("engine") or "",
+                    "chars": browsed.get("chars") or 0,
+                }
+            ]
+            if browsed.get("ok") and browsed.get("text"):
+                reply = _summarize_web_dossier(
+                    message,
+                    f"### {browsed.get('title')}\nURL: {browsed.get('url')}\n{browsed.get('text')}",
+                    note=str(browsed.get("playwright_error") or ""),
+                )
+                return _finish_diy(
+                    db,
+                    ctx,
+                    body,
+                    modality=modality,
+                    engine="diy_web_research",
+                    reply=f"Зашёл на {browsed.get('url')}:\n\n{reply}",
+                    tool_calls=calls,
+                )
+            err = result.message if isinstance(result, ToolResult) else browsed.get("error")
+            message = f"{message}\n\n[system: web.research failed: {err}]"
+        else:
+            # Verb intent without URL — search then browse top hits.
+            q = re.sub(
+                r"(зайди|открой|посмотри|изучи|просканируй|проанализируй|на сайт|сайт)\s*",
+                " ",
+                message,
+                flags=re.I,
+            ).strip() or message
+            searched = web_browser.search_web(q, limit=5)
+            calls = [
+                {
+                    "tool": "web.search",
+                    "ok": bool(searched.get("ok")),
+                    "query": q,
+                    "count": len(searched.get("items") or []),
+                }
+            ]
+            items = searched.get("items") or []
+            if items:
+                top = str(items[0].get("url") or "")
+                research = web_browser.research_site(top, max_pages=4, also_search=False)
+                calls.extend(research.get("tool_trace") or [])
+                if research.get("ok"):
+                    reply = _summarize_web_dossier(
+                        message,
+                        str(research.get("dossier") or ""),
+                        note=str(research.get("note") or ""),
+                    )
+                    return _finish_diy(
+                        db,
+                        ctx,
+                        body,
+                        modality=modality,
+                        engine="diy_web_research",
+                        reply=reply,
+                        tool_calls=calls,
+                    )
+            message = f"{message}\n\n[system: web research — no URL and search empty]"
 
     # Fast-path: never rely on the LLM to "agree" to draw — call generate_image now.
-    if _wants_media_generation(message) and not attachments:
+    if _wants_media_generation(message) and not attachments and not agent_mode:
         from app.operator.tools import register_builtin_tools
         from app.operator.tools.registry import ToolResult, registry
 
@@ -966,21 +1413,21 @@ def operator_chat(
             data = result.data or {}
             md = str(data.get("markdown") or "")
             caption = f"Готово — сгенерировал изображение по запросу: «{prompt[:120]}»."
-            return {
-                "ok": True,
-                "engine": "diy_generate_image",
-                "channel": body.channel,
-                "conversation_id": body.conversation_id,
-                "reply": f"{caption}\n\n{md}".strip() if md else caption,
-                "tool_calls": [{"tool": "generate_image", "ok": True, "model": data.get("model")}],
-                "modality": modality,
-            }
+            return _finish_diy(
+                db,
+                ctx,
+                body,
+                modality=modality,
+                engine="diy_generate_image",
+                reply=f"{caption}\n\n{md}".strip() if md else caption,
+                tool_calls=[{"tool": "generate_image", "ok": True, "model": data.get("model")}],
+            )
         err = result.message if isinstance(result, ToolResult) else "image_failed"
         # Fall through to DIY LLM with the error context so the owner sees a clear reply.
         message = f"{message}\n\n[system: generate_image failed: {err}]"
 
     # Conduct fast-path: calendar slots (Nous often fails to call the MCP tool).
-    if _wants_calendar_slots(message) and not attachments:
+    if _wants_calendar_slots(message) and not attachments and not agent_mode:
         from app.operator.tools import register_builtin_tools
         from app.operator.tools.registry import ToolResult, registry
 
@@ -1031,13 +1478,14 @@ def operator_chat(
                 or any(isinstance(s, dict) and s.get("stub") for s in suggestions)
             )
             note = " (черновик/stub — CalDAV ещё без живых кредов)" if stub else ""
-            return {
-                "ok": True,
-                "engine": "diy_calendar_slots",
-                "channel": body.channel,
-                "conversation_id": body.conversation_id,
-                "reply": f"Варианты слотов на {start} · {duration} мин{note}:\n{body_txt}",
-                "tool_calls": [
+            return _finish_diy(
+                db,
+                ctx,
+                body,
+                modality=modality,
+                engine="diy_calendar_slots",
+                reply=f"Варианты слотов на {start} · {duration} мин{note}:\n{body_txt}",
+                tool_calls=[
                     {
                         "tool": "suggest_calendar_slots",
                         "ok": True,
@@ -1046,13 +1494,12 @@ def operator_chat(
                         "stub": stub,
                     }
                 ],
-                "modality": modality,
-            }
+            )
         err = result.message if isinstance(result, ToolResult) else "calendar_failed"
         message = f"{message}\n\n[system: suggest_calendar_slots failed: {err}]"
 
     # Conduct fast-path: create conference (Nous often asks for Telemost login instead of tool).
-    if _wants_conference_create(message) and not attachments:
+    if _wants_conference_create(message) and not attachments and not agent_mode:
         from app.operator.tools import register_builtin_tools
         from app.operator.tools.registry import ToolResult, registry
 
@@ -1083,16 +1530,17 @@ def operator_chat(
             stub = bool(data.get("stub") or nested.get("stub") or upstream.get("stub"))
             note = " (stub — provider без живых кредов)" if stub else ""
             link = f"\nСсылка: {join_url}" if join_url else ""
-            return {
-                "ok": True,
-                "engine": "diy_create_conference",
-                "channel": body.channel,
-                "conversation_id": body.conversation_id,
-                "reply": (
+            return _finish_diy(
+                db,
+                ctx,
+                body,
+                modality=modality,
+                engine="diy_create_conference",
+                reply=(
                     f"Создал конференцию «{title}» ({provider}){note}.{link}\n"
                     f"{result.message or ''}"
                 ).strip(),
-                "tool_calls": [
+                tool_calls=[
                     {
                         "tool": "create_conference",
                         "ok": True,
@@ -1102,13 +1550,12 @@ def operator_chat(
                         "join_url": join_url,
                     }
                 ],
-                "modality": modality,
-            }
+            )
         err = result.message if isinstance(result, ToolResult) else "conference_failed"
         message = f"{message}\n\n[system: create_conference failed: {err}]"
 
     # Conduct fast-path: mail draft (Nous often claims send_mail_draft unavailable).
-    if _wants_mail_draft(message) and not attachments:
+    if _wants_mail_draft(message) and not attachments and not agent_mode:
         from app.operator.tools import register_builtin_tools
         from app.operator.tools.registry import ToolResult, registry
 
@@ -1127,19 +1574,20 @@ def operator_chat(
             nested = data.get("data") if isinstance(data.get("data"), dict) else {}
             stub = bool(data.get("stub") or nested.get("stub") or not data.get("configured", True))
             note = " (stub/dry-run — SMTP ещё без живых кредов)" if stub else ""
-            return {
-                "ok": True,
-                "engine": "diy_send_mail_draft",
-                "channel": body.channel,
-                "conversation_id": body.conversation_id,
-                "reply": (
+            return _finish_diy(
+                db,
+                ctx,
+                body,
+                modality=modality,
+                engine="diy_send_mail_draft",
+                reply=(
                     f"Черновик письма{note}:\n"
                     f"Кому: {fields['to']}\n"
                     f"Тема: {fields['subject']}\n"
                     f"Текст: {fields['body'][:400]}\n"
                     f"{result.message or ''}"
                 ).strip(),
-                "tool_calls": [
+                tool_calls=[
                     {
                         "tool": "send_mail_draft",
                         "ok": True,
@@ -1147,13 +1595,12 @@ def operator_chat(
                         "stub": stub,
                     }
                 ],
-                "modality": modality,
-            }
+            )
         err = result.message if isinstance(result, ToolResult) else "mail_failed"
         message = f"{message}\n\n[system: send_mail_draft failed: {err}]"
 
     # Conduct fast-path: office health (Nous invents missing office.health).
-    if _wants_office_health(message) and not attachments:
+    if _wants_office_health(message) and not attachments and not agent_mode and not schedule_intent:
         from app.operator.tools import register_builtin_tools
         from app.operator.tools.registry import ToolResult, registry
 
@@ -1170,22 +1617,22 @@ def operator_chat(
                         f"- {a.get('code') or 'alert'}: {a.get('message_ru') or a.get('message') or ''}"
                     )
             body_txt = "\n".join(alert_lines) if alert_lines else "Алертов нет."
-            return {
-                "ok": True,
-                "engine": "diy_hermes_health",
-                "channel": body.channel,
-                "conversation_id": body.conversation_id,
-                "reply": (
+            return _finish_diy(
+                db,
+                ctx,
+                body,
+                modality=modality,
+                engine="diy_hermes_health",
+                reply=(
                     f"{'Офис в норме.' if healthy else 'Есть проблемы по офису.'}\n"
                     f"{data.get('message_ru') or result.message or ''}\n{body_txt}"
                 ).strip(),
-                "tool_calls": [{"tool": "hermes.health", "ok": True, "healthy": healthy}],
-                "modality": modality,
-            }
+                tool_calls=[{"tool": "hermes.health", "ok": True, "healthy": healthy}],
+            )
         err = result.message if isinstance(result, ToolResult) else "health_failed"
         message = f"{message}\n\n[system: hermes.health failed: {err}]"
 
-    if _wants_crm_funnel(message) and not attachments:
+    if _wants_crm_funnel(message) and not attachments and not agent_mode:
         from app.operator.tools import register_builtin_tools
         from app.operator.tools.registry import ToolResult, registry
 
@@ -1213,19 +1660,19 @@ def operator_chat(
                 body_txt = _json.dumps(data, ensure_ascii=False)[:800]
             else:
                 body_txt = "\n".join(lines)
-            return {
-                "ok": True,
-                "engine": "diy_crm_funnel",
-                "channel": body.channel,
-                "conversation_id": body.conversation_id,
-                "reply": f"CRM воронка:\n{body_txt}\n{result.message or ''}".strip(),
-                "tool_calls": [{"tool": "crm.funnel", "ok": True}],
-                "modality": modality,
-            }
+            return _finish_diy(
+                db,
+                ctx,
+                body,
+                modality=modality,
+                engine="diy_crm_funnel",
+                reply=f"CRM воронка:\n{body_txt}\n{result.message or ''}".strip(),
+                tool_calls=[{"tool": "crm.funnel", "ok": True}],
+            )
         err = result.message if isinstance(result, ToolResult) else "crm_failed"
         message = f"{message}\n\n[system: crm.funnel failed: {err}]"
 
-    if _wants_phones_list(message) and not attachments:
+    if _wants_phones_list(message) and not attachments and not agent_mode:
         from app.operator.tools import register_builtin_tools
         from app.operator.tools.registry import ToolResult, registry
 
@@ -1246,19 +1693,19 @@ def operator_chat(
                 else:
                     lines.append(f"- {p}")
             body_txt = "\n".join(lines) if lines else "Активных DID пока нет."
-            return {
-                "ok": True,
-                "engine": "diy_phones_list",
-                "channel": body.channel,
-                "conversation_id": body.conversation_id,
-                "reply": f"Телефонные номера:\n{body_txt}\n{result.message or ''}".strip(),
-                "tool_calls": [{"tool": "phones.list", "ok": True, "count": len(lines)}],
-                "modality": modality,
-            }
+            return _finish_diy(
+                db,
+                ctx,
+                body,
+                modality=modality,
+                engine="diy_phones_list",
+                reply=f"Телефонные номера:\n{body_txt}\n{result.message or ''}".strip(),
+                tool_calls=[{"tool": "phones.list", "ok": True, "count": len(lines)}],
+            )
         err = result.message if isinstance(result, ToolResult) else "phones_failed"
         message = f"{message}\n\n[system: phones.list failed: {err}]"
 
-    if _wants_calls_list(message) and not attachments:
+    if _wants_calls_list(message) and not attachments and not agent_mode:
         from app.operator.tools import register_builtin_tools
         from app.operator.tools.registry import ToolResult, registry
 
@@ -1280,25 +1727,25 @@ def operator_chat(
                 extra = f" / {outcome}" if outcome else ""
                 lines.append(f"- {when} {direction} {peer}: {status}{extra}")
             body_txt = "\n".join(lines) if lines else "Звонков пока нет."
-            return {
-                "ok": True,
-                "engine": "diy_calls_list",
-                "channel": body.channel,
-                "conversation_id": body.conversation_id,
-                "reply": f"Последние звонки:\n{body_txt}\n{result.message or ''}".strip(),
-                "tool_calls": [
+            return _finish_diy(
+                db,
+                ctx,
+                body,
+                modality=modality,
+                engine="diy_calls_list",
+                reply=f"Последние звонки:\n{body_txt}\n{result.message or ''}".strip(),
+                tool_calls=[
                     {
                         "tool": "calls.list",
                         "ok": True,
                         "count": len(lines),
                     }
                 ],
-                "modality": modality,
-            }
+            )
         err = result.message if isinstance(result, ToolResult) else "calls_failed"
         message = f"{message}\n\n[system: calls.list failed: {err}]"
 
-    if _wants_telephony_script(message) and not attachments:
+    if _wants_telephony_script(message) and not attachments and not agent_mode:
         from app.operator.tools import register_builtin_tools
         from app.operator.tools.registry import ToolResult, registry
 
@@ -1331,19 +1778,19 @@ def operator_chat(
                     "Сценарий сохранён." if configured else "Сценария ещё нет."
                 )
                 reply = f"{head}\n\n{script}".strip() if script else str(head)
-            return {
-                "ok": True,
-                "engine": "diy_telephony_script",
-                "channel": body.channel,
-                "conversation_id": body.conversation_id,
-                "reply": reply,
-                "tool_calls": [{"tool": tool_name, "ok": True}],
-                "modality": modality,
-            }
+            return _finish_diy(
+                db,
+                ctx,
+                body,
+                modality=modality,
+                engine="diy_telephony_script",
+                reply=reply,
+                tool_calls=[{"tool": tool_name, "ok": True}],
+            )
         err = result.message if isinstance(result, ToolResult) else "script_failed"
         message = f"{message}\n\n[system: {tool_name} failed: {err}]"
 
-    if _wants_billing_summary(message) and not attachments:
+    if _wants_billing_summary(message) and not attachments and not agent_mode:
         from app.operator.tools import register_builtin_tools
         from app.operator.tools.registry import ToolResult, registry
 
@@ -1359,19 +1806,19 @@ def operator_chat(
                     f"Тариф: {data.get('tariff') or data.get('rub_per_1k') or '—'}"
                 )
             )
-            return {
-                "ok": True,
-                "engine": "diy_billing_summary",
-                "channel": body.channel,
-                "conversation_id": body.conversation_id,
-                "reply": str(reply).strip(),
-                "tool_calls": [{"tool": "billing.summary", "ok": True}],
-                "modality": modality,
-            }
+            return _finish_diy(
+                db,
+                ctx,
+                body,
+                modality=modality,
+                engine="diy_billing_summary",
+                reply=str(reply).strip(),
+                tool_calls=[{"tool": "billing.summary", "ok": True}],
+            )
         err = result.message if isinstance(result, ToolResult) else "billing_failed"
         message = f"{message}\n\n[system: billing.summary failed: {err}]"
 
-    if _wants_get_knowledge(message) and not attachments:
+    if _wants_get_knowledge(message) and not attachments and not agent_mode:
         from app.operator.tools import register_builtin_tools
         from app.operator.tools.registry import ToolResult, registry
 
@@ -1401,13 +1848,14 @@ def operator_chat(
             body_txt = "\n".join(lines) if lines else (
                 str(data.get("text") or result.message or "")[:1200] or "Пусто."
             )
-            return {
-                "ok": True,
-                "engine": "diy_get_knowledge",
-                "channel": body.channel,
-                "conversation_id": body.conversation_id,
-                "reply": f"Из базы знаний:\n{body_txt}".strip(),
-                "tool_calls": [
+            return _finish_diy(
+                db,
+                ctx,
+                body,
+                modality=modality,
+                engine="diy_get_knowledge",
+                reply=f"Из базы знаний:\n{body_txt}".strip(),
+                tool_calls=[
                     {
                         "tool": "get_knowledge",
                         "ok": True,
@@ -1415,12 +1863,11 @@ def operator_chat(
                         "hits": len(matches) if isinstance(matches, list) else 0,
                     }
                 ],
-                "modality": modality,
-            }
+            )
         err = result.message if isinstance(result, ToolResult) else "kb_failed"
         message = f"{message}\n\n[system: get_knowledge failed: {err}]"
 
-    if _wants_hermes_capabilities(message) and not attachments:
+    if _wants_hermes_capabilities(message) and not attachments and not agent_mode:
         from app.operator.tools import register_builtin_tools
         from app.operator.tools.registry import ToolResult, registry
 
@@ -1434,33 +1881,33 @@ def operator_chat(
                 for c in connectors[:12]:
                     if not isinstance(c, dict):
                         continue
-                    usable = c.get("usable")
-                    ready = c.get("ready") if "ready" in c else usable
-                    flag = "ok" if ready or usable else "нет"
+                    usable = bool(c.get("usable"))
+                    flag = "ok" if usable else "нет"
+                    summary = c.get("summary_ru") or c.get("reason") or ""
                     lines.append(
                         f"- {c.get('kind') or c.get('label') or '?'}: {flag}"
-                        + (f" — {c.get('detail') or c.get('message') or ''}" if c.get("detail") or c.get("message") else "")
+                        + (f" — {summary}" if summary else "")
                     )
             missing = data.get("missing") or []
             miss_txt = ", ".join(str(m) for m in missing) if missing else "нет"
             body_txt = "\n".join(lines) if lines else (result.message or "—")
-            return {
-                "ok": True,
-                "engine": "diy_hermes_capabilities",
-                "channel": body.channel,
-                "conversation_id": body.conversation_id,
-                "reply": (
+            return _finish_diy(
+                db,
+                ctx,
+                body,
+                modality=modality,
+                engine="diy_hermes_capabilities",
+                reply=(
                     f"Готовность коннекторов:\n{body_txt}\n"
                     f"Требуют настройки: {miss_txt}\n"
                     f"{result.message or ''}"
                 ).strip(),
-                "tool_calls": [{"tool": "hermes.capabilities", "ok": True}],
-                "modality": modality,
-            }
+                tool_calls=[{"tool": "hermes.capabilities", "ok": True}],
+            )
         err = result.message if isinstance(result, ToolResult) else "capabilities_failed"
         message = f"{message}\n\n[system: hermes.capabilities failed: {err}]"
 
-    if _wants_files_cloud_status(message) and not attachments:
+    if _wants_files_cloud_status(message) and not attachments and not agent_mode:
         from app.operator.tools import register_builtin_tools
         from app.operator.tools.registry import ToolResult, registry
 
@@ -1469,17 +1916,31 @@ def operator_chat(
         if isinstance(result, ToolResult) and result.ok:
             # Tool message already lists each cloud; prefer it over re-formatting.
             reply = (result.message or "").strip() or "Облака не настроены."
-            return {
-                "ok": True,
-                "engine": "diy_files_cloud_status",
-                "channel": body.channel,
-                "conversation_id": body.conversation_id,
-                "reply": reply,
-                "tool_calls": [{"tool": "files.cloud_status", "ok": True}],
-                "modality": modality,
-            }
+            return _finish_diy(
+                db,
+                ctx,
+                body,
+                modality=modality,
+                engine="diy_files_cloud_status",
+                reply=reply,
+                tool_calls=[{"tool": "files.cloud_status", "ok": True}],
+            )
         err = result.message if isinstance(result, ToolResult) else "files_cloud_failed"
         message = f"{message}\n\n[system: files.cloud_status failed: {err}]"
+
+    # Multi-step / compound goals: use the in-API tool agent loop (plan → tools →
+    # report, up to HERMES_AGENT_MAX_ROUNDS). Nous runtime often lacks Chromium /
+    # collapses compound asks — keep it for lighter non-DIY turns.
+    if agent_mode and message and not attachments:
+        return run_operator_turn(
+            db,
+            ctx,
+            message=message,
+            channel=body.channel or "hermes",
+            conversation_id=body.conversation_id,
+            input_modality=modality,
+            attachments=None,
+        )
 
     # Feature-flagged Nous Hermes runtime (Stage 0+). DIY loop remains fallback.
     try:
@@ -1497,11 +1958,35 @@ def operator_chat(
                 setup_done = bool((loop.get("setup") or {}).get("setup_complete"))
                 phase = str(loop.get("phase") or "welcome")
                 pack_mode = "conduct" if setup_done or phase in ("ready", "conduct") else "onboarding"
+                from app.services import hermes_ops as _hermes_ops_facts
+
+                setup_facts = _hermes_ops_facts.office_setup_status(db, ctx)
+                checks = setup_facts.get("checks") if isinstance(setup_facts.get("checks"), dict) else {}
+                checks_summary = {
+                    k: bool((checks.get(k) or {}).get("ok"))
+                    for k in (
+                        "kb",
+                        "phone",
+                        "telephony_script",
+                        "mail",
+                        "calendar",
+                        "conference",
+                        "telegram",
+                        "max",
+                        "files",
+                    )
+                    if k in checks
+                }
+                # Always Hermes (Nous) speaks — we only ground him with tenant facts.
                 nous = create_run(
                     db,
                     ctx,
                     message=message,
-                    session_id=str(body.conversation_id) if body.conversation_id else None,
+                    session_id=(
+                        f"{ctx.tenant_slug}:{body.conversation_id}"
+                        if body.conversation_id
+                        else None
+                    ),
                     tool_ids=pack_for_mode(pack_mode),
                     mode=pack_mode,
                     office_context={
@@ -1509,19 +1994,29 @@ def operator_chat(
                         "kb_ok": bool(loop.get("kb_ok")),
                         "setup_next": loop.get("setup_next"),
                         "setup_complete": setup_done,
+                        "progress": setup_facts.get("progress")
+                        or (loop.get("setup") or {}).get("progress"),
+                        "checks_summary": checks_summary,
                     },
                 )
-                return {
-                    "ok": True,
-                    "engine": "nous_hermes_agent",
-                    "channel": body.channel,
-                    "conversation_id": body.conversation_id,
-                    "reply": nous.get("output")
+                reply = (
+                    nous.get("output")
                     or (nous.get("hermes") or {}).get("output")
-                    or "Hermes run started — progress via /v1/hermes-nous/runs/{run_id}.",
-                    "hermes_run": nous,
-                    "modality": modality,
-                }
+                    or "Hermes run started — progress via /v1/hermes-nous/runs/{run_id}."
+                )
+                if agent_mode and reply and not str(reply).lstrip().startswith(("1.", "1)", "План", "Шаг")):
+                    # Keep UI honest: agent was asked to plan; prefix if runtime omitted it.
+                    reply = f"План выполнен агентом (режим {pack_mode}).\n\n{reply}"
+                return _finish_diy(
+                    db,
+                    ctx,
+                    body,
+                    modality=modality,
+                    engine="nous_hermes_agent",
+                    reply=reply,
+                    tool_calls=_tool_calls_from_nous(nous),
+                    hermes_run=nous,
+                )
             except HermesBridgeError as exc:
                 # Runtime not up yet → fall through to DIY (documented Stage 0 behavior)
                 if exc.status not in (None, 503, 404, 502):

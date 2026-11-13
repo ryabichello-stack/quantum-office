@@ -3395,6 +3395,70 @@ aside a.nav-operator.selected .nav-orb-icon {
   padding: 0.1em 0.35em;
   border-radius: 6px;
 }
+/* Claude/ChatGPT-style chain-of-thought — quiet, italic, no checklist chrome */
+.hx-cot {
+  margin: 0 0 10px;
+  max-width: min(100%, 560px);
+}
+.hx-cot-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: #8a8a8a;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 2px 0;
+  cursor: pointer;
+  letter-spacing: 0.01em;
+}
+.hx-cot-toggle:hover {
+  color: #555;
+}
+.hx-cot-label {
+  font-style: italic;
+}
+.hx-cot.is-live .hx-cot-label {
+  color: #6a6a6a;
+}
+.hx-cot-pulse {
+  display: inline-block;
+  margin-left: 2px;
+  animation: hx-cot-blink 1.1s steps(3, end) infinite;
+}
+@keyframes hx-cot-blink {
+  0% { opacity: 0.2; }
+  50% { opacity: 1; }
+  100% { opacity: 0.2; }
+}
+.hx-cot-body {
+  margin: 6px 0 4px;
+  padding: 0 0 0 12px;
+  border-left: 2px solid rgba(0, 0, 0, 0.1);
+}
+.hx-cot-text {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 13px;
+  line-height: 1.55;
+  font-style: italic;
+  color: #7a7a7a;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.hx-cot-now {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: #555;
+}
+.hx-cot-now em {
+  font-style: italic;
+  color: #333;
+  font-weight: 500;
+}
 .hx-tool-pillrow {
   display: flex;
   flex-wrap: wrap;

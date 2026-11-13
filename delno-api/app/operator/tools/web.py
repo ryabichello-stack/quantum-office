@@ -114,3 +114,49 @@ class WebBrowseTool:
         detail = out.get("detail") or out.get("playwright_error")
         msg = f"{err}" + (f": {detail}" if detail else "")
         return ToolResult(ok=False, data=out, message=msg)
+
+
+class WebResearchTool:
+    name = "web.research"
+    description = (
+        "Open a website (or Telegram/Instagram/MAX/public page URL) in Hermes browser, "
+        "crawl key pages on the same host, optionally search the open web, "
+        "and return a factual dossier. Prefer this when the user pastes a link "
+        "or asks to study a site / channel / group — do NOT answer from KB alone."
+    )
+    critical_write = False
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "max_pages": {"type": "integer", "default": 5},
+            "also_search": {"type": "boolean", "default": True},
+        },
+        "required": ["url"],
+    }
+
+    def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult:
+        url = str(params.get("url") or "").strip()
+        max_pages = int(params.get("max_pages") or 5)
+        also_search = bool(params.get("also_search", True))
+        out = web_browser.research_site(
+            url, max_pages=max_pages, also_search=also_search
+        )
+        if out.get("ok"):
+            billing.record_web_usage(db, ctx, kind="browse")
+            pages = out.get("pages") or []
+            lines = [f"Исследование сайта: {out.get('url')}"]
+            for i, p in enumerate(pages, 1):
+                lines.append(
+                    f"{i}. [{p.get('engine')}] {p.get('title') or '—'} — {p.get('url')} ({p.get('chars')} симв.)"
+                )
+            if out.get("note"):
+                lines.append(str(out["note"]))
+            preview = (out.get("dossier") or "")[:2000]
+            lines.append("")
+            lines.append(preview)
+            return ToolResult(ok=True, data=out, message="\n".join(lines))
+        err = out.get("error") or "research_failed"
+        detail = out.get("detail")
+        msg = f"{err}" + (f": {detail}" if detail else "")
+        return ToolResult(ok=False, data=out, message=msg)

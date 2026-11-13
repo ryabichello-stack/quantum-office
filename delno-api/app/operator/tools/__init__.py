@@ -45,6 +45,10 @@ from app.operator.tools.hermes import (
     HermesHealthTool,
     HermesSetupMarkTool,
     HermesSetupStatusTool,
+    HermesTasksCreateTool,
+    HermesTasksListTool,
+    HermesTasksPauseTool,
+    HermesTasksResumeTool,
 )
 from app.operator.tools.office_setup import (
     CredentialsOpenFormTool,
@@ -58,7 +62,7 @@ from app.operator.tools.office_setup import (
 )
 from app.operator.tools.billing_tools import BillingSummaryTool
 from app.operator.tools.media import GenerateImageTool
-from app.operator.tools.web import WebBrowseTool, WebFetchTool, WebSearchTool
+from app.operator.tools.web import WebBrowseTool, WebFetchTool, WebResearchTool, WebSearchTool
 from app.operator.tools.website_import_tool import OfficeImportWebsiteTool
 from app.operator.tools.registry import registry
 
@@ -103,6 +107,10 @@ def register_builtin_tools() -> None:
     registry.register(HermesHealthTool())
     registry.register(HermesAlertsTool())
     registry.register(HermesCapabilitiesTool())
+    registry.register(HermesTasksCreateTool())
+    registry.register(HermesTasksListTool())
+    registry.register(HermesTasksPauseTool())
+    registry.register(HermesTasksResumeTool())
     # Telephony script + cloud disks + secure forms (agent-callable)
     registry.register(TelephonyScriptGetTool())
     registry.register(TelephonyScriptProposeTool())
@@ -116,6 +124,7 @@ def register_builtin_tools() -> None:
     registry.register(WebSearchTool())
     registry.register(WebFetchTool())
     registry.register(WebBrowseTool())
+    registry.register(WebResearchTool())
     registry.register(OfficeImportWebsiteTool())
     registry.register(BillingSummaryTool())
     registry.register(GenerateImageTool())

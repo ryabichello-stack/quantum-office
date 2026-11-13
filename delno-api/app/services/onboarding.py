@@ -63,17 +63,36 @@ def register_tenant(
     preferred_slug = slugify(slug or company_name)
     tenant_slug = _unique_slug(db, preferred_slug)
 
+    # Cold start for every new cabinet: empty Hermes checklist, no connectors,
+    # welcome phase — platform upstream must never look like «уже настроено».
     tenant = Tenant(
         slug=tenant_slug,
         name=company_name.strip(),
-        settings={"locale": "ru", "onboarding": {"source": "self_service"}},
+        settings={
+            "locale": "ru",
+            "onboarding": {"source": "self_service", "cold_start": True},
+            "hermes": {
+                "kb_ready": False,
+                "company_profile_ready": False,
+                "telephony_script_ready": False,
+            },
+            "connectors": {},
+            "hermes_nous": {"office_loop": {"phase": "welcome"}},
+        },
     )
     db.add(tenant)
     db.flush()
 
+    # Hermes product loop is the default owner experience for new tenants.
+    _default_on = {"web_voice", "hermes_nous_runtime", "experimental_operator"}
     for flag_key in DEFAULT_FLAGS:
-        enabled = flag_key == "web_voice"
-        db.add(FeatureFlag(tenant_id=tenant.id, flag_key=flag_key, enabled=enabled))
+        db.add(
+            FeatureFlag(
+                tenant_id=tenant.id,
+                flag_key=flag_key,
+                enabled=flag_key in _default_on,
+            )
+        )
 
     user = User(
         tenant_id=tenant.id,
@@ -120,11 +139,28 @@ def register_tenant(
     kb_sync = sync_tenant_settings_to_brain(db, tenant, source="auth.register")
     kb_doc = _seed_welcome_knowledge(db, tenant)
 
+    runtime_meta: dict = {}
+    try:
+        from app.core.tenant import TenantContext
+        from app.services.hermes_nous.runtime_pool import assign_isolated_runtime
+
+        runtime_meta = assign_isolated_runtime(
+            db,
+            TenantContext(tenant_id=tenant.id, tenant_slug=tenant.slug, role="tenant_owner"),
+        )
+    except Exception:  # noqa: BLE001
+        runtime_meta = {"ok": False, "error": "runtime_assign_deferred"}
+
     meta = {
         "legal_enriched": legal_enriched,
         "knowledge_sync": kb_sync,
         "welcome_document": kb_doc,
         "public_key": tenant.public_key,
+        "hermes_runtime": {
+            "slot_id": runtime_meta.get("slot_id"),
+            "runtime_base_url": runtime_meta.get("runtime_base_url"),
+            "isolation": runtime_meta.get("isolation"),
+        },
     }
     return tenant, user, meta
 

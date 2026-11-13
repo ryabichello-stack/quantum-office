@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -5,9 +7,32 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import router as v1_router
 from app.core.config import get_settings
-from app.core.db import Base, engine
+from app.core.db import Base, SessionLocal, engine
 from app.operator.tools import register_builtin_tools
 from app.scripts.seed import seed_demo_tenant
+
+logger = logging.getLogger("delno.schedule")
+
+
+async def _schedule_ticker_loop() -> None:
+    """Background: claim due hermes.tasks and run them via the tool agent."""
+    await asyncio.sleep(15)
+    while True:
+        try:
+            from app.services.agent_schedule import tick_due_tasks
+
+            db = SessionLocal()
+            try:
+                out = await asyncio.to_thread(tick_due_tasks, db, limit=3)
+                if out.get("claimed"):
+                    logger.info("schedule tick claimed=%s", out.get("claimed"))
+            finally:
+                db.close()
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            logger.exception("schedule ticker failed")
+        await asyncio.sleep(60)
 
 
 def _cors_kwargs() -> dict:
@@ -43,7 +68,15 @@ async def lifespan(_app: FastAPI):
     seed_demo_tenant()
     register_builtin_tools()
     import app.services.lead_email  # noqa: F401 — register SMTP notify hooks
-    yield
+    ticker = asyncio.create_task(_schedule_ticker_loop(), name="hermes-schedule-ticker")
+    try:
+        yield
+    finally:
+        ticker.cancel()
+        try:
+            await ticker
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title="DELNO API", version="0.1.0", lifespan=lifespan)

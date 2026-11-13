@@ -6,6 +6,7 @@ type SpeechRecognitionLike = {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
+  maxAlternatives?: number;
   start: () => void;
   stop: () => void;
   abort: () => void;
@@ -21,6 +22,8 @@ type SpeechRecognitionEventLike = {
 
 const BENIGN_ERRORS = new Set(["aborted", "no-speech", "interrupted"]);
 const API_URL = process.env.NEXT_PUBLIC_DELNO_API_URL || "http://127.0.0.1:18020";
+/** How often to push audio to Whisper for progressive text in the field. */
+const WHISPER_TICK_MS = 1800;
 
 function getSpeechRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
   if (typeof window === "undefined") return null;
@@ -35,7 +38,7 @@ function errorMessage(code?: string): string {
   switch (code) {
     case "not-allowed":
     case "service-not-allowed":
-      return "Нет доступа к микрофону — разрешите его в настройках Chrome.";
+      return "Нет доступа к микрофону — разрешите его в настройках браузера.";
     case "audio-capture":
       return "Микрофон недоступен. Проверьте устройство.";
     case "network":
@@ -45,9 +48,15 @@ function errorMessage(code?: string): string {
   }
 }
 
+function mergeField(base: string, chunk: string): string {
+  return [base, chunk].map((s) => s.trim()).filter(Boolean).join(" ");
+}
+
 /**
- * Click-to-toggle dictation.
- * Prefer server Whisper STT (reliable on Safari/Chrome); browser SpeechRecognition as secondary.
+ * Click-to-toggle dictation into the composer.
+ * Live text: browser SpeechRecognition interim (word/phrase) when available;
+ * always also runs rolling Whisper ticks so text appears while speaking
+ * even when Google STT is blocked / unavailable.
  */
 export function useDictateToInput(
   onPartialOrFinal: (text: string, isFinal: boolean) => void,
@@ -61,12 +70,22 @@ export function useDictateToInput(
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const baseRef = useRef("");
+  /** Live dictated portion (browser finals + interim, or Whisper progressive). */
+  const liveRef = useRef("");
   const activeRef = useRef(false);
-  const modeRef = useRef<"browser" | "server">("browser");
+  const browserOkRef = useRef(false);
+  const whisperBusyRef = useRef(false);
+  const whisperTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mimeRef = useRef("audio/webm");
   const onPartialRef = useRef(onPartialOrFinal);
   onPartialRef.current = onPartialOrFinal;
   const tokenRef = useRef(authToken);
   tokenRef.current = authToken;
+
+  const publish = useCallback((dictated: string, isFinal: boolean) => {
+    liveRef.current = dictated;
+    onPartialRef.current(mergeField(baseRef.current, dictated), isFinal);
+  }, []);
 
   useEffect(() => {
     const hasBrowser = Boolean(getSpeechRecognitionCtor());
@@ -74,6 +93,7 @@ export function useDictateToInput(
     setSupported(hasBrowser || hasMedia);
     return () => {
       activeRef.current = false;
+      if (whisperTimerRef.current) clearInterval(whisperTimerRef.current);
       try {
         recRef.current?.abort();
       } catch {
@@ -88,6 +108,47 @@ export function useDictateToInput(
     };
   }, []);
 
+  const stopWhisperLoop = useCallback(() => {
+    if (whisperTimerRef.current) {
+      clearInterval(whisperTimerRef.current);
+      whisperTimerRef.current = null;
+    }
+  }, []);
+
+  const transcribeBlob = useCallback(async (blob: Blob): Promise<string> => {
+    if (!tokenRef.current || !blob.size) return "";
+    const form = new FormData();
+    form.append("file", blob, "dictate.webm");
+    const res = await fetch(`${API_URL}/v1/operator/stt`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tokenRef.current}` },
+      body: form,
+    });
+    if (!res.ok) return "";
+    const data = (await res.json()) as { text?: string };
+    return (data.text || "").trim();
+  }, []);
+
+  const whisperTick = useCallback(async () => {
+    if (!activeRef.current || whisperBusyRef.current) return;
+    // Prefer browser live text when SpeechRecognition is healthy.
+    if (browserOkRef.current && liveRef.current.trim()) return;
+    const chunks = chunksRef.current;
+    if (!chunks.length) return;
+    const blob = new Blob(chunks, { type: mimeRef.current });
+    if (blob.size < 2500) return;
+    whisperBusyRef.current = true;
+    try {
+      const text = await transcribeBlob(blob);
+      if (!activeRef.current) return;
+      if (text) publish(text, false);
+    } catch {
+      /* keep listening */
+    } finally {
+      whisperBusyRef.current = false;
+    }
+  }, [publish, transcribeBlob]);
+
   const stopBrowser = useCallback(() => {
     try {
       recRef.current?.stop();
@@ -96,7 +157,8 @@ export function useDictateToInput(
     }
   }, []);
 
-  const stopServer = useCallback(() => {
+  const stopMedia = useCallback(() => {
+    stopWhisperLoop();
     try {
       if (mediaRecRef.current && mediaRecRef.current.state !== "inactive") {
         mediaRecRef.current.stop();
@@ -104,102 +166,85 @@ export function useDictateToInput(
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [stopWhisperLoop]);
 
   const stop = useCallback(() => {
     activeRef.current = false;
     setDictating(false);
-    if (modeRef.current === "server") stopServer();
-    else stopBrowser();
-  }, [stopBrowser, stopServer]);
+    stopBrowser();
+    stopMedia();
+  }, [stopBrowser, stopMedia]);
 
-  const startServer = useCallback(
+  const startMediaAndWhisper = useCallback(
     async (currentFieldValue: string) => {
       if (!tokenRef.current) {
-        setError("Нет сессии для серверного распознавания.");
-        return;
+        setError("Нет сессии для распознавания речи.");
+        return false;
       }
       if (!navigator.mediaDevices?.getUserMedia) {
         setSupported(false);
         setError("Микрофон недоступен в этом браузере.");
-        return;
+        return false;
       }
-      setError("");
-      baseRef.current = currentFieldValue;
-      activeRef.current = true;
-      modeRef.current = "server";
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaStreamRef.current = stream;
         const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
           ? "audio/webm;codecs=opus"
           : "audio/webm";
+        mimeRef.current = mime;
         const recorder = new MediaRecorder(stream, { mimeType: mime });
         chunksRef.current = [];
         recorder.ondataavailable = (ev) => {
-          if (ev.data.size) chunksRef.current.push(ev.data);
+          if (ev.data?.size) chunksRef.current.push(ev.data);
         };
         recorder.onstop = async () => {
+          stopWhisperLoop();
           stream.getTracks().forEach((t) => t.stop());
           mediaStreamRef.current = null;
           const blob = new Blob(chunksRef.current, { type: mime });
           chunksRef.current = [];
-          if (!blob.size) {
-            setDictating(false);
-            activeRef.current = false;
-            return;
-          }
-          try {
-            const form = new FormData();
-            form.append("file", blob, "dictate.webm");
-            const res = await fetch(`${API_URL}/v1/operator/stt`, {
-              method: "POST",
-              headers: { Authorization: `Bearer ${tokenRef.current}` },
-              body: form,
-            });
-            if (!res.ok) {
-              setError("Сервер не распознал речь. Попробуйте ещё раз.");
-              setDictating(false);
-              activeRef.current = false;
-              return;
+          // Final pass only if browser never delivered text.
+          if (!browserOkRef.current || !liveRef.current.trim()) {
+            try {
+              const text = blob.size ? await transcribeBlob(blob) : "";
+              if (text) publish(text, true);
+              else if (!liveRef.current.trim()) {
+                setError("Пустая расшифровка — говорите чуть дольше.");
+                publish("", true);
+              } else {
+                publish(liveRef.current, true);
+              }
+            } catch {
+              setError("Ошибка связи при распознавании.");
+              publish(liveRef.current, true);
             }
-            const data = (await res.json()) as { text?: string };
-            const text = (data.text || "").trim();
-            if (text) {
-              const merged = [baseRef.current, text].map((s) => s.trim()).filter(Boolean).join(" ");
-              onPartialRef.current(merged, true);
-            } else {
-              setError("Пустая расшифровка — говорите чуть дольше.");
-            }
-          } catch {
-            setError("Ошибка связи при распознавании.");
-          } finally {
-            setDictating(false);
-            activeRef.current = false;
+          } else {
+            publish(liveRef.current, true);
           }
+          setDictating(false);
+          activeRef.current = false;
         };
         mediaRecRef.current = recorder;
-        recorder.start();
-        setDictating(true);
+        // timeslice → progressive blobs for rolling Whisper
+        recorder.start(1000);
+        whisperTimerRef.current = setInterval(() => {
+          void whisperTick();
+        }, WHISPER_TICK_MS);
+        // Kick first tick a bit earlier so text shows within ~1s of speech.
+        window.setTimeout(() => void whisperTick(), 900);
+        return true;
       } catch {
-        setError("Нет доступа к микрофону — разрешите его в Chrome.");
-        activeRef.current = false;
-        setDictating(false);
+        setError("Нет доступа к микрофону — разрешите его в браузере.");
+        return false;
       }
     },
-    [],
+    [publish, stopWhisperLoop, transcribeBlob, whisperTick],
   );
 
   const startBrowser = useCallback((currentFieldValue: string) => {
     const Ctor = getSpeechRecognitionCtor();
-    if (!Ctor) {
-      void startServer(currentFieldValue);
-      return;
-    }
-    modeRef.current = "browser";
-    activeRef.current = true;
-    baseRef.current = currentFieldValue;
-    setError("");
+    if (!Ctor) return false;
     try {
       recRef.current?.abort();
     } catch {
@@ -209,50 +254,70 @@ export function useDictateToInput(
     rec.lang = "ru-RU";
     rec.continuous = true;
     rec.interimResults = true;
+    if (typeof rec.maxAlternatives === "number") rec.maxAlternatives = 1;
+    let finals = "";
     rec.onresult = (ev) => {
-      let finalChunk = "";
+      browserOkRef.current = true;
       let interim = "";
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         const piece = ev.results[i][0]?.transcript || "";
-        if (ev.results[i].isFinal) finalChunk += piece;
+        if (ev.results[i].isFinal) finals = mergeField(finals, piece);
         else interim += piece;
       }
-      if (finalChunk) {
-        baseRef.current = [baseRef.current, finalChunk].map((s) => s.trim()).filter(Boolean).join(" ");
-      }
-      const merged = [baseRef.current, interim].map((s) => s.trim()).filter(Boolean).join(" ");
-      onPartialRef.current(merged, Boolean(finalChunk) && !interim);
+      // Word/phrase blocks into the field immediately (finals + live interim).
+      publish(mergeField(finals, interim), Boolean(finals) && !interim);
     };
     rec.onerror = (ev) => {
       const code = ev.error || "";
       if (BENIGN_ERRORS.has(code)) return;
-      // Fall back to server Whisper once browser STT dies.
-      activeRef.current = false;
-      setDictating(false);
-      void startServer(baseRef.current);
+      browserOkRef.current = false;
       if (code === "not-allowed" || code === "service-not-allowed") {
         setError(errorMessage(code));
+        activeRef.current = false;
+        setDictating(false);
+        stopMedia();
+        return;
       }
+      // Keep rolling Whisper — do not kill dictation on Google STT network blips.
     };
     rec.onend = () => {
-      if (activeRef.current && modeRef.current === "browser") {
+      if (activeRef.current) {
         try {
           rec.start();
-          return;
         } catch {
-          activeRef.current = false;
+          browserOkRef.current = false;
         }
       }
-      if (modeRef.current === "browser") setDictating(false);
     };
     recRef.current = rec;
     try {
       rec.start();
-      setDictating(true);
+      return true;
     } catch {
-      void startServer(currentFieldValue);
+      return false;
     }
-  }, [startServer]);
+  }, [publish, stopMedia]);
+
+  const start = useCallback(
+    async (currentFieldValue: string) => {
+      setError("");
+      baseRef.current = currentFieldValue.trimEnd();
+      liveRef.current = "";
+      browserOkRef.current = false;
+      activeRef.current = true;
+      setDictating(true);
+      // Do not put «…» into the field — wait for real words.
+      const mediaOk = await startMediaAndWhisper(currentFieldValue);
+      if (!mediaOk) {
+        activeRef.current = false;
+        setDictating(false);
+        return;
+      }
+      // Parallel browser STT for true word-by-word when the engine works.
+      startBrowser(currentFieldValue);
+    },
+    [startBrowser, startMediaAndWhisper],
+  );
 
   const toggle = useCallback(
     (currentFieldValue: string) => {
@@ -260,17 +325,12 @@ export function useDictateToInput(
         stop();
         return;
       }
-      // Server Whisper first — browser SpeechRecognition often fails silently on HTTPS apps.
-      if (tokenRef.current && typeof navigator.mediaDevices?.getUserMedia === "function") {
-        void startServer(currentFieldValue);
-        return;
-      }
-      startBrowser(currentFieldValue);
+      void start(currentFieldValue);
     },
-    [dictating, startBrowser, startServer, stop],
+    [dictating, start, stop],
   );
 
   const clearError = useCallback(() => setError(""), []);
 
-  return { dictating, supported, error, start: startBrowser, stop, toggle, clearError };
+  return { dictating, supported, error, start, stop, toggle, clearError };
 }

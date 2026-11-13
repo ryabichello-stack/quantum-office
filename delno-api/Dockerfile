@@ -4,7 +4,34 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Chromium + OS libs for Hermes browser (web.browse / web.research)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libatomic1 \
+        ca-certificates \
+        fonts-liberation \
+        libasound2 \
+        libatk-bridge2.0-0 \
+        libatk1.0-0 \
+        libcups2 \
+        libdbus-1-3 \
+        libdrm2 \
+        libgbm1 \
+        libgtk-3-0 \
+        libnspr4 \
+        libnss3 \
+        libx11-xcb1 \
+        libxcb1 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxfixes3 \
+        libxkbcommon0 \
+        libxrandr2 \
+        wget \
+        xdg-utils \
+    && pip install --no-cache-dir -r requirements.txt \
+    && playwright install chromium \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY app ./app
 COPY alembic ./alembic

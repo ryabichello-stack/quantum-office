@@ -63,6 +63,10 @@ CABINET_LLM_TOOLS = (
     "hermes.setup_mark",
     "hermes.health",
     "hermes.alerts",
+    "hermes.tasks_create",
+    "hermes.tasks_list",
+    "hermes.tasks_pause",
+    "hermes.tasks_resume",
     # Phones + calls
     "phones.list",
     "phones.provision",
@@ -90,26 +94,33 @@ CABINET_LLM_TOOLS = (
     "web.search",
     "web.fetch",
     "web.browse",
+    "web.research",
     "office.import_website",
     "billing.summary",
 )
 
 HERMES_AGENT_SYSTEM = (
     "Ты Hermes — автономный ИИ-агент офиса DELNO для этого tenant. "
-    "Владелец формулирует цель обычным языком. Ты сам понимаешь задачу, "
-    "сам составляешь план и СРАЗУ выполняешь его через tools: "
-    "tool → результат → следующий tool → … → только потом финальный ответ.\n"
-    "Критично: не рассказывай «сейчас схожу / сейчас найду / сейчас сделаю». "
-    "Если нужен интернет, статус, файлы, телефония — СНАЧАЛА вызови tool, "
-    "без tool не обещай действие. Финальный текст — только после фактов из tools "
-    "или если tools реально не нужны (приветствие, уточняющий вопрос).\n"
+    "Владелец формулирует цель обычным языком. Работай как нормальный агент:\n"
+    "1) Мысленно разложи задачу на 2–6 шагов (план).\n"
+    "2) СРАЗУ выполняй шаги через tools по одному: "
+    "tool → результат → следующий tool → …\n"
+    "3) Только после фактов из tools — финальный ответ по-русски "
+    "(кратко перечисли что сделал по шагам).\n"
+    "Критично: не рассказывай «сейчас схожу / сейчас найду / сейчас сделаю» без tool. "
+    "Если нужен интернет, статус, файлы, телефония — СНАЧАЛА вызови tool. "
+    "Не своди сложную задачу к одному shortcut-ответу.\n"
     "Не жди волшебных фраз и не подменяй задачу шаблонным статусом SIP/сетапа.\n"
     "Каталог tools (выбираешь сам по смыслу задачи):\n"
-    "• web.search / web.fetch / web.browse — открытый интернет;\n"
+    "• web.search / web.fetch / web.browse / web.research — открытый интернет и браузер; "
+    "если пользователь дал ссылку на сайт/Telegram/Instagram/MAX — СРАЗУ web.research "
+    "(не отвечай из KB и не выдумывай содержимое страницы);\n"
     "• get_knowledge / upload_knowledge_snippet / office.import_website — "
     "только материалы ЭТОГО tenant (локальная база), не замена интернету;\n"
     "• hermes.capabilities — проверь реальные возможности перед онбордингом и задачами;\n"
     "• hermes.setup_status / health / alerts — состояние офиса;\n"
+    "• hermes.tasks_create / tasks_list / tasks_pause / tasks_resume — "
+    "периодические поручения (каждый N мин/час/день): проверки заявок, почты, сайта, health;\n"
     "• phones.* / calls.* / telephony.script_* / telephony.tools_set — телефония Ava;\n"
     "• files.cloud_* / credentials.open_form — облака и секреты "
     "(SIP: mango_sip; диски: files_yadisk|mailru|gdrive|onedrive; Google/OneDrive с согласием);\n"
@@ -429,6 +440,58 @@ def _get_or_create_conversation(
     return row
 
 
+def persist_operator_exchange(
+    db: Session,
+    ctx: TenantContext,
+    *,
+    message: str,
+    reply: str,
+    channel: str = "web",
+    conversation_id: uuid.UUID | None = None,
+    input_modality: str = "text",
+    assistant_meta: dict[str, Any] | None = None,
+    commit: bool = True,
+) -> str:
+    """Save user+assistant turn for DIY / Nous fast-paths (same transcript as full agent)."""
+    from app.services.tenant_vault import looks_like_credential_paste
+
+    conversation = _get_or_create_conversation(db, ctx, channel, conversation_id)
+    display = (message or "").strip()
+    if looks_like_credential_paste(display):
+        display = "[логин/пароль — через безопасную форму, не в ленте чата]"
+    db.add(
+        Message(
+            tenant_id=ctx.tenant_id,
+            conversation_id=conversation.id,
+            role="user",
+            body=display or message or "",
+            meta={"modality": input_modality},
+        )
+    )
+    meta = dict(assistant_meta or {})
+    db.add(
+        Message(
+            tenant_id=ctx.tenant_id,
+            conversation_id=conversation.id,
+            role="assistant",
+            body=reply or "",
+            meta=meta,
+        )
+    )
+    write_audit(
+        db,
+        ctx,
+        action="operator.chat",
+        resource=f"conversation:{conversation.id}",
+        new_value={"channel": channel, "modality": input_modality, "diy": True},
+    )
+    if commit:
+        db.commit()
+    else:
+        db.flush()
+    return str(conversation.id)
+
+
 def _kb_context_from_result(result: ToolResult) -> str:
     data = result.data or {}
     text = str(data.get("text") or "").strip()
@@ -601,7 +664,8 @@ def _format_hermes_setup(data: dict[str, Any]) -> str:
     total = progress.get("required_total", 0)
     lines = [
         data.get("message_ru") or "Статус сетапа офиса.",
-        f"Прогресс: {done}/{total}.",
+        f"Прогресс по ЭТОМУ кабинету: {done}/{total}"
+        + (" — кабинет пустой, ничего не подключено." if done == 0 else "."),
     ]
     checks = data.get("checks") or {}
     steps = data.get("steps") or []
@@ -611,12 +675,23 @@ def _format_hermes_setup(data: dict[str, Any]) -> str:
         mark = "✓" if check.get("ok") else ("·" if check.get("optional") else "○")
         hint = step.get("hint") or ""
         title = step.get("title") or sid
-        lines.append(f"{mark} {title}" + ("" if check.get("ok") else f" — {hint}"))
+        detail = check.get("detail") if isinstance(check.get("detail"), dict) else {}
+        summary = ""
+        if isinstance(detail, dict) and detail.get("summary_ru") and not check.get("ok"):
+            summary = f" ({detail.get('summary_ru')})"
+        lines.append(
+            f"{mark} {title}"
+            + ("" if check.get("ok") else f" — {hint}")
+            + summary
+        )
     next_steps = data.get("next_steps") or []
     if next_steps:
         nxt = next_steps[0]
         lines.append(f"Следующий шаг: {nxt.get('title')} — {nxt.get('hint')}")
-    lines.append("Скажите голосом или текстом, что подключить дальше (Telegram, номер, почта…).")
+    if done == 0:
+        lines.append("Не путайте доступность платформы с настройкой кабинета — у владельца пока пусто.")
+    else:
+        lines.append("Скажите голосом или текстом, что подключить дальше (Telegram, номер, почта…).")
     return "\n".join(lines)
 
 

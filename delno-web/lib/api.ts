@@ -411,6 +411,8 @@ export function apiOperatorChat(
     reply: string;
     sources: KnowledgeSource[];
     tool_calls: unknown[];
+    engine?: string;
+    hermes_run?: unknown;
     pending_confirmation: PendingConfirmation | null;
     pending_credential_form?: CredentialFormSpec | null;
     pending_download?: {
