@@ -280,6 +280,8 @@ def _headline(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None)
                 return "Телефония: подключите DID"
             if setup_next.get("id") == "phone" and sub == "need_reg":
                 return "Телефония: дождитесь Registered"
+            if setup_next.get("id") == "telephony_script":
+                return "Сценарий секретаря Ava"
             return f"Следующий шаг сетапа: {setup_next['title']}"
         return "Подключим инструменты по шагам"
     if phase == "ready":
@@ -325,6 +327,16 @@ def _cta(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> d
                     "Открой безопасную форму credentials.open_form для mango_sip. "
                     "Это следующий шаг hermes_ops — телефония (DID + SIP). "
                     "Не предлагай снова импортировать KB."
+                ),
+            }
+        if sid == "telephony_script":
+            return {
+                "title": "Сценарий секретаря",
+                "text": (
+                    "Телефония по hermes_ops закрыта. Следующий шаг — сценарий Ava: "
+                    "вызови telephony.script_get, предложи черновик из KB или прими текст "
+                    "владельца, сохрани через telephony.script_save / hermes.setup_mark. "
+                    "Не открывай SIP форму и не предлагай импортировать KB."
                 ),
             }
         if sid in {"telegram", "max", "mail", "calendar", "conference", "files"}:

@@ -141,6 +141,11 @@ def create_run(
                 micro += " phones.list → phones.provision; do not reopen SIP form."
             elif sub == "need_reg":
                 micro += " Check hermes.health / registration; do not reopen SIP form."
+            elif sn.get("id") == "telephony_script":
+                micro += (
+                    " Use telephony.script_get → draft/save script; "
+                    "do not reopen SIP form or re-import KB."
+                )
             ctx_bits.append(
                 f"hermes_ops next required step: «{sn.get('title')}» "
                 f"(id={sn.get('id')}).{micro} hint: {sn.get('hint') or '—'}. Lead with this."

@@ -189,3 +189,46 @@ def test_office_loop_phone_substep_need_did(monkeypatch):
     assert "phones.provision" in (loop["ui"]["primary_cta"]["text"] or "")
     assert "credentials.open_form" not in (loop["ui"]["primary_cta"]["text"] or "")
     db.close()
+
+
+def test_office_loop_telephony_script_cta(monkeypatch):
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    tenant = Tenant(id=uuid.uuid4(), slug="loop-script", name="Loop", settings={}, is_active=True)
+    db.add(tenant)
+    db.commit()
+    ctx = TenantContext(tenant_id=tenant.id, tenant_slug=tenant.slug, role="tenant_owner")
+
+    monkeypatch.setattr(
+        "app.services.hermes_nous.onboarding.hermes_ops.office_setup_status",
+        lambda *_a, **_k: {
+            "setup_complete": False,
+            "message_ru": "next",
+            "progress": {"required_done": 2, "required_total": 7},
+            "checks": {
+                "kb": {"ok": True},
+                "phone": {"ok": True},
+                "telephony_script": {"ok": False},
+            },
+            "next_steps": [
+                {
+                    "id": "telephony_script",
+                    "title": "Сценарий секретаря",
+                    "hint": "Надиктуйте сценарий",
+                    "status": "todo",
+                    "check": {"ok": False, "detail": {}},
+                }
+            ],
+        },
+    )
+    loop = office_onboarding.get_office_loop(db, ctx)
+    assert loop["setup_next"]["id"] == "telephony_script"
+    assert "Сценарий" in (loop["ui"]["headline"] or "")
+    assert "telephony.script" in (loop["ui"]["primary_cta"]["text"] or "")
+    assert "импортировать kb" in (loop["ui"]["primary_cta"]["text"] or "").lower()
+    db.close()

@@ -24,6 +24,7 @@
 - Onboarding tool pack includes `phones.*` + telephony script tools so Nous can close hermes_ops phone after KB; bridge passes `setup_next.substep` into run instructions
 - C4B: fixed `delno-api` `extra_hosts` so `host.docker.internal` resolves again (SIP probe / Registered status for hermes_ops phone)
 - SOUL.md: hermes_ops phone micro-steps (`need_sip` / `need_did` / `need_reg`); Dockerfile now COPY `hermes_runtime` so provision seeds templates in the API image
+- Office-loop CTA for hermes_ops `telephony_script` after phone (Ava script_get/save, no SIP/KB regression)
 - Hermes Nous: `lead.created` → `events_dispatch.on_lead_created` (durable AgentTask + queued AgentRun when `hermes_nous_runtime` on)
 - Hermes Nous: detailed sqlite integration suite (`test_hermes_nous_integration.py`) — A/B run tokens, MCP fail-closed tool call, KB confirm, bridge runs+fallback, flag gate, hermes profile without long-lived key
 - Hermes runtime Dockerfile: Python 3.14 + `uv sync --frozen --extra messaging`; lab smoke A/B on `:18642`/`:18643` (`scripts/lab_smoke.sh`); verified live `/v1/runs` → `completed` on C4B lab
