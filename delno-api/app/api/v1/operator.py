@@ -896,6 +896,8 @@ def _asks_setup_progress(message_low: str) -> bool:
             "продолжим",
             "продолжить сетап",
             "продолжить настройк",
+            "продолжай",
+            "продолжи",
             "давай дальше",
             "давайте дальше",
             "настроим офис",
@@ -907,6 +909,48 @@ def _asks_setup_progress(message_low: str) -> bool:
             "покажи путь",
             "покажи статус",
             "первый реальный шаг",
+        )
+    )
+
+
+def _wants_hermes_act_now(message: str) -> bool:
+    """Owner wants Hermes to *do* the next step — not narrate the path again."""
+    low = (message or "").lower().strip()
+    if not low:
+        return False
+    # Short imperative / go-ahead phrases (dictation-friendly).
+    if re.fullmatch(
+        r"(давай|давайте|делай|сделай|продолжай|продолжи|поехали|вперёд|вперед|"
+        r"действуй|сам|сам сделай|сделай сам|hermes|гермес)[\s!.…]*",
+        low,
+    ):
+        return True
+    # Spoken / dictated: «мне нужно чтобы ты делал, Гермес», «чтобы hermes делал».
+    if re.search(
+        r"(чтобы\s+)?(ты|вы|hermes|гермес)\s+дела[йл]|дела[йл].{0,20}(hermes|гермес)",
+        low,
+    ):
+        return True
+    return any(
+        m in low
+        for m in (
+            "делай",
+            "сделай",
+            "сделай сам",
+            "сам сделай",
+            "сам hermes",
+            "сам гермес",
+            "пусть hermes",
+            "пусть гермес",
+            "hermes делай",
+            "гермес делай",
+            "действуй",
+            "поехали",
+            "не спрашивай",
+            "просто сделай",
+            "просто делай",
+            "выполняй",
+            "выполни",
         )
     )
 
@@ -980,11 +1024,11 @@ def _credential_form_kind_from_message(
         )
     ):
         return None
-    # PRODUCT_LOOP: «что дальше / настроим офис» on a vault step → open the form
+    # PRODUCT_LOOP: «что дальше / настроим офис / делай» on a vault step → open the form
     # instead of a Nous text waffle that cannot surface CredentialFormCard.
     # Messenger steps (telegram/max) use the dual-path chooser DIY, not the vault yet.
     progress_kind = _form_kind_for_setup_next(setup_next_id, setup_substep)
-    if progress_kind and _asks_setup_progress(low):
+    if progress_kind and (_asks_setup_progress(low) or _wants_hermes_act_now(message)):
         if progress_kind in ("telegram_bot", "max_bot"):
             return None
         return progress_kind
@@ -1415,7 +1459,19 @@ def operator_chat(
     form_kind = _credential_form_kind_from_message(
         message, setup_next_id=setup_next_id, setup_substep=setup_substep
     )
-    if form_kind and not attachments and not agent_mode:
+    # «делай / продолжай / давай» on a vault step → open the form even in agent_mode.
+    # Nous text cannot surface CredentialFormCard; DIY must.
+    low_for_form = (message or "").lower()
+    force_vault_form = bool(
+        form_kind
+        and (
+            _asks_setup_progress(low_for_form)
+            or _wants_hermes_act_now(message)
+            or "открой форму" in low_for_form
+            or "пришли форму" in low_for_form
+        )
+    )
+    if form_kind and not attachments and (not agent_mode or force_vault_form):
         from app.operator.tools import register_builtin_tools
         from app.operator.tools.registry import ToolResult, registry
 
@@ -1423,13 +1479,19 @@ def operator_chat(
         result = registry.run(db, ctx, "credentials.open_form", kind=form_kind)
         if isinstance(result, ToolResult) and result.ok:
             form = (result.data or {}).get("pending_credential_form")
+            act_prefix = ""
+            if force_vault_form and form_kind == "mango_sip":
+                act_prefix = (
+                    "Делаю следующий шаг сам: открываю форму SIP Mango.\n"
+                    "Заполните логин (номер/сотрудник) и пароль — в чат секрет не пишите.\n\n"
+                )
             return _finish_diy(
                 db,
                 ctx,
                 body,
                 modality=modality,
                 engine="diy_credential_form",
-                reply=result.message
+                reply=(act_prefix + (result.message or "")).strip()
                 or "Открыл безопасную форму. Секрет не пишите в чат — только в форме.",
                 tool_calls=[{"tool": "credentials.open_form", "ok": True, "kind": form_kind}],
                 pending_credential_form=form if isinstance(form, dict) else None,

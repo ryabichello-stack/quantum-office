@@ -30,6 +30,7 @@
 
 ### Fixed
 
+- Hermes «делай / продолжай / давай»: treat as act-now on current `setup_next` — open the vault form (SIP) or run the next tool instead of re-narrating the path; SOUL / onboarding skill / DIY match updated
 - Hermes `phones.provision` confirm: no more dead card + raw `phone_provisioned` bubble — RU next-step reply, SIP form, suggestion chips, verbal «да» confirms the open card, and a follow-up setup turn continues telephony instead of hanging
 - Hermes bottom suggestion chips: after every cabinet/Nous reply Hermes forms `suggested_actions` from tool chips, pending KB draft (confirm/enrich), or `setup_status` next steps — so the UI chips under the reply stay like before even when the LLM path omitted them
 - Hermes onboarding playbook: per-step/per-tool scenario (show → ask → confirm → apply); block `hermes.setup_mark`/upload/phone/form in the same turn as `office.build_kb_draft` so the commercial profile is shown before any confirm card
