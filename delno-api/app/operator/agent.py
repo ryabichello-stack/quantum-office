@@ -819,6 +819,11 @@ def _tool_summary(tool_name: str, params: dict[str, Any]) -> str:
         return "Алерты офиса"
     if tool_name == "calls.list":
         return "Список звонков"
+    if tool_name == "phones.list":
+        return "Список номеров кабинета"
+    if tool_name == "phones.provision":
+        e164 = str(params.get("e164") or "").strip() or "номер"
+        return f"Привязать DID {e164} к кабинету"
     return tool_name.replace("_", " ")
 
 

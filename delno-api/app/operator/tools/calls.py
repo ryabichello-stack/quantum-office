@@ -146,4 +146,21 @@ class PhonesProvisionTool:
         )
         if not out.get("ok"):
             return ToolResult(ok=False, message=str(out.get("error") or "failed"), data=out)
-        return ToolResult(ok=True, data=out, message="phone_provisioned")
+        phone = (out.get("phone") or {}) if isinstance(out, dict) else {}
+        e164 = str(phone.get("e164") or params.get("e164") or "").strip()
+        chips = [
+            {"title": "SIP", "text": "Открой форму SIP Mango"},
+            {"title": "Статус линии", "text": "Проверь регистрацию SIP"},
+            {"title": "Сетап", "text": "Статус сетапа"},
+        ]
+        data = dict(out or {})
+        data["suggested_actions"] = chips
+        return ToolResult(
+            ok=True,
+            data=data,
+            message=(
+                f"Номер {e164 or 'DID'} привязан к кабинету. "
+                "Следующий шаг — SIP Mango в сейфе (логин вида номер/сотрудник), "
+                "пока статус линии не станет Registered."
+            ),
+        )

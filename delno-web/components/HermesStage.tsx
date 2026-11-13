@@ -173,6 +173,10 @@ export function HermesStage({ token }: { token: string }) {
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState("");
   const [activePending, setActivePending] = useState<PendingConfirmation | null>(null);
+  const activePendingRef = useRef<PendingConfirmation | null>(null);
+  activePendingRef.current = activePending;
+  const confirmingRef = useRef(false);
+  const onConfirmRef = useRef<() => Promise<void>>(async () => undefined);
   const [activeSecretForm, setActiveSecretForm] = useState<CredentialFormSpec | null>(null);
   const [secretBusy, setSecretBusy] = useState(false);
   const [setup, setSetup] = useState<HermesSetupStatus | null>(null);
@@ -288,6 +292,22 @@ export function HermesStage({ token }: { token: string }) {
       const question = text.trim();
       const attachSource = withPending ? pendingRef.current : [];
       if ((!question && attachSource.length === 0) || sending) return null;
+
+      // «да» / «подтверждаю» while a confirm card is open → confirm, don't kill the card.
+      const affirm =
+        /^(да|да\.|ок|окей|хорошо|подтверждаю|подтверди|согласен|согласна|давай|yes|ok|confirm)\.?$/i;
+      if (
+        modality === "text" &&
+        !withPending &&
+        attachSource.length === 0 &&
+        activePendingRef.current &&
+        !confirmingRef.current &&
+        affirm.test(question)
+      ) {
+        await onConfirmRef.current();
+        return null;
+      }
+
       setSending(true);
       setError("");
       setActivePending(null);
@@ -661,27 +681,78 @@ export function HermesStage({ token }: { token: string }) {
 
   async function onConfirm() {
     if (!activePending || confirming) return;
+    const pending = activePending;
     setConfirming(true);
+    confirmingRef.current = true;
     setError("");
     try {
-      const result = await apiOperatorConfirm(token, activePending.tool_name, activePending.params);
+      const result = await apiOperatorConfirm(token, pending.tool_name, pending.params);
+      const confirmId = pending.confirmation_id;
       setActivePending(null);
-      setLines((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          text: result.ok
-            ? result.message || "Изменения применены."
-            : result.message || "Не удалось применить изменения.",
-        },
-      ]);
+      // Drop pending from the confirmed bubble so it doesn't flip to «неактивно».
+      setLines((prev) => {
+        const cleared = prev.map((line) =>
+          line.pending?.confirmation_id === confirmId ? { ...line, pending: undefined } : line,
+        );
+        const suggestions = (result.suggested_actions || []).filter((a) => a?.title && a?.text);
+        const secretForm = (result.pending_credential_form || null) as ApiCredentialFormSpec | null;
+        if (secretForm) setActiveSecretForm(secretForm);
+        return [
+          ...cleared,
+          {
+            role: "assistant" as const,
+            text: result.ok
+              ? result.message || "Изменения применены."
+              : result.message || "Не удалось применить изменения.",
+            suggestions: suggestions.length ? suggestions : undefined,
+            credentialForm: secretForm || undefined,
+          },
+        ];
+      });
       void refreshPanels();
+
+      // Continue the onboarding loop (same idea as after SIP/secret save).
+      if (result.ok && pending.tool_name === "phones.provision") {
+        try {
+          const e164 = String((pending.params as { e164?: string })?.e164 || "").trim();
+          const followAsk = e164
+            ? `DID ${e164} привязан. hermes.setup_status — что дальше по телефонии (SIP / Registered)?`
+            : "DID привязан. hermes.setup_status — что дальше по телефонии (SIP / Registered)?";
+          const follow = await apiOperatorChat(
+            token,
+            followAsk,
+            conversationId || undefined,
+            "text",
+            "hermes",
+          );
+          if (follow.conversation_id) setConversationId(follow.conversation_id);
+          const followForm = (follow.pending_credential_form || null) as ApiCredentialFormSpec | null;
+          if (followForm) setActiveSecretForm(followForm);
+          const followChips = (follow.suggested_actions || []).filter((a) => a?.title && a?.text);
+          setLines((prev) => [
+            ...prev,
+            { role: "user", text: "Номер привязан. Что дальше по телефонии?" },
+            {
+              role: "assistant",
+              text: follow.reply || "Проверил сетап телефонии.",
+              suggestions: followChips.length ? followChips : undefined,
+              credentialForm: followForm || undefined,
+              sources: dedupeSources(follow.sources),
+            },
+          ]);
+          void refreshPanels();
+        } catch {
+          // Confirm already succeeded — follow-up is best-effort.
+        }
+      }
     } catch {
       setError("Не удалось подтвердить действие.");
     } finally {
       setConfirming(false);
+      confirmingRef.current = false;
     }
   }
+  onConfirmRef.current = onConfirm;
 
   async function onSecretSave(values: {
     login?: string;

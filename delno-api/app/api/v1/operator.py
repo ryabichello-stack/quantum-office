@@ -2315,8 +2315,65 @@ def operator_confirm(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(get_tenant_context_auth),
 ) -> dict:
+    """Run a confirmed critical tool and return an owner-facing next-step payload.
+
+    Raw tool messages like ``phone_provisioned`` must not land in the Hermes
+    bubble — enrich with RU reply, chips, and (for telephony) the SIP form.
+    """
+    from app.operator.tools import register_builtin_tools
+    from app.operator.tools.registry import ToolResult, registry
+    from app.services.hermes_guide import chip_actions_for_office
+
+    register_builtin_tools()
     result = execute_confirmed_tool(db, ctx, tool_name=body.tool_name, params=body.params)
-    return {"ok": getattr(result, "ok", False), "message": getattr(result, "message", ""), "data": getattr(result, "data", {})}
+    ok = bool(getattr(result, "ok", False))
+    data = getattr(result, "data", {}) or {}
+    if not isinstance(data, dict):
+        data = {}
+    message = str(getattr(result, "message", "") or "").strip()
+    pending_credential_form = None
+    suggested = list(data.get("suggested_actions") or []) if isinstance(data.get("suggested_actions"), list) else []
+
+    if ok and body.tool_name == "phones.provision":
+        phone = data.get("phone") if isinstance(data.get("phone"), dict) else {}
+        e164 = str((phone or {}).get("e164") or (body.params or {}).get("e164") or "").strip()
+        message = (
+            f"Номер {e164 or 'DID'} привязан к кабинету.\n"
+            "Следующий шаг — SIP Mango: логин вида «номер/сотрудник» и пароль в сейфе, "
+            "пока линия не станет Registered. Без SIP Mango может отвечать «операторы заняты»."
+        )
+        form_res = registry.run(db, ctx, "credentials.open_form", kind="mango_sip")
+        if isinstance(form_res, ToolResult) and form_res.ok:
+            form = (form_res.data or {}).get("pending_credential_form")
+            if isinstance(form, dict):
+                pending_credential_form = form
+                message += "\n\nОткрою форму SIP ниже — заполните и сохраните."
+        suggested = [
+            {"title": "SIP", "text": "Открой форму SIP Mango"},
+            {"title": "Статус линии", "text": "Проверь регистрацию SIP"},
+            {"title": "Сетап", "text": "Статус сетапа"},
+        ]
+
+    if ok and not suggested:
+        try:
+            suggested = chip_actions_for_office(
+                db,
+                ctx,
+                tool_calls=[{"tool": body.tool_name, "ok": True, "suggested_actions": suggested}],
+            )
+        except Exception:
+            suggested = []
+
+    if message in {"phone_provisioned", "ok", "done"} or not message:
+        message = "Изменения применены." if ok else "Не удалось применить изменения."
+
+    return {
+        "ok": ok,
+        "message": message,
+        "data": data,
+        "suggested_actions": suggested[:5],
+        "pending_credential_form": pending_credential_form,
+    }
 
 
 @router.get("/conversations")
