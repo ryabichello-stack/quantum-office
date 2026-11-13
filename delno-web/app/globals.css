@@ -3297,15 +3297,15 @@ aside a.nav-operator.selected .nav-orb-icon {
   animation: hx-rise 0.5s cubic-bezier(.22,1,.36,1) both;
 }
 .hx-empty-orb {
-  width: 120px;
-  height: 120px;
-  margin: 0 auto 18px;
-  display: grid;
-  place-items: center;
+  /* Was 120px wide with a 200px scaled mount → overflow looked left-shifted.
+     Just center the natural mount; keep the soft scale. */
+  display: flex;
+  justify-content: center;
+  margin: 0 0 18px;
 }
 .hx-empty-orb .delno-crystal-mount {
   transform: scale(0.72);
-  transform-origin: center;
+  transform-origin: center center;
 }
 .hx-empty-title {
   font-family: "Manrope", sans-serif !important;
@@ -3319,6 +3319,8 @@ aside a.nav-operator.selected .nav-orb-icon {
   color: var(--hx-muted) !important;
   font-size: 15px !important;
   max-width: 420px !important;
+  margin-left: auto;
+  margin-right: auto;
 }
 .hx-suggestions {
   display: grid !important;
