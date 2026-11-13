@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "delno-quantum-labs": {
+      "url": "http://161.104.89.123/delno-api/v1/mcp",
+      "headers": {
+        "Authorization": "Bearer <mcp_api_key from GET /v1/hermes/profile>"
+      }
+    }
+  },
+  "_notes": {
+    "http_gateway": {
+      "health": "GET /v1/mcp/health",
+      "tools": "GET /v1/mcp/tools",
+      "call": "POST /v1/mcp/tools/call",
+      "jsonrpc": "POST /v1/mcp",
+      "hermes_profile": "GET /v1/hermes/profile"
+    },
+    "auth": "JWT from /v1/auth/login OR per-tenant mcp_api_key (X-Delno-Mcp-Key)",
+    "policy": "tools_first — stubs work without OpenAI/Telegram/DaData"
+  }
+}

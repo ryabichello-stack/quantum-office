@@ -1,0 +1,14 @@
+[Unit]
+Description=Quantum Labs Telegram channel curate (rewrite + publish)
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/channel-curate
+EnvironmentFile=/opt/channel-curate/.env
+ExecStart=/opt/channel-curate/venv/bin/python scripts/curate_runner.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

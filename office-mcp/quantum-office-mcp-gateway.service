@@ -1,0 +1,16 @@
+[Unit]
+Description=Quantum Office MCP HTTP Gateway (Grok / remote agents)
+After=network.target
+# Isolated from Asterisk / AVA docker / Polyhub trading.
+
+[Service]
+User=root
+WorkingDirectory=/opt/quantum-office-mcp
+EnvironmentFile=/opt/quantum-office-mcp/.env
+Environment=PYTHONPATH=/opt/quantum-office-mcp
+ExecStart=/opt/ava-files/venv/bin/uvicorn gateway_main:app --host 127.0.0.1 --port 8021
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

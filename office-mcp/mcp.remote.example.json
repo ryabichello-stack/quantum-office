@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "quantum-office": {
+      "command": "python3",
+      "args": ["-m", "quantum_office_mcp"],
+      "cwd": "/ABS/PATH/TO/quantum-office/office-mcp",
+      "env": {
+        "PYTHONPATH": "/ABS/PATH/TO/quantum-office/office-mcp",
+        "CONSOLE_BASE": "https://a.47z.ru/_quantum_console",
+        "OUTREACH_BASE": "https://a.47z.ru/_ava_outreach",
+        "TEXT_BOT_BASE": "https://a.47z.ru/_ava_secretary",
+        "FILES_BASE": "https://a.47z.ru/_ava_files",
+        "AVA_KNOWLEDGE_BASE": "https://a.47z.ru/_ava_knowledge",
+        "CALENDAR_BASE": "https://a.47z.ru/_ava_calendar",
+        "CONFERENCE_BASE": "https://a.47z.ru/_ava_conference",
+        "CAMPAIGN_BASE": "https://a.47z.ru/_ava_sheets_campaign",
+        "CONSOLE_TOKEN": "SET_LOCALLY_FROM_PROD_quantum-console_.env",
+        "WEBHOOK_TOKEN": "SET_LOCALLY_FROM_PROD_ava-files_.env",
+        "OUTREACH_UI_TOKEN": "SET_LOCALLY_FROM_PROD_ava-outreach_.env",
+        "BRAIN_MCP_PRINCIPAL": "service:office-mcp",
+        "BRAIN_MCP_ADMIN": "true",
+        "BRAIN_MCP_USER_ID": "office-mcp",
+        "BRAIN_TENANT_ID": "quantum-labs"
+      }
+    }
+  }
+}

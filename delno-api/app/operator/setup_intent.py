@@ -1,0 +1,306 @@
+"""Natural-language setup intents for cabinet Operator (live configuration)."""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+_KB_PREFIXES = (
+    "добавь в базу знаний",
+    "добавь в kb",
+    "запиши в базу знаний",
+    "запиши в kb",
+    "обнови базу знаний",
+    "добавь в знания",
+)
+
+_SETTINGS_PREFIXES = (
+    "измени настройки",
+    "обнови настройки",
+    "настройки:",
+    "настройка:",
+)
+
+# "настрой …" that means office setup — not a settings note patch
+_SETUP_PHRASE_BLOCKLIST = (
+    "кабинет",
+    "офис",
+    "hermes",
+    "делно",
+    "delno",
+    "секретар",
+    "чеклист",
+    "сетап",
+    "setup",
+)
+
+_SUMMARY_TRIGGERS = (
+    "текущие настройки",
+    "что настроено",
+    "покажи настройки",
+    "мой профиль",
+    "сводка",
+)
+
+_FLAG_ALIASES: dict[str, str] = {
+    "голос": "web_voice",
+    "голосовой": "web_voice",
+    "voice": "web_voice",
+    "виджет": "web_voice",
+    "чат": "web_voice",
+    "telegram": "telegram",
+    "телеграм": "telegram",
+    "max": "max",
+    "телефон": "phone",
+    "звонки": "phone",
+    "operator": "experimental_operator",
+    "оператор": "experimental_operator",
+}
+
+
+def _split_title_body(text: str) -> tuple[str, str]:
+    cleaned = text.strip()
+    if not cleaned:
+        return "Заметка", "—"
+    for sep in (" — ", " – ", " - ", ": "):
+        if sep in cleaned:
+            left, right = cleaned.split(sep, 1)
+            if left.strip() and right.strip():
+                return left.strip()[:255], right.strip()
+    if len(cleaned) <= 80:
+        return cleaned[:255], cleaned
+    dot = cleaned.find(". ")
+    if 0 < dot < 80:
+        return cleaned[: dot + 1].strip()[:255], cleaned
+    return cleaned[:80].strip(), cleaned
+
+
+def _parse_feature_flag(text: str) -> dict[str, Any] | None:
+    lower = text.lower()
+    enable = any(w in lower for w in ("включи", "enable", "активируй"))
+    disable = any(w in lower for w in ("выключи", "disable", "отключи", "деактивируй"))
+    if not enable and not disable:
+        return None
+    flag_key = None
+    for alias, key in _FLAG_ALIASES.items():
+        if alias in lower:
+            flag_key = key
+            break
+    if not flag_key:
+        return None
+    return {
+        "tool": "set_feature_flag",
+        "params": {"flag_key": flag_key, "enabled": enable and not disable},
+        "summary": f"{'Включить' if enable and not disable else 'Выключить'} «{flag_key}»",
+    }
+
+
+def _parse_hours(text: str) -> dict[str, Any] | None:
+    lower = text.lower()
+    if not any(w in lower for w in ("часы", "работаем", "график", "режим работы", "по субботам", "по будням")):
+        return None
+    body = text.strip()
+    if len(body) < 8:
+        return None
+    title = "Часы работы"
+    return {
+        "tool": "upload_knowledge_snippet",
+        "params": {"title": title, "body": body, "visibility": "public"},
+        "summary": f"Добавить в KB: «{title}» — {body[:120]}",
+    }
+
+
+def _parse_settings_patch(text: str) -> dict[str, Any] | None:
+    lower = text.lower()
+    # "настрой кабинет/офис" is Hermes setup — never a note patch
+    if lower.startswith("настрой ") or lower.startswith("настроить "):
+        rest_l = lower.split(None, 1)[-1] if " " in lower else ""
+        if any(w in rest_l for w in _SETUP_PHRASE_BLOCKLIST) or not rest_l:
+            return None
+        # Explicit value after "настрой": e.g. "настрой приветствие: Здравствуйте"
+        rest = text.split(None, 1)[-1].strip(" :—-")
+        patch: dict[str, Any] = {}
+        if rest_l.startswith("привет") or "greeting" in rest_l:
+            patch["greeting"] = rest.split(":", 1)[-1].strip()[:500] or rest
+        elif "имя" in rest_l and "ассистент" in rest_l:
+            patch["assistant_name"] = rest.split(":", 1)[-1].strip()[:120]
+        else:
+            # Ambiguous "настрой X" without clear field — do not invent a note
+            return None
+        if not patch:
+            return None
+        return {
+            "tool": "update_tenant_settings",
+            "params": {"patch": patch},
+            "summary": f"Обновить настройки: {list(patch.keys())[0]}",
+        }
+    for prefix in _SETTINGS_PREFIXES:
+        if lower.startswith(prefix):
+            rest = text[len(prefix) :].strip(" :—-")
+            if not rest:
+                return None
+            patch = {}
+            if "привет" in lower or "greeting" in lower:
+                patch["greeting"] = rest
+            elif "имя" in lower and "ассистент" in lower:
+                patch["assistant_name"] = rest.split(":", 1)[-1].strip()[:120]
+            else:
+                patch["note"] = rest
+            return {
+                "tool": "update_tenant_settings",
+                "params": {"patch": patch},
+                "summary": f"Обновить настройки: {rest[:120]}",
+            }
+    name_match = re.search(r"имя\s+ассистента[:\s]+(.+)", lower)
+    if name_match:
+        name = text[name_match.start(1) :].strip()[:120]
+        return {
+            "tool": "update_tenant_settings",
+            "params": {"patch": {"assistant_name": name}},
+            "summary": f"Имя ассистента: {name}",
+        }
+    return None
+
+
+_HERMES_SETUP_TRIGGERS = (
+    "статус сетапа",
+    "что настроить",
+    "что ещё настроить",
+    "что еще настроить",
+    "следующий шаг",
+    "настрой офис",
+    "настроить офис",
+    "настрой кабинет",
+    "настроить кабинет",
+    "настрой hermes",
+    "настроить hermes",
+    "checklist",
+    "чеклист",
+    "сетап",
+    "setup",
+)
+
+_HERMES_HEALTH_TRIGGERS = (
+    "здоровье офиса",
+    "проверь здоровье",
+    "проверь офис",
+    "health",
+    "алерт",
+    "alerts",
+    "что сломалось",
+    "компонент",
+)
+
+_HERMES_CALLS_TRIGGERS = (
+    "какие звонки",
+    "список звонков",
+    "история звонков",
+    "звонки были",
+    "calls",
+)
+
+_HERMES_BILLING_TRIGGERS = (
+    "расход токенов",
+    "баланс",
+    "тариф",
+    "сколько токенов",
+    "billing",
+    "стоимость",
+)
+
+
+_WEBSITE_IMPORT_TRIGGERS = (
+    "зайди на",
+    "зайди в",
+    "зайди сайт",
+    "собери знания",
+    "собери с сайта",
+    "импорт сайта",
+    "импортируй сайт",
+    "парси сайт",
+    "парси ",
+    "обогати знания",
+    "забери с сайта",
+    "скачай сайт",
+    "прочитай сайт",
+    "изучи сайт",
+    "import website",
+    "crawl",
+)
+
+
+def parse_hermes_intent(message: str) -> dict[str, Any] | None:
+    """Deterministic Hermes supervisor intents (works without LLM)."""
+    text = message.strip()
+    if not text:
+        return None
+    lower = text.lower()
+
+    if any(t in lower for t in _HERMES_HEALTH_TRIGGERS):
+        return {"tool": "hermes.health", "params": {}, "summary": "Проверить здоровье офиса"}
+    if any(t in lower for t in _HERMES_CALLS_TRIGGERS):
+        return {"tool": "calls.list", "params": {"limit": 10}, "summary": "Список звонков"}
+    if any(t in lower for t in _HERMES_BILLING_TRIGGERS):
+        return {
+            "tool": "billing.summary",
+            "params": {},
+            "summary": "Токены, себестоимость USD и баланс",
+        }
+    # Website → KB import (before generic setup phrases)
+    if any(t in lower for t in _WEBSITE_IMPORT_TRIGGERS) or (
+        ("сайт" in lower or ".ru" in lower or ".com" in lower)
+        and any(w in lower for w in ("знание", "базу", "kb", "собери", "парс", "зайди", "импорт"))
+    ):
+        return {
+            "tool": "office.import_website",
+            "params": {"message": text},
+            "summary": "Импорт сайта в базу знаний",
+        }
+    if any(t in lower for t in _HERMES_SETUP_TRIGGERS):
+        return {"tool": "hermes.setup_status", "params": {}, "summary": "Статус сетапа офиса"}
+    # Owner onboarding phrase from Hermes UI bootstrap
+    if "владелец офиса" in lower or ("статус" in lower and "сетап" in lower):
+        return {"tool": "hermes.setup_status", "params": {}, "summary": "Статус сетапа офиса"}
+    return None
+
+
+def parse_setup_intent(message: str) -> dict[str, Any] | None:
+    """Return {tool, params, summary} for cabinet setup commands, or None."""
+    text = message.strip()
+    if not text:
+        return None
+    lower = text.lower()
+
+    hermes = parse_hermes_intent(text)
+    if hermes:
+        return hermes
+
+    for trigger in _SUMMARY_TRIGGERS:
+        if trigger in lower:
+            return {"tool": "get_tenant_summary", "params": {}, "summary": "Показать текущие настройки"}
+
+    for prefix in _KB_PREFIXES:
+        if lower.startswith(prefix):
+            rest = text[len(prefix) :].strip(" :—-")
+            title, body = _split_title_body(rest)
+            if len(body) < 10:
+                return None
+            return {
+                "tool": "upload_knowledge_snippet",
+                "params": {"title": title, "body": body, "visibility": "public"},
+                "summary": f"Добавить в KB: «{title}»",
+            }
+
+    flag = _parse_feature_flag(text)
+    if flag:
+        return flag
+
+    hours = _parse_hours(text)
+    if hours:
+        return hours
+
+    settings = _parse_settings_patch(text)
+    if settings:
+        return settings
+
+    return None

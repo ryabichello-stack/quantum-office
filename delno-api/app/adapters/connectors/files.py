@@ -1,0 +1,118 @@
+from __future__ import annotations
+
+from typing import Any
+
+from app.adapters.connectors.base import ConnectorResult
+from app.adapters.connectors.http_client import get_json, post_json
+from app.core.config import get_settings
+
+
+class FilesConnector:
+    kind = "files"
+
+    def _base(self, config: dict[str, Any]) -> str:
+        return str(config.get("base_url") or get_settings().files_base_url or "").strip()
+
+    def _token(self, config: dict[str, Any]) -> str | None:
+        return (str(config.get("webhook_token") or get_settings().office_webhook_token or "").strip() or None)
+
+    def status(self, *, tenant_slug: str, config: dict[str, Any]) -> ConnectorResult:
+        base = self._base(config)
+        enabled = bool(config.get("enabled", False))
+        if not base:
+            return ConnectorResult(
+                ok=True,
+                configured=False,
+                kind=self.kind,
+                message="Files connector surface ready; set FILES_BASE_URL later",
+                data={
+                    "enabled": enabled,
+                    "tenant_slug": tenant_slug,
+                    "capabilities": ["list", "search", "fetch", "send"],
+                    "sources": [
+                        "mailru",
+                        "yadisk",
+                        "gdrive",
+                        "onedrive",
+                        "local",
+                        "repo",
+                    ],
+                    "creds_policy": "tools_first",
+                },
+            )
+        return ConnectorResult(
+            ok=True,
+            configured=True,
+            kind=self.kind,
+            message="Files upstream configured",
+            data={"enabled": enabled, "base_url": base, "tenant_slug": tenant_slug},
+        )
+
+    def probe(self, *, tenant_slug: str, config: dict[str, Any]) -> ConnectorResult:
+        base = self._base(config)
+        if not base:
+            return ConnectorResult(
+                ok=True,
+                configured=False,
+                kind=self.kind,
+                error="not_configured",
+                message="Files upstream not configured (tools-first stub)",
+                data={"tenant_slug": tenant_slug},
+            )
+        code, body, err = get_json(base, "/health", token=self._token(config))
+        if err or code == 0:
+            return ConnectorResult(ok=False, configured=True, kind=self.kind, error="unreachable", message=err or "unreachable")
+        return ConnectorResult(
+            ok=True,
+            configured=True,
+            kind=self.kind,
+            message="Files health ok",
+            data={"health": body or {}, "status_code": code},
+        )
+
+    def list_entries(
+        self,
+        *,
+        tenant_slug: str,
+        config: dict[str, Any],
+        source: str = "local",
+        path: str = "/",
+    ) -> ConnectorResult:
+        base = self._base(config)
+        if not base:
+            return ConnectorResult(
+                ok=True,
+                configured=False,
+                kind=self.kind,
+                error="not_configured",
+                message="Stub file list — wire FILES_BASE_URL for live sources",
+                data={
+                    "source": source,
+                    "path": path,
+                    "dirs": [],
+                    "files": [],
+                    "entries": [],
+                    "counts": {"dirs": 0, "files": 0, "total": 0},
+                    "stub": True,
+                    "tenant_slug": tenant_slug,
+                },
+            )
+        payload: dict[str, Any] = {"source": source, "path": path}
+        req_creds = config.get("_request_credentials")
+        if isinstance(req_creds, dict) and req_creds:
+            payload["credentials"] = req_creds
+        code, resp, err = post_json(
+            base,
+            "/api/files/list",
+            json=payload,
+            token=self._token(config),
+        )
+        if err:
+            return ConnectorResult(ok=False, configured=True, kind=self.kind, error="list_failed", message=err)
+        return ConnectorResult(
+            ok=True,
+            configured=True,
+            kind=self.kind,
+            message="Files listed",
+            data={"upstream": resp or {}, "status_code": code},
+        )

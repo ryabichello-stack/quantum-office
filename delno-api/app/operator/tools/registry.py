@@ -1,0 +1,159 @@
+from dataclasses import dataclass, field
+from typing import Any, Protocol
+
+from sqlalchemy.orm import Session
+
+from app.core.tenant import TenantContext
+
+
+@dataclass(slots=True)
+class ToolResult:
+    ok: bool
+    data: dict[str, Any] = field(default_factory=dict)
+    message: str = ""
+
+
+@dataclass(slots=True)
+class PendingConfirmation:
+    """Critical write blocked until user confirms (voice or text)."""
+
+    confirmation_id: str
+    tool_name: str
+    summary: str
+    payload: dict[str, Any]
+
+
+class Tool(Protocol):
+    name: str
+    description: str
+    critical_write: bool
+
+    def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult | PendingConfirmation: ...
+
+
+CONFIRMATION_READ = "READ"
+CONFIRMATION_SAFE_WRITE = "SAFE_WRITE"
+CONFIRMATION_HIGH_IMPACT = "HIGH_IMPACT"
+
+# Tools requiring explicit user confirm before execution in cabinet.
+_HIGH_IMPACT_TOOLS = frozenset(
+    {
+        "create_lead",
+        "send_mail_draft",
+        "create_conference",
+        "create_calendar_event",
+        "crm.company_upsert",
+        "crm.lifecycle_set",
+        "outreach.stage_send",
+        "calls.dial",
+        "phones.provision",
+        # Quantum Office MCP writes
+        "telephony.dial",
+        "telephony.assign_task",
+        "telephony.callback",
+        "telephony.inbound_line_set",
+        "telephony.scenario_set",
+        "campaign.start",
+        "campaign.stop",
+        "campaign.set_script",
+        "messenger.send",
+        "telegram.send",
+        "max.send",
+        "outreach.send_one",
+        "outreach.send_batch",
+        "outreach.outbox_set_status",
+        "outreach.settings_set",
+        "outreach.pack_apply",
+        "outreach.rebuild_outbox",
+        "outreach.leads_import",
+        "mail.send",
+        "mailru.send",
+        "mailru.upload",
+        "files.send",
+        "files.upload",
+        "calendar.create",
+        "conference.create",
+    }
+)
+
+
+def tool_confirmation_class(tool: Tool) -> str:
+    if tool.name in _HIGH_IMPACT_TOOLS:
+        return CONFIRMATION_HIGH_IMPACT
+    if getattr(tool, "critical_write", False):
+        return CONFIRMATION_SAFE_WRITE
+    return CONFIRMATION_READ
+
+
+def requires_confirmation(tool: Tool) -> bool:
+    return tool_confirmation_class(tool) != CONFIRMATION_READ
+
+
+class ToolRegistry:
+    def __init__(self) -> None:
+        self._tools: dict[str, Tool] = {}
+
+    def register(self, tool: Tool) -> None:
+        self._tools[tool.name] = tool
+
+    def get(self, name: str) -> Tool | None:
+        return self._tools.get(name)
+
+    def list_catalog(self) -> list[dict[str, Any]]:
+        """Tenant-facing tool inventory (no external credentials required)."""
+        items: list[dict[str, Any]] = []
+        for tool in sorted(self._tools.values(), key=lambda t: t.name):
+            items.append(
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "critical_write": bool(getattr(tool, "critical_write", False)),
+                    "confirmation_class": tool_confirmation_class(tool),
+                    "parameters_schema": getattr(tool, "parameters_schema", {"type": "object", "properties": {}}),
+                }
+            )
+        return items
+
+    @staticmethod
+    def openai_function_name(name: str) -> str:
+        """OpenAI requires ^[a-zA-Z0-9_-]+$ — dotted internal names become underscores."""
+        return (name or "").replace(".", "_")
+
+    def resolve_openai_name(self, name: str) -> str:
+        """Map OpenAI-safe function name back to internal registry name."""
+        raw = (name or "").strip()
+        if not raw:
+            return raw
+        if raw in self._tools:
+            return raw
+        for internal in self._tools:
+            if self.openai_function_name(internal) == raw:
+                return internal
+        return raw
+
+    def list_openai_specs(self, *, names: list[str] | None = None) -> list[dict[str, Any]]:
+        specs: list[dict[str, Any]] = []
+        for tool in self._tools.values():
+            if names is not None and tool.name not in names:
+                continue
+            specs.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": self.openai_function_name(tool.name),
+                        "description": tool.description,
+                        "parameters": getattr(tool, "parameters_schema", {"type": "object", "properties": {}}),
+                    },
+                }
+            )
+        return specs
+
+    def run(self, db: Session, ctx: TenantContext, name: str, **params: Any) -> ToolResult | PendingConfirmation:
+        resolved = self.resolve_openai_name(name)
+        tool = self.get(resolved)
+        if not tool:
+            return ToolResult(ok=False, message=f"Unknown tool: {name}")
+        return tool.run(db, ctx, **params)
+
+
+registry = ToolRegistry()

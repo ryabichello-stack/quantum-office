@@ -1,0 +1,310 @@
+# DELNO isolated stack — copy to /opt/delno/docker-compose.yml on restore
+# Layout expected under /opt/delno (see deploy/restore_cloud4box.sh):
+#   api/ web/ admin/ site/ knowledge/ mail/ files/ calendar/ conference/
+# Secrets: /opt/delno/.env only (never commit). Template: delno-api/.env.example
+
+name: delno
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: delno-postgres
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    environment:
+      POSTGRES_USER: ${DELNO_PG_USER:-delno}
+      POSTGRES_PASSWORD: ${DELNO_PG_PASSWORD:?set DELNO_PG_PASSWORD in .env}
+      POSTGRES_DB: ${DELNO_PG_DB:-delno}
+    volumes:
+      - delno-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DELNO_PG_USER:-delno}"]
+      interval: 5s
+      timeout: 5s
+      retries: 8
+
+  knowledge:
+    build:
+      context: ./knowledge
+      dockerfile: Dockerfile
+    image: delno-knowledge:latest
+    container_name: delno-knowledge
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    environment:
+      BRAIN_ENABLED: "true"
+      BRAIN_DATA_DIR: /data
+      BRAIN_DB_PATH: /data/brain.db
+    volumes:
+      - delno-brain-data:/data
+    ports:
+      - "127.0.0.1:18021:8021"
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    image: delno-api:latest
+    container_name: delno-api
+    restart: unless-stopped
+    networks:
+      - delno-internal
+      - quantum-office
+    # One hostname per entry. Do NOT join names with commas — Docker treats the
+    # whole string as a single hostname and SIP probe (ASTERISK_SIP_APPLY_URL)
+    # breaks with «Name or service not known».
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${DELNO_PG_USER:-delno}:${DELNO_PG_PASSWORD}@postgres:5432/${DELNO_PG_DB:-delno}
+      KNOWLEDGE_BASE_URL: http://knowledge:8021
+      FILES_BASE_URL: ${FILES_BASE_URL:-http://files:8015}
+      MAILER_BASE_URL: ${MAILER_BASE_URL:-http://mail:8000}
+      CALENDAR_BASE_URL: ${CALENDAR_BASE_URL:-http://calendar:8014}
+      CONFERENCE_BASE_URL: ${CONFERENCE_BASE_URL:-http://conference:8016}
+      OFFICE_WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
+      # Quantum Office MCP bridge (archived office-mcp → qo-* brokers)
+      CONSOLE_BASE: ${CONSOLE_BASE:-http://qo-console:8013}
+      OUTREACH_BASE: ${OUTREACH_BASE:-http://qo-outreach:8012}
+      TEXT_BOT_BASE: ${TEXT_BOT_BASE:-http://qo-text-bot:8011}
+      AVA_KNOWLEDGE_BASE: ${AVA_KNOWLEDGE_BASE:-http://qo-knowledge:8017}
+      CALENDAR_BASE: ${CALENDAR_BASE:-http://qo-calendar:8014}
+      FILES_BASE: ${FILES_BASE:-http://qo-files:8015}
+      CONFERENCE_BASE: ${CONFERENCE_BASE:-http://qo-conference:8016}
+      MAILER_BASE: ${MAILER_BASE:-http://qo-mailer:8000}
+      CONSOLE_TOKEN: ${CONSOLE_TOKEN:-}
+      WEBHOOK_TOKEN: ${WEBHOOK_TOKEN:-}
+      OUTREACH_UI_TOKEN: ${OUTREACH_UI_TOKEN:-}
+      # Off unless explicitly enabled. Shared QO tokens are not tenant-isolated;
+      # 1 replaces DELNO crm/outreach stubs with live qo-* handlers.
+      QO_MCP_OVERWRITE: ${QO_MCP_OVERWRITE:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-openai}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_HTTP_PROXY: ${OPENAI_HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      ALL_PROXY: ${ALL_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,postgres,knowledge,mail,calendar,files,conference,api,web,qo-console,qo-outreach,qo-text-bot,qo-knowledge,qo-calendar,qo-files,qo-conference,qo-mailer,console,outreach,host.docker.internal}
+      TELEPHONY_WEBHOOK_TOKEN: ${TELEPHONY_WEBHOOK_TOKEN:-}
+      ONBOARDING_UPLOAD_DIR: ${ONBOARDING_UPLOAD_DIR:-/data/onboarding}
+      TENANT_FILES_ROOT: ${TENANT_FILES_ROOT:-/data/tenants}
+      TENANT_FILES_BACKEND: ${TENANT_FILES_BACKEND:-local}
+      TENANT_FILES_REGION: ${TENANT_FILES_REGION:-ru}
+      HERMES_PROFILES_ROOT: ${HERMES_PROFILES_ROOT:-/data/hermes-profiles}
+      # When 1: legacy mcp_api_key only sees meta tools; Hermes must use run token / X-Delno-Run-Id.
+      DELNO_MCP_STRICT: ${DELNO_MCP_STRICT:-0}
+      DELNO_MCP_DENY_LEGACY_KEY: ${DELNO_MCP_DENY_LEGACY_KEY:-0}
+    volumes:
+      # Persist per-tenant blobs (onboarding + F0 tenant_files tree). Missing = data loss on recreate.
+      - delno-onboarding-uploads:/data/onboarding
+      - delno-tenant-files:/data/tenants
+      # Worker-visible Hermes profile homes (shared with hermes_runtime compose).
+      - hermes-profiles:/data/hermes-profiles
+    ports:
+      - "127.0.0.1:18020:8020"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      knowledge:
+        condition: service_started
+      files:
+        condition: service_started
+      conference:
+        condition: service_started
+      calendar:
+        condition: service_started
+      mail:
+        condition: service_started
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_DELNO_API_URL: ${NEXT_PUBLIC_DELNO_API_URL:-https://api.dlno.ru}
+        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-}
+    image: delno-web:latest
+    container_name: delno-web
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    ports:
+      - "0.0.0.0:3020:3000"
+    depends_on:
+      - api
+
+  site:
+    build:
+      context: ./site
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_BASE_PATH: ""
+    image: delno-site:latest
+    container_name: delno-site
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    environment:
+      DELNO_API_URL: http://api:8020
+      DELNO_TENANT_SLUG: ${DELNO_TENANT_SLUG:-delno-demo}
+      NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY: ${NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY:-}
+      NEXT_PUBLIC_BASE_PATH: ""
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DELNO_TTS_VOICE: ${DELNO_TTS_VOICE:-cedar}
+    ports:
+      - "127.0.0.1:18019:3000"
+    depends_on:
+      - api
+
+  admin:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_DELNO_API_URL: ${NEXT_PUBLIC_DELNO_API_URL:-https://api.dlno.ru}
+    image: delno-admin:latest
+    container_name: delno-admin
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    ports:
+      - "0.0.0.0:3010:3000"
+    depends_on:
+      - api
+
+  files:
+    build:
+      context: ./files
+      dockerfile: Dockerfile
+    image: delno-files:latest
+    container_name: delno-files
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    environment:
+      WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
+      FILES_LOCAL_ALLOWLIST: /data/assets
+      FILES_MAX_BYTES: ${FILES_MAX_BYTES:-47185920}
+      YADISK_TOKEN: ${YADISK_TOKEN:-}
+      MAILRU_WEBDAV_URL: ${MAILRU_WEBDAV_URL:-https://webdav.cloud.mail.ru}
+      MAILRU_WEBDAV_USER: ${MAILRU_WEBDAV_USER:-}
+      MAILRU_WEBDAV_PASSWORD: ${MAILRU_WEBDAV_PASSWORD:-}
+      GOOGLE_DRIVE_TOKEN: ${GOOGLE_DRIVE_TOKEN:-}
+      ONEDRIVE_TOKEN: ${ONEDRIVE_TOKEN:-}
+      MICROSOFT_GRAPH_TOKEN: ${MICROSOFT_GRAPH_TOKEN:-}
+      ONEDRIVE_DRIVE_ROOT: ${ONEDRIVE_DRIVE_ROOT:-me/drive}
+    volumes:
+      - delno-files-assets:/data/assets
+    ports:
+      - "127.0.0.1:18015:8015"
+
+  mail:
+    build:
+      context: ./mail
+      dockerfile: Dockerfile.office
+    image: delno-mail:latest
+    container_name: delno-mail
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    environment:
+      WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
+      MAIL_SMTP_HOST: ${MAIL_SMTP_HOST:-}
+      MAIL_SMTP_PORT: ${MAIL_SMTP_PORT:-465}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-DELNO}
+    ports:
+      - "127.0.0.1:18000:8000"
+
+  calendar:
+    build:
+      context: ./calendar
+      dockerfile: Dockerfile
+    image: delno-calendar:latest
+    container_name: delno-calendar
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    environment:
+      WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
+      CALENDAR_DEFAULT_SOURCE: ${CALENDAR_DEFAULT_SOURCE:-mailru}
+      CALENDAR_TIMEZONE: ${CALENDAR_TIMEZONE:-Europe/Moscow}
+      CONFERENCE_BASE_URL: http://conference:8016
+      MAILRU_CALDAV_URL: ${MAILRU_CALDAV_URL:-https://calendar.mail.ru}
+      MAILRU_CALDAV_USERNAME: ${MAILRU_CALDAV_USERNAME:-}
+      MAILRU_CALDAV_PASSWORD: ${MAILRU_CALDAV_PASSWORD:-}
+      MAILRU_CALENDAR_URL: ${MAILRU_CALENDAR_URL:-}
+      YANDEX_CALDAV_URL: ${YANDEX_CALDAV_URL:-https://caldav.yandex.ru}
+      YANDEX_CALDAV_USERNAME: ${YANDEX_CALDAV_USERNAME:-}
+      YANDEX_CALDAV_PASSWORD: ${YANDEX_CALDAV_PASSWORD:-}
+      YANDEX_CALENDAR_URL: ${YANDEX_CALENDAR_URL:-}
+      GOOGLE_CALENDAR_TOKEN: ${GOOGLE_CALENDAR_TOKEN:-}
+      GOOGLE_CALENDAR_ID: ${GOOGLE_CALENDAR_ID:-primary}
+      OUTLOOK_CALENDAR_TOKEN: ${OUTLOOK_CALENDAR_TOKEN:-}
+      MICROSOFT_GRAPH_TOKEN: ${MICROSOFT_GRAPH_TOKEN:-}
+      OUTLOOK_CALENDAR_ID: ${OUTLOOK_CALENDAR_ID:-}
+    ports:
+      - "127.0.0.1:18014:8014"
+
+  conference:
+    build:
+      context: ./conference
+      dockerfile: Dockerfile
+    image: delno-conference:latest
+    container_name: delno-conference
+    restart: unless-stopped
+    networks:
+      - delno-internal
+    environment:
+      WEBHOOK_TOKEN: ${OFFICE_WEBHOOK_TOKEN:-}
+      CONFERENCE_DEFAULT_PROVIDER: ${CONFERENCE_DEFAULT_PROVIDER:-yandex}
+      CONFERENCE_STUB_WHEN_UNAUTH: ${CONFERENCE_STUB_WHEN_UNAUTH:-true}
+      TELEMOST_ENABLED: ${TELEMOST_ENABLED:-true}
+      TELEMOST_STUB_WHEN_UNAUTH: ${TELEMOST_STUB_WHEN_UNAUTH:-true}
+      YANDEX_OAUTH_CLIENT_ID: ${YANDEX_OAUTH_CLIENT_ID:-}
+      YANDEX_OAUTH_CLIENT_SECRET: ${YANDEX_OAUTH_CLIENT_SECRET:-}
+      YANDEX_OAUTH_ACCESS_TOKEN: ${YANDEX_OAUTH_ACCESS_TOKEN:-}
+      YANDEX_TELEMOST_OAUTH_TOKEN: ${YANDEX_TELEMOST_OAUTH_TOKEN:-}
+      GOOGLE_MEET_TOKEN: ${GOOGLE_MEET_TOKEN:-}
+      GOOGLE_CALENDAR_TOKEN: ${GOOGLE_CALENDAR_TOKEN:-}
+      ZOOM_ACCESS_TOKEN: ${ZOOM_ACCESS_TOKEN:-}
+      ZOOM_ACCOUNT_ID: ${ZOOM_ACCOUNT_ID:-}
+      ZOOM_CLIENT_ID: ${ZOOM_CLIENT_ID:-}
+      ZOOM_CLIENT_SECRET: ${ZOOM_CLIENT_SECRET:-}
+      TEAMS_TOKEN: ${TEAMS_TOKEN:-}
+      MICROSOFT_GRAPH_TOKEN: ${MICROSOFT_GRAPH_TOKEN:-}
+      JITSI_ENABLED: ${JITSI_ENABLED:-true}
+      JITSI_BASE_URL: ${JITSI_BASE_URL:-https://meet.jit.si}
+    ports:
+      - "127.0.0.1:18016:8016"
+
+networks:
+  delno-internal:
+    name: delno-internal
+    driver: bridge
+  quantum-office:
+    # Shared with qo-* brokers on Cloud4Box (office-mcp bridge).
+    external: true
+    name: quantum-office_default
+
+volumes:
+  delno-pg-data:
+    name: delno-pg-data
+  delno-brain-data:
+    name: delno-brain-data
+  delno-files-assets:
+    name: delno-files-assets
+  delno-onboarding-uploads:
+    name: delno-onboarding-uploads
+  delno-tenant-files:
+    name: delno-tenant-files
+  hermes-profiles:
+    name: hermes-profiles

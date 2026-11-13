@@ -1,0 +1,143 @@
+from app.adapters.knowledge import KnowledgeAdapter
+from app.operator.tools.builtin import (
+    CreateLeadTool,
+    GetKnowledgeTool,
+    GetTenantSummaryTool,
+    LookupCompanyByInnTool,
+    SetFeatureFlagTool,
+    UpdateTenantSettingsTool,
+    UploadKnowledgeSnippetTool,
+)
+from app.operator.tools.crm import (
+    CrmCompaniesTool,
+    CrmCompanyUpsertTool,
+    CrmFunnelTool,
+    CrmLeadGetTool,
+    CrmLeadsTool,
+    CrmLifecycleSetTool,
+    CrmSuggestNextTool,
+)
+from app.operator.tools.office import (
+    CheckCalendarTool,
+    CreateCalendarEventTool,
+    CreateConferenceTool,
+    ListFilesTool,
+    SendMailDraftTool,
+    SuggestCalendarSlotsTool,
+)
+from app.operator.tools.outreach import (
+    OutreachDashboardTool,
+    OutreachLeadCheckTool,
+    OutreachPacksTool,
+    OutreachPreviewTool,
+    OutreachStageSendTool,
+    OutreachStatusTool,
+)
+from app.operator.tools.calls import (
+    CallsDialTool,
+    CallsGetTool,
+    CallsJobsTool,
+    CallsListTool,
+    PhonesListTool,
+    PhonesProvisionTool,
+)
+from app.operator.tools.hermes import (
+    HermesAlertsTool,
+    HermesCapabilitiesTool,
+    HermesHealthTool,
+    HermesSetupMarkTool,
+    HermesSetupStatusTool,
+    HermesTasksCreateTool,
+    HermesTasksListTool,
+    HermesTasksPauseTool,
+    HermesTasksResumeTool,
+)
+from app.operator.tools.office_setup import (
+    CredentialsOpenFormTool,
+    FilesCloudListTool,
+    FilesCloudStatusTool,
+    OfficeConnectorSetTool,
+    TelephonyScriptGetTool,
+    TelephonyScriptProposeTool,
+    TelephonyScriptSaveTool,
+    TelephonyToolsSetTool,
+)
+from app.operator.tools.billing_tools import BillingSummaryTool
+from app.operator.tools.media import GenerateImageTool
+from app.operator.tools.web import WebBrowseTool, WebFetchTool, WebResearchTool, WebSearchTool
+from app.operator.tools.website_import_tool import OfficeImportWebsiteTool
+from app.operator.tools.qo_mcp_bridge import register_qo_mcp_tools
+from app.operator.tools.registry import registry
+
+
+def register_builtin_tools() -> None:
+    registry.register(GetKnowledgeTool(KnowledgeAdapter()))
+    registry.register(LookupCompanyByInnTool())
+    registry.register(CreateLeadTool())
+    registry.register(GetTenantSummaryTool())
+    registry.register(UpdateTenantSettingsTool())
+    registry.register(UploadKnowledgeSnippetTool())
+    registry.register(SetFeatureFlagTool())
+    # Office connectors (tools-first stubs)
+    registry.register(CheckCalendarTool())
+    registry.register(CreateCalendarEventTool())
+    registry.register(SuggestCalendarSlotsTool())
+    registry.register(SendMailDraftTool())
+    registry.register(ListFilesTool())
+    registry.register(CreateConferenceTool())
+    # CRM-lite (local leads funnel)
+    registry.register(CrmFunnelTool())
+    registry.register(CrmLeadsTool())
+    registry.register(CrmLeadGetTool())
+    registry.register(CrmCompaniesTool())
+    registry.register(CrmCompanyUpsertTool())
+    registry.register(CrmLifecycleSetTool())
+    registry.register(CrmSuggestNextTool())
+    # Outreach staging (stub until OUTREACH_BASE_URL)
+    registry.register(OutreachStatusTool())
+    registry.register(OutreachDashboardTool())
+    registry.register(OutreachPacksTool())
+    registry.register(OutreachPreviewTool())
+    registry.register(OutreachStageSendTool())
+    registry.register(OutreachLeadCheckTool())
+    # Office OS telephony + Hermes supervisor
+    registry.register(CallsListTool())
+    registry.register(CallsGetTool())
+    registry.register(CallsDialTool())
+    registry.register(CallsJobsTool())
+    registry.register(PhonesListTool())
+    registry.register(PhonesProvisionTool())
+    registry.register(HermesSetupStatusTool())
+    registry.register(HermesSetupMarkTool())
+    registry.register(HermesHealthTool())
+    registry.register(HermesAlertsTool())
+    registry.register(HermesCapabilitiesTool())
+    registry.register(HermesTasksCreateTool())
+    registry.register(HermesTasksListTool())
+    registry.register(HermesTasksPauseTool())
+    registry.register(HermesTasksResumeTool())
+    # Telephony script + cloud disks + secure forms (agent-callable)
+    registry.register(TelephonyScriptGetTool())
+    registry.register(TelephonyScriptProposeTool())
+    registry.register(TelephonyScriptSaveTool())
+    registry.register(TelephonyToolsSetTool())
+    registry.register(FilesCloudStatusTool())
+    registry.register(FilesCloudListTool())
+    registry.register(CredentialsOpenFormTool())
+    registry.register(OfficeConnectorSetTool())
+    # Hermes browser / web
+    registry.register(WebSearchTool())
+    registry.register(WebFetchTool())
+    registry.register(WebBrowseTool())
+    registry.register(WebResearchTool())
+    registry.register(OfficeImportWebsiteTool())
+    registry.register(BillingSummaryTool())
+    registry.register(GenerateImageTool())
+    # Archived Quantum Office MCP catalog → live QO brokers.
+    # Default: fill gaps only (keep DELNO crm.*/outreach.* stubs for CI/unit tests
+    # and the current cabinet). Set QO_MCP_OVERWRITE=1 to prefer live qo-* handlers
+    # for overlaps — shared QO tokens are not tenant-isolated.
+    import os
+
+    overwrite = (os.getenv("QO_MCP_OVERWRITE") or "").strip().lower() in {"1", "true", "yes", "on"}
+    register_qo_mcp_tools(overwrite=overwrite)

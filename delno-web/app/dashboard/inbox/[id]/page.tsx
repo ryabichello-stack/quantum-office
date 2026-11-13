@@ -1,0 +1,122 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import { useRequireAuth } from "@/lib/auth";
+import {
+  apiConversationDetail,
+  apiConversationMessages,
+  type ConversationDetail,
+  type KnowledgeSource,
+  type MessageItem,
+} from "@/lib/api";
+import { ConversationHeader } from "@/components/ConversationHeader";
+import { DelnoResultCard } from "@/components/DelnoResultCard";
+import { VoicePlayback } from "@/components/VoicePlayback";
+
+export default function InboxThreadPage() {
+  const params = useParams();
+  const conversationId = String(params.id || "");
+  const { token } = useRequireAuth();
+  const [detail, setDetail] = useState<ConversationDetail | null>(null);
+  const [items, setItems] = useState<MessageItem[]>([]);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!token || !conversationId) return;
+    setError("");
+    Promise.all([
+      apiConversationDetail(token, conversationId),
+      apiConversationMessages(token, conversationId),
+    ])
+      .then(([conv, messages]) => {
+        setDetail(conv);
+        setItems(messages.items);
+      })
+      .catch(() => setError("Не удалось загрузить диалог"));
+  }, [token, conversationId]);
+
+  const call = detail?.call_session;
+  const summaryText = detail?.summary || call?.summary || null;
+  const summaryBlock = summaryText ? (
+    <DelnoResultCard
+      subtitle={call ? "Память звонка" : "Итог разговора"}
+      body={summaryText}
+      tags={detail?.tags}
+    />
+  ) : null;
+
+  return (
+    <div className="hx-app hx-page">
+      <div className="hx-page-body is-wide" style={{ maxWidth: 820 }}>
+        <ConversationHeader detail={detail} />
+
+        {error && <p className="hx-inline-error">{error}</p>}
+
+        {items.length > 0 && (
+          <div className="timeline-label">{formatDate(items[0]?.created_at)}</div>
+        )}
+
+        <VoicePlayback
+          recordingUrl={detail?.recording_url}
+          durationSec={detail?.recording_duration_sec ?? call?.duration_sec ?? undefined}
+        />
+
+        {summaryBlock}
+
+        {call?.transcript ? (
+          <details className="call-transcript">
+            <summary>Транскрипт звонка</summary>
+            <pre className="call-transcript-body">{call.transcript}</pre>
+          </details>
+        ) : null}
+
+        {detail?.tags && detail.tags.length > 0 && !summaryText && (
+          <DelnoResultCard body="Краткий итог пока не сформирован." tags={detail.tags} />
+        )}
+
+        {items.map((msg) => (
+          <div key={msg.id}>
+            {msg.role === "assistant" ? (
+              <DelnoResultCard
+                body={msg.body}
+                sources={
+                  Array.isArray((msg.meta as { sources?: KnowledgeSource[] } | null)?.sources)
+                    ? (msg.meta as { sources: KnowledgeSource[] }).sources
+                    : undefined
+                }
+              />
+            ) : (
+              <div className="msg-bubble user">
+                <div className="msg-meta">{formatTime(msg.created_at)}</div>
+                <div className="msg-body">{msg.body}</div>
+              </div>
+            )}
+          </div>
+        ))}
+
+        {!error && items.length === 0 && detail && (
+          <p className="hx-muted">Сообщений пока нет</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function formatDate(iso: string | null | undefined) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleString("ru-RU", { dateStyle: "long", timeStyle: "short" });
+  } catch {
+    return iso;
+  }
+}
+
+function formatTime(iso: string | null) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleString("ru-RU", { timeStyle: "short" });
+  } catch {
+    return iso;
+  }
+}
