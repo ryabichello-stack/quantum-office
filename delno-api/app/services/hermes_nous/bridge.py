@@ -124,11 +124,14 @@ def create_run(
     headers = {"Idempotency-Key": idempotency_key or f"delno-{run_id_hint}"}
     # Pass run token via header Hermes can map into MCP env (DELNO injects at gateway).
     headers["X-Delno-Run-Token"] = issued.token
+    tool_hint = ", ".join(tools[:24])
     payload: dict[str, Any] = {
         "input": message,
         "session_id": session_id or f"delno-{ctx.tenant_id}-{ctx.user_id or 'owner'}",
         "instructions": (
-            "You are the company Hermes agent. Use DELNO MCP tools only. "
+            "You are the company Hermes agent. Use DELNO MCP tools only "
+            f"(delno_office). Granted tools include: {tool_hint}. "
+            "For pictures call generate_image. For Ava telephony use phones.*/calls.*/telephony.*. "
             "Do not invent credentials. Show observable plan steps."
         ),
     }

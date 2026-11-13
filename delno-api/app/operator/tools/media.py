@@ -52,22 +52,56 @@ class GenerateImageTool:
         base = (settings.openai_base_url or "https://api.openai.com/v1").rstrip("/")
         proxy = (getattr(settings, "openai_http_proxy", None) or "").strip() or None
 
-        # dall-e-3 is widely available; try gpt-image-1 first when account supports it.
-        models = ["gpt-image-1", "dall-e-3"]
+        # Prefer payloads that work on both OpenAI and strict proxies
+        # (some gateways reject legacy `response_format`).
+        attempts: list[tuple[str, dict[str, Any]]] = [
+            (
+                "gpt-image-1",
+                {
+                    "model": "gpt-image-1",
+                    "prompt": prompt[:4000],
+                    "size": size if size == "1024x1024" else "1024x1024",
+                    "n": 1,
+                },
+            ),
+            (
+                "dall-e-3",
+                {
+                    "model": "dall-e-3",
+                    "prompt": prompt[:4000],
+                    "size": "1024x1024",
+                    "n": 1,
+                },
+            ),
+            (
+                "dall-e-3-b64",
+                {
+                    "model": "dall-e-3",
+                    "prompt": prompt[:4000],
+                    "size": "1024x1024",
+                    "n": 1,
+                    "response_format": "b64_json",
+                },
+            ),
+            (
+                "dall-e-2",
+                {
+                    "model": "dall-e-2",
+                    "prompt": prompt[:1000],
+                    "size": "1024x1024",
+                    "n": 1,
+                },
+            ),
+        ]
+
         last_error = "image_generation_failed"
-        for model in models:
-            payload: dict[str, Any] = {
-                "model": model,
-                "prompt": prompt[:4000],
-                "size": "1024x1024" if model == "dall-e-3" else size,
-                "n": 1,
-            }
-            if model == "dall-e-3":
-                payload["response_format"] = "b64_json"
+        client_kwargs: dict[str, Any] = {"timeout": 120.0}
+        if proxy:
+            client_kwargs["proxy"] = proxy
+
+        for label, payload in attempts:
+            model = str(payload.get("model") or label)
             try:
-                client_kwargs: dict[str, Any] = {"timeout": 120.0}
-                if proxy:
-                    client_kwargs["proxy"] = proxy
                 with httpx.Client(**client_kwargs) as client:
                     res = client.post(
                         f"{base}/images/generations",
@@ -78,7 +112,8 @@ class GenerateImageTool:
                         json=payload,
                     )
                 if res.status_code >= 400:
-                    last_error = f"http_{res.status_code}: {(res.text or '')[:200]}"
+                    last_error = f"http_{res.status_code}: {(res.text or '')[:240]}"
+                    # Unknown parameter / model → try next shape.
                     continue
                 body = res.json()
                 data = (body.get("data") or [{}])[0]

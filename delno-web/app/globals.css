@@ -1492,11 +1492,27 @@ p {
   margin-bottom: 8px;
 }
 
-.hx-previews img {
+.hx-previews img,
+.hx-previews video {
   width: 108px;
   height: 80px;
   object-fit: cover;
   border-radius: 10px;
+  background: #111;
+}
+
+.hx-preview-file {
+  display: inline-flex;
+  align-items: center;
+  max-width: 160px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.06);
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hx-sources {

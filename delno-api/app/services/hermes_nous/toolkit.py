@@ -77,6 +77,8 @@ def get_toolkit(db: Session, ctx: TenantContext) -> dict[str, Any]:
 
     checks = setup.get("checks") if isinstance(setup, dict) else {}
     telephony_check = (checks or {}).get("telephony") or (checks or {}).get("phone") or {}
+    phone_detail = telephony_check.get("detail") if isinstance(telephony_check, dict) else {}
+    ava_detail = _format_ava_detail(phone_detail, ready=bool(telephony_check.get("ok")))
 
     return {
         "ok": True,
@@ -95,7 +97,8 @@ def get_toolkit(db: Session, ctx: TenantContext) -> dict[str, Any]:
         "ava": {
             "label": "Ava · телефония",
             "ready": bool(telephony_check.get("ok")),
-            "detail": telephony_check.get("detail") or telephony_check.get("hint") or "",
+            "detail": ava_detail,
+            "status": phone_detail if isinstance(phone_detail, dict) else {},
             "tools": ava_tools,
         },
         "media": {"tools": media_tools},
@@ -109,3 +112,29 @@ def get_toolkit(db: Session, ctx: TenantContext) -> dict[str, Any]:
             for t in sorted(catalog.values(), key=lambda x: x["name"])
         ],
     }
+
+
+def _format_ava_detail(detail: Any, *, ready: bool) -> str:
+    if ready:
+        return "Ava готова: DID и SIP зарегистрированы."
+    if isinstance(detail, str) and detail.strip():
+        return detail.strip()
+    if not isinstance(detail, dict):
+        return "Телефония Ava ещё не настроена — подключите SIP и номер."
+    dids = detail.get("active_dids")
+    sip_ok = bool(detail.get("sip_configured"))
+    reg_ok = bool(detail.get("registration_ok"))
+    reg_msg = str(detail.get("registration_message") or "").strip()
+    parts: list[str] = []
+    if dids in (0, "0", None):
+        parts.append("нет активных DID")
+    else:
+        parts.append(f"DID: {dids}")
+    parts.append("SIP в vault" if sip_ok else "SIP не сохранён")
+    if reg_ok:
+        parts.append("регистрация OK")
+    elif reg_msg:
+        parts.append(reg_msg)
+    else:
+        parts.append("регистрация не подтверждена")
+    return " · ".join(parts)

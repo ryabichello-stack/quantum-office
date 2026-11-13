@@ -44,6 +44,26 @@ class OperatorConfirmRequest(BaseModel):
     params: dict = Field(default_factory=dict)
 
 
+def _wants_media_generation(message: str) -> bool:
+    """Route image/video generation asks to DIY tools (reliable OpenAI Images path)."""
+    low = (message or "").lower()
+    markers = (
+        "generate_image",
+        "сгенерируй картин",
+        "сгенерируй изображ",
+        "создай картин",
+        "нарисуй",
+        "сгенерируй фото",
+        "сделай картин",
+        "сделай изображ",
+        "generate an image",
+        "generate image",
+        "draw me",
+        "create an image",
+    )
+    return any(m in low for m in markers)
+
+
 @router.post("/chat")
 def operator_chat(
     body: OperatorChatRequest,
@@ -56,12 +76,15 @@ def operator_chat(
     if not message and not attachments:
         raise HTTPException(status_code=422, detail="message_or_attachment_required")
 
+    # Attachments + media-generation intents stay on DIY (Images API / vision / STT).
+    prefer_diy = bool(attachments) or _wants_media_generation(message)
+
     # Feature-flagged Nous Hermes runtime (Stage 0+). DIY loop remains fallback.
     try:
         from app.services.hermes_nous.bridge import HermesBridgeError, create_run
         from app.services.hermes_nous.flags import is_hermes_nous_enabled
 
-        if is_hermes_nous_enabled(db, ctx) and message and not attachments:
+        if is_hermes_nous_enabled(db, ctx) and message and not prefer_diy:
             try:
                 from app.services.hermes_nous.tool_packs import pack_for_mode
 

@@ -8,13 +8,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.api.v1.operator import _wants_media_generation
 from app.core.db import Base
 from app.core.tenant import TenantContext
 from app.models.feature_flag import FeatureFlag
 from app.models.tenant import Tenant
 from app.models.user import User  # noqa: F401
 from app.operator.tools import register_builtin_tools
-from app.operator.tools.registry import registry
+from app.operator.tools.media import GenerateImageTool
+from app.operator.tools.registry import ToolResult, registry
 from app.services.hermes_nous.toolkit import get_toolkit
 
 
@@ -23,6 +25,58 @@ def test_generate_image_registered():
     tool = registry.get("generate_image")
     assert tool is not None
     assert "prompt" in (tool.parameters_schema.get("properties") or {})
+
+
+def test_wants_media_generation_routes():
+    assert _wants_media_generation("Сгенерируй картинку: робот")
+    assert _wants_media_generation("Please generate an image of a cat")
+    assert not _wants_media_generation("Какие звонки были сегодня?")
+
+
+def test_generate_image_tries_fallback_without_response_format(monkeypatch):
+    """Proxies that reject response_format must still succeed via URL payload."""
+    register_builtin_tools()
+    calls: list[dict] = []
+
+    class _Resp:
+        def __init__(self, status: int, payload: dict):
+            self.status_code = status
+            self._payload = payload
+            self.text = str(payload)
+
+        def json(self):
+            return self._payload
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def post(self, url, headers=None, json=None):
+            calls.append(json or {})
+            if "response_format" in (json or {}):
+                return _Resp(400, {"error": {"message": "Unknown parameter: 'response_format'."}})
+            if (json or {}).get("model") == "gpt-image-1":
+                return _Resp(404, {"error": {"message": "model_not_found"}})
+            return _Resp(200, {"data": [{"url": "https://cdn.example/img.png"}]})
+
+    monkeypatch.setattr("app.operator.tools.media.httpx.Client", _Client)
+    monkeypatch.setattr(
+        "app.operator.tools.media.get_settings",
+        lambda: type("S", (), {"openai_api_key": "sk-test", "openai_base_url": "https://api.openai.com/v1", "openai_http_proxy": ""})(),
+    )
+
+    tool = GenerateImageTool()
+    result = tool.run(None, None, prompt="yellow circle logo")  # type: ignore[arg-type]
+    assert isinstance(result, ToolResult)
+    assert result.ok is True
+    assert "cdn.example" in (result.data or {}).get("markdown", "")
+    assert any("response_format" not in c and c.get("model") == "dall-e-3" for c in calls)
 
 
 def test_toolkit_includes_ava_tools(monkeypatch):

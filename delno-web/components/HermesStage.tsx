@@ -93,7 +93,7 @@ type ChatLine = {
   credentialForm?: CredentialFormSpec | null;
   download?: PendingDownload | null;
   suggestions?: SuggestedAction[];
-  previews?: { url: string; name: string }[];
+  previews?: { url: string; name: string; kind?: "image" | "video" | "file" }[];
 };
 
 function triggerMarkdownDownload(file: PendingDownload) {
@@ -265,12 +265,20 @@ export function HermesStage({ token }: { token: string }) {
       setError("");
       setActivePending(null);
       const previews = attachSource
-        .filter((a) => a.previewUrl)
-        .map((a) => ({ url: a.previewUrl!, name: a.filename }));
+        .filter((a) => a.previewUrl || a.kind === "file")
+        .map((a) => ({
+          url: a.previewUrl || "",
+          name: a.filename,
+          kind: a.kind,
+        }));
       const label =
         question ||
         (attachSource.length
-          ? attachSource.map((a) => (a.kind === "image" ? `🖼 ${a.filename}` : `📎 ${a.filename}`)).join(" ")
+          ? attachSource
+              .map((a) =>
+                a.kind === "image" ? `🖼 ${a.filename}` : a.kind === "video" ? `🎬 ${a.filename}` : `📎 ${a.filename}`,
+              )
+              .join(" ")
           : "");
       if (modality === "text") {
         setLines((prev) => [...prev, { role: "user", text: label, previews }]);
@@ -774,10 +782,18 @@ export function HermesStage({ token }: { token: string }) {
                     <div className="hx-bubble hx-bubble-user">
                       {line.previews && line.previews.length > 0 && (
                         <div className="hx-previews">
-                          {line.previews.map((p) => (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img key={p.url} src={p.url} alt={p.name} />
-                          ))}
+                          {line.previews.map((p, i) =>
+                            p.kind === "video" && p.url ? (
+                              <video key={`${p.name}-${i}`} src={p.url} controls playsInline preload="metadata" />
+                            ) : p.url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img key={`${p.name}-${i}`} src={p.url} alt={p.name} />
+                            ) : (
+                              <span key={`${p.name}-${i}`} className="hx-preview-file">
+                                {p.name}
+                              </span>
+                            ),
+                          )}
                         </div>
                       )}
                       <HermesMessageBody text={line.text} className="hx-text" />

@@ -114,6 +114,8 @@ HERMES_AGENT_SYSTEM = (
     "• files.cloud_* / credentials.open_form — облака и секреты "
     "(SIP: mango_sip; диски: files_yadisk|mailru|gdrive|onedrive; Google/OneDrive с согласием);\n"
     "• suggest_calendar_slots / send_mail_draft / create_conference / list_files — офис;\n"
+    "• generate_image — создай картинку/мокап/обложку по текстовому промпту "
+    "(НЕ отказывайся «я не умею рисовать» — сразу вызови tool);\n"
     "• billing.summary — баланс.\n"
     "Правила:\n"
     "• Секреты в чат не проси — только credentials.open_form.\n"
