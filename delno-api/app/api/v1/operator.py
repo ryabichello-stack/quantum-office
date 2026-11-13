@@ -289,6 +289,20 @@ def _wants_get_knowledge(message: str) -> bool:
 
 def _wants_files_cloud_status(message: str) -> bool:
     low = (message or "").lower()
+    # Imperative connect («подключи / настрой») → vault form, not status DIY.
+    # Past/participle «подключены» is status and must stay here.
+    if any(
+        m in low
+        for m in (
+            "подключи",
+            "подключить",
+            "настрой",
+            "настроить",
+            "открой форму",
+            "пришли форму",
+        )
+    ):
+        return False
     return any(
         m in low
         for m in (
@@ -297,14 +311,9 @@ def _wants_files_cloud_status(message: str) -> bool:
             "какие диск",
             "облака подключен",
             "облако подключен",
-            "яндекс.диск",
-            "яндекс диск",
-            "yadisk",
+            "статус облак",
             "cloud status",
             "cloud disks",
-            "google drive",
-            "onedrive",
-            "mail.ru диск",
         )
     ) and any(
         m in low
@@ -318,6 +327,7 @@ def _wants_files_cloud_status(message: str) -> bool:
             "mail.ru",
             "файлы",
             "files.cloud",
+            "яндекс",
         )
     )
 
@@ -592,9 +602,25 @@ def _credential_form_kind_from_message(
             setup_next_id == "max" and ("max" in low or "макс" in low)
         ):
             return "max_bot"
-    if setup_next_id == "files" and any(
-        m in low for m in ("файл", "диск", "yadisk", "яндекс", "облак", "mail.ru", "gdrive", "onedrive")
-    ):
+    # Files / cloud disks — connect intent opens vault even after setup_complete
+    # (conduct phase still needs CredentialFormCard; Nous cannot show it).
+    cloudish = any(
+        m in low
+        for m in (
+            "файл",
+            "диск",
+            "yadisk",
+            "яндекс",
+            "облак",
+            "mail.ru",
+            "gdrive",
+            "onedrive",
+            "google",
+            "гугл",
+            "drive",
+        )
+    )
+    if (connectish or setup_next_id == "files") and cloudish:
         if "mail.ru" in low or "mailru" in low:
             return "files_mailru"
         if "gdrive" in low or "google" in low or "гугл" in low:

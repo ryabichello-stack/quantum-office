@@ -47,5 +47,13 @@ def test_wants_hermes_capabilities():
 def test_wants_files_cloud_status():
     assert _wants_files_cloud_status("какие облака подключены")
     assert _wants_files_cloud_status("files.cloud_status")
-    assert _wants_files_cloud_status("статус яндекс диск")
+    assert _wants_files_cloud_status("статус облаков")
+    assert not _wants_files_cloud_status("подключи яндекс диск")
     assert not _wants_files_cloud_status("перечисли номера")
+
+
+def test_credential_form_yandex_connect_in_conduct():
+    from app.api.v1.operator import _credential_form_kind_from_message
+
+    assert _credential_form_kind_from_message("подключи яндекс диск") == "files_yadisk"
+    assert _credential_form_kind_from_message("настрой Google Drive") == "files_gdrive"

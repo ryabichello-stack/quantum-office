@@ -30,6 +30,7 @@
 - Conduct DIY: `get_knowledge` for clear KB asks (Nous was routing to hosted greptile_mcp instead of delno_office)
 - Conduct DIY: `hermes.capabilities` for connector/tool inventory asks (Nous used bare name + hallucinated readiness)
 - Conduct DIY: `files.cloud_status` for «какие облака подключены» / cloud disk inventory
+- Conduct: «подключи Яндекс.Диск» opens `files_yadisk` vault form even after setup_complete (was stolen by cloud-status DIY)
 
 ### Changed
 
