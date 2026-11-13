@@ -188,7 +188,10 @@ def create_run(
         "instructions": (
             f"You are the company Hermes agent for THIS tenant only. {mission}{context_line} "
             f"Logical grants (map to mcp__delno_office__*): {tool_hint}. "
-            "Do not invent credentials. Show observable plan steps in Russian."
+            "Do not invent credentials. "
+            "Act as a normal multi-step agent: (1) short numbered plan in Russian, "
+            "(2) call tools for each step in order, (3) final report of what was done. "
+            "Never collapse a multi-part request into a single canned reply."
         ),
     }
     url = f"{runtime['base_url']}/v1/runs"
