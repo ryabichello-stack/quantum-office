@@ -14,7 +14,8 @@ workers/<worker_id>/profiles/<profile_id>/
 
 DELNO API talks to them at `/p/<profile_id>/v1/runs` (OpenAI-compat fallback
 `/p/<profile_id>/v1/chat/completions`). Business tools come from DELNO MCP with
-**scoped run tokens** — never a shared long-lived `DELNO_MCP_KEY` on the worker.
+**scoped run tokens**. Worker process env keeps `DELNO_MCP_KEY` empty; each
+company profile `.env` may hold that tenant's own MCP key for Hermes MCP connect.
 
 Capacity per worker: `HERMES_WORKER_MAX_PROFILES` (default **64**). Two dogfood
 workers → up to 128 companies without adding containers. Raise the env or add
@@ -36,6 +37,6 @@ Image build uses **Python 3.14** + `uv sync --frozen --extra messaging`.
 ## Do not
 
 - Deploy over Asterisk / `trunk_id` telephony
-- Set a shared `DELNO_MCP_KEY` on a multiplex worker (use run tokens)
+- Set a shared `DELNO_MCP_KEY` on the **worker process** (put per-tenant keys only in `profiles/<id>/.env`)
 - `curl | bash` unpinned install on prod
 - Point two workers at the **same** `workers/<id>` root (each worker owns its subtree)
