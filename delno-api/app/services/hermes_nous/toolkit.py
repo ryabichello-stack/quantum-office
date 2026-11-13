@@ -80,6 +80,7 @@ def get_toolkit(db: Session, ctx: TenantContext) -> dict[str, Any]:
         "web.browse",
         "office.import_website",
         "office.build_kb_draft",
+        "office.confirm_kb_draft",
         "create_conference",
     ):
         meta = catalog.get(tid)

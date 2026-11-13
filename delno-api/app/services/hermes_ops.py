@@ -29,6 +29,8 @@ _OWNER_KB_SOURCES = {
     "tenant.knowledge.upload",
     "cabinet.upload",
     "onboarding.website",
+    "operator.knowledge_snippet",
+    "office_loop.kb_draft_confirm",
 }
 
 _SEED_KB_SOURCES = {
@@ -75,7 +77,17 @@ def company_knowledge_ready(db: Session, ctx: TenantContext, *, hermes: dict[str
         ):
             return {"ok": True, "detail": "knowledge_event", "source": source or title}
         # Explicit company-profile titles from owner uploads
-        if any(k in title for k in ("профиль компании", "о компании", "company profile", "о нас")):
+        if any(
+            k in title
+            for k in (
+                "профиль компании",
+                "коммерческий профиль",
+                "о компании",
+                "company profile",
+                "о нас",
+                "quantum payouts",
+            )
+        ):
             if source_l.startswith("onboarding") and "welcome" in source_l:
                 continue
             return {"ok": True, "detail": "knowledge_title", "source": title}

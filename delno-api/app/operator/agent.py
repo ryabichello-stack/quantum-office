@@ -97,6 +97,7 @@ CABINET_LLM_TOOLS = (
     "web.research",
     "office.import_website",
     "office.build_kb_draft",
+    "office.confirm_kb_draft",
     "billing.summary",
 )
 
@@ -124,12 +125,17 @@ HERMES_AGENT_SYSTEM = (
     "«собрал черновик, подтвердите»; next-step вопросы — после текста профиля;\n"
     "4) «покажи что нашёл / покажи черновик / покажи профиль» → get_knowledge "
     "или текст уже собранного draft; НЕ говори «KB пусто», если tool вернул draft.\n"
-    "5) доспроси пробелы (TG/IG/VK, прайс). Commit — только после подтверждения.\n"
+    "5) доспроси пробелы (TG/IG/VK, прайс). "
+    "«положи в кб / подтверди черновик» → office.confirm_kb_draft "
+    "(НЕ upload_knowledge_snippet + вторая кнопка «Готов выполнить»).\n"
+    "6) «давай дальше / следующий шаг» после KB → hermes.setup_status и следующий "
+    "connector (телефон/каналы/…). Не предлагай снова положить тот же профиль в KB.\n"
     "Запрещено: web.research → office.import_website → upload_knowledge_snippet "
     "с одним «Готов выполнить: добавить в KB» без текста профиля.\n"
     "\n"
     "Каталог tools (выбираешь сам по смыслу задачи):\n"
     "• office.build_kb_draft — сбор/обогащение коммерческой KB (предпочтительно при онбординге);\n"
+    "• office.confirm_kb_draft — «положи в кб» после черновика (закрывает шаг знаний);\n"
     "• web.search / web.fetch / web.browse / web.research — открытый интернет; "
     "разовый разбор URL, когда KB уже ok или вопрос не про сбор базы "
     "(не выдумывай содержимое страницы);\n"

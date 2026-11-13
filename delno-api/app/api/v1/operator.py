@@ -669,6 +669,30 @@ def _wants_web_research(message: str) -> bool:
     return False
 
 
+def _wants_confirm_kb_draft(message: str) -> bool:
+    """Owner explicitly commits the commercial draft — not a second confirm card."""
+    low = (message or "").lower()
+    return any(
+        m in low
+        for m in (
+            "положи в кб",
+            "положи в базу",
+            "положи в kb",
+            "положи черновик",
+            "подтверди черновик",
+            "подтверди kb",
+            "подтверди базу",
+            "сохрани в базу",
+            "сохрани в кб",
+            "сохрани профиль",
+            "запиши в базу",
+            "запиши в кб",
+            "commit draft",
+            "confirm draft",
+        )
+    )
+
+
 def _wants_show_kb_findings(message: str) -> bool:
     """«покажи что нашёл / черновик / профиль» — agent work over office_loop draft, not empty DIY KB."""
     low = (message or "").lower()
@@ -1138,7 +1162,7 @@ def operator_chat(
     wants_sched_list = _agent_schedule.wants_tasks_list(message) if message else False
 
     # KB co-build / enrichment is agent work (plan → tools → draft), not a DIY robot path.
-    _kb_agent_goal = _wants_kb_agent_work(message)
+    _kb_agent_goal = _wants_kb_agent_work(message) or _wants_confirm_kb_draft(message)
 
     # Attachments + clear single-intent shortcuts stay on DIY — unless agent_mode.
     # Web research DIY only when NOT building/enriching company KB (that belongs to the agent).
@@ -1165,6 +1189,45 @@ def operator_chat(
     if _kb_agent_goal:
         agent_mode = True
         prefer_diy = False
+
+    # «положи в кб» with an existing draft → commit immediately (text IS the confirm).
+    # Do not open a second upload_knowledge_snippet card.
+    if _wants_confirm_kb_draft(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+        from app.services.hermes_nous.onboarding import get_office_loop
+
+        register_builtin_tools()
+        confirm_res = registry.run(db, ctx, "office.confirm_kb_draft")
+        if isinstance(confirm_res, ToolResult) and confirm_res.ok:
+            status_res = registry.run(db, ctx, "hermes.setup_status")
+            next_hint = ""
+            if isinstance(status_res, ToolResult) and status_res.ok:
+                data = status_res.data or {}
+                steps = data.get("next_steps") or []
+                if isinstance(steps, list) and steps:
+                    nxt = steps[0] if isinstance(steps[0], dict) else {}
+                    next_hint = (
+                        f"\n\nДальше: {nxt.get('title') or 'инструменты'}. "
+                        f"{nxt.get('hint') or ''}".rstrip()
+                    )
+            return _finish_diy(
+                db,
+                ctx,
+                body,
+                modality=modality,
+                engine="diy_confirm_kb_draft",
+                reply=(confirm_res.message or "Черновик в KB.") + next_hint,
+                tool_calls=[
+                    {"tool": "office.confirm_kb_draft", "ok": True},
+                    {
+                        "tool": "hermes.setup_status",
+                        "ok": isinstance(status_res, ToolResult) and status_res.ok,
+                    },
+                ],
+                office_loop=get_office_loop(db, ctx),
+            )
+        # No draft / failed → fall through to agent to rebuild or explain.
 
     # Periodic поручения — create / list (before agent/Nous).
     if not attachments and (schedule_intent or wants_sched_list):

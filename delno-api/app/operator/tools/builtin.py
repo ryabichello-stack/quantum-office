@@ -366,6 +366,18 @@ class UploadKnowledgeSnippetTool:
             resource="knowledge",
             new_value={"title": title, "document_id": result.get("document_id")},
         )
+        # Close the office KB setup step — otherwise «давай дальше» re-opens the same confirm.
+        try:
+            from app.services import hermes_ops
+
+            hermes_ops.mark_setup_progress(
+                db,
+                ctx,
+                kb_ready=True,
+                note="operator.knowledge_snippet",
+            )
+        except Exception:
+            pass
         db.commit()
         return ToolResult(
             ok=True,

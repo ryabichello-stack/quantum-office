@@ -30,6 +30,7 @@
 
 ### Fixed
 
+- Hermes onboarding: «положи в кб» commits via `office.confirm_kb_draft` (no second upload confirm card); `upload_knowledge_snippet` marks `kb_ready` so «давай дальше» advances to connectors instead of re-proposing the same KB add
 - Hermes agent final answer: removed hard `max_tokens=900` that crushed commercial KB drafts into a status blurb; KB turns now get up to 24k completion tokens; if the model still summarizes, surface `office.build_kb_draft` text; `get_knowledge` returns office_loop draft when published KB is empty («покажи что нашёл»)
 - Hermes empty-state orb: size via `--mount-size` clamp (layout box = visual box) and full-width flex center under the headline — no hardcoded 120px scale box; rebuild `delno-web` so app.dlno.ru picks it up
 - Website import: do not stop at a single short `<p>` — fall back to full visible page text (li/div) so marketing sites like Quantum Payouts yield real KB, not only meta description
