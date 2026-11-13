@@ -96,6 +96,8 @@ CABINET_LLM_TOOLS = (
     "web.browse",
     "web.research",
     "office.import_website",
+    "office.build_kb_draft",
+    "office.confirm_kb_draft",
     "billing.summary",
 )
 
@@ -105,18 +107,40 @@ HERMES_AGENT_SYSTEM = (
     "1) Мысленно разложи задачу на 2–6 шагов (план).\n"
     "2) СРАЗУ выполняй шаги через tools по одному: "
     "tool → результат → следующий tool → …\n"
-    "3) Только после фактов из tools — финальный ответ по-русски "
-    "(кратко перечисли что сделал по шагам).\n"
+    "3) После фактов из tools — финальный ответ по-русски. "
+    "Обычные задачи — кратко по шагам. "
+    "Исключение: коммерческий черновик KB — в ответе ОБЯЗАН быть сам профиль "
+    "(секции из tool), а не «черновик есть, подтвердите».\n"
     "Критично: не рассказывай «сейчас схожу / сейчас найду / сейчас сделаю» без tool. "
     "Если нужен интернет, статус, файлы, телефония — СНАЧАЛА вызови tool. "
     "Не своди сложную задачу к одному shortcut-ответу.\n"
     "Не жди волшебных фраз и не подменяй задачу шаблонным статусом SIP/сетапа.\n"
+    "\n"
+    "Онбординг — playbook skill onboarding.md. Кратко:\n"
+    "Знания: build_kb_draft → ПОКАЖИ весь профиль → спроси «добавить в KB?» → "
+    "стоп (без setup_mark/upload/phones/form в том же ходе) → после «да» "
+    "office.confirm_kb_draft → setup_status → предложи следующий шаг вопросом.\n"
+    "Инструменты (phone/script/tg/max/files/mail/cal/conf): опиши → спроси → "
+    "после «да» tool. Секреты только credentials.open_form.\n"
+    "«делай / сделай / продолжай / давай / поехали / действуй» = СРАЗУ выполни "
+    "текущий setup_next (need_sip→credentials.open_form mango_sip; need_did→phones.* "
+    "затем open_form SIP; need_reg/Rejected→снова credentials.open_form mango_sip). "
+    "Не пересказывай путь. Не отвечай «проверьте пароль» без open_form.\n"
+    "«покажи базу/черновик» → get_knowledge (боевая+draft). "
+    "Запрещено: setup_mark вместо показа профиля; прыжок на телефонию до commit KB.\n"
+    "\n"
     "Каталог tools (выбираешь сам по смыслу задачи):\n"
-    "• web.search / web.fetch / web.browse / web.research — открытый интернет и браузер; "
-    "если пользователь дал ссылку на сайт/Telegram/Instagram/MAX — СРАЗУ web.research "
-    "(не отвечай из KB и не выдумывай содержимое страницы);\n"
-    "• get_knowledge / upload_knowledge_snippet / office.import_website — "
-    "только материалы ЭТОГО tenant (локальная база), не замена интернету;\n"
+    "• office.build_kb_draft — сбор KB из сайта ИЛИ соцссылки (t.me/IG/VK/MAX) ИЛИ "
+    "свободного текста «кто мы/услуги/цены» ИЛИ картинки/файла (КП, презентация, прайс → "
+    "vision/extract → free_text) ИЛИ микса; отдельная настройка соцсетей/медиа не нужна "
+    "(login-wall → честно скажи); предпочтительно при онбординге;\n"
+    "• office.confirm_kb_draft — «положи в кб» после черновика (закрывает шаг знаний);\n"
+    "• web.search / web.fetch / web.browse / web.research — открытый интернет; "
+    "разовый разбор URL, когда KB уже ok или вопрос не про сбор базы "
+    "(не выдумывай содержимое страницы);\n"
+    "• get_knowledge — боевая KB + неподтверждённый черновик office_loop; "
+    "upload_knowledge_snippet / office.import_website — только явный «положи в базу» "
+    "или commit после согласованного черновика, не вместо build_kb_draft;\n"
     "• hermes.capabilities — проверь реальные возможности перед онбордингом и задачами;\n"
     "• hermes.setup_status / health / alerts — состояние офиса;\n"
     "• hermes.tasks_create / tasks_list / tasks_pause / tasks_resume — "
@@ -349,6 +373,17 @@ def run_operator_turn(
                 ]
             if not pending_download and isinstance(tc.get("pending_download"), dict):
                 pending_download = tc["pending_download"]
+
+        # Hermes always forms bottom next-step chips when tools didn't attach any.
+        if not suggested_actions:
+            try:
+                from app.services.hermes_guide import chip_actions_for_office
+
+                suggested_actions = chip_actions_for_office(
+                    db, ctx, tool_calls=list(tool_calls or [])
+                )
+            except Exception:
+                suggested_actions = []
 
         meta: dict[str, Any] = {"tool_calls": tool_calls, "sources": sources}
         if pending:
@@ -779,6 +814,8 @@ def _tool_summary(tool_name: str, params: dict[str, Any]) -> str:
         return f"Обновить настройки: {', '.join(keys) or 'patch'}"
     if tool_name == "office.import_website":
         return f"Импорт сайта: {params.get('url') or params.get('message') or 'URL'}"
+    if tool_name == "office.build_kb_draft":
+        return f"Глубокий сбор KB: {params.get('url') or params.get('message') or 'сайт + соцсети'}"
     if tool_name == "get_tenant_summary":
         return "Показать текущие настройки"
     if tool_name == "hermes.setup_status":
@@ -789,6 +826,11 @@ def _tool_summary(tool_name: str, params: dict[str, Any]) -> str:
         return "Алерты офиса"
     if tool_name == "calls.list":
         return "Список звонков"
+    if tool_name == "phones.list":
+        return "Список номеров кабинета"
+    if tool_name == "phones.provision":
+        e164 = str(params.get("e164") or "").strip() or "номер"
+        return f"Привязать DID {e164} к кабинету"
     return tool_name.replace("_", " ")
 
 
@@ -860,17 +902,25 @@ def _execute_cabinet_tool(
         tool_calls[0]["ok"] = False
         return "Не удалось получить статус Hermes.", tool_calls, [], None, None
 
-    if tool_name == "office.import_website":
+    if tool_name in ("office.import_website", "office.build_kb_draft"):
         result = registry.run(db, ctx, tool_name, **params)
         if isinstance(result, ToolResult) and result.ok:
             tool_calls[0]["ok"] = True
             suggested = (result.data or {}).get("suggested_actions") or []
             if suggested:
                 tool_calls[0]["suggested_actions"] = suggested
+            if tool_name == "office.build_kb_draft" and isinstance(result.data, dict):
+                tool_calls[0]["kb_draft"] = bool(result.data.get("kb_draft"))
+                tool_calls[0]["pages_count"] = result.data.get("pages_count")
             return result.message or summary, tool_calls, [], None, None
         tool_calls[0]["ok"] = False
         msg = result.message if isinstance(result, ToolResult) else "Ошибка"
-        return f"Не удалось импортировать сайт: {msg}", tool_calls, [], None, None
+        fail = (
+            "Не удалось собрать черновик KB"
+            if tool_name == "office.build_kb_draft"
+            else "Не удалось импортировать сайт"
+        )
+        return f"{fail}: {msg}", tool_calls, [], None, None
 
     if tool_name == "credentials.open_form":
         result = registry.run(db, ctx, tool_name, **params)
@@ -938,8 +988,14 @@ def _tool_result_for_llm(result: ToolResult | PendingConfirmation | Any) -> str:
             ensure_ascii=False,
         )
     if isinstance(result, ToolResult):
-        payload: dict[str, Any] = {"ok": result.ok, "message": (result.message or "")[:4000]}
         data = result.data if isinstance(result.data, dict) else {}
+        # KB draft bodies are long on purpose — give the model room to paste them back.
+        msg_limit = 12000 if (
+            data.get("kb_draft")
+            or data.get("draft_status") == "draft"
+            or (isinstance(data.get("body"), str) and len(data.get("body") or "") > 800)
+        ) else 4000
+        payload: dict[str, Any] = {"ok": result.ok, "message": (result.message or "")[:msg_limit]}
         # Prefer compact structured bits for web / KB so the model can chain.
         if "connectors" in data:
             payload["connectors"] = data.get("connectors")
@@ -956,7 +1012,17 @@ def _tool_result_for_llm(result: ToolResult | PendingConfirmation | Any) -> str:
         if "title" in data:
             payload["title"] = data.get("title")
         if "text" in data and isinstance(data.get("text"), str):
-            payload["text"] = data["text"][:6000]
+            payload["text"] = data["text"][:8000]
+        if "body" in data and isinstance(data.get("body"), str):
+            payload["body"] = data["body"][:12000]
+        if "kb_draft" in data:
+            payload["kb_draft"] = True
+        if "draft_status" in data:
+            payload["draft_status"] = data.get("draft_status")
+        if "questions" in data:
+            payload["questions"] = data.get("questions")
+        if "gaps" in data:
+            payload["gaps"] = data.get("gaps")
         if "chars" in data:
             payload["chars"] = data.get("chars")
         if "pending_credential_form" in data:
@@ -969,8 +1035,34 @@ def _tool_result_for_llm(result: ToolResult | PendingConfirmation | Any) -> str:
             # Keep LLM payload short — full data-URL is for the user-facing reply path.
             payload["image_data_url_len"] = len(data["image_data_url"])
             payload["has_image"] = True
-        return json.dumps(payload, ensure_ascii=False)[:9000]
+        # Draft payloads need more room than a short tool ack.
+        limit = 16000 if payload.get("body") or payload.get("kb_draft") else 9000
+        return json.dumps(payload, ensure_ascii=False)[:limit]
     return json.dumps({"ok": False, "error": "unknown_tool_result"}, ensure_ascii=False)
+
+
+def _kb_draft_user_reply(collected_tools: list[dict[str, Any]]) -> str | None:
+    """Full owner-facing text from a successful office.build_kb_draft in this turn."""
+    for entry in reversed(collected_tools):
+        if entry.get("tool") != "office.build_kb_draft" or not entry.get("ok"):
+            continue
+        full = str(entry.get("full_message") or entry.get("message") or "").strip()
+        if len(full) >= 400 and ("## " in full or "черновик" in full.lower()):
+            return full
+    return None
+
+
+def _prefer_kb_draft_in_reply(content: str, collected_tools: list[dict[str, Any]]) -> str:
+    """If the model summarized away a commercial draft, surface the tool text instead."""
+    draft = _kb_draft_user_reply(collected_tools)
+    if not draft:
+        return content
+    text = (content or "").strip()
+    has_sections = "## " in text
+    # Thin status-style reply after a real draft build → replace with draft.
+    if len(text) < 1500 or not has_sections:
+        return draft
+    return text
 
 
 def _try_cabinet_llm_tools(
@@ -1214,6 +1306,41 @@ def _try_cabinet_llm_tools(
                 )
                 continue
 
+            # After a fresh commercial KB draft, never steal the turn with a
+            # confirm card (setup_mark / upload) — owner must see the profile first.
+            built_draft_this_turn = any(
+                t.get("tool") == "office.build_kb_draft" and t.get("ok") for t in collected_tools
+            )
+            if built_draft_this_turn and tool_name in (
+                "hermes.setup_mark",
+                "upload_knowledge_snippet",
+                "credentials.open_form",
+                "phones.provision",
+                "office.connector_set",
+            ):
+                entry["ok"] = False
+                entry["error"] = "blocked_until_kb_shown"
+                collected_tools.append(entry)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc_id,
+                        "content": json.dumps(
+                            {
+                                "ok": False,
+                                "error": "blocked_until_kb_shown",
+                                "message": (
+                                    "Сначала покажи владельцу полный коммерческий профиль "
+                                    "из office.build_kb_draft и спроси «Добавить в базу знаний?». "
+                                    f"Tool `{tool_name}` в этом ходе запрещён."
+                                ),
+                            },
+                            ensure_ascii=False,
+                        ),
+                    }
+                )
+                continue
+
             if requires_confirmation(tool):
                 summary = _tool_summary(tool_name, params)
                 pending = _pending_confirmation_dict(tool_name, params, summary)
@@ -1228,6 +1355,12 @@ def _try_cabinet_llm_tools(
             if isinstance(result, ToolResult):
                 entry["ok"] = result.ok
                 entry["message"] = (result.message or "")[:500]
+                if tool_name == "office.build_kb_draft" and result.ok:
+                    # Keep full owner-facing draft for the final reply (meta stays short).
+                    entry["full_message"] = result.message or ""
+                    if isinstance(result.data, dict):
+                        entry["kb_draft"] = bool(result.data.get("kb_draft"))
+                        entry["pages_count"] = result.data.get("pages_count")
                 if isinstance(result.data, dict):
                     if not result.ok:
                         entry["error"] = str(
@@ -1235,6 +1368,13 @@ def _try_cabinet_llm_tools(
                         )[:300]
                         if result.data.get("detail"):
                             entry["detail"] = str(result.data.get("detail"))[:300]
+                    suggested = result.data.get("suggested_actions")
+                    if isinstance(suggested, list) and suggested:
+                        entry["suggested_actions"] = [
+                            a
+                            for a in suggested
+                            if isinstance(a, dict) and a.get("title") and a.get("text")
+                        ][:5]
                     form = result.data.get("pending_credential_form")
                     if isinstance(form, dict):
                         pending_form = form
@@ -1273,8 +1413,26 @@ def _try_cabinet_llm_tools(
                     }
                 )
 
-    # Hard ceiling: ask for a final answer without more tools.
-    completion = provider.chat_completion(messages=messages, tools=None, max_tokens=900)
+    # Final answer budget — never the old hard 900 (that crushed commercial KB drafts
+    # into «черновик есть»). KB profile replies need room for the full markdown.
+    built_kb = any(
+        t.get("tool") == "office.build_kb_draft" and t.get("ok") for t in collected_tools
+    )
+    showed_draft = any(
+        t.get("tool") == "get_knowledge"
+        and t.get("ok")
+        and ("kb_draft" in str(t.get("message") or "") or "черновик" in str(t.get("message") or "").lower())
+        for t in collected_tools
+    )
+    # Cap by remaining agent budget when configured; otherwise leave headroom for a full profile.
+    remaining = max(2000, (max_tokens - tokens_used)) if max_tokens else 32_000
+    if built_kb or showed_draft:
+        final_max_tokens = min(24_000, remaining)
+    else:
+        final_max_tokens = min(4_000, remaining)
+    completion = provider.chat_completion(
+        messages=messages, tools=None, max_tokens=final_max_tokens
+    )
     if completion.get("ok"):
         tokens_used += _completion_token_total(completion)
         _charge_llm_if_any(db, ctx, completion, channel="hermes")
@@ -1283,6 +1441,7 @@ def _try_cabinet_llm_tools(
         except (KeyError, IndexError, TypeError):
             content = ""
         if content:
+            content = _prefer_kb_draft_in_reply(content, collected_tools)
             return (
                 _with_debug_failures(content, tools=collected_tools),
                 collected_tools,
@@ -1292,9 +1451,12 @@ def _try_cabinet_llm_tools(
             )
 
     if collected_tools:
+        draft = _kb_draft_user_reply(collected_tools)
         last = collected_tools[-1]
         reply = str(
-            last.get("message")
+            draft
+            or last.get("full_message")
+            or last.get("message")
             or (
                 f"Достигнут потолок раундов ({max_rounds}) — вот последний результат. "
                 "Можно продолжить следующим сообщением."
@@ -1397,6 +1559,33 @@ def _generate_reply(
                 None,
             )
 
+    # КП / презентация / PDF / DOCX → commercial KB draft (same as site/text).
+    if has_attachments and (cabinet or onboarding):
+        from app.services.hermes_kb_from_attachments import try_kb_draft_from_attachments
+
+        kb_attach = try_kb_draft_from_attachments(db, ctx, message, attachments)
+        if kb_attach and kb_attach.get("reply"):
+            tool_calls = list(kb_attach.get("tool_calls") or [])
+            suggested = kb_attach.get("suggested_actions")
+            if suggested and tool_calls:
+                tool_calls[0] = dict(tool_calls[0])
+                tool_calls[0]["suggested_actions"] = suggested
+            elif suggested:
+                tool_calls.append(
+                    {
+                        "tool": "office.build_kb_draft",
+                        "ok": True,
+                        "suggested_actions": suggested,
+                    }
+                )
+            return (
+                str(kb_attach["reply"]),
+                tool_calls,
+                list(kb_attach.get("sources") or []),
+                None,
+                None,
+            )
+
     skip_kb = False
     if cabinet and not has_attachments:
         from app.services.hermes_guide import coach_reply
@@ -1489,8 +1678,9 @@ def _generate_reply(
                 widget=widget,
             )
             + (
-                "\nПользователь может прикладывать фото и файлы. "
-                "Для изображений опиши увиденное и предложи конкретное действие в офисе."
+                "\nПользователь может прикладывать фото и файлы (КП, презентация, прайс). "
+                "Если это материалы компании — извлеки факты для KB и предложи "
+                "собрать/подтвердить коммерческий профиль. Иначе опиши и предложи действие."
                 if has_attachments
                 else ""
             ),
@@ -1502,7 +1692,7 @@ def _generate_reply(
     completion = provider.chat_completion(
         messages=llm_messages,
         model=model_override,
-        max_tokens=450 if vision else (220 if widget else None),
+        max_tokens=1200 if vision else (220 if widget else None),
     )
 
     if completion.get("ok"):

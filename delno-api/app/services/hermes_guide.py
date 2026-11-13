@@ -892,10 +892,20 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
                 }
             )
             if not probe.get("ok") and sip.get("configured"):
-                out["reply"] += (
-                    "\n\nАвтопроверка: линия ещё не Registered. "
-                    "Могу выдать задание для Cursor или снова открыть форму SIP."
-                )
+                status = probe.get("status") or "unknown"
+                # Status-only questions must not reopen the vault card (no SIP loop).
+                # Act / «открой форму» / fresh setup → open form on Rejected.
+                if show_form and not status_q:
+                    out["pending_credential_form"] = credential_form_spec("mango_sip")
+                    out["reply"] += (
+                        f"\n\nАвтопроверка: линия ещё не Registered ({status}). "
+                        "Открываю форму SIP снова — проверьте логин (номер/сотрудник) и пароль."
+                    )
+                else:
+                    out["reply"] += (
+                        f"\n\nАвтопроверка: линия ещё не Registered ({status}). "
+                        "Скажите «открой форму SIP» — поправим логин/пароль."
+                    )
             elif probe.get("ok"):
                 out["reply"] += "\n\nАвтопроверка: линия Registered. Следующий шаг — тестовый звонок."
         except Exception:  # noqa: BLE001
@@ -1004,3 +1014,129 @@ def llm_unavailable_reply(message: str) -> str:
         f"Ваш запрос: «{message.strip()[:180]}» — уточните одной из команд выше, "
         "или дайте proxy моста, и я отвечу полноценно."
     )
+
+
+def chip_actions_for_office(
+    db: Session,
+    ctx: TenantContext,
+    *,
+    tool_calls: list[dict[str, Any]] | None = None,
+) -> list[dict[str, str]]:
+    """Bottom suggestion chips Hermes should attach after every useful reply.
+
+    Priority:
+    1) suggested_actions already produced by a tool this turn
+    2) pending KB draft → confirm / enrich chips
+    3) setup_status.next_steps → next onboarding chips
+    4) safe defaults (status / health / channels)
+    """
+    for tc in tool_calls or []:
+        if not isinstance(tc, dict):
+            continue
+        raw = tc.get("suggested_actions")
+        if not isinstance(raw, list) or not raw:
+            continue
+        out: list[dict[str, str]] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("title") or "").strip()
+            text = str(item.get("text") or item.get("prompt") or "").strip()
+            if title and text:
+                out.append({"title": title[:48], "text": text[:200]})
+        if out:
+            return out[:5]
+
+    try:
+        from app.services.office_loop import get_office_loop
+
+        loop = get_office_loop(db, ctx) or {}
+        draft = loop.get("kb_draft") if isinstance(loop, dict) else None
+        if (
+            isinstance(draft, dict)
+            and str(draft.get("status") or "") == "draft"
+            and str(draft.get("body") or "").strip()
+        ):
+            return [
+                {"title": "Добавить в KB", "text": "Подтверди черновик базы знаний"},
+                {"title": "Показать профиль", "text": "Покажи что нашёл в черновике"},
+                {"title": "Уточнить цены", "text": "Цены и условия такие: "},
+                {"title": "Добавить каналы", "text": "Вот ссылки на Telegram / Instagram / VK: "},
+            ]
+    except Exception:
+        pass
+
+    try:
+        from app.services import hermes_ops
+
+        status = hermes_ops.office_setup_status(db, ctx) or {}
+        next_steps = status.get("next_steps") or []
+        actions: list[dict[str, str]] = []
+        for step in next_steps[:4]:
+            if not isinstance(step, dict):
+                continue
+            sid = str(step.get("id") or step.get("check") or "").lower()
+            title = str(step.get("title") or "Шаг").strip()
+            hint = str(step.get("hint") or title).strip()
+            if sid in {"kb", "knowledge", "kb_ready"}:
+                actions.append(
+                    {"title": "База знаний", "text": "Собери профиль компании с сайта"}
+                )
+            elif sid in {"phone", "telephony", "sip"}:
+                actions.append(
+                    {"title": "Телефон", "text": "Настрой телефон секретаря"}
+                )
+            elif sid in {"telegram", "max", "channels", "messenger"}:
+                actions.append(
+                    {"title": "Каналы", "text": "Что ещё настроить в каналах?"}
+                )
+            elif sid in {"mail", "email"}:
+                actions.append(
+                    {"title": "Почта", "text": "Подключи почту офиса"}
+                )
+            elif sid in {"calendar"}:
+                actions.append(
+                    {"title": "Календарь", "text": "Подключи календарь"}
+                )
+            elif sid in {"files", "drive"}:
+                actions.append(
+                    {"title": "Файлы", "text": "Подключи файлы / диск"}
+                )
+            elif sid in {"conference", "telemost"}:
+                actions.append(
+                    {"title": "Встречи", "text": "Подключи видеовстречи"}
+                )
+            elif sid in {"script", "scenario", "telephony_script"}:
+                actions.append(
+                    {
+                        "title": "Сценарий",
+                        "text": "Предложи сценарий из базы знаний",
+                    }
+                )
+            else:
+                actions.append(
+                    {"title": title[:40], "text": (hint or title)[:120]}
+                )
+        if status.get("setup_complete") or not actions:
+            actions = [
+                {"title": "Статус", "text": "Статус сетапа"},
+                {"title": "Здоровье", "text": "Проверь здоровье офиса"},
+                {"title": "Каналы", "text": "Что ещё настроить в каналах?"},
+                {"title": "База знаний", "text": "Покажи, что сейчас в базе знаний"},
+            ]
+        # de-dupe by title
+        seen: set[str] = set()
+        uniq: list[dict[str, str]] = []
+        for a in actions:
+            t = a["title"]
+            if t in seen:
+                continue
+            seen.add(t)
+            uniq.append(a)
+        return uniq[:5]
+    except Exception:
+        return [
+            {"title": "Статус", "text": "Статус сетапа"},
+            {"title": "Здоровье", "text": "Проверь здоровье офиса"},
+            {"title": "База знаний", "text": "Покажи, что сейчас в базе знаний"},
+        ]

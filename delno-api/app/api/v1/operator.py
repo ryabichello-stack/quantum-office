@@ -669,6 +669,156 @@ def _wants_web_research(message: str) -> bool:
     return False
 
 
+def _wants_confirm_kb_draft(message: str) -> bool:
+    """Owner explicitly commits the commercial draft — not a second confirm card."""
+    low = (message or "").lower()
+    return any(
+        m in low
+        for m in (
+            "положи в кб",
+            "положи в базу",
+            "положи в kb",
+            "положи черновик",
+            "подтверди черновик",
+            "подтверди kb",
+            "подтверди базу",
+            "сохрани в базу",
+            "сохрани в кб",
+            "сохрани профиль",
+            "запиши в базу",
+            "запиши в кб",
+            "commit draft",
+            "confirm draft",
+        )
+    )
+
+
+def _wants_show_kb_findings(message: str) -> bool:
+    """«покажи что нашёл / черновик / профиль» — agent work over office_loop draft, not empty DIY KB."""
+    low = (message or "").lower()
+    # Explicit show-draft / show-findings intents (incl. typo «нашелнаний»).
+    if any(
+        m in low
+        for m in (
+            "покажи черновик",
+            "покажи профиль",
+            "покажи что нашёл",
+            "покажи что нашел",
+            "покажи что собрал",
+            "что нашёл",
+            "что нашел",
+            "что собрал",
+            "нашелнан",
+        )
+    ):
+        return True
+    show = any(m in low for m in ("покажи", "покажи что"))
+    about = any(m in low for m in ("черновик", "профил", "баз", "знани", "kb", "нашёл", "нашел"))
+    return show and about
+
+
+def _looks_like_company_blurb(message: str) -> bool:
+    """Owner pasted a free-text company description (no URL required)."""
+    text = (message or "").strip()
+    if len(text) < 40:
+        return False
+    low = text.lower()
+    # Affirmations / confirmations are not blurbs.
+    if re.fullmatch(
+        r"(да|нет|ок|окей|подтверждаю|подтверди|положи в кб|добавь в kb)[\s!.…]*",
+        low,
+    ):
+        return False
+    markers = (
+        "услуг",
+        "клиент",
+        "цен",
+        "комисс",
+        "тариф",
+        "для кого",
+        "делаем",
+        "предлагаем",
+        "компания",
+        "бизнес",
+        "выплат",
+        "прода",
+        "продукт",
+        "аудитор",
+        "сегмент",
+        "оферт",
+        "sla",
+        "контакт",
+        "телефон",
+        "мы —",
+        "мы -",
+        "наш ",
+    )
+    return sum(1 for m in markers if m in low) >= 2
+
+
+def _wants_kb_agent_work(message: str) -> bool:
+    """Company KB build/enrich — Hermes must act as an agent, not a DIY one-shot robot."""
+    low = (message or "").lower()
+    if _wants_show_kb_findings(message):
+        return True
+    build_verbs = (
+        "собери",
+        "обогати",
+        "структурируй",
+        "подготовь",
+        "сформируй",
+        "заполни",
+        "положи в базу",
+        "в базу знаний",
+        "единую базу",
+        "коммерческ",
+        "build_kb",
+        "import website",
+        "импорт сайта",
+        "импортируй сайт",
+    )
+    kb_words = (
+        "баз",
+        "знани",
+        "kb",
+        "профиль компан",
+        "о компан",
+        "сайт",
+    )
+    if any(v in low for v in build_verbs) and any(k in low for k in kb_words):
+        return True
+    # Free-text company profile (no link) — still KB agent work.
+    if _looks_like_company_blurb(message):
+        return True
+    # Bare company URL / domain / social during onboarding-style phrasing → agent.
+    if _extract_http_urls(message) or re.search(
+        r"(?<!@)\b[a-z0-9][a-z0-9.-]+\.(?:ru|com|org|net|io|ai)\b", low
+    ):
+        if any(
+            w in low
+            for w in (
+                "баз",
+                "знани",
+                "онборд",
+                "настрой",
+                "офис",
+                "компани",
+                "изучи сайт",
+                "собери",
+            )
+        ):
+            return True
+        # A lone company / social URL in chat is usually "learn this company".
+        if _extract_http_urls(message) and len((message or "").strip()) < 180:
+            return True
+        if re.fullmatch(
+            r"\s*(https?://)?[a-z0-9][a-z0-9.-]+\.(?:ru|com|org|net|io|ai)/?\s*",
+            low or "",
+        ):
+            return True
+    return False
+
+
 def _summarize_web_dossier(question: str, dossier: str, *, note: str = "") -> str:
     """LLM summary grounded in browsed text; fallback to extract if model unavailable."""
     body = (dossier or "").strip()
@@ -788,6 +938,8 @@ def _asks_setup_progress(message_low: str) -> bool:
             "продолжим",
             "продолжить сетап",
             "продолжить настройк",
+            "продолжай",
+            "продолжи",
             "давай дальше",
             "давайте дальше",
             "настроим офис",
@@ -799,6 +951,48 @@ def _asks_setup_progress(message_low: str) -> bool:
             "покажи путь",
             "покажи статус",
             "первый реальный шаг",
+        )
+    )
+
+
+def _wants_hermes_act_now(message: str) -> bool:
+    """Owner wants Hermes to *do* the next step — not narrate the path again."""
+    low = (message or "").lower().strip()
+    if not low:
+        return False
+    # Short imperative / go-ahead phrases (dictation-friendly).
+    if re.fullmatch(
+        r"(давай|давайте|делай|сделай|продолжай|продолжи|поехали|вперёд|вперед|"
+        r"действуй|сам|сам сделай|сделай сам|hermes|гермес)[\s!.…]*",
+        low,
+    ):
+        return True
+    # Spoken / dictated: «мне нужно чтобы ты делал, Гермес», «чтобы hermes делал».
+    if re.search(
+        r"(чтобы\s+)?(ты|вы|hermes|гермес)\s+дела[йл]|дела[йл].{0,20}(hermes|гермес)",
+        low,
+    ):
+        return True
+    return any(
+        m in low
+        for m in (
+            "делай",
+            "сделай",
+            "сделай сам",
+            "сам сделай",
+            "сам hermes",
+            "сам гермес",
+            "пусть hermes",
+            "пусть гермес",
+            "hermes делай",
+            "гермес делай",
+            "действуй",
+            "поехали",
+            "не спрашивай",
+            "просто сделай",
+            "просто делай",
+            "выполняй",
+            "выполни",
         )
     )
 
@@ -872,11 +1066,11 @@ def _credential_form_kind_from_message(
         )
     ):
         return None
-    # PRODUCT_LOOP: «что дальше / настроим офис» on a vault step → open the form
+    # PRODUCT_LOOP: «что дальше / настроим офис / делай» on a vault step → open the form
     # instead of a Nous text waffle that cannot surface CredentialFormCard.
     # Messenger steps (telegram/max) use the dual-path chooser DIY, not the vault yet.
     progress_kind = _form_kind_for_setup_next(setup_next_id, setup_substep)
-    if progress_kind and _asks_setup_progress(low):
+    if progress_kind and (_asks_setup_progress(low) or _wants_hermes_act_now(message)):
         if progress_kind in ("telegram_bot", "max_bot"):
             return None
         return progress_kind
@@ -983,6 +1177,13 @@ def _finish_diy(
 
     calls = list(tool_calls or [])
     actions = list(suggested_actions or [])
+    if not actions:
+        try:
+            from app.services.hermes_guide import chip_actions_for_office
+
+            actions = chip_actions_for_office(db, ctx, tool_calls=calls)
+        except Exception:
+            actions = []
     meta: dict = {"engine": engine, "tool_calls": calls}
     if actions:
         meta["suggested_actions"] = actions
@@ -1053,8 +1254,12 @@ def operator_chat(
     schedule_intent = _agent_schedule.parse_schedule_intent(message) if message else None
     wants_sched_list = _agent_schedule.wants_tasks_list(message) if message else False
 
+    # KB co-build / enrichment is agent work (plan → tools → draft), not a DIY robot path.
+    _kb_agent_goal = _wants_kb_agent_work(message) or _wants_confirm_kb_draft(message)
+
     # Attachments + clear single-intent shortcuts stay on DIY — unless agent_mode.
-    prefer_diy = (not agent_mode) and (
+    # Web research DIY only when NOT building/enriching company KB (that belongs to the agent).
+    prefer_diy = (not agent_mode) and (not _kb_agent_goal) and (
         bool(attachments)
         or _wants_media_generation(message)
         or _wants_calendar_slots(message)
@@ -1074,6 +1279,53 @@ def operator_chat(
         or bool(schedule_intent)
         or wants_sched_list
     )
+    if _kb_agent_goal:
+        agent_mode = True
+        # Attachments stay DIY: Nous is text-only; vision/PDF extract runs in DIY.
+        if not attachments:
+            prefer_diy = False
+    # Binary media never goes through Nous — DIY normalizes + KB-from-attachments.
+    if attachments:
+        prefer_diy = True
+
+    # «положи в кб» with an existing draft → commit immediately (text IS the confirm).
+    # Do not open a second upload_knowledge_snippet card.
+    if _wants_confirm_kb_draft(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+        from app.services.hermes_nous.onboarding import get_office_loop
+
+        register_builtin_tools()
+        confirm_res = registry.run(db, ctx, "office.confirm_kb_draft")
+        if isinstance(confirm_res, ToolResult) and confirm_res.ok:
+            status_res = registry.run(db, ctx, "hermes.setup_status")
+            next_hint = ""
+            if isinstance(status_res, ToolResult) and status_res.ok:
+                data = status_res.data or {}
+                steps = data.get("next_steps") or []
+                if isinstance(steps, list) and steps:
+                    nxt = steps[0] if isinstance(steps[0], dict) else {}
+                    next_hint = (
+                        f"\n\nДальше: {nxt.get('title') or 'инструменты'}. "
+                        f"{nxt.get('hint') or ''}".rstrip()
+                    )
+            return _finish_diy(
+                db,
+                ctx,
+                body,
+                modality=modality,
+                engine="diy_confirm_kb_draft",
+                reply=(confirm_res.message or "Черновик в KB.") + next_hint,
+                tool_calls=[
+                    {"tool": "office.confirm_kb_draft", "ok": True},
+                    {
+                        "tool": "hermes.setup_status",
+                        "ok": isinstance(status_res, ToolResult) and status_res.ok,
+                    },
+                ],
+                office_loop=get_office_loop(db, ctx),
+            )
+        # No draft / failed → fall through to agent to rebuild or explain.
 
     # Periodic поручения — create / list (before agent/Nous).
     if not attachments and (schedule_intent or wants_sched_list):
@@ -1254,7 +1506,19 @@ def operator_chat(
     form_kind = _credential_form_kind_from_message(
         message, setup_next_id=setup_next_id, setup_substep=setup_substep
     )
-    if form_kind and not attachments and not agent_mode:
+    # «делай / продолжай / давай» on a vault step → open the form even in agent_mode.
+    # Nous text cannot surface CredentialFormCard; DIY must.
+    low_for_form = (message or "").lower()
+    force_vault_form = bool(
+        form_kind
+        and (
+            _asks_setup_progress(low_for_form)
+            or _wants_hermes_act_now(message)
+            or "открой форму" in low_for_form
+            or "пришли форму" in low_for_form
+        )
+    )
+    if form_kind and not attachments and (not agent_mode or force_vault_form):
         from app.operator.tools import register_builtin_tools
         from app.operator.tools.registry import ToolResult, registry
 
@@ -1262,22 +1526,28 @@ def operator_chat(
         result = registry.run(db, ctx, "credentials.open_form", kind=form_kind)
         if isinstance(result, ToolResult) and result.ok:
             form = (result.data or {}).get("pending_credential_form")
+            act_prefix = ""
+            if force_vault_form and form_kind == "mango_sip":
+                act_prefix = (
+                    "Делаю следующий шаг сам: открываю форму SIP Mango.\n"
+                    "Заполните логин (номер/сотрудник) и пароль — в чат секрет не пишите.\n\n"
+                )
             return _finish_diy(
                 db,
                 ctx,
                 body,
                 modality=modality,
                 engine="diy_credential_form",
-                reply=result.message
+                reply=(act_prefix + (result.message or "")).strip()
                 or "Открыл безопасную форму. Секрет не пишите в чат — только в форме.",
                 tool_calls=[{"tool": "credentials.open_form", "ok": True, "kind": form_kind}],
                 pending_credential_form=form if isinstance(form, dict) else None,
                 office_loop=loop_preview,
             )
 
-    # Fast-path: pasted URL / «зайди на сайт» → real browser research (not KB).
-    # Skip when agent_mode — the agent must plan browse → KB → next tools itself.
-    if _wants_web_research(message) and not attachments and not agent_mode:
+    # Fast-path: pasted URL / «зайди на сайт» → browser research for a one-off answer.
+    # Skip when agent_mode / KB co-build — the agent must plan tools itself (not a robot path).
+    if _wants_web_research(message) and not attachments and not agent_mode and not _kb_agent_goal:
         from app.operator.tools import register_builtin_tools
         from app.operator.tools.registry import ToolResult, registry
         from app.services import web_browser
@@ -1833,6 +2103,31 @@ def operator_chat(
         result = registry.run(db, ctx, "get_knowledge", query=q[:400] or "компания")
         if isinstance(result, ToolResult) and result.ok:
             data = result.data or {}
+            # Draft from office_loop (not yet committed) — show full profile, don't truncate to stubs.
+            if data.get("kb_draft") and str(data.get("body") or "").strip():
+                draft_body = str(data.get("body") or "")
+                title = str(data.get("title") or "Черновик KB")
+                return _finish_diy(
+                    db,
+                    ctx,
+                    body,
+                    modality=modality,
+                    engine="diy_get_knowledge_draft",
+                    reply=(
+                        f"В боевой KB ещё пусто — вот неподтверждённый черновик «{title}» "
+                        f"({len(draft_body)} символов):\n\n{draft_body}"
+                    ).strip(),
+                    tool_calls=[
+                        {
+                            "tool": "get_knowledge",
+                            "ok": True,
+                            "query": q[:120],
+                            "hits": 0,
+                            "kb_draft": True,
+                            "chars": len(draft_body),
+                        }
+                    ],
+                )
             # KnowledgeAdapter returns matches[] + aggregated text (not snippets/hits).
             matches = data.get("matches") or data.get("results") or data.get("hits") or []
             lines = []
@@ -2129,8 +2424,65 @@ def operator_confirm(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(get_tenant_context_auth),
 ) -> dict:
+    """Run a confirmed critical tool and return an owner-facing next-step payload.
+
+    Raw tool messages like ``phone_provisioned`` must not land in the Hermes
+    bubble — enrich with RU reply, chips, and (for telephony) the SIP form.
+    """
+    from app.operator.tools import register_builtin_tools
+    from app.operator.tools.registry import ToolResult, registry
+    from app.services.hermes_guide import chip_actions_for_office
+
+    register_builtin_tools()
     result = execute_confirmed_tool(db, ctx, tool_name=body.tool_name, params=body.params)
-    return {"ok": getattr(result, "ok", False), "message": getattr(result, "message", ""), "data": getattr(result, "data", {})}
+    ok = bool(getattr(result, "ok", False))
+    data = getattr(result, "data", {}) or {}
+    if not isinstance(data, dict):
+        data = {}
+    message = str(getattr(result, "message", "") or "").strip()
+    pending_credential_form = None
+    suggested = list(data.get("suggested_actions") or []) if isinstance(data.get("suggested_actions"), list) else []
+
+    if ok and body.tool_name == "phones.provision":
+        phone = data.get("phone") if isinstance(data.get("phone"), dict) else {}
+        e164 = str((phone or {}).get("e164") or (body.params or {}).get("e164") or "").strip()
+        message = (
+            f"Номер {e164 or 'DID'} привязан к кабинету.\n"
+            "Следующий шаг — SIP Mango: логин вида «номер/сотрудник» и пароль в сейфе, "
+            "пока линия не станет Registered. Без SIP Mango может отвечать «операторы заняты»."
+        )
+        form_res = registry.run(db, ctx, "credentials.open_form", kind="mango_sip")
+        if isinstance(form_res, ToolResult) and form_res.ok:
+            form = (form_res.data or {}).get("pending_credential_form")
+            if isinstance(form, dict):
+                pending_credential_form = form
+                message += "\n\nОткрою форму SIP ниже — заполните и сохраните."
+        suggested = [
+            {"title": "SIP", "text": "Открой форму SIP Mango"},
+            {"title": "Статус линии", "text": "Проверь регистрацию SIP"},
+            {"title": "Сетап", "text": "Статус сетапа"},
+        ]
+
+    if ok and not suggested:
+        try:
+            suggested = chip_actions_for_office(
+                db,
+                ctx,
+                tool_calls=[{"tool": body.tool_name, "ok": True, "suggested_actions": suggested}],
+            )
+        except Exception:
+            suggested = []
+
+    if message in {"phone_provisioned", "ok", "done"} or not message:
+        message = "Изменения применены." if ok else "Не удалось применить изменения."
+
+    return {
+        "ok": ok,
+        "message": message,
+        "data": data,
+        "suggested_actions": suggested[:5],
+        "pending_credential_form": pending_credential_form,
+    }
 
 
 @router.get("/conversations")

@@ -12,6 +12,12 @@
 
 ### Added
 
+- Hermes KB from attachments: image (КП / презентация / прайс via vision) or file (PDF/DOCX/TXT) → extract → `office.build_kb_draft` free_text; DIY keeps media (Nous text-only); SOUL / onboarding skill document the scenario
+- Hermes deep KB onboarding: `office.build_kb_draft` — multi-page site crawl, Telegram/Instagram/VK/MAX harvest, open-web enrichment by company profile, structured draft + clarifying questions; DIY URL path and setup intents use draft co-build (not shallow auto-publish) when KB is missing; SOUL / onboarding skill / Nous mission updated
+- Hermes web.research: on `url_unreachable` suggest a reachable near-match host (e.g. `quntumpayouts.ru` → `quantumpayouts.ru`) instead of a bare DNS error
+- Hermes instructions (SOUL / onboarding skill / Nous mission / DIY system): commercial KB playbook — `office.build_kb_draft`, show services/ICP/pricing/terms/FAQ draft in reply; forbid research→import→confirm stub as a substitute
+- Hermes: company URL / «собери·обогати базу» goes to the **agent loop** (Nous/tool agent), not DIY web-research robot shortcuts
+- Hermes «обогати базу»: agent acts as commercial director — browser max research on topic → strong company profile in reply (SOUL / skill / mission)
 - Hermes **any-N companies** multiplex pool: combat default is **one** gateway (`delno-hermes-pool` / worker `pool`); companies under `workers/pool/profiles/<profile_id>`; API `/p/<profile_id>/v1/...`; capacity `HERMES_WORKER_MAX_PROFILES` (default 256); dogfood A/B retired (offline); optional second worker only with `HERMES_ENABLE_EXTRA_WORKERS=1`
 - Hermes multiplex layout + bootstrap `--also` (superseded dogfood dual A/B capacity=1)
 - Hermes multi-tenant placement map: `hermes_workers` + `hermes_profiles` + `hermes_run_bindings` (tenant → profile → worker). Pool exhausted → `provisioning`/`unavailable`, never silent fallback to worker A / `HERMES_NOUS_RUNTIME_URL`. Admin assign + placement snapshot; MCP auth via `X-Delno-Run-Id` binding; owner `/provision` no longer accepts client `runtime_base_url`; `tool_ids` clamped to pack
@@ -24,7 +30,18 @@
 - Hermes Telegram/MAX dual-path chooser: ask bot token vs QR (Telegram Web-style), pros/cons, step-by-step bot creation, then vault form; QR starts `pending_qr` session with honest status until live QR worker
 
 ### Fixed
+- Hermes virtual onboarding E2E test: KB draft→confirm→phone DID→SIP form on «делай»→vault save (site/social/text routing covered)
 
+- Hermes KB onboarding inputs: site URL, social URL (TG/IG/VK/MAX), free-text company blurb, or mix — all route to `office.build_kb_draft` as agent work; message residual prose merges into free_text; SOUL/skill document the three scenarios (no extra social setup; login-wall = honest gap)
+- Hermes telephony prompts: after DID → open SIP form in the same turn; on Mango Rejected → `credentials.open_form` again (never «проверьте пароль» without the form); SOUL / onboarding / Nous bridge / setup hints updated
+- Hermes «делай / продолжай / давай»: treat as act-now on current `setup_next` — open the vault form (SIP) or run the next tool instead of re-narrating the path; SOUL / onboarding skill / DIY match updated
+- Hermes `phones.provision` confirm: no more dead card + raw `phone_provisioned` bubble — RU next-step reply, SIP form, suggestion chips, verbal «да» confirms the open card, and a follow-up setup turn continues telephony instead of hanging
+- Hermes bottom suggestion chips: after every cabinet/Nous reply Hermes forms `suggested_actions` from tool chips, pending KB draft (confirm/enrich), or `setup_status` next steps — so the UI chips under the reply stay like before even when the LLM path omitted them
+- Hermes onboarding playbook: per-step/per-tool scenario (show → ask → confirm → apply); block `hermes.setup_mark`/upload/phone/form in the same turn as `office.build_kb_draft` so the commercial profile is shown before any confirm card
+- Hermes mic dictation UX: one tap starts live words in the composer (browser interim + faster Whisper ticks), pulsing mic + level waves while listening, tap again / X stops without sending; header mic uses the same dictate path (not voice-dialog)
+- Hermes onboarding: «положи в кб» commits via `office.confirm_kb_draft` (no second upload confirm card); `upload_knowledge_snippet` marks `kb_ready` so «давай дальше» advances to connectors instead of re-proposing the same KB add
+- Hermes agent final answer: removed hard `max_tokens=900` that crushed commercial KB drafts into a status blurb; KB turns now get up to 24k completion tokens; if the model still summarizes, surface `office.build_kb_draft` text; `get_knowledge` returns office_loop draft when published KB is empty («покажи что нашёл»)
+- Hermes empty-state orb: size via `--mount-size` clamp (layout box = visual box) and full-width flex center under the headline — no hardcoded 120px scale box; rebuild `delno-web` so app.dlno.ru picks it up
 - Website import: do not stop at a single short `<p>` — fall back to full visible page text (li/div) so marketing sites like Quantum Payouts yield real KB, not only meta description
 
 - Hermes cabinet: when ``hermes_nous_runtime`` is on but profile/worker missing, return honest ``engine=hermes_unavailable`` — no silent DIY reply posing as Hermes

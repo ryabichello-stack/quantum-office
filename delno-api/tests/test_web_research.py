@@ -32,6 +32,30 @@ def test_extract_same_host_links_prefers_about():
     assert all("other.com" not in u for u in links)
 
 
+def test_suggest_reachable_host_fixes_quantum_typo():
+    from app.services.website_import import suggest_reachable_host
+
+    assert suggest_reachable_host("quntumpayouts.ru") == "quantumpayouts.ru"
+
+
+def test_research_unreachable_includes_suggestion(monkeypatch):
+    from app.services import web_browser
+
+    monkeypatch.setattr(
+        "app.services.web_browser._assert_public_url",
+        lambda _url: "url_unreachable",
+    )
+    monkeypatch.setattr(
+        "app.services.website_import.suggest_reachable_host",
+        lambda _host, **_kw: "quantumpayouts.ru",
+    )
+    out = web_browser.research_site("https://quntumpayouts.ru", max_pages=1, also_search=False)
+    assert out["ok"] is False
+    assert out["error"] == "url_unreachable"
+    assert out["suggestion"] == "quantumpayouts.ru"
+    assert "quantumpayouts.ru" in (out.get("detail") or "")
+
+
 def test_research_site_traces_browse(monkeypatch):
     def fake_browse(url, max_chars=9000):
         return {

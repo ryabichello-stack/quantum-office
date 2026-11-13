@@ -173,6 +173,10 @@ export function HermesStage({ token }: { token: string }) {
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState("");
   const [activePending, setActivePending] = useState<PendingConfirmation | null>(null);
+  const activePendingRef = useRef<PendingConfirmation | null>(null);
+  activePendingRef.current = activePending;
+  const confirmingRef = useRef(false);
+  const onConfirmRef = useRef<() => Promise<void>>(async () => undefined);
   const [activeSecretForm, setActiveSecretForm] = useState<CredentialFormSpec | null>(null);
   const [secretBusy, setSecretBusy] = useState(false);
   const [setup, setSetup] = useState<HermesSetupStatus | null>(null);
@@ -288,6 +292,22 @@ export function HermesStage({ token }: { token: string }) {
       const question = text.trim();
       const attachSource = withPending ? pendingRef.current : [];
       if ((!question && attachSource.length === 0) || sending) return null;
+
+      // «да» / «подтверждаю» while a confirm card is open → confirm, don't kill the card.
+      const affirm =
+        /^(да|да\.|ок|окей|хорошо|подтверждаю|подтверди|согласен|согласна|давай|yes|ok|confirm)\.?$/i;
+      if (
+        modality === "text" &&
+        !withPending &&
+        attachSource.length === 0 &&
+        activePendingRef.current &&
+        !confirmingRef.current &&
+        affirm.test(question)
+      ) {
+        await onConfirmRef.current();
+        return null;
+      }
+
       setSending(true);
       setError("");
       setActivePending(null);
@@ -461,6 +481,7 @@ export function HermesStage({ token }: { token: string }) {
     dictating,
     supported: dictateSupported,
     error: dictateError,
+    level: dictateLevel,
     stop: stopDictate,
     toggle: toggleDictate,
     clearError: clearDictateError,
@@ -470,6 +491,13 @@ export function HermesStage({ token }: { token: string }) {
     }, []),
     token,
   );
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [message, dictating]);
 
   const [historyReady, setHistoryReady] = useState(false);
 
@@ -653,27 +681,79 @@ export function HermesStage({ token }: { token: string }) {
 
   async function onConfirm() {
     if (!activePending || confirming) return;
+    const pending = activePending;
     setConfirming(true);
+    confirmingRef.current = true;
     setError("");
     try {
-      const result = await apiOperatorConfirm(token, activePending.tool_name, activePending.params);
+      const result = await apiOperatorConfirm(token, pending.tool_name, pending.params);
+      const confirmId = pending.confirmation_id;
       setActivePending(null);
-      setLines((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          text: result.ok
-            ? result.message || "Изменения применены."
-            : result.message || "Не удалось применить изменения.",
-        },
-      ]);
+      const suggestions = (result.suggested_actions || []).filter((a) => a?.title && a?.text);
+      const secretForm = (result.pending_credential_form || null) as ApiCredentialFormSpec | null;
+      // Set form outside setLines — React ignores/races setState inside updaters.
+      if (secretForm) setActiveSecretForm(secretForm);
+      setLines((prev) => {
+        const cleared = prev.map((line) =>
+          line.pending?.confirmation_id === confirmId ? { ...line, pending: undefined } : line,
+        );
+        return [
+          ...cleared,
+          {
+            role: "assistant" as const,
+            text: result.ok
+              ? result.message || "Изменения применены."
+              : result.message || "Не удалось применить изменения.",
+            suggestions: suggestions.length ? suggestions : undefined,
+            credentialForm: secretForm || undefined,
+          },
+        ];
+      });
       void refreshPanels();
+
+      // If SIP form already opened — that IS the next step. Do not fire a follow-up
+      // chat that replaces the active form with «Форма уже закрыта».
+      if (result.ok && pending.tool_name === "phones.provision" && !secretForm) {
+        try {
+          const e164 = String((pending.params as { e164?: string })?.e164 || "").trim();
+          const followAsk = e164
+            ? `DID ${e164} привязан. hermes.setup_status — что дальше по телефонии (SIP / Registered)?`
+            : "DID привязан. hermes.setup_status — что дальше по телефонии (SIP / Registered)?";
+          const follow = await apiOperatorChat(
+            token,
+            followAsk,
+            conversationId || undefined,
+            "text",
+            "hermes",
+          );
+          if (follow.conversation_id) setConversationId(follow.conversation_id);
+          const followForm = (follow.pending_credential_form || null) as ApiCredentialFormSpec | null;
+          if (followForm) setActiveSecretForm(followForm);
+          const followChips = (follow.suggested_actions || []).filter((a) => a?.title && a?.text);
+          setLines((prev) => [
+            ...prev,
+            { role: "user", text: "Номер привязан. Что дальше по телефонии?" },
+            {
+              role: "assistant",
+              text: follow.reply || "Проверил сетап телефонии.",
+              suggestions: followChips.length ? followChips : undefined,
+              credentialForm: followForm || undefined,
+              sources: dedupeSources(follow.sources),
+            },
+          ]);
+          void refreshPanels();
+        } catch {
+          // Confirm already succeeded — follow-up is best-effort.
+        }
+      }
     } catch {
       setError("Не удалось подтвердить действие.");
     } finally {
       setConfirming(false);
+      confirmingRef.current = false;
     }
   }
+  onConfirmRef.current = onConfirm;
 
   async function onSecretSave(values: {
     login?: string;
@@ -691,10 +771,17 @@ export function HermesStage({ token }: { token: string }) {
         password: values.password,
         foreign_consent: values.foreign_consent,
       });
-      setActiveSecretForm(null);
       const probe = result.sip_probe;
       const cloud = result.cloud_probe;
       const channel = result.channel_connect;
+      const reopenForm = (result.pending_credential_form || null) as ApiCredentialFormSpec | null;
+      const sipRejected = secretKind === "mango_sip" && probe && !probe.ok && !probe.skipped;
+      // Keep / reopen form when SIP Rejected — don't leave «Форма уже закрыта».
+      if (reopenForm || sipRejected) {
+        setActiveSecretForm(reopenForm || activeSecretForm);
+      } else {
+        setActiveSecretForm(null);
+      }
       const ack =
         result.message ||
         `Сохранил ${result.kind}: ${result.login_masked || "••••"}. Секрет в чат не попал.`;
@@ -705,8 +792,22 @@ export function HermesStage({ token }: { token: string }) {
           : channel?.account?.bot_username
             ? `\nTelegram: @${channel.account.bot_username}`
             : "";
-      setLines((prev) => [...prev, { role: "assistant", text: `${ack}${probeLine}` }]);
+      const formForLine = reopenForm || (sipRejected ? activeSecretForm : null);
+      setLines((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text: `${ack}${probeLine}`,
+          credentialForm: formForLine || undefined,
+        },
+      ]);
       void refreshPanels();
+
+      // SIP still Rejected — form is the next step; skip status waffle that kills the card.
+      if (sipRejected) {
+        return;
+      }
+
       // Follow-up in the same thread so Hermes re-reads vault + setup (no more loop).
       try {
         const isCloud = secretKind.startsWith("files_");
@@ -724,16 +825,14 @@ export function HermesStage({ token }: { token: string }) {
               ? channel?.ok
                 ? "MAX бот подключён. Какой следующий шаг hermes_ops?"
                 : "Токен MAX сохранён. Проверь каналы / hermes.setup_status. Что дальше?"
-              : probe?.ok
-                ? "SIP сохранён и линия Registered. Что дальше — тестовый звонок или сменить голос?"
-                : "SIP сохранён. Проверь регистрацию. Если Rejected — дай задание для Cursor или снова форму.";
+              : "SIP сохранён и линия Registered. Что дальше — тестовый звонок или сменить голос?";
         const followUserLabel = isCloud
           ? "Облако сохранено. Что дальше?"
           : isTelegram
             ? "Telegram сохранён. Канал готов? Что дальше?"
             : isMax
               ? "MAX сохранён. Канал готов? Что дальше?"
-              : "SIP сохранён. Телефон настроен? Что дальше по линии?";
+              : "SIP Registered. Что дальше по линии?";
         const follow = await apiOperatorChat(
           token,
           followAsk,
@@ -742,6 +841,8 @@ export function HermesStage({ token }: { token: string }) {
           "hermes",
         );
         if (follow.conversation_id) setConversationId(follow.conversation_id);
+        const secretForm = (follow.pending_credential_form || null) as ApiCredentialFormSpec | null;
+        if (secretForm) setActiveSecretForm(secretForm);
         setLines((prev) => [
           ...prev,
           { role: "user", text: followUserLabel },
@@ -749,10 +850,9 @@ export function HermesStage({ token }: { token: string }) {
             role: "assistant",
             text: follow.reply || "Проверил сейф и сетап.",
             sources: dedupeSources(follow.sources),
+            credentialForm: secretForm || undefined,
           },
         ]);
-        const secretForm = (follow.pending_credential_form || null) as ApiCredentialFormSpec | null;
-        if (secretForm) setActiveSecretForm(secretForm);
         void refreshPanels();
       } catch {
         /* ack already shown; follow-up is best-effort */
@@ -851,15 +951,22 @@ export function HermesStage({ token }: { token: string }) {
                 <Button
                   variant="outline"
                   size="icon"
-                  className={cn("hx-top-btn", voiceActive && "border-sky-400/60 bg-sky-50")}
-                  onClick={toggleVoice}
-                  aria-label="Голосовой диалог"
+                  className={cn(
+                    "hx-top-btn",
+                    dictating && "hx-mic-live border-sky-400/60 bg-sky-50",
+                  )}
+                  onClick={onMicToggle}
+                  disabled={sending || !dictateSupported}
+                  aria-label={dictating ? "Остановить диктовку" : "Диктовка в поле ввода"}
+                  aria-pressed={dictating}
                 />
               }
             >
-              <Mic size={compact ? 16 : 18} />
+              {dictating ? <X size={compact ? 16 : 18} /> : <Mic size={compact ? 16 : 18} />}
             </TooltipTrigger>
-            <TooltipContent>Голосовой диалог</TooltipContent>
+            <TooltipContent>
+              {dictating ? "Стоп — текст останется в поле" : "Диктовка: слова появятся в поле ввода"}
+            </TooltipContent>
           </Tooltip>
           {!compact && (
             <div className="hx-orb-mini" aria-hidden>
@@ -1145,43 +1252,65 @@ export function HermesStage({ token }: { token: string }) {
                   </TooltipTrigger>
                   <TooltipContent>Снимок с камеры</TooltipContent>
                 </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        type="button"
-                        variant={dictating ? "default" : "ghost"}
-                        size="icon"
-                        disabled={sending || !dictateSupported}
-                        aria-label={dictating ? "Остановить диктовку" : "Диктовка"}
-                        aria-pressed={dictating}
-                        onClick={onMicToggle}
-                        onContextMenu={(e) => e.preventDefault()}
-                        className="hx-tool-btn touch-none"
-                      />
-                    }
-                  >
-                    <Mic size={compact ? 16 : 18} />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {dictateSupported
-                      ? dictating
-                        ? "Нажмите, чтобы остановить"
-                        : "Нажмите, чтобы диктовать"
-                      : "Диктовка недоступна в этом браузере"}
-                  </TooltipContent>
-                </Tooltip>
+                <div className={cn("hx-mic-wrap", dictating && "is-live")}>
+                  {dictating ? (
+                    <span className="hx-mic-waves" aria-hidden>
+                      {[0, 1, 2, 3, 4].map((i) => (
+                        <i
+                          key={i}
+                          style={{
+                            // Center bar tallest; level scales all bars live from mic energy.
+                            height: `${10 + dictateLevel * (10 + Math.abs(2 - i) * 4)}px`,
+                          }}
+                        />
+                      ))}
+                    </span>
+                  ) : null}
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant={dictating ? "default" : "ghost"}
+                          size="icon"
+                          disabled={sending || !dictateSupported}
+                          aria-label={dictating ? "Остановить диктовку" : "Диктовка"}
+                          aria-pressed={dictating}
+                          onClick={onMicToggle}
+                          onContextMenu={(e) => e.preventDefault()}
+                          className={cn("hx-tool-btn touch-none", dictating && "is-live hx-mic-live")}
+                        />
+                      }
+                    >
+                      {dictating ? <X size={compact ? 16 : 18} /> : <Mic size={compact ? 16 : 18} />}
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {dictateSupported
+                        ? dictating
+                          ? "Стоп — текст останется в поле, потом отправьте"
+                          : "Один раз нажмите: слова появятся в поле, пока говорите"
+                        : "Диктовка недоступна в этом браузере"}
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
               </div>
               <Textarea
                 ref={textareaRef}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder={compact ? "Сообщение…" : "Сообщение Hermes…"}
+                placeholder={
+                  dictating
+                    ? "Слушаю… говорите — слова появятся здесь"
+                    : compact
+                      ? "Сообщение…"
+                      : "Сообщение Hermes…"
+                }
                 disabled={sending}
                 rows={1}
                 className={cn(
                   "max-h-40 flex-1 resize-none border-0 bg-transparent px-1 shadow-none focus-visible:ring-0",
                   compact ? "min-h-8 py-1.5 text-[15px]" : "min-h-9 py-2",
+                  dictating && "hx-composer-dictating",
                 )}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {

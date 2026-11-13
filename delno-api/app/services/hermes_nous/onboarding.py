@@ -93,7 +93,7 @@ def get_office_loop(db: Session, ctx: TenantContext) -> dict[str, Any]:
             "id": "company_kb",
             "title": "База знаний",
             "done": kb_ok,
-            "hint": "Сайт, каталог или текст → черновик KB → подтверждение",
+            "hint": "Сайт + TG/IG/VK + веб → черновик → уточнения с владельцем → подтверждение",
         },
         {
             "id": "connectors",
@@ -262,7 +262,17 @@ def _phone_hint(substep: str, detail: dict[str, Any]) -> str:
     if substep == "need_reg":
         status = detail.get("registration_status") or "unknown"
         msg = detail.get("registration_message") or ""
-        return f"DID есть, SIP не Registered (status={status}). {msg}".strip()
+        if str(status).lower() == "rejected" or "reject" in str(msg).lower():
+            return (
+                f"Mango Rejected (status={status}). "
+                "Сразу credentials.open_form mango_sip — проверить логин номер/сотрудник и пароль. "
+                f"{msg}"
+            ).strip()
+        return (
+            f"DID есть, SIP не Registered (status={status}). "
+            "Если не Registered — снова credentials.open_form mango_sip. "
+            f"{msg}"
+        ).strip()
     return ""
 
 
@@ -294,7 +304,13 @@ def _cta(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> d
         return {
             "title": "Сайт → знания",
             # Owner must supply a real URL in chat; do not pretend one was given.
-            "text": "Помоги собрать базу знаний: скажи, какую ссылку на сайт прислать, или прими текст о компании и покажи черновик",
+            "text": (
+                "Соберём коммерческую KB: сайт / соцссылка / текст / картинка КП "
+                "или PDF → office.build_kb_draft → "
+                "покажи черновик (услуги, для кого, цены/условия, процесс, FAQ, пробелы) → "
+                "доспроси TG/IG/VK и цены → правки → подтверждение. "
+                "Не подменяй цепочкой research→import→confirm без черновика"
+            ),
         }
     if phase == "connectors":
         sid = str((setup_next or {}).get("id") or "")

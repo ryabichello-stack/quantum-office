@@ -17,6 +17,8 @@ ONBOARDING_KB = META + (
     "get_knowledge",
     "upload_knowledge_snippet",
     "office.import_website",
+    "office.build_kb_draft",
+    "office.confirm_kb_draft",
     "web.search",
     "web.fetch",
     "web.browse",

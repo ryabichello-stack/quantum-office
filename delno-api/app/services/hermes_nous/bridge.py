@@ -201,11 +201,21 @@ def create_run(
             sub = sn.get("substep")
             micro = f" micro-step={sub}." if sub else ""
             if sub == "need_sip":
-                micro += " Open credentials.open_form mango_sip (never ask password in chat)."
+                micro += (
+                    " MUST call credentials.open_form mango_sip now "
+                    "(never ask password in chat; never only describe the form)."
+                )
             elif sub == "need_did":
-                micro += " phones.list → phones.provision; do not reopen SIP form."
+                micro += (
+                    " phones.list → phones.provision; after DID succeeds in same turn "
+                    "open credentials.open_form mango_sip if SIP not Registered yet."
+                )
             elif sub == "need_reg":
-                micro += " Check hermes.health / registration; do not reopen SIP form."
+                micro += (
+                    " hermes.health: if Registered → next setup step; "
+                    "if Rejected/not Registered → MUST credentials.open_form mango_sip again "
+                    "(fix password; do not only say «проверьте пароль»)."
+                )
             elif sn.get("id") == "telephony_script":
                 micro += (
                     " Use telephony.script_get → draft/save script; "
@@ -236,18 +246,27 @@ def create_run(
             "the owner configured mail/calendar/files/conference/phone. "
             "If required_done is 0, say the office is empty and start with «О компании» — "
             "never claim connectors are activated, never invent demo DIDs like +79991234567. "
-            "If KB is done, advance to connectors (credentials.open_form / phones / channels). "
-            "Never invent website URLs, phone numbers, or passwords. Prefer hermes.setup_status, "
-            "hermes.setup_mark, credentials.open_form, office.import_website only when KB is missing."
+            "When owner sends a company URL, social link, free-text, or attachment "
+            "(image of КП/presentation/price list, or PDF/DOCX) — or asks to enrich KB: "
+            "commercial director flow — office.build_kb_draft (attachments arrive as extracted "
+            "free_text via DIY vision/file path) → SHOW the full commercial profile in the reply → ask "
+            "«Добавить в базу знаний?» and WAIT. Do NOT call hermes.setup_mark, "
+            "upload_knowledge_snippet, or jump to phone/SIP in the same turn. "
+            "Only after owner says yes: office.confirm_kb_draft, then hermes.setup_status and "
+            "propose the next connector with a question. Critical writes need owner consent first. "
+            "If KB already has data: get_knowledge first, then enrich via browser and rewrite stronger. "
+            "Never invent website URLs, phone numbers, or passwords."
         )
     else:
         mission = (
             "Office is being conducted: plan → DELNO MCP tools → report. "
             "ONLY use MCP server delno_office. Do NOT use greptile_mcp, hosted connectors, "
             "portal.nousresearch.com, or manage_connections. "
+            "If owner asks to enrich KB / deepen company description: act as commercial director — "
+            "get_knowledge → browser research → strong commercial profile in the reply → confirm. "
             "Call tools by exact registered names with dots→underscores, e.g. "
-            "mcp__delno_office__get_knowledge, mcp__delno_office__phones_list, "
-            "mcp__delno_office__hermes_health, mcp__delno_office__billing_summary. "
+            "mcp__delno_office__get_knowledge, mcp__delno_office__office_build_kb_draft, "
+            "mcp__delno_office__web_research, mcp__delno_office__phones_list. "
             "If unsure, tool_search then call the mcp__delno_office__… result. "
             "Never bare names, never terminal. Never claim a granted tool is unavailable. "
             "Critical writes need confirmation policy."

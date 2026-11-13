@@ -445,6 +445,7 @@ export function apiTenantSecretSave(
     configured: boolean;
     login_masked?: string;
     message?: string;
+    pending_credential_form?: CredentialFormSpec | null;
     sip_probe?: {
       ok?: boolean;
       skipped?: boolean;
@@ -536,15 +537,17 @@ export function apiOnboardingResolveConflict(token: string, field: string, canon
 }
 
 export function apiOperatorConfirm(token: string, toolName: string, params: Record<string, unknown>) {
-  return apiFetch<{ ok: boolean; message: string; data: Record<string, unknown> }>(
-    "/v1/operator/confirm",
-    token,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tool_name: toolName, params }),
-    },
-  );
+  return apiFetch<{
+    ok: boolean;
+    message: string;
+    data: Record<string, unknown>;
+    suggested_actions?: SuggestedAction[];
+    pending_credential_form?: CredentialFormSpec | null;
+  }>("/v1/operator/confirm", token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tool_name: toolName, params }),
+  });
 }
 
 export function apiTenantLegalGet(token: string) {
