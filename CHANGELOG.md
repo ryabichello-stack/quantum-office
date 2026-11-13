@@ -13,6 +13,7 @@
 ### Fixed
 
 - Hermes media DIY: «сгенерируй простую картинку» (adverb between verb and noun) now matches `_wants_media_generation` and hits `generate_image` instead of a Nous dead-end during connectors phase
+- Hermes setup progress («что дальше» / «настроим офис») on vault steps (`need_sip`, telegram, max, files) opens `pending_credential_form` instead of a Nous text waffle; post-save «SIP сохранён… что дальше» still skips the form
 
 ### Changed
 

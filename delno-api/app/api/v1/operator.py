@@ -98,7 +98,44 @@ _SETUP_NEXT_TO_FORM_KIND: dict[str, str] = {
     "phone": "mango_sip",
     "telegram": "telegram_bot",
     "max": "max_bot",
+    "files": "files_yadisk",
 }
+
+
+def _asks_setup_progress(message_low: str) -> bool:
+    """Owner asks «what's next» / continue office setup — not a post-save status ping."""
+    return any(
+        m in message_low
+        for m in (
+            "что дальше",
+            "следующий шаг",
+            "что сейчас по сетап",
+            "что по сетап",
+            "продолжим",
+            "продолжить сетап",
+            "продолжить настройк",
+            "давай дальше",
+            "давайте дальше",
+            "настроим офис",
+            "настроить офис",
+            "статус сетап",
+        )
+    )
+
+
+def _form_kind_for_setup_next(
+    setup_next_id: str | None,
+    setup_substep: str | None,
+) -> str | None:
+    """Vault kind for the current hermes_ops step, or None when tools (not form) are next."""
+    sid = str(setup_next_id or "")
+    mapped = _SETUP_NEXT_TO_FORM_KIND.get(sid)
+    if not mapped:
+        return None
+    # Phone: form only while SIP vault empty. need_did / need_reg → Hermes tools.
+    if sid == "phone" and setup_substep not in (None, "", "need_sip"):
+        return None
+    return mapped
 
 
 def _credential_form_kind_from_message(
@@ -141,13 +178,9 @@ def _credential_form_kind_from_message(
         if "телефон" in low:
             return "mango_sip"
         # CTA / open_form without kind → use hermes_ops next step when unambiguous.
-        mapped = _SETUP_NEXT_TO_FORM_KIND.get(str(setup_next_id or ""))
-        if mapped:
-            return mapped
-        return None
-    # Phone step of hermes_ops: owner asks to configure the line → open SIP form.
+        return _form_kind_for_setup_next(setup_next_id, setup_substep)
     # Do NOT match post-save follow-ups («SIP сохранён…») — those must reach Hermes/DIY
-    # for status, not reopen the vault card in a loop.
+    # for status, not reopen the vault card in a loop. Bare «что дальше» is handled below.
     if any(
         x in low
         for x in (
@@ -155,11 +188,15 @@ def _credential_form_kind_from_message(
             "сохранен",
             "проверь регистрац",
             "телефон настроен",
-            "что дальше",
             "registered",
         )
     ):
         return None
+    # PRODUCT_LOOP: «что дальше / настроим офис» on a vault step → open the form
+    # instead of a Nous text waffle that cannot surface CredentialFormCard.
+    progress_kind = _form_kind_for_setup_next(setup_next_id, setup_substep)
+    if progress_kind and _asks_setup_progress(low):
+        return progress_kind
     # Only auto-open SIP while vault is still empty (need_sip). Later micro-steps
     # are DID provision / registration — Hermes tools, not the form.
     if setup_next_id == "phone" and (setup_substep in (None, "", "need_sip")) and any(

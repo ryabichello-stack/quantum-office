@@ -60,12 +60,49 @@ def test_kind_phone_step_does_not_steal_calendar_intent():
     assert _credential_form_kind_from_message("подключи календарь", setup_next_id="phone") is None
 
 
+def test_kind_setup_progress_opens_form_on_need_sip():
+    assert (
+        _credential_form_kind_from_message(
+            "что дальше по сетапу? одним абзацем",
+            setup_next_id="phone",
+            setup_substep="need_sip",
+        )
+        == "mango_sip"
+    )
+    assert (
+        _credential_form_kind_from_message(
+            "Давайте настроим офис",
+            setup_next_id="telegram",
+        )
+        == "telegram_bot"
+    )
+    assert (
+        _credential_form_kind_from_message(
+            "следующий шаг",
+            setup_next_id="files",
+        )
+        == "files_yadisk"
+    )
+
+
+def test_kind_setup_progress_skips_form_on_need_did():
+    assert (
+        _credential_form_kind_from_message(
+            "что дальше по сетапу?",
+            setup_next_id="phone",
+            setup_substep="need_did",
+        )
+        is None
+    )
+
+
 def test_kind_post_save_followup_does_not_reopen_form():
     # HermesStage follow-up after vault save must reach Hermes, not DIY form loop.
     assert (
         _credential_form_kind_from_message(
             "SIP сохранён. Проверь регистрацию. Если Rejected — дай задание для Cursor или снова форму.",
             setup_next_id="phone",
+            setup_substep="need_sip",
         )
         is None
     )
@@ -73,6 +110,7 @@ def test_kind_post_save_followup_does_not_reopen_form():
         _credential_form_kind_from_message(
             "SIP сохранён и линия Registered. Что дальше — тестовый звонок или сменить голос?",
             setup_next_id="phone",
+            setup_substep="need_sip",
         )
         is None
     )
