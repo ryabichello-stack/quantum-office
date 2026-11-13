@@ -3,6 +3,7 @@
 from app.api.v1.operator import (
     _wants_billing_summary,
     _wants_get_knowledge,
+    _wants_hermes_capabilities,
     _wants_office_health,
     _wants_phones_list,
 )
@@ -33,3 +34,10 @@ def test_wants_get_knowledge():
     assert _wants_get_knowledge("найди в базе знаний про компанию")
     assert _wants_get_knowledge("get_knowledge query=компания")
     assert not _wants_get_knowledge("перечисли номера")
+
+
+def test_wants_hermes_capabilities():
+    assert _wants_hermes_capabilities("вызови hermes.capabilities и кратко перечисли готовые коннекторы")
+    assert _wants_hermes_capabilities("что подключено")
+    assert _wants_hermes_capabilities("какие инструменты доступны")
+    assert not _wants_hermes_capabilities("нарисуй логотип")

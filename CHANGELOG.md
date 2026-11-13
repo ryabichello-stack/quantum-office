@@ -28,6 +28,7 @@
 - Conduct DIY: `phones.list` / `billing.summary` (+ SIP registration asks → `hermes.health`) — Nous was calling bare names / terminal instead of MCP
 - Hermes runtime: seed `mcp_servers.delno_office` → `http://delno-api:8020/v1/mcp` with `${DELNO_MCP_KEY}`; bridge instructions require exact `mcp__delno_office__*` (dots→underscores); Dockerfile installs `--extra mcp`
 - Conduct DIY: `get_knowledge` for clear KB asks (Nous was routing to hosted greptile_mcp instead of delno_office)
+- Conduct DIY: `hermes.capabilities` for connector/tool inventory asks (Nous used bare name + hallucinated readiness)
 
 ### Changed
 

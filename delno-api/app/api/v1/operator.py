@@ -287,6 +287,25 @@ def _wants_get_knowledge(message: str) -> bool:
     return kb and ask
 
 
+def _wants_hermes_capabilities(message: str) -> bool:
+    low = (message or "").lower()
+    return any(
+        m in low
+        for m in (
+            "hermes.capabilities",
+            "office.connectors",
+            "какие коннектор",
+            "готовые коннектор",
+            "какие тул",
+            "какие инструмент",
+            "что подключено",
+            "capabilities",
+            "готовность подключен",
+            "статус коннектор",
+        )
+    )
+
+
 def _wants_billing_summary(message: str) -> bool:
     low = (message or "").lower()
     return any(
@@ -575,6 +594,7 @@ def operator_chat(
         or _wants_phones_list(message)
         or _wants_billing_summary(message)
         or _wants_get_knowledge(message)
+        or _wants_hermes_capabilities(message)
     )
 
     # Vault forms must reach the cabinet as pending_credential_form. Nous text-only
@@ -1006,6 +1026,46 @@ def operator_chat(
             }
         err = result.message if isinstance(result, ToolResult) else "kb_failed"
         message = f"{message}\n\n[system: get_knowledge failed: {err}]"
+
+    if _wants_hermes_capabilities(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        result = registry.run(db, ctx, "hermes.capabilities")
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            connectors = data.get("connectors") or []
+            lines = []
+            if isinstance(connectors, list):
+                for c in connectors[:12]:
+                    if not isinstance(c, dict):
+                        continue
+                    usable = c.get("usable")
+                    ready = c.get("ready") if "ready" in c else usable
+                    flag = "ok" if ready or usable else "нет"
+                    lines.append(
+                        f"- {c.get('kind') or c.get('label') or '?'}: {flag}"
+                        + (f" — {c.get('detail') or c.get('message') or ''}" if c.get("detail") or c.get("message") else "")
+                    )
+            missing = data.get("missing") or []
+            miss_txt = ", ".join(str(m) for m in missing) if missing else "нет"
+            body_txt = "\n".join(lines) if lines else (result.message or "—")
+            return {
+                "ok": True,
+                "engine": "diy_hermes_capabilities",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": (
+                    f"Готовность коннекторов:\n{body_txt}\n"
+                    f"Требуют настройки: {miss_txt}\n"
+                    f"{result.message or ''}"
+                ).strip(),
+                "tool_calls": [{"tool": "hermes.capabilities", "ok": True}],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "capabilities_failed"
+        message = f"{message}\n\n[system: hermes.capabilities failed: {err}]"
 
     # Feature-flagged Nous Hermes runtime (Stage 0+). DIY loop remains fallback.
     try:
