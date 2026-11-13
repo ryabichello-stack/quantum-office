@@ -614,11 +614,16 @@ def _credential_form_kind_from_message(
         return "mango_sip"
     # Messenger / files vault steps — clear connect intent opens the form
     # (Nous cannot surface CredentialFormCard).
+    # Do NOT use bare «подключ» — it matches status «подключены».
     connectish = any(
         m in low
         for m in (
-            "подключ",
-            "настро",
+            "подключи",
+            "подключить",
+            "подключим",
+            "подключение",
+            "настрой",
+            "настроить",
             "открой",
             "пришли",
             "токен",
@@ -635,6 +640,10 @@ def _credential_form_kind_from_message(
             setup_next_id == "max" and ("max" in low or "макс" in low)
         ):
             return "max_bot"
+    # Status inventory («какие облака подключены») → DIY, never vault form —
+    # even when setup_next is still files.
+    if _wants_files_cloud_status(message):
+        return None
     # Files / cloud disks — connect intent opens vault even after setup_complete
     # (conduct phase still needs CredentialFormCard; Nous cannot show it).
     cloudish = any(

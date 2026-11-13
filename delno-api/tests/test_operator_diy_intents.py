@@ -66,3 +66,7 @@ def test_credential_form_yandex_connect_in_conduct():
 
     assert _credential_form_kind_from_message("подключи яндекс диск") == "files_yadisk"
     assert _credential_form_kind_from_message("настрой Google Drive") == "files_gdrive"
+    assert _credential_form_kind_from_message("какие облака подключены") is None
+    assert _credential_form_kind_from_message(
+        "какие облака подключены", setup_next_id="files"
+    ) is None
