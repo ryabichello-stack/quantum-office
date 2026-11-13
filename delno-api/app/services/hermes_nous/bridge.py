@@ -174,6 +174,9 @@ def create_run(
         mission = (
             "Office is being conducted: plan → DELNO MCP tools → report. "
             "For pictures call generate_image. Ava telephony: phones.*/calls.*/telephony.*. "
+            "Use exact granted tool names (hermes.health, suggest_calendar_slots, "
+            "send_mail_draft, create_conference, crm.funnel, …). "
+            "Never claim a granted tool is unavailable — call it, then report the result. "
             "Critical writes need confirmation policy."
         )
     payload: dict[str, Any] = {

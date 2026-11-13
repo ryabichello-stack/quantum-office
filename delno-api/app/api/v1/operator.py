@@ -212,6 +212,48 @@ def _conference_title(message: str) -> str:
     return "Встреча DELNO"
 
 
+def _wants_office_health(message: str) -> bool:
+    low = (message or "").lower()
+    return any(
+        m in low
+        for m in (
+            "hermes.health",
+            "office.health",
+            "статус офиса",
+            "здоровье офиса",
+            "office health",
+            "проверь офис",
+            "health офиса",
+        )
+    )
+
+
+def _wants_crm_funnel(message: str) -> bool:
+    low = (message or "").lower()
+    return any(
+        m in low
+        for m in (
+            "crm.funnel",
+            "crm воронк",
+            "воронк",
+            "воронку",
+            "funnel",
+            "crm статус",
+        )
+    ) and any(
+        m in low
+        for m in (
+            "покажи",
+            "показать",
+            "кратко",
+            "статус",
+            "воронк",
+            "funnel",
+            "crm",
+        )
+    )
+
+
 def _wants_mail_draft(message: str) -> bool:
     """«отправь письмо / черновик» with a clear recipient — DIY send_mail_draft."""
     low = (message or "").lower()
@@ -439,6 +481,8 @@ def operator_chat(
         or _wants_calendar_slots(message)
         or _wants_conference_create(message)
         or _wants_mail_draft(message)
+        or _wants_office_health(message)
+        or _wants_crm_funnel(message)
     )
 
     # Vault forms must reach the cabinet as pending_credential_form. Nous text-only
@@ -687,6 +731,79 @@ def operator_chat(
             }
         err = result.message if isinstance(result, ToolResult) else "mail_failed"
         message = f"{message}\n\n[system: send_mail_draft failed: {err}]"
+
+    # Conduct fast-path: office health (Nous invents missing office.health).
+    if _wants_office_health(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        result = registry.run(db, ctx, "hermes.health")
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            healthy = bool(data.get("healthy"))
+            alerts = data.get("alerts") or []
+            alert_lines = []
+            for a in alerts[:5]:
+                if isinstance(a, dict):
+                    alert_lines.append(
+                        f"- {a.get('code') or 'alert'}: {a.get('message_ru') or a.get('message') or ''}"
+                    )
+            body_txt = "\n".join(alert_lines) if alert_lines else "Алертов нет."
+            return {
+                "ok": True,
+                "engine": "diy_hermes_health",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": (
+                    f"{'Офис в норме.' if healthy else 'Есть проблемы по офису.'}\n"
+                    f"{data.get('message_ru') or result.message or ''}\n{body_txt}"
+                ).strip(),
+                "tool_calls": [{"tool": "hermes.health", "ok": True, "healthy": healthy}],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "health_failed"
+        message = f"{message}\n\n[system: hermes.health failed: {err}]"
+
+    if _wants_crm_funnel(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        result = registry.run(db, ctx, "crm.funnel")
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            stages = data.get("stages") or data.get("funnel") or data.get("items") or []
+            lines = []
+            if isinstance(stages, dict):
+                for k, v in stages.items():
+                    lines.append(f"- {k}: {v}")
+            elif isinstance(stages, list):
+                for s in stages[:12]:
+                    if isinstance(s, dict):
+                        lines.append(
+                            f"- {s.get('stage') or s.get('name') or s}: "
+                            f"{s.get('count') if 'count' in s else s.get('leads') or s}"
+                        )
+                    else:
+                        lines.append(f"- {s}")
+            if not lines:
+                import json as _json
+
+                body_txt = _json.dumps(data, ensure_ascii=False)[:800]
+            else:
+                body_txt = "\n".join(lines)
+            return {
+                "ok": True,
+                "engine": "diy_crm_funnel",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": f"CRM воронка:\n{body_txt}\n{result.message or ''}".strip(),
+                "tool_calls": [{"tool": "crm.funnel", "ok": True}],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "crm_failed"
+        message = f"{message}\n\n[system: crm.funnel failed: {err}]"
 
     # Feature-flagged Nous Hermes runtime (Stage 0+). DIY loop remains fallback.
     try:
