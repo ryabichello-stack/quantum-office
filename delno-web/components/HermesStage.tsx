@@ -1349,6 +1349,9 @@ export function HermesStage({ token }: { token: string }) {
                   <>
                     <div className="hx-tool-pillrow">
                       <span data-ok={toolkit.ava?.ready ? "1" : "0"}>Ava {toolkit.ava?.ready ? "· ready" : "· setup"}</span>
+                      <span data-ok={toolkit.ava?.script_ready ? "1" : "0"}>
+                        Script {toolkit.ava?.script_ready ? "· ok" : "· —"}
+                      </span>
                       <span data-ok={toolkit.health?.healthy ? "1" : "0"}>Health</span>
                       <span data-ok={toolkit.setup?.complete ? "1" : "0"}>Setup</span>
                     </div>

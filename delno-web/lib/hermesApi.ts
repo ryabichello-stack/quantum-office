@@ -249,7 +249,9 @@ export type HermesToolkit = {
   ava?: {
     label?: string;
     ready?: boolean;
+    script_ready?: boolean;
     detail?: string;
+    status?: { script_ready?: boolean; active_dids?: number; sip_configured?: boolean };
     tools?: { id: string; title: string; description?: string; registered?: boolean }[];
   };
   media?: { tools?: { id: string; title: string; description?: string }[] };

@@ -76,9 +76,20 @@ def get_toolkit(db: Session, ctx: TenantContext) -> dict[str, Any]:
             )
 
     checks = setup.get("checks") if isinstance(setup, dict) else {}
-    telephony_check = (checks or {}).get("telephony") or (checks or {}).get("phone") or {}
-    phone_detail = telephony_check.get("detail") if isinstance(telephony_check, dict) else {}
-    ava_detail = _format_ava_detail(phone_detail, ready=bool(telephony_check.get("ok")))
+    phone_check = (checks or {}).get("phone") or {}
+    script_check = (checks or {}).get("telephony_script") or {}
+    phone_detail = phone_check.get("detail") if isinstance(phone_check, dict) else {}
+    script_ok = bool(script_check.get("ok"))
+    phone_ok = bool(phone_check.get("ok"))
+    ava_detail = _format_ava_detail(
+        phone_detail,
+        ready=phone_ok,
+        script_ok=script_ok,
+    )
+    status_blob = dict(phone_detail) if isinstance(phone_detail, dict) else {}
+    status_blob["script_ready"] = script_ok
+    if isinstance(script_check.get("detail"), dict):
+        status_blob["script_tools"] = (script_check.get("detail") or {}).get("tools") or []
 
     return {
         "ok": True,
@@ -96,9 +107,10 @@ def get_toolkit(db: Session, ctx: TenantContext) -> dict[str, Any]:
         "connectors": connectors,
         "ava": {
             "label": "Ava · телефония",
-            "ready": bool(telephony_check.get("ok")),
+            "ready": phone_ok,
+            "script_ready": script_ok,
             "detail": ava_detail,
-            "status": phone_detail if isinstance(phone_detail, dict) else {},
+            "status": status_blob,
             "tools": ava_tools,
         },
         "media": {"tools": media_tools},
@@ -114,9 +126,11 @@ def get_toolkit(db: Session, ctx: TenantContext) -> dict[str, Any]:
     }
 
 
-def _format_ava_detail(detail: Any, *, ready: bool) -> str:
+def _format_ava_detail(detail: Any, *, ready: bool, script_ok: bool = False) -> str:
+    if ready and script_ok:
+        return "Ava готова: DID, SIP Registered и сценарий секретаря на месте."
     if ready:
-        return "Ava готова: DID и SIP зарегистрированы."
+        return "Линия готова (DID+SIP). Добавьте сценарий секретаря, если ещё нет."
     if isinstance(detail, str) and detail.strip():
         return detail.strip()
     if not isinstance(detail, dict):
@@ -137,4 +151,5 @@ def _format_ava_detail(detail: Any, *, ready: bool) -> str:
         parts.append(reg_msg)
     else:
         parts.append("регистрация не подтверждена")
+    parts.append("сценарий готов" if script_ok else "сценарий не задан")
     return " · ".join(parts)

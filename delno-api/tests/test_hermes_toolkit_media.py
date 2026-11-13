@@ -109,7 +109,18 @@ def test_toolkit_includes_ava_tools(monkeypatch):
             "setup_complete": False,
             "message_ru": "setup",
             "progress": {},
-            "checks": {"telephony": {"ok": False, "detail": "need DID"}},
+            "checks": {
+                "phone": {
+                    "ok": False,
+                    "detail": {
+                        "active_dids": 0,
+                        "sip_configured": False,
+                        "registration_ok": True,
+                        "registration_message": "Registered",
+                    },
+                },
+                "telephony_script": {"ok": True, "detail": {"configured": True, "tools": ["hangup_call"]}},
+            },
         },
     )
     monkeypatch.setattr(
@@ -124,6 +135,8 @@ def test_toolkit_includes_ava_tools(monkeypatch):
     out = get_toolkit(db, ctx)
     assert out["ok"] is True
     assert out["ava"]["tools"]
+    assert out["ava"]["script_ready"] is True
+    assert "сценарий готов" in (out["ava"]["detail"] or "")
     assert any(t["id"] == "telephony.tools_set" for t in out["ava"]["tools"])
     assert any(t["id"] == "generate_image" for t in out["media"]["tools"])
     db.close()
