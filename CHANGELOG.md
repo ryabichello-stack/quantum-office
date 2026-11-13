@@ -10,6 +10,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Hermes media DIY: «сгенерируй простую картинку» (adverb between verb and noun) now matches `_wants_media_generation` and hits `generate_image` instead of a Nous dead-end during connectors phase
+
+### Changed
+
+- Onboarding tool pack includes `generate_image` so media works before office `ready` (DIY fast-path still preferred)
+
 ### Added
 
 - Hermes cabinet ChatGPT-class UI: empty state «Чем помочь?», refined composer, markdown/images in bubbles, toolkit panel (Ava telephony + connectors + generate_image)

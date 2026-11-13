@@ -29,8 +29,11 @@ def test_generate_image_registered():
 
 def test_wants_media_generation_routes():
     assert _wants_media_generation("Сгенерируй картинку: робот")
+    assert _wants_media_generation("сгенерируй простую картинку: синий квадрат")
+    assert _wants_media_generation("Сделай мокап обложки для лендинга")
     assert _wants_media_generation("Please generate an image of a cat")
     assert not _wants_media_generation("Какие звонки были сегодня?")
+    assert not _wants_media_generation("Создай конференцию на завтра")
 
 
 def test_generate_image_prefers_proxy_friendly_models(monkeypatch):

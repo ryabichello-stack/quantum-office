@@ -28,6 +28,8 @@ ONBOARDING_KB = META + (
     "telephony.script_propose",
     "telephony.script_save",
     "telephony.tools_set",
+    # ChatGPT-class media during setup (DIY fast-path preferred; pack is fallback)
+    "generate_image",
 )
 
 # P2 — дирижирование office tools (write всё ещё через confirm в registry)

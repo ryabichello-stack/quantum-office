@@ -45,7 +45,12 @@ class OperatorConfirmRequest(BaseModel):
 
 
 def _wants_media_generation(message: str) -> bool:
-    """Route image/video generation asks to DIY tools (reliable OpenAI Images path)."""
+    """Route image/video generation asks to DIY tools (reliable OpenAI Images path).
+
+    Match contiguous phrases and adverb-interrupted ones
+    («сгенерируй простую картинку») — otherwise Nous onboarding pack has no
+    generate_image and the owner gets a dead-end reply.
+    """
     low = (message or "").lower()
     markers = (
         "generate_image",
@@ -60,8 +65,32 @@ def _wants_media_generation(message: str) -> bool:
         "generate image",
         "draw me",
         "create an image",
+        "create a picture",
+        "draw a",
     )
-    return any(m in low for m in markers)
+    if any(m in low for m in markers):
+        return True
+    verbs = (
+        "сгенерируй",
+        "сгенерировать",
+        "создай",
+        "нарисуй",
+        "сделай",
+        "generate",
+        "draw",
+    )
+    nouns = (
+        "картин",
+        "изображ",
+        "фото",
+        "image",
+        "picture",
+        "illustration",
+        "mockup",
+        "мокап",
+        "обложк",
+    )
+    return any(v in low for v in verbs) and any(n in low for n in nouns)
 
 
 # hermes_ops checklist id → vault form kind (only when the mapping is unambiguous).
