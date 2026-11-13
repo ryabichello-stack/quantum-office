@@ -436,6 +436,14 @@ def save_secret(
             }
             if probe.get("message_ru"):
                 out["message"] = (out["message"] + " " + str(probe.get("message_ru"))).strip()
+            # Rejected / not Registered → reopen SIP form so owner can fix password without
+            # hunting for «пришли форму» (follow-up chat used to block vault reopen).
+            if not probe.get("ok") and not probe.get("skipped"):
+                out["pending_credential_form"] = credential_form_spec("mango_sip")
+                out["message"] = (
+                    (out.get("message") or "")
+                    + " Открою форму SIP снова — проверьте логин (номер/сотрудник) и пароль."
+                ).strip()
         except Exception:  # noqa: BLE001
             __import__("logging").getLogger(__name__).exception("sip probe after vault save failed")
     elif kind in CLOUD_KINDS:

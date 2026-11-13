@@ -892,9 +892,11 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
                 }
             )
             if not probe.get("ok") and sip.get("configured"):
+                out["pending_credential_form"] = credential_form_spec("mango_sip")
                 out["reply"] += (
-                    "\n\nАвтопроверка: линия ещё не Registered. "
-                    "Могу выдать задание для Cursor или снова открыть форму SIP."
+                    "\n\nАвтопроверка: линия ещё не Registered "
+                    f"({probe.get('status') or 'unknown'}). "
+                    "Открываю форму SIP снова — проверьте логин (номер/сотрудник) и пароль."
                 )
             elif probe.get("ok"):
                 out["reply"] += "\n\nАвтопроверка: линия Registered. Следующий шаг — тестовый звонок."

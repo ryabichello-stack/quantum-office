@@ -71,37 +71,40 @@
 
 ## 2. Телефония (шаг `phone`)
 
-Сначала `hermes.setup_status` → смотри `setup_next.substep`.
+Сначала `hermes.setup_status` → смотри `setup_next.substep`.  
+Правило: **форма важнее текста**. Если нужен SIP — вызови `credentials.open_form`, не описывай «что сделать».
 
 ### 2.1. `need_sip` — нет SIP в сейфе
 
 | # | Действие | Tool | Confirm? |
 |---|----------|------|----------|
-| 1 | Объяснить: нужен SIP Mango в сейфе | — | — |
-| 2 | Спросить: «Открыть безопасную форму SIP?» | — | **ждём «да»** |
-| 3 | Открыть форму | `credentials.open_form` kind=`mango_sip` | уже согласие |
-| 4 | После сохранения владельцем — проверить | `hermes.setup_status` / `hermes.health` | нет |
+| 1 | Коротко: «нужен SIP Mango в сейфе» | — | — |
+| 2 | Сразу открыть форму (или после «да» / «делай» / номера DID) | `credentials.open_form` kind=`mango_sip` | согласие уже есть или act-now |
+| 3 | После сохранения — `hermes.health` | статус | нет |
 
-Пароль **никогда** в чат.
+Пароль **никогда** в чат.  
+Запрещено: «могу открыть форму, если хотите» без tool.
 
 ### 2.2. `need_did` — SIP есть, нет активного DID
 
 | # | Действие | Tool | Confirm? |
 |---|----------|------|----------|
-| 1 | Показать статус, сказать нужен DID | `phones.list` | нет |
+| 1 | Статус номеров | `phones.list` | нет |
 | 2 | Спросить номер / «подключить DID?» | — | **ждём** |
-| 3 | Выдать/привязать | `phones.provision` | согласие |
-| 4 | Проверить | `phones.list`, `hermes.setup_status` | нет |
+| 3 | Привязать | `phones.provision` | согласие |
+| 4 | **Сразу** открыть SIP-форму (если SIP ещё не Registered / пустой) | `credentials.open_form` mango_sip | — |
 
-**Не** открывай снова `mango_sip`.
+Не оставляй владельца с текстом «дальше SIP» без формы.
 
-### 2.3. `need_reg` — ждём Registered
+### 2.3. `need_reg` / Rejected — линия не Registered
 
-| Tool | Confirm? |
-|------|----------|
-| `hermes.health` / `hermes.setup_status` | нет |
+| Статус | Действие | Tool |
+|--------|----------|------|
+| Registered | Коротко ok → следующий шаг сетапа | `hermes.health` |
+| **Rejected** / unknown / не Registered | «Пароль/логин не принят Mango» → **сразу форма снова** | `credentials.open_form` mango_sip |
 
-Объясни status и next_actions. Не предлагай KB и не открывай форму.
+Запрещено при Rejected: только «проверьте пароль» / «есть проблемы» без `credentials.open_form`.  
+Не предлагай KB.
 
 ---
 

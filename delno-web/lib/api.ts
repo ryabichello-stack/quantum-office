@@ -445,6 +445,7 @@ export function apiTenantSecretSave(
     configured: boolean;
     login_masked?: string;
     message?: string;
+    pending_credential_form?: CredentialFormSpec | null;
     sip_probe?: {
       ok?: boolean;
       skipped?: boolean;

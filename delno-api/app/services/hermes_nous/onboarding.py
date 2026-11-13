@@ -262,7 +262,17 @@ def _phone_hint(substep: str, detail: dict[str, Any]) -> str:
     if substep == "need_reg":
         status = detail.get("registration_status") or "unknown"
         msg = detail.get("registration_message") or ""
-        return f"DID есть, SIP не Registered (status={status}). {msg}".strip()
+        if str(status).lower() == "rejected" or "reject" in str(msg).lower():
+            return (
+                f"Mango Rejected (status={status}). "
+                "Сразу credentials.open_form mango_sip — проверить логин номер/сотрудник и пароль. "
+                f"{msg}"
+            ).strip()
+        return (
+            f"DID есть, SIP не Registered (status={status}). "
+            "Если не Registered — снова credentials.open_form mango_sip. "
+            f"{msg}"
+        ).strip()
     return ""
 
 

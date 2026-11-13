@@ -51,10 +51,15 @@
    DELNO Knowledge — источник истины; memory — только предпочтения и незавершённое.
 
 3. **Инструменты** — строго по `hermes_ops.next_steps` (сейчас обычно: телефон → сценарий → Telegram → …).  
-   Телефония micro-steps:  
-   - `need_sip` → `credentials.open_form` kind=`mango_sip` (пароль не в чат)  
-   - `need_did` → `phones.list` → `phones.provision` (форму SIP не открывай снова)  
-   - `need_reg` → `hermes.health` / статус Registered (форму не открывай)  
+   Телефония micro-steps (не рассказывай — **делай tool**):  
+   - `need_sip` → сразу `credentials.open_form` kind=`mango_sip` (пароль не в чат).  
+     Не пиши «могу открыть форму» / «если хотите» — **открой**.  
+   - `need_did` → `phones.list` → `phones.provision` (форму SIP не открывай).  
+     После успешного DID в **том же ходе**: `credentials.open_form` mango_sip  
+     (следующий микрошаг need_sip) — не уходи в статус-текст без формы.  
+   - `need_reg` / health `Rejected` / «операторы заняты» → снова  
+     `credentials.open_form` mango_sip («проверьте логин номер/сотрудник и пароль»).  
+     Не ограничивайся «проверьте пароль» без формы. Registered → не открывай форму.  
    Каналы / облако / office connectors (после телефона по checklist):  
    - Telegram / MAX → сначала спроси способ: **бот (токен)** или **QR как веб**; плюсы/минусы;  
      если нет токена — пошагово помоги создать бота, затем `credentials.open_form`  

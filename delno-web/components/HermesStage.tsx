@@ -689,14 +689,14 @@ export function HermesStage({ token }: { token: string }) {
       const result = await apiOperatorConfirm(token, pending.tool_name, pending.params);
       const confirmId = pending.confirmation_id;
       setActivePending(null);
-      // Drop pending from the confirmed bubble so it doesn't flip to «неактивно».
+      const suggestions = (result.suggested_actions || []).filter((a) => a?.title && a?.text);
+      const secretForm = (result.pending_credential_form || null) as ApiCredentialFormSpec | null;
+      // Set form outside setLines — React ignores/races setState inside updaters.
+      if (secretForm) setActiveSecretForm(secretForm);
       setLines((prev) => {
         const cleared = prev.map((line) =>
           line.pending?.confirmation_id === confirmId ? { ...line, pending: undefined } : line,
         );
-        const suggestions = (result.suggested_actions || []).filter((a) => a?.title && a?.text);
-        const secretForm = (result.pending_credential_form || null) as ApiCredentialFormSpec | null;
-        if (secretForm) setActiveSecretForm(secretForm);
         return [
           ...cleared,
           {
@@ -711,8 +711,9 @@ export function HermesStage({ token }: { token: string }) {
       });
       void refreshPanels();
 
-      // Continue the onboarding loop (same idea as after SIP/secret save).
-      if (result.ok && pending.tool_name === "phones.provision") {
+      // If SIP form already opened — that IS the next step. Do not fire a follow-up
+      // chat that replaces the active form with «Форма уже закрыта».
+      if (result.ok && pending.tool_name === "phones.provision" && !secretForm) {
         try {
           const e164 = String((pending.params as { e164?: string })?.e164 || "").trim();
           const followAsk = e164
@@ -770,10 +771,17 @@ export function HermesStage({ token }: { token: string }) {
         password: values.password,
         foreign_consent: values.foreign_consent,
       });
-      setActiveSecretForm(null);
       const probe = result.sip_probe;
       const cloud = result.cloud_probe;
       const channel = result.channel_connect;
+      const reopenForm = (result.pending_credential_form || null) as ApiCredentialFormSpec | null;
+      const sipRejected = secretKind === "mango_sip" && probe && !probe.ok && !probe.skipped;
+      // Keep / reopen form when SIP Rejected — don't leave «Форма уже закрыта».
+      if (reopenForm || sipRejected) {
+        setActiveSecretForm(reopenForm || activeSecretForm);
+      } else {
+        setActiveSecretForm(null);
+      }
       const ack =
         result.message ||
         `Сохранил ${result.kind}: ${result.login_masked || "••••"}. Секрет в чат не попал.`;
@@ -784,8 +792,22 @@ export function HermesStage({ token }: { token: string }) {
           : channel?.account?.bot_username
             ? `\nTelegram: @${channel.account.bot_username}`
             : "";
-      setLines((prev) => [...prev, { role: "assistant", text: `${ack}${probeLine}` }]);
+      const formForLine = reopenForm || (sipRejected ? activeSecretForm : null);
+      setLines((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text: `${ack}${probeLine}`,
+          credentialForm: formForLine || undefined,
+        },
+      ]);
       void refreshPanels();
+
+      // SIP still Rejected — form is the next step; skip status waffle that kills the card.
+      if (sipRejected) {
+        return;
+      }
+
       // Follow-up in the same thread so Hermes re-reads vault + setup (no more loop).
       try {
         const isCloud = secretKind.startsWith("files_");
@@ -803,16 +825,14 @@ export function HermesStage({ token }: { token: string }) {
               ? channel?.ok
                 ? "MAX бот подключён. Какой следующий шаг hermes_ops?"
                 : "Токен MAX сохранён. Проверь каналы / hermes.setup_status. Что дальше?"
-              : probe?.ok
-                ? "SIP сохранён и линия Registered. Что дальше — тестовый звонок или сменить голос?"
-                : "SIP сохранён. Проверь регистрацию. Если Rejected — дай задание для Cursor или снова форму.";
+              : "SIP сохранён и линия Registered. Что дальше — тестовый звонок или сменить голос?";
         const followUserLabel = isCloud
           ? "Облако сохранено. Что дальше?"
           : isTelegram
             ? "Telegram сохранён. Канал готов? Что дальше?"
             : isMax
               ? "MAX сохранён. Канал готов? Что дальше?"
-              : "SIP сохранён. Телефон настроен? Что дальше по линии?";
+              : "SIP Registered. Что дальше по линии?";
         const follow = await apiOperatorChat(
           token,
           followAsk,
@@ -821,6 +841,8 @@ export function HermesStage({ token }: { token: string }) {
           "hermes",
         );
         if (follow.conversation_id) setConversationId(follow.conversation_id);
+        const secretForm = (follow.pending_credential_form || null) as ApiCredentialFormSpec | null;
+        if (secretForm) setActiveSecretForm(secretForm);
         setLines((prev) => [
           ...prev,
           { role: "user", text: followUserLabel },
@@ -828,10 +850,9 @@ export function HermesStage({ token }: { token: string }) {
             role: "assistant",
             text: follow.reply || "Проверил сейф и сетап.",
             sources: dedupeSources(follow.sources),
+            credentialForm: secretForm || undefined,
           },
         ]);
-        const secretForm = (follow.pending_credential_form || null) as ApiCredentialFormSpec | null;
-        if (secretForm) setActiveSecretForm(secretForm);
         void refreshPanels();
       } catch {
         /* ack already shown; follow-up is best-effort */

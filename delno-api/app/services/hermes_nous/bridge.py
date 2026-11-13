@@ -201,11 +201,21 @@ def create_run(
             sub = sn.get("substep")
             micro = f" micro-step={sub}." if sub else ""
             if sub == "need_sip":
-                micro += " Open credentials.open_form mango_sip (never ask password in chat)."
+                micro += (
+                    " MUST call credentials.open_form mango_sip now "
+                    "(never ask password in chat; never only describe the form)."
+                )
             elif sub == "need_did":
-                micro += " phones.list → phones.provision; do not reopen SIP form."
+                micro += (
+                    " phones.list → phones.provision; after DID succeeds in same turn "
+                    "open credentials.open_form mango_sip if SIP not Registered yet."
+                )
             elif sub == "need_reg":
-                micro += " Check hermes.health / registration; do not reopen SIP form."
+                micro += (
+                    " hermes.health: if Registered → next setup step; "
+                    "if Rejected/not Registered → MUST credentials.open_form mango_sip again "
+                    "(fix password; do not only say «проверьте пароль»)."
+                )
             elif sn.get("id") == "telephony_script":
                 micro += (
                     " Use telephony.script_get → draft/save script; "
