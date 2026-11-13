@@ -973,25 +973,35 @@ def operator_chat(
         result = registry.run(db, ctx, "get_knowledge", query=q[:400] or "компания")
         if isinstance(result, ToolResult) and result.ok:
             data = result.data or {}
-            snippets = data.get("snippets") or data.get("hits") or data.get("results") or []
+            # KnowledgeAdapter returns matches[] + aggregated text (not snippets/hits).
+            matches = data.get("matches") or data.get("results") or data.get("hits") or []
             lines = []
-            if isinstance(snippets, list):
-                for s in snippets[:5]:
+            if isinstance(matches, list):
+                for s in matches[:5]:
                     if isinstance(s, dict):
                         lines.append(
                             f"- {s.get('title') or s.get('source') or 'doc'}: "
-                            f"{(s.get('text') or s.get('body') or s.get('snippet') or '')[:280]}"
+                            f"{(s.get('snippet') or s.get('text') or s.get('body') or '')[:280]}"
                         )
                     else:
                         lines.append(f"- {str(s)[:280]}")
-            body_txt = "\n".join(lines) if lines else (result.message or str(data)[:800] or "Пусто.")
+            body_txt = "\n".join(lines) if lines else (
+                str(data.get("text") or result.message or "")[:1200] or "Пусто."
+            )
             return {
                 "ok": True,
                 "engine": "diy_get_knowledge",
                 "channel": body.channel,
                 "conversation_id": body.conversation_id,
                 "reply": f"Из базы знаний:\n{body_txt}".strip(),
-                "tool_calls": [{"tool": "get_knowledge", "ok": True, "query": q[:120]}],
+                "tool_calls": [
+                    {
+                        "tool": "get_knowledge",
+                        "ok": True,
+                        "query": q[:120],
+                        "hits": len(matches) if isinstance(matches, list) else 0,
+                    }
+                ],
                 "modality": modality,
             }
         err = result.message if isinstance(result, ToolResult) else "kb_failed"
