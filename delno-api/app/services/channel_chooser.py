@@ -149,11 +149,10 @@ def explicit_bot_form_kind(message: str) -> str | None:
 def chooser_reply(channel: ChannelKind) -> dict[str, Any]:
     if channel == "telegram":
         title = "Telegram"
-        bot_label = "бота @BotFather"
         qr_label = "QR как Telegram Web (доп. устройство)"
         reply = (
             "Подключим Telegram. Есть два способа — какой удобнее?\n\n"
-            f"1) **Бот ({bot_label})** — офисный канал «от имени компании».\n"
+            "1) **Бот (@BotFather)** — офисный канал «от имени компании».\n"
             "   + Свой бренд, стабильные вебхуки, секретарь отвечает в боте.\n"
             "   − Нужно создать бота и вставить токен (помогу по шагам).\n\n"
             f"2) **{qr_label}** — как вход в Telegram Web с телефона.\n"
