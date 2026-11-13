@@ -133,9 +133,17 @@ def create_run(
             ctx_bits.append("KB step is DONE — do not ask to import/rebuild company knowledge.")
         sn = office_context.get("setup_next")
         if isinstance(sn, dict) and sn.get("title"):
+            sub = sn.get("substep")
+            micro = f" micro-step={sub}." if sub else ""
+            if sub == "need_sip":
+                micro += " Open credentials.open_form mango_sip (never ask password in chat)."
+            elif sub == "need_did":
+                micro += " phones.list → phones.provision; do not reopen SIP form."
+            elif sub == "need_reg":
+                micro += " Check hermes.health / registration; do not reopen SIP form."
             ctx_bits.append(
                 f"hermes_ops next required step: «{sn.get('title')}» "
-                f"(id={sn.get('id')}). hint: {sn.get('hint') or '—'}. Lead with this."
+                f"(id={sn.get('id')}).{micro} hint: {sn.get('hint') or '—'}. Lead with this."
             )
         phase = office_context.get("phase")
         if phase:

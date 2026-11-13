@@ -5,7 +5,10 @@ from __future__ import annotations
 # Always safe meta
 META = ("office.health", "office.connectors", "hermes.profile")
 
-# P1 — онбординг + KB
+# P1 — онбординг + KB + connectors needed to close hermes_ops checklist
+# (PRODUCT_LOOP: after KB → phone/DID/SIP → other tools). phones.* must be
+# here — otherwise Nous cannot leave need_sip / need_did while still in
+# onboarding mode.
 ONBOARDING_KB = META + (
     "hermes.setup_status",
     "hermes.setup_mark",
@@ -19,6 +22,12 @@ ONBOARDING_KB = META + (
     "web.browse",
     "get_tenant_summary",
     "credentials.open_form",
+    "phones.list",
+    "phones.provision",
+    "telephony.script_get",
+    "telephony.script_propose",
+    "telephony.script_save",
+    "telephony.tools_set",
 )
 
 # P2 — дирижирование office tools (write всё ещё через confirm в registry)

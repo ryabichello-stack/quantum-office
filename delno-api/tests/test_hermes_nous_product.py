@@ -20,6 +20,10 @@ def _tenant():
 
 def test_tool_packs_expand_by_mode():
     assert "upload_knowledge_snippet" in pack_for_mode("onboarding")
+    # PRODUCT_LOOP: connectors (phone/DID) must be reachable before conduct mode.
+    assert "phones.list" in pack_for_mode("onboarding")
+    assert "phones.provision" in pack_for_mode("onboarding")
+    assert "credentials.open_form" in pack_for_mode("onboarding")
     assert "send_mail_draft" in pack_for_mode("conduct")
     assert "outreach.stage_send" in pack_for_mode("tasks")
     assert len(pack_for_mode("tasks")) >= len(ONBOARDING_KB)
