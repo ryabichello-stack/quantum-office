@@ -20,6 +20,7 @@
 
 ### Fixed
 
+- Cold-start office status: platform upstream ``configured: true`` (mail/calendar/files/conference Docker) no longer looks like the tenant already set them up; Hermes only treats ``tenant_usable`` / ``checks.*.ok`` as ready. Global Mango Registered is ignored until this cabinet has SIP in vault. New self-service/admin tenants start with empty hermes/connectors + welcome phase
 - Hermes multi-step agent: compound «по шагам / план / сайт+KB+…» no longer stolen by DIY shortcuts (incl. bare «настрой» → Telegram); routes to in-API LLM tool loop with plan→tools→report
 - DIY Hermes turns now persist to conversation history (tab switch / reload no longer wipes the chat)
 - Hermes media DIY: «сгенерируй простую картинку» (adverb between verb and noun) now matches `_wants_media_generation` and hits `generate_image` instead of a Nous dead-end during connectors phase

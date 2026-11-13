@@ -63,17 +63,36 @@ def register_tenant(
     preferred_slug = slugify(slug or company_name)
     tenant_slug = _unique_slug(db, preferred_slug)
 
+    # Cold start for every new cabinet: empty Hermes checklist, no connectors,
+    # welcome phase — platform upstream must never look like «уже настроено».
     tenant = Tenant(
         slug=tenant_slug,
         name=company_name.strip(),
-        settings={"locale": "ru", "onboarding": {"source": "self_service"}},
+        settings={
+            "locale": "ru",
+            "onboarding": {"source": "self_service", "cold_start": True},
+            "hermes": {
+                "kb_ready": False,
+                "company_profile_ready": False,
+                "telephony_script_ready": False,
+            },
+            "connectors": {},
+            "hermes_nous": {"office_loop": {"phase": "welcome"}},
+        },
     )
     db.add(tenant)
     db.flush()
 
+    # Hermes product loop is the default owner experience for new tenants.
+    _default_on = {"web_voice", "hermes_nous_runtime", "experimental_operator"}
     for flag_key in DEFAULT_FLAGS:
-        enabled = flag_key == "web_voice"
-        db.add(FeatureFlag(tenant_id=tenant.id, flag_key=flag_key, enabled=enabled))
+        db.add(
+            FeatureFlag(
+                tenant_id=tenant.id,
+                flag_key=flag_key,
+                enabled=flag_key in _default_on,
+            )
+        )
 
     user = User(
         tenant_id=tenant.id,

@@ -21,7 +21,7 @@ DEFAULT_FLAGS = (
     "phone",
     "outbound_calls",
     "experimental_operator",
-    # Nous Hermes Agent runtime (off by default — Stage 0 dogfood only)
+    # Nous Hermes Agent runtime (enabled for new cold-start cabinets)
     "hermes_nous_runtime",
 )
 
@@ -45,12 +45,33 @@ def create_tenant(
     if existing:
         raise HTTPException(status_code=409, detail=f"Tenant slug already exists: {body.slug}")
 
-    tenant = Tenant(slug=body.slug, name=body.name, settings={"locale": "ru"})
+    tenant = Tenant(
+        slug=body.slug,
+        name=body.name,
+        settings={
+            "locale": "ru",
+            "onboarding": {"cold_start": True},
+            "hermes": {
+                "kb_ready": False,
+                "company_profile_ready": False,
+                "telephony_script_ready": False,
+            },
+            "connectors": {},
+            "hermes_nous": {"office_loop": {"phase": "welcome"}},
+        },
+    )
     db.add(tenant)
     db.flush()
 
+    _default_on = {"web_voice", "hermes_nous_runtime", "experimental_operator"}
     for flag_key in DEFAULT_FLAGS:
-        db.add(FeatureFlag(tenant_id=tenant.id, flag_key=flag_key, enabled=False))
+        db.add(
+            FeatureFlag(
+                tenant_id=tenant.id,
+                flag_key=flag_key,
+                enabled=flag_key in _default_on,
+            )
+        )
 
     if body.owner_email:
         db.add(

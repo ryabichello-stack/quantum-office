@@ -166,9 +166,14 @@ def create_run(
     if pack in ("onboarding", "welcome", "kb", "p1"):
         mission = (
             "Product loop (owner Hermes): follow hermes.setup_status facts, not guesses. "
+            "ONLY treat checks.*.ok / tenant_usable / setup_complete as truth for THIS tenant. "
+            "Platform upstream / Docker / detail.platform_upstream / service_reachable NEVER means "
+            "the owner configured mail/calendar/files/conference/phone. "
+            "If required_done is 0, say the office is empty and start with «О компании» — "
+            "never claim connectors are activated, never invent demo DIDs like +79991234567. "
             "If KB is done, advance to connectors (credentials.open_form / phones / channels). "
-            "Never invent website URLs or passwords. Prefer hermes.setup_status, hermes.setup_mark, "
-            "credentials.open_form, office.import_website only when KB is missing."
+            "Never invent website URLs, phone numbers, or passwords. Prefer hermes.setup_status, "
+            "hermes.setup_mark, credentials.open_form, office.import_website only when KB is missing."
         )
     else:
         mission = (

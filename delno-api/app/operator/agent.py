@@ -664,7 +664,8 @@ def _format_hermes_setup(data: dict[str, Any]) -> str:
     total = progress.get("required_total", 0)
     lines = [
         data.get("message_ru") or "Статус сетапа офиса.",
-        f"Прогресс: {done}/{total}.",
+        f"Прогресс по ЭТОМУ кабинету: {done}/{total}"
+        + (" — кабинет пустой, ничего не подключено." if done == 0 else "."),
     ]
     checks = data.get("checks") or {}
     steps = data.get("steps") or []
@@ -674,12 +675,23 @@ def _format_hermes_setup(data: dict[str, Any]) -> str:
         mark = "✓" if check.get("ok") else ("·" if check.get("optional") else "○")
         hint = step.get("hint") or ""
         title = step.get("title") or sid
-        lines.append(f"{mark} {title}" + ("" if check.get("ok") else f" — {hint}"))
+        detail = check.get("detail") if isinstance(check.get("detail"), dict) else {}
+        summary = ""
+        if isinstance(detail, dict) and detail.get("summary_ru") and not check.get("ok"):
+            summary = f" ({detail.get('summary_ru')})"
+        lines.append(
+            f"{mark} {title}"
+            + ("" if check.get("ok") else f" — {hint}")
+            + summary
+        )
     next_steps = data.get("next_steps") or []
     if next_steps:
         nxt = next_steps[0]
         lines.append(f"Следующий шаг: {nxt.get('title')} — {nxt.get('hint')}")
-    lines.append("Скажите голосом или текстом, что подключить дальше (Telegram, номер, почта…).")
+    if done == 0:
+        lines.append("Не путайте доступность платформы с настройкой кабинета — у владельца пока пусто.")
+    else:
+        lines.append("Скажите голосом или текстом, что подключить дальше (Telegram, номер, почта…).")
     return "\n".join(lines)
 
 

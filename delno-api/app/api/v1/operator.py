@@ -1875,12 +1875,12 @@ def operator_chat(
                 for c in connectors[:12]:
                     if not isinstance(c, dict):
                         continue
-                    usable = c.get("usable")
-                    ready = c.get("ready") if "ready" in c else usable
-                    flag = "ok" if ready or usable else "нет"
+                    usable = bool(c.get("usable"))
+                    flag = "ok" if usable else "нет"
+                    summary = c.get("summary_ru") or c.get("reason") or ""
                     lines.append(
                         f"- {c.get('kind') or c.get('label') or '?'}: {flag}"
-                        + (f" — {c.get('detail') or c.get('message') or ''}" if c.get("detail") or c.get("message") else "")
+                        + (f" — {summary}" if summary else "")
                     )
             missing = data.get("missing") or []
             miss_txt = ", ".join(str(m) for m in missing) if missing else "нет"

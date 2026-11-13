@@ -163,8 +163,38 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
     readiness = {i["kind"]: i for i in list_tenant_connector_readiness(db, ctx)}
 
     def _conn_ok(kind: str) -> bool:
-        item = by_kind.get(kind) or {}
         return bool(readiness.get(kind, {}).get("usable"))
+
+    def _conn_detail(kind: str) -> dict[str, Any]:
+        """Tenant-facing connector facts — never expose bare platform ``configured``.
+
+        Upstream Docker services report configured=true for every tenant; Hermes
+        was reading that as «у вас почта/календарь уже настроены». Only
+        enabled+usable means the owner opted in.
+        """
+        item = by_kind.get(kind) or {}
+        row = readiness.get(kind) or {}
+        enabled = bool(item.get("enabled") or row.get("enabled"))
+        usable = bool(row.get("usable"))
+        platform = bool(item.get("configured") or (item.get("status") or {}).get("configured"))
+        if usable:
+            summary = "подключено и usable для этого кабинета"
+        elif enabled:
+            summary = f"включено у тенанта, но не usable ({row.get('reason') or 'нет кредов'})"
+        elif platform:
+            summary = "платформа доступна; у ЭТОГО кабинета НЕ включено и НЕ настроено"
+        else:
+            summary = "не подключено"
+        return {
+            "tenant_enabled": enabled,
+            "tenant_usable": usable,
+            "platform_upstream": platform,
+            "reason": row.get("reason"),
+            "summary_ru": summary,
+            # Keep ok aligned with checklist — LLMs key off nested ok hard.
+            "ok": usable,
+            "configured": usable,
+        }
 
     kb_info = company_knowledge_ready(db, ctx, hermes=hermes)
     kb_done = bool(kb_info.get("ok"))
@@ -172,14 +202,21 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
     sip_items = list_secret_status(db, ctx).get("items") or []
     sip_row = next((i for i in sip_items if i.get("kind") == "mango_sip"), None) or {}
     sip_ok = bool(sip_row.get("configured"))
-    registration: dict[str, Any] = {"ok": False, "status": "unknown", "reachable": False}
-    try:
-        from app.services.sip_probe import probe_registration
+    # Platform-wide Mango registration must NOT leak into a tenant without vault SIP.
+    registration: dict[str, Any] = {
+        "ok": False,
+        "status": "not_applicable",
+        "reachable": False,
+        "message_ru": "SIP этого кабинета не сохранён — общая регистрация Mango не считается вашей.",
+    }
+    if sip_ok:
+        try:
+            from app.services.sip_probe import probe_registration
 
-        registration = probe_registration()
-    except Exception:  # noqa: BLE001
-        pass
-    reg_ok = bool(registration.get("ok"))
+            registration = probe_registration()
+        except Exception:  # noqa: BLE001
+            registration = {"ok": False, "status": "unknown", "reachable": False}
+    reg_ok = bool(sip_ok and registration.get("ok"))
     # Vault alone is not enough — Mango must show Registered or inbound gets «операторы заняты».
     phone_ok = phones > 0 and sip_ok and reg_ok
     phone_detail = {
@@ -189,6 +226,19 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
         "registration_status": registration.get("status"),
         "registration_ok": reg_ok,
         "registration_message": registration.get("message_ru"),
+        "summary_ru": (
+            "телефония готова"
+            if phone_ok
+            else (
+                "есть DID, но нет SIP этого кабинета"
+                if phones and not sip_ok
+                else (
+                    "нет активного DID"
+                    if not phones
+                    else "SIP есть, регистрация не Registered"
+                )
+            )
+        ),
     }
 
     telephony = settings.get("telephony") if isinstance(settings.get("telephony"), dict) else {}
@@ -210,15 +260,15 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
         "telegram": {"ok": tg > 0, "detail": f"accounts={tg}", "optional": True},
         "max": {"ok": max_n > 0, "detail": f"accounts={max_n}", "optional": True},
         "files": {"ok": False, "detail": {}, "optional": True},
-        "calendar": {"ok": _conn_ok("calendar"), "detail": (by_kind.get("calendar") or {}).get("status")},
-        "mail": {"ok": _conn_ok("mail"), "detail": (by_kind.get("mail") or {}).get("status")},
+        "calendar": {"ok": _conn_ok("calendar"), "detail": _conn_detail("calendar")},
+        "mail": {"ok": _conn_ok("mail"), "detail": _conn_detail("mail")},
         "conference": {
             "ok": _conn_ok("conference"),
-            "detail": (by_kind.get("conference") or {}).get("status"),
+            "detail": _conn_detail("conference"),
         },
         "outreach": {
             "ok": _conn_ok("outreach"),
-            "detail": (by_kind.get("outreach") or {}).get("status"),
+            "detail": _conn_detail("outreach"),
             "optional": True,
         },
     }
@@ -226,9 +276,21 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
         from app.services.files_cloud import cloud_status
 
         clouds = cloud_status(db, ctx)
+        ready_count = int(clouds.get("ready_count") or 0)
         checks["files"] = {
-            "ok": int(clouds.get("ready_count") or 0) > 0,
-            "detail": clouds,
+            "ok": ready_count > 0,
+            "detail": {
+                "tenant_usable": ready_count > 0,
+                "ready_count": ready_count,
+                "ok": ready_count > 0,
+                "configured": ready_count > 0,
+                "summary_ru": (
+                    f"подключено облаков: {ready_count}"
+                    if ready_count
+                    else "у этого кабинета облако НЕ подключено"
+                ),
+                "items": clouds.get("items") or [],
+            },
             "optional": True,
         }
     except Exception:  # noqa: BLE001
@@ -321,6 +383,7 @@ def office_health_report(db: Session, ctx: TenantContext) -> dict[str, Any]:
     """Snapshot of component health for Hermes → user alerts."""
     tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
     connectors = list_tenant_connectors(db, ctx)
+    readiness_rows = list_tenant_connector_readiness(db, ctx)
     phones = (
         db.query(PhoneNumber)
         .filter(PhoneNumber.tenant_id == ctx.tenant_id)
@@ -500,6 +563,32 @@ def office_health_report(db: Session, ctx: TenantContext) -> dict[str, Any]:
         if not blocking
         else "Есть проблемы: " + "; ".join(a["message_ru"] for a in blocking[:3])
     )
+    # Never hand Hermes raw platform ``configured: true`` — that looks like tenant setup.
+    connectors_for_agent: list[dict[str, Any]] = []
+    for row in readiness_rows:
+        kind = row.get("kind")
+        usable = bool(row.get("usable"))
+        enabled = bool(row.get("enabled"))
+        connectors_for_agent.append(
+            {
+                "kind": kind,
+                "enabled": enabled,
+                "usable": usable,
+                "ready": usable,
+                "configured": usable,
+                "ok": usable,
+                "reason": row.get("reason"),
+                "summary_ru": (
+                    "подключено для этого кабинета"
+                    if usable
+                    else (
+                        f"включено, но не usable ({row.get('reason') or 'нет кредов'})"
+                        if enabled
+                        else "у этого кабинета НЕ подключено (платформа ≠ ваш аккаунт)"
+                    )
+                ),
+            }
+        )
     return {
         "ok": True,
         "healthy": len(blocking) == 0,
@@ -509,11 +598,12 @@ def office_health_report(db: Session, ctx: TenantContext) -> dict[str, Any]:
             "queued_jobs": queued_jobs,
             "stuck_jobs": stuck_jobs,
             "recent_failed_sessions": recent_fail_calls,
+            "sip_configured": sip_ok,
         },
         "channels": [
             {"type": c.type, "status": c.status, "id": str(c.id)} for c in channels
         ],
-        "connectors": connectors.get("items") or [],
+        "connectors": connectors_for_agent,
         "message_ru": user_summary,
         "checked_at": hermes["last_health_at"],
     }

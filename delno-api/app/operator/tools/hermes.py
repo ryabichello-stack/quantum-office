@@ -102,8 +102,32 @@ class HermesCapabilitiesTool:
             for t in registry.list_catalog() if t["name"] in allowed
         ]
         missing = [c["kind"] for c in connectors if not c["usable"]]
-        return ToolResult(ok=True, data={"connectors": connectors, "tools": tools, "missing": missing},
-                          message="Доступные инструменты и готовность подключений проверены. Требуют настройки: " + (", ".join(missing) if missing else "нет"))
+        for row in connectors:
+            if not isinstance(row, dict):
+                continue
+            usable = bool(row.get("usable"))
+            enabled = bool(row.get("enabled"))
+            # Align with hermes_ops: never let platform upstream look "configured".
+            row["ready"] = usable
+            row["configured"] = usable
+            row["ok"] = usable
+            row["summary_ru"] = (
+                "подключено для этого кабинета"
+                if usable
+                else (
+                    f"включено, но не usable ({row.get('reason') or 'нет кредов'})"
+                    if enabled
+                    else "у этого кабинета НЕ подключено"
+                )
+            )
+        return ToolResult(
+            ok=True,
+            data={"connectors": connectors, "tools": tools, "missing": missing},
+            message=(
+                "Готовность ЭТОГО кабинета (не платформы). Требуют настройки: "
+                + (", ".join(missing) if missing else "нет")
+            ),
+        )
 
 
 class HermesTasksCreateTool:
