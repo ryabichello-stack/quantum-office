@@ -3291,7 +3291,7 @@ aside a.nav-operator.selected .nav-orb-icon {
   font-size: 17px !important;
 }
 .hx-empty {
-  /* One column, one center axis — orb / title / lead track the same midline as width changes. */
+  /* One column, one center axis — orb / title / lead share the same midline. */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3301,14 +3301,16 @@ aside a.nav-operator.selected .nav-orb-icon {
   animation: hx-rise 0.5s cubic-bezier(.22,1,.36,1) both;
 }
 .hx-empty-orb {
-  display: grid;
-  place-items: center;
+  /* Full row of the column so justify-content centers against the same width as the title. */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
   margin: 0 0 clamp(12px, 2vh, 20px);
 }
 .hx-empty-orb .delno-crystal-mount {
-  /* Soft visual scale; layout box stays centered via parent align-items. */
-  transform: scale(clamp(0.64, 12vw, 0.78));
-  transform-origin: center center;
+  /* Resize the mount itself (no transform) so layout box == visual box. */
+  --mount-size: clamp(128px, 36vw, 156px);
 }
 .hx-empty-title {
   font-family: "Manrope", sans-serif !important;

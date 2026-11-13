@@ -30,6 +30,7 @@
 
 ### Fixed
 
+- Hermes empty-state orb: size via `--mount-size` clamp (layout box = visual box) and full-width flex center under the headline — no hardcoded 120px scale box; rebuild `delno-web` so app.dlno.ru picks it up
 - Website import: do not stop at a single short `<p>` — fall back to full visible page text (li/div) so marketing sites like Quantum Payouts yield real KB, not only meta description
 
 - Hermes cabinet: when ``hermes_nous_runtime`` is on but profile/worker missing, return honest ``engine=hermes_unavailable`` — no silent DIY reply posing as Hermes
