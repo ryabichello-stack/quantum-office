@@ -87,6 +87,48 @@ class GetKnowledgeTool:
             return ToolResult(ok=False, data=data, message=message)
 
         hits = data.get("matches") or data.get("results") or []
+        draft = self._office_kb_draft(db, ctx)
+        # Published KB empty but onboarding draft exists → surface the draft, don't lie "пусто".
+        if not hits and draft and str(draft.get("body") or "").strip():
+            body = str(draft.get("body") or "")
+            title = str(draft.get("title") or "Черновик KB")
+            status = str(draft.get("status") or "draft")
+            data = {
+                **(data if isinstance(data, dict) else {}),
+                "matches": [],
+                "hits": 0,
+                "chars": len(body),
+                "title": title,
+                "body": body,
+                "text": body,
+                "draft_status": status,
+                "kb_draft": True,
+                "source_url": draft.get("source_url"),
+            }
+            write_audit(
+                db,
+                ctx,
+                action="tool.get_knowledge",
+                resource="knowledge",
+                new_value={
+                    "query": query,
+                    "hits": 0,
+                    "kb_draft": True,
+                    "draft_chars": len(body),
+                    "principal": pid,
+                },
+            )
+            return ToolResult(
+                ok=True,
+                data=data,
+                message=(
+                    f"В боевой KB по запросу пусто, но есть неподтверждённый черновик "
+                    f"«{title}» ({len(body)} символов, status={status}). "
+                    "Покажи владельцу текст профиля ниже — это и есть «что нашли». "
+                    f"Commit только после подтверждения.\n\n{body}"
+                ),
+            )
+
         write_audit(
             db,
             ctx,
@@ -95,6 +137,17 @@ class GetKnowledgeTool:
             new_value={"query": query, "hits": len(hits), "principal": pid},
         )
         return ToolResult(ok=True, data=data, message="Knowledge search completed")
+
+    @staticmethod
+    def _office_kb_draft(db: Session, ctx: TenantContext) -> dict[str, Any] | None:
+        try:
+            from app.services.hermes_nous.onboarding import get_office_loop
+
+            loop = get_office_loop(db, ctx)
+            draft = loop.get("kb_draft") if isinstance(loop, dict) else None
+            return draft if isinstance(draft, dict) else None
+        except Exception:
+            return None
 
 
 class LookupCompanyByInnTool:

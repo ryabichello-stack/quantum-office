@@ -669,9 +669,35 @@ def _wants_web_research(message: str) -> bool:
     return False
 
 
+def _wants_show_kb_findings(message: str) -> bool:
+    """«покажи что нашёл / черновик / профиль» — agent work over office_loop draft, not empty DIY KB."""
+    low = (message or "").lower()
+    # Explicit show-draft / show-findings intents (incl. typo «нашелнаний»).
+    if any(
+        m in low
+        for m in (
+            "покажи черновик",
+            "покажи профиль",
+            "покажи что нашёл",
+            "покажи что нашел",
+            "покажи что собрал",
+            "что нашёл",
+            "что нашел",
+            "что собрал",
+            "нашелнан",
+        )
+    ):
+        return True
+    show = any(m in low for m in ("покажи", "покажи что"))
+    about = any(m in low for m in ("черновик", "профил", "баз", "знани", "kb", "нашёл", "нашел"))
+    return show and about
+
+
 def _wants_kb_agent_work(message: str) -> bool:
     """Company KB build/enrich — Hermes must act as an agent, not a DIY one-shot robot."""
     low = (message or "").lower()
+    if _wants_show_kb_findings(message):
+        return True
     build_verbs = (
         "собери",
         "обогати",
@@ -1898,6 +1924,31 @@ def operator_chat(
         result = registry.run(db, ctx, "get_knowledge", query=q[:400] or "компания")
         if isinstance(result, ToolResult) and result.ok:
             data = result.data or {}
+            # Draft from office_loop (not yet committed) — show full profile, don't truncate to stubs.
+            if data.get("kb_draft") and str(data.get("body") or "").strip():
+                draft_body = str(data.get("body") or "")
+                title = str(data.get("title") or "Черновик KB")
+                return _finish_diy(
+                    db,
+                    ctx,
+                    body,
+                    modality=modality,
+                    engine="diy_get_knowledge_draft",
+                    reply=(
+                        f"В боевой KB ещё пусто — вот неподтверждённый черновик «{title}» "
+                        f"({len(draft_body)} символов):\n\n{draft_body}"
+                    ).strip(),
+                    tool_calls=[
+                        {
+                            "tool": "get_knowledge",
+                            "ok": True,
+                            "query": q[:120],
+                            "hits": 0,
+                            "kb_draft": True,
+                            "chars": len(draft_body),
+                        }
+                    ],
+                )
             # KnowledgeAdapter returns matches[] + aggregated text (not snippets/hits).
             matches = data.get("matches") or data.get("results") or data.get("hits") or []
             lines = []
