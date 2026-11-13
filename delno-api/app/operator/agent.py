@@ -96,6 +96,7 @@ CABINET_LLM_TOOLS = (
     "web.browse",
     "web.research",
     "office.import_website",
+    "office.build_kb_draft",
     "billing.summary",
 )
 
@@ -113,10 +114,14 @@ HERMES_AGENT_SYSTEM = (
     "Не жди волшебных фраз и не подменяй задачу шаблонным статусом SIP/сетапа.\n"
     "Каталог tools (выбираешь сам по смыслу задачи):\n"
     "• web.search / web.fetch / web.browse / web.research — открытый интернет и браузер; "
-    "если пользователь дал ссылку на сайт/Telegram/Instagram/MAX — СРАЗУ web.research "
+    "если пользователь дал ссылку на сайт/Telegram/Instagram/VK/MAX — СРАЗУ web.research "
     "(не отвечай из KB и не выдумывай содержимое страницы);\n"
+    "• office.build_kb_draft — когда KB ещё не готова: глубокий crawl сайта, соцсети, "
+    "поиск в открытом вебе по профилю компании → структурированный черновик + "
+    "уточняющие вопросы владельцу (Telegram/Instagram/VK, пробелы). Не публикуй сам;\n"
     "• get_knowledge / upload_knowledge_snippet / office.import_website — "
-    "только материалы ЭТОГО tenant (локальная база), не замена интернету;\n"
+    "материалы ЭТОГО tenant; import_website — только если явно просят «положи в базу» "
+    "без черновика; иначе build_kb_draft;\n"
     "• hermes.capabilities — проверь реальные возможности перед онбордингом и задачами;\n"
     "• hermes.setup_status / health / alerts — состояние офиса;\n"
     "• hermes.tasks_create / tasks_list / tasks_pause / tasks_resume — "
@@ -779,6 +784,8 @@ def _tool_summary(tool_name: str, params: dict[str, Any]) -> str:
         return f"Обновить настройки: {', '.join(keys) or 'patch'}"
     if tool_name == "office.import_website":
         return f"Импорт сайта: {params.get('url') or params.get('message') or 'URL'}"
+    if tool_name == "office.build_kb_draft":
+        return f"Глубокий сбор KB: {params.get('url') or params.get('message') or 'сайт + соцсети'}"
     if tool_name == "get_tenant_summary":
         return "Показать текущие настройки"
     if tool_name == "hermes.setup_status":
@@ -860,17 +867,25 @@ def _execute_cabinet_tool(
         tool_calls[0]["ok"] = False
         return "Не удалось получить статус Hermes.", tool_calls, [], None, None
 
-    if tool_name == "office.import_website":
+    if tool_name in ("office.import_website", "office.build_kb_draft"):
         result = registry.run(db, ctx, tool_name, **params)
         if isinstance(result, ToolResult) and result.ok:
             tool_calls[0]["ok"] = True
             suggested = (result.data or {}).get("suggested_actions") or []
             if suggested:
                 tool_calls[0]["suggested_actions"] = suggested
+            if tool_name == "office.build_kb_draft" and isinstance(result.data, dict):
+                tool_calls[0]["kb_draft"] = bool(result.data.get("kb_draft"))
+                tool_calls[0]["pages_count"] = result.data.get("pages_count")
             return result.message or summary, tool_calls, [], None, None
         tool_calls[0]["ok"] = False
         msg = result.message if isinstance(result, ToolResult) else "Ошибка"
-        return f"Не удалось импортировать сайт: {msg}", tool_calls, [], None, None
+        fail = (
+            "Не удалось собрать черновик KB"
+            if tool_name == "office.build_kb_draft"
+            else "Не удалось импортировать сайт"
+        )
+        return f"{fail}: {msg}", tool_calls, [], None, None
 
     if tool_name == "credentials.open_form":
         result = registry.run(db, ctx, tool_name, **params)

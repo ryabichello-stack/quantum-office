@@ -56,7 +56,7 @@ def test_parse_settings_does_not_treat_cabinet_as_note():
 def test_parse_website_import_intent():
     intent = parse_setup_intent("зайди на quantumpayouts.ru и собери знания оттуда")
     assert intent is not None
-    assert intent["tool"] == "office.import_website"
+    assert intent["tool"] == "office.build_kb_draft"
     assert "quantumpayouts.ru" in intent["params"]["message"]
 
 

@@ -75,7 +75,13 @@ def get_toolkit(db: Session, ctx: TenantContext) -> dict[str, Any]:
         )
 
     media_tools = []
-    for tid in ("generate_image", "web.browse", "office.import_website", "create_conference"):
+    for tid in (
+        "generate_image",
+        "web.browse",
+        "office.import_website",
+        "office.build_kb_draft",
+        "create_conference",
+    ):
         meta = catalog.get(tid)
         if meta:
             media_tools.append(

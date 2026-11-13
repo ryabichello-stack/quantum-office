@@ -246,15 +246,17 @@ def parse_hermes_intent(message: str) -> dict[str, Any] | None:
             "params": {},
             "summary": "Токены, себестоимость USD и баланс",
         }
-    # Website → KB import (before generic setup phrases)
+    # Website → deep KB draft co-build (before generic setup phrases).
+    # Prefer office.build_kb_draft over shallow office.import_website so Hermes
+    # crawls, harvests socials, enriches from the open web, and asks the owner.
     if any(t in lower for t in _WEBSITE_IMPORT_TRIGGERS) or (
         ("сайт" in lower or ".ru" in lower or ".com" in lower)
         and any(w in lower for w in ("знание", "базу", "kb", "собери", "парс", "зайди", "импорт"))
     ):
         return {
-            "tool": "office.import_website",
+            "tool": "office.build_kb_draft",
             "params": {"message": text},
-            "summary": "Импорт сайта в базу знаний",
+            "summary": "Глубокий сбор KB: сайт + соцсети + веб → черновик",
         }
     if any(t in lower for t in _HERMES_SETUP_TRIGGERS):
         return {"tool": "hermes.setup_status", "params": {}, "summary": "Статус сетапа офиса"}

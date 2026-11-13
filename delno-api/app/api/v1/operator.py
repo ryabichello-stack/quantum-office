@@ -1275,7 +1275,8 @@ def operator_chat(
                 office_loop=loop_preview,
             )
 
-    # Fast-path: pasted URL / «зайди на сайт» → real browser research (not KB).
+    # Fast-path: pasted URL / «зайди на сайт» → deep KB draft when KB missing,
+    # otherwise browser research for an answer (not KB write).
     # Skip when agent_mode — the agent must plan browse → KB → next tools itself.
     if _wants_web_research(message) and not attachments and not agent_mode:
         from app.operator.tools import register_builtin_tools
@@ -1293,6 +1294,44 @@ def operator_chat(
             )
             if m_dom:
                 urls = [f"https://{m_dom.group(1)}"]
+        kb_missing = True
+        if isinstance(loop_preview, dict):
+            kb_missing = not bool(loop_preview.get("kb_ok"))
+        # Onboarding: turn URL into co-built KB draft (site + social + web + Q&A).
+        if urls and kb_missing:
+            built = registry.run(
+                db,
+                ctx,
+                "office.build_kb_draft",
+                urls=urls,
+                message=message,
+                max_pages=10,
+                also_search=True,
+            )
+            if isinstance(built, ToolResult) and built.ok:
+                data = built.data or {}
+                trace = data.get("tool_trace") or []
+                if not isinstance(trace, list):
+                    trace = []
+                trace = list(trace) + [
+                    {
+                        "tool": "office.build_kb_draft",
+                        "ok": True,
+                        "pages_count": data.get("pages_count"),
+                        "kb_draft": bool(data.get("kb_draft")),
+                    }
+                ]
+                return _finish_diy(
+                    db,
+                    ctx,
+                    body,
+                    modality=modality,
+                    engine="diy_kb_build",
+                    reply=built.message
+                    or "Собрал черновик базы знаний — подтвердите или уточните.",
+                    tool_calls=trace,
+                    office_loop=data.get("loop") if isinstance(data.get("loop"), dict) else loop_preview,
+                )
         if urls:
             primary = urls[0]
             result = registry.run(

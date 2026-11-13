@@ -93,7 +93,7 @@ def get_office_loop(db: Session, ctx: TenantContext) -> dict[str, Any]:
             "id": "company_kb",
             "title": "База знаний",
             "done": kb_ok,
-            "hint": "Сайт, каталог или текст → черновик KB → подтверждение",
+            "hint": "Сайт + TG/IG/VK + веб → черновик → уточнения с владельцем → подтверждение",
         },
         {
             "id": "connectors",
@@ -294,7 +294,12 @@ def _cta(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> d
         return {
             "title": "Сайт → знания",
             # Owner must supply a real URL in chat; do not pretend one was given.
-            "text": "Помоги собрать базу знаний: скажи, какую ссылку на сайт прислать, или прими текст о компании и покажи черновик",
+            "text": (
+                "Соберём базу знаний вместе: попроси ссылку на сайт, вызови "
+                "office.build_kb_draft (глубокий crawl + поиск в вебе), затем спроси "
+                "Telegram / Instagram / VK / MAX и пробелы (цены, аудитория, часы), "
+                "покажи черновик и дождись правок/подтверждения"
+            ),
         }
     if phase == "connectors":
         sid = str((setup_next or {}).get("id") or "")

@@ -348,6 +348,7 @@ def research_site(
     max_pages: int = 5,
     max_chars_per_page: int = 9000,
     also_search: bool = True,
+    extra_paths: tuple[str, ...] | list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Open a URL in Hermes browser, crawl key same-host pages, optionally
@@ -383,8 +384,25 @@ def research_site(
     base = primary.get("url") or seed
     parsed = urlparse(base)
     origin = f"{parsed.scheme}://{parsed.netloc}"
-    for path in ("/about", "/o-nas", "/contacts", "/kontakt", "/uslugi", "/services", "/pricing", "/price"):
-        candidates.append(origin + path)
+    default_paths = (
+        "/about",
+        "/o-nas",
+        "/contacts",
+        "/kontakt",
+        "/uslugi",
+        "/services",
+        "/pricing",
+        "/price",
+        "/faq",
+        "/blog",
+        "/news",
+    )
+    for path in tuple(extra_paths or ()) + default_paths:
+        if not path:
+            continue
+        if not str(path).startswith("/"):
+            path = "/" + str(path)
+        candidates.append(origin + str(path))
 
     seen = {(primary.get("url") or seed).rstrip("/").lower()}
     for link in candidates:

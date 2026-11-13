@@ -236,9 +236,14 @@ def create_run(
             "the owner configured mail/calendar/files/conference/phone. "
             "If required_done is 0, say the office is empty and start with «О компании» — "
             "never claim connectors are activated, never invent demo DIDs like +79991234567. "
+            "KB co-build when missing: ask for a real website URL, then office.build_kb_draft "
+            "(deep crawl + open-web by company profile). After the draft, ask for Telegram / "
+            "Instagram / VK / MAX / price list / owner text; re-run build with new URLs; "
+            "ask clarifying questions on gaps; wait for owner confirm before KB=ready. "
+            "Prefer office.build_kb_draft over office.import_website. "
             "If KB is done, advance to connectors (credentials.open_form / phones / channels). "
             "Never invent website URLs, phone numbers, or passwords. Prefer hermes.setup_status, "
-            "hermes.setup_mark, credentials.open_form, office.import_website only when KB is missing."
+            "hermes.setup_mark, credentials.open_form, office.build_kb_draft when KB is missing."
         )
     else:
         mission = (
