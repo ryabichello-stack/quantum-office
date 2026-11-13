@@ -98,10 +98,10 @@ def get_office_loop(db: Session, ctx: TenantContext) -> dict[str, Any]:
         {
             "id": "connectors",
             "title": "Инструменты",
-            "done": connector_ready >= 1,
+            "done": bool(setup.get("setup_complete")) or connector_ready >= 1,
             "hint": (
                 f"Сейчас по сетапу: {setup_next['title']}. {setup_next.get('hint') or ''}".strip()
-                if setup_next and kb_ok
+                if setup_next and kb_ok and not setup.get("setup_complete")
                 else "Почта / Telegram / календарь / телефон — по шагам с формами"
             ),
         },
@@ -381,6 +381,7 @@ def _cta(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> d
             ),
         }
     if phase == "ready":
+        # Optional messengers may still sit in setup_next — prefer first поручение.
         return {
             "title": "Первое поручение",
             "text": "Ответь по базе знаний: кто мы и что предлагаем клиентам",

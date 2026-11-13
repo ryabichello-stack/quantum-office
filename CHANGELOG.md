@@ -18,6 +18,7 @@
 - Voice Whisper fallback: `STT_EMPTY` / silence no longer kills the dialogue session — soft-retry listen instead of error stop
 - Ava toolkit: `script_ready` + detail «сценарий готов/не задан» (was missing after phone-only checks)
 - Telegram/MAX/files connect intents («подключи телеграм») open vault forms without requiring «открой форму» wording
+- hermes_ops: Telegram marked optional (like MAX) so office can reach ready/conduct without a BotFather token; form CTA remains for when the owner connects later
 
 ### Changed
 

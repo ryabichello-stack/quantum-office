@@ -98,7 +98,11 @@ SETUP_STEPS: list[dict[str, str]] = [
         "title": "Сценарий секретаря",
         "hint": "Надиктуйте сценарий, предложите из знаний или заполните шаблон",
     },
-    {"id": "telegram", "title": "Telegram", "hint": "Подключите branded bot token"},
+    {
+        "id": "telegram",
+        "title": "Telegram",
+        "hint": "Рекомендуется: branded bot token (@BotFather) — можно после ready",
+    },
     {"id": "max", "title": "MAX", "hint": "Опционально: MAX bot access token"},
     {
         "id": "files",
@@ -197,7 +201,9 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
                 "greeting": (telephony.get("greeting") or "")[:120],
             },
         },
-        "telegram": {"ok": tg > 0, "detail": f"accounts={tg}"},
+        # Messenger bots are recommended but not blockers for office ready —
+        # phone + mail/calendar/conference + KB/script already enable conduct.
+        "telegram": {"ok": tg > 0, "detail": f"accounts={tg}", "optional": True},
         "max": {"ok": max_n > 0, "detail": f"accounts={max_n}", "optional": True},
         "files": {"ok": False, "detail": {}, "optional": True},
         "calendar": {"ok": _conn_ok("calendar"), "detail": (by_kind.get("calendar") or {}).get("status")},
