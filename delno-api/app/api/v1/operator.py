@@ -213,6 +213,39 @@ def _credential_form_kind_from_message(
         )
     ):
         return "mango_sip"
+    # Messenger / files vault steps — clear connect intent opens the form
+    # (Nous cannot surface CredentialFormCard).
+    connectish = any(
+        m in low
+        for m in (
+            "подключ",
+            "настро",
+            "открой",
+            "пришли",
+            "токен",
+            "botfather",
+            "подключить:",
+            "настроить:",
+        )
+    )
+    if connectish or setup_next_id == "telegram":
+        if any(m in low for m in ("telegram", "телеграм", "tg bot", "тг бот")):
+            return "telegram_bot"
+    if connectish or setup_next_id == "max":
+        if any(m in low for m in ("max_bot", "макс бот", "бот max", "бот макс")) or (
+            setup_next_id == "max" and ("max" in low or "макс" in low)
+        ):
+            return "max_bot"
+    if setup_next_id == "files" and any(
+        m in low for m in ("файл", "диск", "yadisk", "яндекс", "облак", "mail.ru", "gdrive", "onedrive")
+    ):
+        if "mail.ru" in low or "mailru" in low:
+            return "files_mailru"
+        if "gdrive" in low or "google" in low or "гугл" in low:
+            return "files_gdrive"
+        if "onedrive" in low:
+            return "files_onedrive"
+        return "files_yadisk"
     return None
 
 

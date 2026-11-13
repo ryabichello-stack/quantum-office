@@ -45,6 +45,14 @@ def test_matcher_and_form_max_bot():
     )
 
 
+def test_matcher_telegram_connect_intent():
+    assert (
+        _credential_form_kind_from_message("подключи телеграм", setup_next_id="telegram")
+        == "telegram_bot"
+    )
+    assert _credential_form_kind_from_message("настрой телеграм бота") == "telegram_bot"
+
+
 def test_save_telegram_calls_connect():
     db = MagicMock()
     tenant = MagicMock()

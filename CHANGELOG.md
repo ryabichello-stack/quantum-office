@@ -17,6 +17,7 @@
 - Connector readiness vs tools_first: enabled + reachable upstream is usable for mail/calendar/conference (no longer blocked on missing SMTP/CalDAV/`tenant_account_verified`)
 - Voice Whisper fallback: `STT_EMPTY` / silence no longer kills the dialogue session — soft-retry listen instead of error stop
 - Ava toolkit: `script_ready` + detail «сценарий готов/не задан» (was missing after phone-only checks)
+- Telegram/MAX/files connect intents («подключи телеграм») open vault forms without requiring «открой форму» wording
 
 ### Changed
 
