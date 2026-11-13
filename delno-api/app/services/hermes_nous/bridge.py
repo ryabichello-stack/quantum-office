@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from typing import Any
@@ -147,6 +148,17 @@ def create_run(
         raise
 
     hermes_run_id = (body or {}).get("run_id") or issued.run_id
+    # Interactive cabinet expects a completed turn — poll briefly for output.
+    polled = _poll_run_output(runtime, hermes_run_id, timeout_s=75.0)
+    final_body = polled or body or {}
+    output = ""
+    if isinstance(final_body, dict):
+        output = str(final_body.get("output") or "")
+        if not output:
+            # some pins nest message content
+            choices = final_body.get("choices") or []
+            if choices:
+                output = str(((choices[0] or {}).get("message") or {}).get("content") or "")
     return {
         "ok": True,
         "engine": "nous_hermes_agent",
@@ -158,9 +170,35 @@ def create_run(
         "delno_agent_run_id": str(delno_run.id),
         "run_token_expires_at": issued.expires_at,
         "tool_ids": tools,
-        "hermes": body,
+        "output": output,
+        "hermes": final_body,
         "session_id": payload["session_id"],
     }
+
+
+def _poll_run_output(runtime: dict[str, Any], run_id: str, *, timeout_s: float = 75.0) -> dict[str, Any] | None:
+    """Poll GET /v1/runs/{id} until completed/failed or timeout."""
+    deadline = time.time() + timeout_s
+    last: dict[str, Any] | None = None
+    while time.time() < deadline:
+        try:
+            _status, body = _http_json(
+                "GET",
+                f"{runtime['base_url']}/v1/runs/{run_id}",
+                api_key=runtime["api_key"],
+                timeout=20.0,
+            )
+        except HermesBridgeError:
+            break
+        if isinstance(body, dict):
+            last = body
+            st = str(body.get("status") or "").lower()
+            if st in {"completed", "failed", "error", "cancelled", "canceled", "stopped"}:
+                return body
+            if body.get("output"):
+                return body
+        time.sleep(1.2)
+    return last
 
 
 def get_run(db: Session, ctx: TenantContext, run_id: str) -> dict[str, Any]:

@@ -231,3 +231,23 @@ export function apiAgentTaskCreate(token: string, goal: string, trigger_kind = "
     body: JSON.stringify({ goal, trigger_kind }),
   });
 }
+
+export type HermesToolkit = {
+  ok: boolean;
+  tool_count?: number;
+  setup?: { complete?: boolean; message_ru?: string };
+  health?: { healthy?: boolean; message_ru?: string; alerts?: { code?: string; message_ru?: string; severity?: string; fix?: string }[] };
+  connectors?: { kind: string; ready?: boolean; label?: string; detail?: string; ok?: boolean }[];
+  ava?: {
+    label?: string;
+    ready?: boolean;
+    detail?: string;
+    tools?: { id: string; title: string; description?: string; registered?: boolean }[];
+  };
+  media?: { tools?: { id: string; title: string; description?: string }[] };
+  tools?: { id: string; description?: string; confirmation?: string }[];
+};
+
+export function apiHermesToolkit(token: string) {
+  return apiFetch<HermesToolkit>("/v1/hermes-nous/toolkit", token);
+}

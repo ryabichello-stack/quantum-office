@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { CrystalOrb } from "@/components/CrystalOrb";
+import { HermesMessageBody } from "@/components/HermesMessageBody";
 import { ConfirmCard } from "@/components/ConfirmCard";
 import { CredentialFormCard, type CredentialFormSpec } from "@/components/CredentialFormCard";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -57,7 +58,9 @@ import {
   apiHermesNousStatus,
   apiHermesSetup,
   apiOfficeLoop,
+  apiHermesToolkit,
   type AgentTaskItem,
+  type HermesToolkit,
   type BillingSummary,
   type CallSessionItem,
   type HermesHealthStatus,
@@ -104,14 +107,12 @@ function triggerMarkdownDownload(file: PendingDownload) {
 }
 
 const QUICK_PROMPTS = [
-  { title: "О компании", text: "Я владелец офиса. Покажи статус сетапа и скажи, что сделать следующим шагом." },
-  { title: "Сайт → знания", text: "Зайди на мой сайт и собери знания в базу" },
-  { title: "Телефон", text: "Настрой телефон секретаря" },
-  { title: "SIP Mango", text: "Открой безопасную форму SIP-пароля Mango" },
-  { title: "Сетап", text: "Что ещё настроить в офисе?" },
+  { title: "Статус офиса", text: "Покажи статус сетапа и что сделать следующим шагом." },
+  { title: "Сайт → KB", text: "Зайди на мой сайт и собери знания в базу" },
+  { title: "Ava · телефон", text: "Покажи инструменты Ava и статус телефонии, затем предложи настройку" },
+  { title: "Сгенерируй картинку", text: "Сгенерируй картинку: современный офисный робот-секретарь в минималистичном стиле" },
   { title: "Здоровье", text: "Проверь здоровье офиса" },
   { title: "Звонки", text: "Какие звонки были сегодня?" },
-  { title: "Затраты", text: "Покажи расход токенов и баланс" },
 ];
 
 function useCompactHermes(breakpoint = 720) {
@@ -154,6 +155,7 @@ export function HermesStage({ token }: { token: string }) {
   const [officeLoop, setOfficeLoop] = useState<OfficeLoopStatus | null>(null);
   const [nousStatus, setNousStatus] = useState<HermesNousStatus | null>(null);
   const [agentTasks, setAgentTasks] = useState<AgentTaskItem[]>([]);
+  const [toolkit, setToolkit] = useState<HermesToolkit | null>(null);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [qrBusy, setQrBusy] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingHermesAttachment[]>([]);
@@ -173,7 +175,7 @@ export function HermesStage({ token }: { token: string }) {
 
   const refreshPanels = useCallback(async () => {
     try {
-      const [s, h, c, b, loop, nous, tasks] = await Promise.all([
+      const [s, h, c, b, loop, nous, tasks, tk] = await Promise.all([
         apiHermesSetup(token).catch(() => null),
         apiHermesHealth(token).catch(() => null),
         apiCallsList(token, 8).catch(() => ({ ok: true, items: [] as CallSessionItem[] })),
@@ -183,6 +185,7 @@ export function HermesStage({ token }: { token: string }) {
         apiOfficeLoop(token).catch(() => null),
         apiHermesNousStatus(token).catch(() => null),
         apiAgentTasks(token, 8).catch(() => ({ ok: true, items: [] as AgentTaskItem[] })),
+        apiHermesToolkit(token).catch(() => null),
       ]);
       if (s) setSetup(s);
       if (h) setHealth(h);
@@ -191,6 +194,7 @@ export function HermesStage({ token }: { token: string }) {
       if (loop) setOfficeLoop(loop);
       if (nous) setNousStatus(nous);
       setAgentTasks(tasks?.items || []);
+      if (tk) setToolkit(tk);
     } catch {
       /* panels are best-effort; chat still works */
     }
@@ -728,12 +732,14 @@ export function HermesStage({ token }: { token: string }) {
             <div className="hx-thread">
               {lines.length === 0 && !sending && (
                 <div className="hx-empty">
-                  {!compact && <p className="hx-empty-kicker">DELNO · office agent</p>}
-                  <h1 className="hx-empty-title">Hermes</h1>
+                  <div className="hx-empty-orb" aria-hidden>
+                    <CrystalOrb voiceActive={voiceActive} voicePhase={voicePhase} onOrbClick={toggleVoice} />
+                  </div>
+                  <h1 className="hx-empty-title">Чем помочь?</h1>
                   <p className="hx-empty-lead">
                     {compact
-                      ? "Задача, фото или mic — ответ здесь."
-                      : "Диалог сохраняется: после обновления страницы Hermes помнит этот тред. Пишите задачу, кидайте фото или нажмите mic."}
+                      ? "Напишите, продиктуйте или приложите фото/видео."
+                      : "Hermes ведёт офис: знания, каналы, Ava-телефон, почта и поручения. Напишите задачу, приложите файл или включите голосовой диалог."}
                   </p>
                   <div className={cn("hx-suggestions", compact && "hx-suggestions-chips")}>
                     {QUICK_PROMPTS.map((item) => (
@@ -774,7 +780,7 @@ export function HermesStage({ token }: { token: string }) {
                           ))}
                         </div>
                       )}
-                      <div className="hx-text">{line.text}</div>
+                      <HermesMessageBody text={line.text} className="hx-text" />
                     </div>
                   </article>
                 ) : (
@@ -782,7 +788,7 @@ export function HermesStage({ token }: { token: string }) {
                     {!compact && <HermesAvatar />}
                     <div className="hx-assistant-col">
                       <div className="hx-bubble hx-bubble-assistant">
-                        <div className="hx-text">{line.text}</div>
+                        <HermesMessageBody text={line.text} className="hx-text" />
                         {(() => {
                           const sources = dedupeSources(line.sources);
                           if (!sources.length) return null;
@@ -878,9 +884,11 @@ export function HermesStage({ token }: { token: string }) {
               <div className="hx-attach-strip">
                 {pendingFiles.map((item) => (
                   <div key={item.id} className="hx-attach-chip" data-kind={item.kind}>
-                    {item.previewUrl ? (
+                    {item.previewUrl && item.kind === "image" ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={item.previewUrl} alt={item.filename} />
+                    ) : item.previewUrl && item.kind === "video" ? (
+                      <video src={item.previewUrl} muted playsInline />
                     ) : (
                       <span>{item.filename}</span>
                     )}
@@ -904,7 +912,7 @@ export function HermesStage({ token }: { token: string }) {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*,.pdf,.docx,.xlsx,.csv,.txt,.md,.html,.json"
+                accept="image/*,video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.pdf,.docx,.xlsx,.csv,.txt,.md,.html,.json"
                 multiple
                 hidden
                 onChange={onPickFiles}
@@ -1225,6 +1233,72 @@ export function HermesStage({ token }: { token: string }) {
               </section>
 
               <Separator />
+
+              <section className="hx-card">
+                <header>
+                  <span>Инструменты</span>
+                  <Badge variant="secondary">{toolkit?.tool_count ?? "…"}</Badge>
+                </header>
+                {toolkit ? (
+                  <>
+                    <div className="hx-tool-pillrow">
+                      <span data-ok={toolkit.ava?.ready ? "1" : "0"}>Ava {toolkit.ava?.ready ? "· ready" : "· setup"}</span>
+                      <span data-ok={toolkit.health?.healthy ? "1" : "0"}>Health</span>
+                      <span data-ok={toolkit.setup?.complete ? "1" : "0"}>Setup</span>
+                    </div>
+                    <p className="text-muted-foreground text-sm">{toolkit.ava?.detail || toolkit.ava?.label || "Телефония Ava"}</p>
+                    <ul className="hermes-checklist hx-tool-list">
+                      {(toolkit.ava?.tools || []).slice(0, 8).map((tool) => (
+                        <li key={tool.id} data-done={tool.registered ? "1" : "0"}>
+                          <span className="hermes-check-dot" />
+                          <div>
+                            <strong>{tool.id}</strong>
+                            <small>{tool.description?.slice(0, 90) || "Ava tool"}</small>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                    {(toolkit.media?.tools || []).length > 0 && (
+                      <div className="hx-channel-row mt-2">
+                        {(toolkit.media?.tools || []).map((tool) => (
+                          <Button
+                            key={tool.id}
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            disabled={sending}
+                            onClick={() => {
+                              setPanelOpen(false);
+                              void sendText(
+                                tool.id === "generate_image"
+                                  ? "Сгенерируй картинку: светлый премиальный офис с ИИ-секретарём"
+                                  : `Используй инструмент ${tool.id}`,
+                              );
+                            }}
+                          >
+                            {tool.id === "generate_image" ? "Картинка" : tool.id.split(".").pop()}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+                    {(toolkit.connectors || []).length > 0 && (
+                      <ul className="hermes-checklist mt-2">
+                        {(toolkit.connectors || []).slice(0, 6).map((c) => (
+                          <li key={c.kind} data-done={c.ready || c.ok ? "1" : "0"}>
+                            <span className="hermes-check-dot" />
+                            <div>
+                              <strong>{c.label || c.kind}</strong>
+                              <small>{c.detail || (c.ready || c.ok ? "подключено" : "не готово")}</small>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                ) : (
+                  <p>Загружаю каталог tools…</p>
+                )}
+              </section>
 
               <section className="hx-card">
                 <header>

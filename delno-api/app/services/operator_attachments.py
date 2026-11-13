@@ -10,6 +10,7 @@ from typing import Any
 MAX_ATTACHMENTS = 4
 MAX_IMAGE_BYTES = 4 * 1024 * 1024
 MAX_FILE_BYTES = 8 * 1024 * 1024
+MAX_VIDEO_BYTES = 16 * 1024 * 1024
 
 IMAGE_TYPES = frozenset(
     {
@@ -18,6 +19,14 @@ IMAGE_TYPES = frozenset(
         "image/png",
         "image/webp",
         "image/gif",
+    }
+)
+
+VIDEO_TYPES = frozenset(
+    {
+        "video/mp4",
+        "video/webm",
+        "video/quicktime",
     }
 )
 
@@ -103,6 +112,34 @@ def normalize_attachments(raw_items: list[dict[str, Any]] | None) -> dict[str, A
             content_type = "image/jpeg"
 
         ext = _ext(filename)
+        is_video = content_type in VIDEO_TYPES or ext in {".mp4", ".webm", ".mov"}
+        if is_video:
+            if len(data) > MAX_VIDEO_BYTES:
+                return {"ok": False, "error": "video_too_large", "items": []}
+            transcript = ""
+            try:
+                from app.services.stt import transcribe_audio
+
+                transcript, _stt_err = transcribe_audio(data, filename=filename)
+            except Exception:  # noqa: BLE001
+                transcript = ""
+            note = (
+                f"--- видео: {filename} ({content_type}, {len(data)} байт) ---\n"
+                + (f"Расшифровка звука:\n{transcript.strip()}\n" if (transcript or "").strip() else "(звук не распознан; опишите, что сделать с роликом)")
+            )
+            text_chunks.append(note)
+            items.append(
+                {
+                    "filename": filename,
+                    "content_type": content_type or "video/mp4",
+                    "kind": "video",
+                    "size": len(data),
+                    "text_excerpt": (transcript or "")[:2000],
+                }
+            )
+            labels.append(f"🎬 {filename}")
+            continue
+
         is_image = content_type in IMAGE_TYPES or ext in {".jpg", ".jpeg", ".png", ".webp", ".gif"}
         if is_image:
             if len(data) > MAX_IMAGE_BYTES:

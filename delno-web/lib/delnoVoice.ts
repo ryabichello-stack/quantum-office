@@ -310,11 +310,68 @@ export function createVoiceController(options: VoiceSessionOptions) {
     });
   }
 
+  async function startServerListen() {
+    if (!engaged || processing || speaking) return;
+    if (!authToken || !navigator.mediaDevices?.getUserMedia) {
+      showError("Голос", "Нужен микрофон и сессия для голосового режима.");
+      return;
+    }
+    heard = false;
+    setPhase("listen");
+    resetListenTimer();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm";
+      const recorder = new MediaRecorder(stream, { mimeType: mime });
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (ev) => {
+        if (ev.data.size) chunks.push(ev.data);
+      };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(chunks, { type: mime });
+        if (!blob.size || !engaged) return;
+        try {
+          const form = new FormData();
+          form.append("file", blob, "voice.webm");
+          const res = await fetch(`${API_URL}/v1/operator/stt`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${authToken}` },
+            body: form,
+          });
+          if (!res.ok) {
+            showError("Голос", "Не удалось распознать речь.");
+            return;
+          }
+          const data = (await res.json()) as { text?: string };
+          const text = (data.text || "").trim();
+          if (text && engaged && !processing && !speaking) {
+            heard = true;
+            void answer(text, true);
+          } else if (engaged) {
+            startMic();
+          }
+        } catch {
+          showError("Голос", "Ошибка связи при распознавании.");
+        }
+      };
+      recorder.start();
+      // Auto-stop after silence window — continuous conversational turns.
+      listenTimer = window.setTimeout(() => {
+        if (recorder.state !== "inactive") recorder.stop();
+      }, Math.max(2800, listenSilenceMs - 500));
+    } catch {
+      showError("Голос", "Нет доступа к микрофону.");
+    }
+  }
+
   function startMic() {
     if (!engaged || processing || speaking) return;
     const SpeechRecognition = getSpeechRecognition();
     if (!SpeechRecognition) {
-      showError("Голос", "Браузер не поддерживает распознавание речи.");
+      void startServerListen();
       return;
     }
 
@@ -341,6 +398,9 @@ export function createVoiceController(options: VoiceSessionOptions) {
 
     recognition.onerror = () => {
       recognition = null;
+      if (engaged && !processing && !speaking && authToken) {
+        void startServerListen();
+      }
     };
 
     recognition.onend = () => {
@@ -354,7 +414,7 @@ export function createVoiceController(options: VoiceSessionOptions) {
     try {
       recognition.start();
     } catch {
-      /* ignore */
+      void startServerListen();
     }
   }
 

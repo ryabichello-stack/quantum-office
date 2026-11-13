@@ -33,6 +33,10 @@ OFFICE_CONDUCT = ONBOARDING_KB + (
     "set_feature_flag",
     "update_tenant_settings",
     "billing.summary",
+    "generate_image",
+    "telephony.script_get",
+    "telephony.tools_set",
+    "files.cloud_status",
 )
 
 # P3 — задачи / outreach read
@@ -42,6 +46,8 @@ TASKS_AND_OUTREACH = OFFICE_CONDUCT + (
     "calls.dial",
     "calls.jobs",
     "phones.provision",
+    "telephony.script_propose",
+    "telephony.script_save",
 )
 
 

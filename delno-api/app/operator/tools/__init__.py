@@ -56,6 +56,7 @@ from app.operator.tools.office_setup import (
     TelephonyToolsSetTool,
 )
 from app.operator.tools.billing_tools import BillingSummaryTool
+from app.operator.tools.media import GenerateImageTool
 from app.operator.tools.web import WebBrowseTool, WebFetchTool, WebSearchTool
 from app.operator.tools.website_import_tool import OfficeImportWebsiteTool
 from app.operator.tools.registry import registry
@@ -115,3 +116,4 @@ def register_builtin_tools() -> None:
     registry.register(WebBrowseTool())
     registry.register(OfficeImportWebsiteTool())
     registry.register(BillingSummaryTool())
+    registry.register(GenerateImageTool())

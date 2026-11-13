@@ -34,6 +34,7 @@ from app.services.hermes_nous.tasks import (
     task_to_dict,
 )
 from app.services.hermes_nous.tool_packs import pack_for_mode
+from app.services.hermes_nous.toolkit import get_toolkit
 
 router = APIRouter(prefix="/hermes-nous", tags=["hermes-nous"])
 
@@ -290,6 +291,15 @@ def nous_resume_task(
     if not task:
         raise HTTPException(status_code=404, detail="task_not_found")
     return {"ok": True, "task": task_to_dict(task)}
+
+
+@router.get("/toolkit")
+def nous_toolkit(
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict[str, Any]:
+    """Connectors + Ava telephony tools + media tools inventory for the cabinet panel."""
+    return get_toolkit(db, ctx)
 
 
 @router.get("/channels-map")
