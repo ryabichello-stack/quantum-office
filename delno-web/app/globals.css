@@ -3291,20 +3291,23 @@ aside a.nav-operator.selected .nav-orb-icon {
   font-size: 17px !important;
 }
 .hx-empty {
-  max-width: 720px;
+  /* One column, one center axis — orb / title / lead track the same midline as width changes. */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(720px, 100%);
   margin: 12vh auto 0;
   text-align: center;
   animation: hx-rise 0.5s cubic-bezier(.22,1,.36,1) both;
 }
 .hx-empty-orb {
-  /* Was 120px wide with a 200px scaled mount → overflow looked left-shifted.
-     Just center the natural mount; keep the soft scale. */
-  display: flex;
-  justify-content: center;
-  margin: 0 0 18px;
+  display: grid;
+  place-items: center;
+  margin: 0 0 clamp(12px, 2vh, 20px);
 }
 .hx-empty-orb .delno-crystal-mount {
-  transform: scale(0.72);
+  /* Soft visual scale; layout box stays centered via parent align-items. */
+  transform: scale(clamp(0.64, 12vw, 0.78));
   transform-origin: center center;
 }
 .hx-empty-title {
@@ -3318,14 +3321,15 @@ aside a.nav-operator.selected .nav-orb-icon {
 .hx-empty-lead {
   color: var(--hx-muted) !important;
   font-size: 15px !important;
-  max-width: 420px !important;
-  margin-left: auto;
-  margin-right: auto;
+  max-width: min(420px, 100%);
+  margin: 0 0 22px;
 }
 .hx-suggestions {
   display: grid !important;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px !important;
+  align-self: stretch;
+  width: 100%;
   max-width: 640px;
   margin: 0 auto;
 }
