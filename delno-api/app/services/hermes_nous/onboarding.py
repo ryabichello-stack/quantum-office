@@ -202,6 +202,10 @@ def confirm_kb_draft(db: Session, ctx: TenantContext) -> dict[str, Any]:
     loop["kb_draft"] = draft
     loop["phase"] = "connectors"
     nous["office_loop"] = loop
+    # Mark PRODUCT_LOOP KB step complete for hermes_ops.company_knowledge_ready
+    nous["company_profile_ready"] = True
+    nous["kb_ready"] = True
+    nous["kb_source"] = "owner_upload"
     _save_nous(db, tenant, nous)
     return {"ok": True, "committed": True, "loop": get_office_loop(db, ctx)}
 
