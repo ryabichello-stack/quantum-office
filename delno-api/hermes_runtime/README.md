@@ -1,31 +1,35 @@
-# DELNO Hermes Runtime (Nous) — Stage 0
+# DELNO Hermes Runtime (Nous) — single combat pool
 
 Pinned upstream: see `PINNED_VERSION` (`v0.23.1`).
 
-## What this is
+## Architecture (combat)
 
-Per-tenant container running **NousResearch/hermes-agent** with its own `HERMES_HOME`.
-DELNO API talks to it via `/v1/runs` (and OpenAI-compat `/v1/chat/completions` as fallback).
-Business tools come from DELNO MCP with **scoped run tokens** — never a shared long-lived key in the model prompt.
+**One** Hermes gateway container (`delno-hermes-pool`) serves **all** companies.
 
-## Isolation lab
-
-`docker-compose.hermes.yml` starts **two** runtimes (A on `:18642`, B on `:18643`) for A↛B tests.
-
-```bash
-# On dogfood host only — never overwrite prod telephony
-cd /opt/delno/lab/hermes_runtime   # or delno-api/hermes_runtime
-docker compose -f docker-compose.hermes.yml build
-API_SERVER_KEY=lab-hermes-key-aaaa API_SERVER_KEY_B=lab-hermes-key-bbbb \
-  ./scripts/lab_smoke.sh
+```
+/data/hermes-profiles/workers/pool/          ← HERMES_HOME of the only worker
+  config.yaml                                ← multiplex root
+  profiles/<profile_id>/                     ← one company cabinet
 ```
 
-Image build uses **Python 3.14** + `uv sync --frozen --extra messaging` (plain pip fails on Pillow/browser-harness overrides; aiohttp required for API server).
+DELNO API calls `/p/<profile_id>/v1/runs`. Isolation = separate profile home +
+per-run MCP token + namespaced session — **not** a second container.
 
-Without provider keys, `/v1/models` still responds; `/v1/chat/completions` returns a structured `agent_error` (expected until `OPENAI_API_KEY` / Nous auth is set per tenant).
+Capacity: `HERMES_WORKER_MAX_PROFILES` (default **256**). Raise the env when
+approaching the ceiling. A second worker is optional scale-out only
+(`HERMES_ENABLE_EXTRA_WORKERS=1`) — not part of the default combat topology.
+
+## Lab
+
+```bash
+cd delno-api/hermes_runtime
+docker compose -f docker-compose.hermes.yml up --build -d
+API_SERVER_KEY=dev-hermes-key-aaaaaaaa ./scripts/lab_smoke.sh
+```
 
 ## Do not
 
 - Deploy over Asterisk / `trunk_id` telephony
-- Enable `gateway.multiplex_profiles` for different MCP catalogs until `#67605` proven
+- Put a shared `DELNO_MCP_KEY` on the **worker process** (per-tenant keys only in `profiles/<id>/.env`)
+- Bring back dogfood A/B containers “just in case”
 - `curl | bash` unpinned install on prod

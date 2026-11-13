@@ -1,75 +1,44 @@
-# Isolated Stage-0 Hermes runtime (dogfood). Does NOT touch Asterisk/telephony.
+# Combat Hermes multiplex pool — ONE gateway for all companies.
+# HERMES_HOME=.../workers/pool
+# Company profiles: .../workers/pool/profiles/<profile_id> → /p/<profile_id>/v1/...
+# Extra workers only when load requires them (optional compose override), not by default.
+#
 # Usage (from delno-api/):
-#   export API_SERVER_KEY=dev-hermes-key
+#   export API_SERVER_KEY=dev-hermes-key-aaaaaaaa
 #   docker compose -f hermes_runtime/docker-compose.hermes.yml up --build
 services:
-  hermes-tenant-a:
+  hermes-pool:
     build:
       context: .
       dockerfile: Dockerfile
       args:
         HERMES_AGENT_GIT_REF: v0.23.1
     image: delno-hermes-runtime:v0.23.1
-    container_name: delno-hermes-tenant-a
+    container_name: delno-hermes-pool
     environment:
       HERMES_PROFILES_ROOT: /data/hermes-profiles
-      HERMES_PROFILE_ID: ${HERMES_PROFILE_ID_A}
-      HERMES_HOME: /data/hermes-profiles/${HERMES_PROFILE_ID_A}
+      HERMES_WORKER_ID: pool
+      HERMES_HOME: /data/hermes-profiles/workers/pool
       API_SERVER_ENABLED: "true"
       API_SERVER_HOST: 0.0.0.0
       API_SERVER_PORT: "8642"
-      API_SERVER_KEY: ${API_SERVER_KEY:-dev-hermes-key-aaaa}
-      # MUST be this tenant's key only — never fall back to another company's key.
-      DELNO_MCP_KEY: ${DELNO_MCP_KEY:-}
-      # Prefer run-token / X-Delno-Run-Id; set on API: DELNO_MCP_STRICT=1
+      API_SERVER_KEY: ${API_SERVER_KEY:-dev-hermes-key-aaaaaaaa}
+      # Worker process: empty. Per-company keys live in profiles/<id>/.env
+      DELNO_MCP_KEY: ""
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       HTTPS_PROXY: ${OPENAI_HTTP_PROXY:-}
     volumes:
-      - hermes-tenant-a-data:/data/hermes
+      - hermes-pool-data:/data/hermes
       - hermes-profiles:/data/hermes-profiles
       - ./templates/home:/opt/delno-hermes-templates:ro
+      - ./templates/worker_root:/opt/delno-hermes-templates-root:ro
       - ./entrypoint.sh:/entrypoint.sh:ro
     ports:
       - "127.0.0.1:18642:8642"
     init: true
-    mem_limit: 1g
-    pids_limit: 256
-    networks:
-      - hermes-lab
-      - delno-internal
-
-  hermes-tenant-b:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        HERMES_AGENT_GIT_REF: v0.23.1
-    image: delno-hermes-runtime:v0.23.1
-    container_name: delno-hermes-tenant-b
-    environment:
-      HERMES_PROFILES_ROOT: /data/hermes-profiles
-      HERMES_PROFILE_ID: ${HERMES_PROFILE_ID_B}
-      HERMES_HOME: /data/hermes-profiles/${HERMES_PROFILE_ID_B}
-      API_SERVER_ENABLED: "true"
-      API_SERVER_HOST: 0.0.0.0
-      API_SERVER_PORT: "8642"
-      API_SERVER_KEY: ${API_SERVER_KEY_B:-dev-hermes-key-bbbb}
-      # Explicit B key only — empty is safer than inheriting A's DELNO_MCP_KEY.
-      DELNO_MCP_KEY: ${DELNO_MCP_KEY_B:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
-      HTTPS_PROXY: ${OPENAI_HTTP_PROXY:-}
-    volumes:
-      - hermes-tenant-b-data:/data/hermes
-      - hermes-profiles:/data/hermes-profiles
-      - ./templates/home:/opt/delno-hermes-templates:ro
-      - ./entrypoint.sh:/entrypoint.sh:ro
-    ports:
-      - "127.0.0.1:18643:8642"
-    init: true
-    mem_limit: 1g
-    pids_limit: 256
+    mem_limit: 4g
+    pids_limit: 1024
     networks:
       - hermes-lab
       - delno-internal
@@ -82,8 +51,7 @@ networks:
     name: delno-internal
 
 volumes:
-  hermes-tenant-a-data:
-  hermes-tenant-b-data:
+  hermes-pool-data:
   hermes-profiles:
     name: hermes-profiles
     external: true

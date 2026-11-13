@@ -1,4 +1,4 @@
-"""Sticky Hermes runtime assignment via placement map."""
+"""Hermes runtime assignment via single pool placement map."""
 
 from __future__ import annotations
 
@@ -19,10 +19,9 @@ def db(tmp_path, monkeypatch):
 
     monkeypatch.setenv("TENANT_FILES_ROOT", str(tmp_path / "tenants"))
     monkeypatch.setenv("HERMES_PROFILES_ROOT", str(tmp_path / "hermes-profiles"))
-    monkeypatch.setenv("HERMES_NOUS_RUNTIME_URL", "http://delno-hermes-tenant-a:8642")
-    monkeypatch.setenv("HERMES_NOUS_RUNTIME_URL_B", "http://delno-hermes-tenant-b:8642")
-    monkeypatch.setenv("HERMES_API_SERVER_KEY", "key-a")
-    monkeypatch.setenv("HERMES_API_SERVER_KEY_B", "key-b")
+    monkeypatch.setenv("HERMES_NOUS_RUNTIME_URL", "http://delno-hermes-pool:8642")
+    monkeypatch.setenv("HERMES_API_SERVER_KEY", "key-a-xxxxxxxxxxxxxxx")
+    monkeypatch.setenv("HERMES_WORKER_MAX_PROFILES", "256")
     get_settings.cache_clear()
     engine = create_engine(
         "sqlite://",
@@ -37,11 +36,10 @@ def db(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
-def test_list_runtime_slots_default_two():
+def test_list_runtime_slots_single_pool():
     slots = list_runtime_slots()
-    assert len(slots) >= 2
-    assert slots[0]["id"] == "tenant-a"
-    assert slots[1]["id"] == "tenant-b"
+    assert len(slots) == 1
+    assert slots[0]["id"] == "pool"
 
 
 def test_assign_isolated_runtime_sticky(db, monkeypatch):
@@ -56,8 +54,8 @@ def test_assign_isolated_runtime_sticky(db, monkeypatch):
     ctx = TenantContext(tenant_id=tenant.id, tenant_slug=tenant.slug, role="tenant_owner")
     first = assign_isolated_runtime(db, ctx)
     assert first.get("ok") is True
-    assert first["slot_id"] == "tenant-a"
+    assert first["slot_id"] == "pool"
     assert first["status"] == "ready"
     second = assign_isolated_runtime(db, ctx)
-    assert second["slot_id"] == "tenant-a"
+    assert second["slot_id"] == "pool"
     assert second["profile_id"] == first["profile_id"]

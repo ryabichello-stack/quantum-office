@@ -26,8 +26,8 @@ class HermesWorker(Base):
     api_server_key_env: Mapped[str] = mapped_column(String(128), default="HERMES_API_SERVER_KEY")
     image_digest: Mapped[str | None] = mapped_column(String(128), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="ready", index=True)
-    # Soft capacity: how many profiles this worker may host (None = unlimited / unproven multiplex).
-    max_profiles: Mapped[int | None] = mapped_column(Integer, nullable=True, default=1)
+    # Soft capacity: how many company profiles this multiplex worker may host (None = unlimited).
+    max_profiles: Mapped[int | None] = mapped_column(Integer, nullable=True, default=256)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     meta: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

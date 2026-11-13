@@ -12,6 +12,8 @@
 
 ### Added
 
+- Hermes **any-N companies** multiplex pool: combat default is **one** gateway (`delno-hermes-pool` / worker `pool`); companies under `workers/pool/profiles/<profile_id>`; API `/p/<profile_id>/v1/...`; capacity `HERMES_WORKER_MAX_PROFILES` (default 256); dogfood A/B retired (offline); optional second worker only with `HERMES_ENABLE_EXTRA_WORKERS=1`
+- Hermes multiplex layout + bootstrap `--also` (superseded dogfood dual A/B capacity=1)
 - Hermes multi-tenant placement map: `hermes_workers` + `hermes_profiles` + `hermes_run_bindings` (tenant → profile → worker). Pool exhausted → `provisioning`/`unavailable`, never silent fallback to worker A / `HERMES_NOUS_RUNTIME_URL`. Admin assign + placement snapshot; MCP auth via `X-Delno-Run-Id` binding; owner `/provision` no longer accepts client `runtime_base_url`; `tool_ids` clamped to pack
 - Hermes worker-visible profile homes under `HERMES_PROFILES_ROOT` (shared volume API↔runtimes); entrypoint binds `HERMES_PROFILE_ID`; bootstrap script pins demo/QL; stale `agent_runs` reconciler (+ admin endpoint + background ticker); compose no longer lets tenant-b inherit tenant-a `DELNO_MCP_KEY`
 - Scheduled tasks with ``hermes_nous_runtime`` use upstream ``create_run`` (no silent DIY); MCP ``DELNO_MCP_STRICT`` + profile-id mismatch guard; offline ``isolation_placement_smoke.py``; Hermes lab mem/pids limits
@@ -22,6 +24,8 @@
 - Hermes Telegram/MAX dual-path chooser: ask bot token vs QR (Telegram Web-style), pros/cons, step-by-step bot creation, then vault form; QR starts `pending_qr` session with honest status until live QR worker
 
 ### Fixed
+
+- Website import: do not stop at a single short `<p>` — fall back to full visible page text (li/div) so marketing sites like Quantum Payouts yield real KB, not only meta description
 
 - Hermes cabinet: when ``hermes_nous_runtime`` is on but profile/worker missing, return honest ``engine=hermes_unavailable`` — no silent DIY reply posing as Hermes
 - Hermes tenant isolation: sticky runtime slots (tenant-a / tenant-b) so each cabinet has its own HERMES space + MCP key — shared ``DELNO_MCP_KEY`` no longer makes one tenant see another's ``setup_status``. Bridge grounds Nous with per-tenant FACTS; new registrations assign an isolated slot. Placement table is now source of truth over env default URL

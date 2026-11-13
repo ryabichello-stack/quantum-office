@@ -392,12 +392,15 @@ def scale_notes(
         "ok": True,
         "phase": "P5",
         "policy": {
-            "runtime_per_tenant_until_mcp_isolation_proven": True,
+            "runtime_per_tenant_until_mcp_isolation_proven": False,
             "measure_idle_rss_before_100_tenants": True,
             "bill_per_run_tokens": True,
-            "multiplex_blocked_until_issue_67605": True,
+            "multiplex_profiles": True,
+            "api_path": "/p/<profile_id>/v1/...",
+            "capacity_env": "HERMES_WORKER_MAX_PROFILES",
             "placement": "hermes_profiles + hermes_workers",
             "no_container_per_tenant": True,
+            "isolation": "profile home + run token + namespaced session",
         },
     }
 
