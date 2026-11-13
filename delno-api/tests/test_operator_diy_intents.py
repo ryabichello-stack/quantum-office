@@ -2,6 +2,7 @@
 
 from app.api.v1.operator import (
     _wants_billing_summary,
+    _wants_calls_list,
     _wants_files_cloud_status,
     _wants_get_knowledge,
     _wants_hermes_capabilities,
@@ -15,6 +16,14 @@ def test_wants_phones_list():
     assert _wants_phones_list("покажи номера")
     assert _wants_phones_list("phones.list")
     assert not _wants_phones_list("создай конференцию")
+
+
+def test_wants_calls_list():
+    assert _wants_calls_list("покажи последние звонки")
+    assert _wants_calls_list("история звонков")
+    assert _wants_calls_list("calls.list")
+    assert not _wants_calls_list("позвони клиенту")
+    assert not _wants_calls_list("перечисли мои телефонные номера")
 
 
 def test_wants_billing_summary():

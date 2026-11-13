@@ -255,6 +255,39 @@ def _wants_phones_list(message: str) -> bool:
     )
 
 
+def _wants_calls_list(message: str) -> bool:
+    """«покажи звонки / история звонков» — DIY calls.list (not phones.list / dial)."""
+    low = (message or "").lower()
+    if any(m in low for m in ("позвони", "набери", "набрать", "calls.dial", "dial ")):
+        return False
+    if "calls.list" in low:
+        return True
+    callish = any(
+        m in low
+        for m in (
+            "звонк",
+            "call history",
+            "call log",
+            "recent calls",
+            "list calls",
+        )
+    )
+    ask = any(
+        m in low
+        for m in (
+            "покажи",
+            "перечисл",
+            "список",
+            "какие",
+            "история",
+            "последн",
+            "list",
+            "recent",
+        )
+    )
+    return callish and ask
+
+
 def _wants_get_knowledge(message: str) -> bool:
     low = (message or "").lower()
     kb = any(
@@ -653,6 +686,7 @@ def operator_chat(
         or _wants_office_health(message)
         or _wants_crm_funnel(message)
         or _wants_phones_list(message)
+        or _wants_calls_list(message)
         or _wants_billing_summary(message)
         or _wants_get_knowledge(message)
         or _wants_hermes_capabilities(message)
@@ -1011,6 +1045,46 @@ def operator_chat(
             }
         err = result.message if isinstance(result, ToolResult) else "phones_failed"
         message = f"{message}\n\n[system: phones.list failed: {err}]"
+
+    if _wants_calls_list(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        result = registry.run(db, ctx, "calls.list", limit=20)
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            items = data.get("items") if isinstance(data, dict) else data
+            lines = []
+            for c in items[:20] if isinstance(items, list) else []:
+                if not isinstance(c, dict):
+                    lines.append(f"- {c}")
+                    continue
+                direction = c.get("direction") or "?"
+                status = c.get("status") or "—"
+                peer = c.get("to_e164") or c.get("from_e164") or c.get("did_e164") or "—"
+                when = (c.get("started_at") or c.get("created_at") or "")[:19]
+                outcome = c.get("outcome") or ""
+                extra = f" / {outcome}" if outcome else ""
+                lines.append(f"- {when} {direction} {peer}: {status}{extra}")
+            body_txt = "\n".join(lines) if lines else "Звонков пока нет."
+            return {
+                "ok": True,
+                "engine": "diy_calls_list",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": f"Последние звонки:\n{body_txt}\n{result.message or ''}".strip(),
+                "tool_calls": [
+                    {
+                        "tool": "calls.list",
+                        "ok": True,
+                        "count": len(lines),
+                    }
+                ],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "calls_failed"
+        message = f"{message}\n\n[system: calls.list failed: {err}]"
 
     if _wants_billing_summary(message) and not attachments:
         from app.operator.tools import register_builtin_tools
