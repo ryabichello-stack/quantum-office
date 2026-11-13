@@ -5,13 +5,17 @@
 model:
   default: gpt-4.1-mini
 
-# DELNO MCP — business tools only. Auth: long-lived tenant mcp key in DELNO_MCP_KEY
-# (Stage-0 dogfood). Prefer per-run tokens when the runtime forwards X-Delno-Run-Token.
+# DELNO MCP — business tools only. Use INTERNAL docker URL (not public api.dlno.ru;
+# that hostname is SNI-routed and must not be assumed). Prefer per-run:
+#   Authorization: Bearer <X-Delno-Run-Token>  and/or header X-Delno-Run-Id
+# Long-lived DELNO_MCP_KEY is legacy dogfood — disable with DELNO_MCP_DENY_LEGACY_KEY.
 mcp_servers:
   delno_office:
     url: "http://delno-api:8020/v1/mcp"
     headers:
       Authorization: "Bearer ${DELNO_MCP_KEY}"
+      # When the runtime can inject the active run id, DELNO resolves scoped grants:
+      # X-Delno-Run-Id: "${DELNO_RUN_ID}"
 
 # Terminal / browser: keep disabled or sandboxed in tenant runtime.
 # Business data only via DELNO MCP.

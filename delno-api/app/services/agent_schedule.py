@@ -196,8 +196,14 @@ def claim_due_tasks(
 
 
 def execute_scheduled_task(db: Session, task: AgentTask) -> dict[str, Any]:
-    """Run one due task via the in-API Hermes tool agent."""
+    """Run one due task.
+
+    When ``hermes_nous_runtime`` is on for the tenant, prefer upstream Hermes
+    ``create_run`` (same brain as cabinet). DIY ``run_operator_turn`` is only
+    the emergency path when the flag is off or Nous runtime is unavailable.
+    """
     from app.operator.agent import run_operator_turn
+    from app.services.hermes_nous.flags import is_hermes_nous_enabled
 
     tenant = db.query(Tenant).filter(Tenant.id == task.tenant_id).one_or_none()
     if not tenant:
@@ -209,6 +215,63 @@ def execute_scheduled_task(db: Session, task: AgentTask) -> dict[str, Any]:
         role="tenant_owner",
         user_id=task.owner_user_id,
     )
+    prompt = (
+        "Это периодическое поручение владельца офиса. Выполни цель через tools, "
+        "кратко отчитайся по фактам. Не спрашивай подтверждений на чтение; "
+        "критичные записи всё равно потребуют confirm policy.\n\n"
+        f"Цель: {task.goal}"
+    )
+
+    # Prefer Nous Hermes when enabled — do not silently keep DIY as the schedule brain.
+    if is_hermes_nous_enabled(db, ctx):
+        try:
+            from app.services.hermes_nous.bridge import HermesBridgeError, create_run
+
+            nous = create_run(
+                db,
+                ctx,
+                message=prompt,
+                session_id=f"{tenant.slug}:schedule:{task.id}",
+                task_id=task.id,
+                mode="tasks",
+            )
+            summary = str(nous.get("output") or "")[:4000]
+            return {
+                "ok": True,
+                "engine": "nous_hermes_agent",
+                "task_id": str(task.id),
+                "run_id": nous.get("delno_agent_run_id") or nous.get("run_id"),
+                "hermes_run_id": nous.get("run_id"),
+                "reply": summary,
+                "tool_calls": [],
+            }
+        except HermesBridgeError as exc:
+            logger.warning(
+                "schedule Nous unavailable for task %s (%s) — refusing silent DIY while flag on",
+                task.id,
+                exc,
+            )
+            run = record_run(
+                db,
+                ctx,
+                hermes_run_id=f"sched_{uuid.uuid4().hex[:12]}",
+                task_id=task.id,
+                status="failed",
+                summary=task.goal[:500],
+            )
+            run.error_code = str(exc)[:64]
+            run.result_summary = f"hermes_unavailable: {exc}"[:500]
+            run.finished_at = datetime.now(timezone.utc)
+            db.add(run)
+            db.commit()
+            return {
+                "ok": False,
+                "engine": "hermes_unavailable",
+                "task_id": str(task.id),
+                "run_id": str(run.id),
+                "error": str(exc)[:300],
+            }
+
     run = record_run(
         db,
         ctx,
@@ -224,12 +287,6 @@ def execute_scheduled_task(db: Session, task: AgentTask) -> dict[str, Any]:
         kind="plan",
         safe_summary=f"Расписание: {task.goal[:200]}",
         status="completed",
-    )
-    prompt = (
-        "Это периодическое поручение владельца офиса. Выполни цель через tools, "
-        "кратко отчитайся по фактам. Не спрашивай подтверждений на чтение; "
-        "критичные записи всё равно потребуют confirm policy.\n\n"
-        f"Цель: {task.goal}"
     )
     try:
         out = run_operator_turn(
@@ -258,6 +315,7 @@ def execute_scheduled_task(db: Session, task: AgentTask) -> dict[str, Any]:
         )
         return {
             "ok": True,
+            "engine": "diy_operator",
             "task_id": str(task.id),
             "run_id": str(run.id),
             "reply": summary,

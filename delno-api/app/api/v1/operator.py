@@ -2018,15 +2018,53 @@ def operator_chat(
                     hermes_run=nous,
                 )
             except HermesBridgeError as exc:
-                # Runtime not up yet → fall through to DIY (documented Stage 0 behavior)
-                if exc.status not in (None, 503, 404, 502):
-                    raise HTTPException(
-                        status_code=exc.status or 503,
-                        detail={"error": str(exc), "body": exc.body},
-                    ) from exc
+                # Flag on → never silently answer as DIY «Гермес». Be honest.
+                code = str(exc)
+                err_body = exc.body if isinstance(exc.body, dict) else {"raw": exc.body}
+                unavailable = (
+                    exc.status in (None, 503, 404, 502)
+                    or "provisioning" in code
+                    or "unavailable" in code
+                    or "not_configured" in code
+                    or "pool_exhausted" in code
+                    or "worker_offline" in code
+                    or "api_key_missing" in code
+                    or "unreachable" in code
+                )
+                if unavailable:
+                    hint = err_body.get("hint") if isinstance(err_body, dict) else None
+                    reply = (
+                        "Гермес сейчас недоступен для вашего кабинета "
+                        f"({code}). "
+                        "Это не ответ ассистента — runtime ещё не назначен или временно offline. "
+                        "Повторите через минуту или обратитесь в поддержку DELNO."
+                    )
+                    if hint:
+                        reply += f"\n\n{hint}"
+                    return _finish_diy(
+                        db,
+                        ctx,
+                        body,
+                        modality=modality,
+                        engine="hermes_unavailable",
+                        reply=reply,
+                        tool_calls=[
+                            {
+                                "tool": "hermes.runtime",
+                                "ok": False,
+                                "error": code,
+                                "detail": err_body,
+                            }
+                        ],
+                    )
+                raise HTTPException(
+                    status_code=exc.status or 503,
+                    detail={"error": code, "body": err_body},
+                ) from exc
     except ImportError:
         pass
 
+    # DIY path: only when Nous flag is off (admin/legacy) or prefer_diy shortcuts above.
     return run_operator_turn(
         db,
         ctx,

@@ -270,6 +270,9 @@ def test_create_run_records_agent_run(db, monkeypatch, tmp_path):
 
     get_settings.cache_clear()
     monkeypatch.setenv("TENANT_FILES_ROOT", str(tmp_path))
+    monkeypatch.setenv("HERMES_PROFILES_ROOT", str(tmp_path / "hermes-profiles"))
+    monkeypatch.setenv("HERMES_NOUS_RUNTIME_URL_B", "http://127.0.0.1:10")
+    monkeypatch.setenv("HERMES_API_SERVER_KEY_B", "test-key-b")
     get_settings.cache_clear()
 
     ensure_tenant_hermes_home(db, ctx, runtime_base_url="http://127.0.0.1:9")
@@ -292,13 +295,17 @@ def test_create_run_success_and_chat_fallback(db, monkeypatch, tmp_path):
     from app.services.hermes_nous.bridge import HermesBridgeError, create_run
 
     monkeypatch.setenv("TENANT_FILES_ROOT", str(tmp_path))
+    monkeypatch.setenv("HERMES_PROFILES_ROOT", str(tmp_path / "hermes-profiles"))
+    monkeypatch.setenv("HERMES_NOUS_RUNTIME_URL", "http://hermes.test")
+    monkeypatch.setenv("HERMES_NOUS_RUNTIME_URL_B", "http://hermes-b.test")
     monkeypatch.setenv("HERMES_API_SERVER_KEY", "test-key")
+    monkeypatch.setenv("HERMES_API_SERVER_KEY_B", "test-key-b")
     get_settings.cache_clear()
     ensure_tenant_hermes_home(db, ctx, runtime_base_url="http://hermes.test")
 
     def _runs_ok(method, url, **_k):
         assert "/v1/runs" in url
-        return 200, {"run_id": "hr_ok_1", "status": "running"}
+        return 200, {"run_id": "hr_ok_1", "status": "completed", "output": "ok"}
 
     monkeypatch.setattr("app.services.hermes_nous.bridge._http_json", _runs_ok)
     out = create_run(db, ctx, message="Собери KB с сайта", mode="onboarding")
@@ -459,7 +466,11 @@ def test_operator_soft_route_prefers_nous(db, monkeypatch, tmp_path):
 
     _tenant, ctx = _seed(db, flag_on=True)
     monkeypatch.setenv("TENANT_FILES_ROOT", str(tmp_path))
+    monkeypatch.setenv("HERMES_PROFILES_ROOT", str(tmp_path / "hermes-profiles"))
+    monkeypatch.setenv("HERMES_NOUS_RUNTIME_URL", "http://hermes.test")
+    monkeypatch.setenv("HERMES_NOUS_RUNTIME_URL_B", "http://hermes-b.test")
     monkeypatch.setenv("HERMES_API_SERVER_KEY", "k")
+    monkeypatch.setenv("HERMES_API_SERVER_KEY_B", "k-b")
     get_settings.cache_clear()
 
     from app.services.hermes_nous.provision import ensure_tenant_hermes_home
@@ -468,7 +479,7 @@ def test_operator_soft_route_prefers_nous(db, monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         "app.services.hermes_nous.bridge._http_json",
-        lambda *a, **k: (200, {"run_id": "op_1"}),
+        lambda *a, **k: (200, {"run_id": "op_1", "status": "completed", "output": "ok"}),
     )
 
     # Build minimal request path: call the soft-route branch via create_run mock outcome

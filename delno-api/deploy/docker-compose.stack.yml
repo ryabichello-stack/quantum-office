@@ -96,10 +96,16 @@ services:
       TENANT_FILES_ROOT: ${TENANT_FILES_ROOT:-/data/tenants}
       TENANT_FILES_BACKEND: ${TENANT_FILES_BACKEND:-local}
       TENANT_FILES_REGION: ${TENANT_FILES_REGION:-ru}
+      HERMES_PROFILES_ROOT: ${HERMES_PROFILES_ROOT:-/data/hermes-profiles}
+      # When 1: legacy mcp_api_key only sees meta tools; Hermes must use run token / X-Delno-Run-Id.
+      DELNO_MCP_STRICT: ${DELNO_MCP_STRICT:-0}
+      DELNO_MCP_DENY_LEGACY_KEY: ${DELNO_MCP_DENY_LEGACY_KEY:-0}
     volumes:
       # Persist per-tenant blobs (onboarding + F0 tenant_files tree). Missing = data loss on recreate.
       - delno-onboarding-uploads:/data/onboarding
       - delno-tenant-files:/data/tenants
+      # Worker-visible Hermes profile homes (shared with hermes_runtime compose).
+      - hermes-profiles:/data/hermes-profiles
     ports:
       - "127.0.0.1:18020:8020"
     depends_on:
@@ -300,3 +306,5 @@ volumes:
     name: delno-onboarding-uploads
   delno-tenant-files:
     name: delno-tenant-files
+  hermes-profiles:
+    name: hermes-profiles

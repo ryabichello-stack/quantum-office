@@ -35,6 +35,33 @@ async def _schedule_ticker_loop() -> None:
         await asyncio.sleep(60)
 
 
+async def _reconcile_runs_loop() -> None:
+    """Close stale agent_runs that no longer have a live Hermes upstream run."""
+    await asyncio.sleep(45)
+    while True:
+        try:
+            from app.services.hermes_nous.reconcile import reconcile_stale_runs
+
+            db = SessionLocal()
+            try:
+                out = await asyncio.to_thread(
+                    reconcile_stale_runs, db, older_than_minutes=30, limit=40
+                )
+                if out.get("closed"):
+                    logger.info(
+                        "hermes reconcile closed=%s checked=%s",
+                        out.get("closed"),
+                        out.get("checked"),
+                    )
+            finally:
+                db.close()
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            logger.exception("hermes reconcile ticker failed")
+        await asyncio.sleep(300)
+
+
 def _cors_kwargs() -> dict:
     settings = get_settings()
     origins_raw = (settings.cors_allow_origins or "").strip()
@@ -69,14 +96,17 @@ async def lifespan(_app: FastAPI):
     register_builtin_tools()
     import app.services.lead_email  # noqa: F401 — register SMTP notify hooks
     ticker = asyncio.create_task(_schedule_ticker_loop(), name="hermes-schedule-ticker")
+    reconcile = asyncio.create_task(_reconcile_runs_loop(), name="hermes-reconcile-runs")
     try:
         yield
     finally:
         ticker.cancel()
-        try:
-            await ticker
-        except asyncio.CancelledError:
-            pass
+        reconcile.cancel()
+        for task in (ticker, reconcile):
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 
 app = FastAPI(title="DELNO API", version="0.1.0", lifespan=lifespan)
