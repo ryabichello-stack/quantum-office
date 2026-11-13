@@ -26,6 +26,26 @@ _ONCE_HOUR = re.compile(r"\b(ежечасно|каждый\s+час|once\s+an?\s
 _ONCE_DAY = re.compile(r"\b(ежедневно|каждый\s+день|раз\s+в\s+день|daily)\b", re.I)
 
 
+def wants_tasks_list(message: str) -> bool:
+    low = (message or "").lower()
+    return any(
+        m in low
+        for m in (
+            "какие поручен",
+            "список поручен",
+            "мои поручен",
+            "активные задач",
+            "задачи по расписанию",
+            "hermes.tasks_list",
+            "list tasks",
+            "scheduled tasks",
+        )
+    )
+
+def wants_tasks_pause(message: str) -> bool:
+    low = (message or "").lower()
+    return any(m in low for m in ("останови поручен", "пауза поручен", "pause task", "останови задач"))
+
 def parse_schedule_intent(message: str) -> dict[str, Any] | None:
     """
     Detect «проверяй X каждый час» style goals.
@@ -35,13 +55,15 @@ def parse_schedule_intent(message: str) -> dict[str, Any] | None:
     if not text:
         return None
     low = text.lower()
-    schedule_verbs = (
+    # Listing / pausing is not "create schedule".
+    if wants_tasks_list(text) or wants_tasks_pause(text):
+        return None
+    create_markers = (
         "проверяй",
         "проверять",
         "монитор",
         "следи",
         "следить",
-        "по расписанию",
         "периодически",
         "каждый час",
         "каждые ",
@@ -49,12 +71,15 @@ def parse_schedule_intent(message: str) -> dict[str, Any] | None:
         "ежечасно",
         "cron",
         "schedule",
-        "поручение",
         "поставь задачу",
         "создай задачу",
         "создай поручение",
+        "поставь поручение",
+        "заведи поручение",
+        "по расписанию проверя",
+        "по расписанию следи",
     )
-    if not any(v in low for v in schedule_verbs):
+    if not any(v in low for v in create_markers):
         return None
 
     every_minutes: int | None = None
@@ -134,26 +159,6 @@ def create_scheduled_task(
     return task
 
 
-def wants_tasks_list(message: str) -> bool:
-    low = (message or "").lower()
-    return any(
-        m in low
-        for m in (
-            "какие поручен",
-            "список поручен",
-            "мои поручен",
-            "активные задач",
-            "задачи по расписанию",
-            "hermes.tasks_list",
-            "list tasks",
-            "scheduled tasks",
-        )
-    )
-
-
-def wants_tasks_pause(message: str) -> bool:
-    low = (message or "").lower()
-    return any(m in low for m in ("останови поручен", "пауза поручен", "pause task", "останови задач"))
 
 
 def claim_due_tasks(
