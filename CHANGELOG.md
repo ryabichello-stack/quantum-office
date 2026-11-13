@@ -14,10 +14,16 @@
 
 - Hermes media DIY: «сгенерируй простую картинку» (adverb between verb and noun) now matches `_wants_media_generation` and hits `generate_image` instead of a Nous dead-end during connectors phase
 - Hermes setup progress («что дальше» / «настроим офис») on vault steps (`need_sip`, telegram, max, files) opens `pending_credential_form` instead of a Nous text waffle; post-save «SIP сохранён… что дальше» still skips the form
+- Connector readiness vs tools_first: enabled + reachable upstream is usable for mail/calendar/conference (no longer blocked on missing SMTP/CalDAV/`tenant_account_verified`)
 
 ### Changed
 
 - Onboarding tool pack includes `generate_image` so media works before office `ready` (DIY fast-path still preferred)
+- Onboarding pack + office-loop CTA: `office.connector_set` for hermes_ops mail/calendar/conference steps
+
+### Added
+
+- Hermes tool `office.connector_set` — enable/disable tenant connectors with probe + readiness
 
 ### Added
 

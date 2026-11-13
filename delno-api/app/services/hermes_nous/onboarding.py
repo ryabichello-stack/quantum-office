@@ -368,9 +368,9 @@ def _cta(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> d
             return {
                 "title": f"Подключить: {title}",
                 "text": (
-                    f"KB готова. Следующий шаг сетапа — «{title}». {hint} "
-                    "Проведи по шагам через hermes.setup_status и credentials.open_form / connectors. "
-                    "Не предлагай снова собирать базу знаний."
+                    f"Вызови office.connector_set kind={sid} enabled=true, затем hermes.setup_status. "
+                    f"tools_first: opt-in на общий upstream; vault-секреты — позже при необходимости. "
+                    f"{hint} Не предлагай снова собирать базу знаний."
                 ),
             }
         return {

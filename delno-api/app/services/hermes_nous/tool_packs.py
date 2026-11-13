@@ -22,6 +22,7 @@ ONBOARDING_KB = META + (
     "web.browse",
     "get_tenant_summary",
     "credentials.open_form",
+    "office.connector_set",
     "phones.list",
     "phones.provision",
     "telephony.script_get",

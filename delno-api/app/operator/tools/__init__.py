@@ -50,6 +50,7 @@ from app.operator.tools.office_setup import (
     CredentialsOpenFormTool,
     FilesCloudListTool,
     FilesCloudStatusTool,
+    OfficeConnectorSetTool,
     TelephonyScriptGetTool,
     TelephonyScriptProposeTool,
     TelephonyScriptSaveTool,
@@ -110,6 +111,7 @@ def register_builtin_tools() -> None:
     registry.register(FilesCloudStatusTool())
     registry.register(FilesCloudListTool())
     registry.register(CredentialsOpenFormTool())
+    registry.register(OfficeConnectorSetTool())
     # Hermes browser / web
     registry.register(WebSearchTool())
     registry.register(WebFetchTool())

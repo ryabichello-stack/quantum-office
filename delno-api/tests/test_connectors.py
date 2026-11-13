@@ -15,7 +15,12 @@ from app.operator.tools.office import (
     SuggestCalendarSlotsTool,
 )
 from app.operator.tools.registry import ToolRegistry, tool_confirmation_class
-from app.services.connectors import list_tenant_connectors, update_tenant_connector
+from app.adapters.connectors.base import ConnectorResult
+from app.services.connectors import (
+    list_tenant_connector_readiness,
+    list_tenant_connectors,
+    update_tenant_connector,
+)
 
 
 def test_connector_registry_has_five():
@@ -121,6 +126,46 @@ def test_list_and_enable_connector_service():
     db.commit.assert_called()
 
 
+def test_tools_first_readiness_usable_when_enabled(monkeypatch):
+    """PRODUCT_LOOP: tools_first + enable = usable without live SMTP/CalDAV."""
+    tenant_id = uuid.uuid4()
+    ctx = TenantContext(tenant_id=tenant_id, tenant_slug="demo", role="tenant_owner")
+    tenant = Tenant(
+        slug="demo",
+        name="Demo",
+        settings={"connectors": {"mail": {"enabled": True, "base_url": "http://mail:8000"}}},
+    )
+    tenant.id = tenant_id
+    db = MagicMock()
+    db.query.return_value.filter.return_value.one.return_value = tenant
+
+    def _probe(*, tenant_slug, config):
+        return ConnectorResult(
+            ok=True,
+            configured=True,
+            kind="mail",
+            message="ok",
+            data={
+                "health": {
+                    "smtp_configured": False,
+                    "creds_policy": "tools_first",
+                }
+            },
+        )
+
+    monkeypatch.setattr(
+        "app.services.connectors.get_connector",
+        lambda kind: MagicMock(kind=kind, probe=_probe, status=lambda **k: ConnectorResult(ok=True, configured=True, kind=kind)),
+    )
+    # list_tenant_connectors still uses real MailConnector.status — patch list path via blob only
+    rows = list_tenant_connector_readiness(db, ctx)
+    mail = next(r for r in rows if r["kind"] == "mail")
+    assert mail["enabled"] is True
+    assert mail["usable"] is True
+    assert mail["creds_policy"] == "tools_first"
+    assert mail["reason"] is None
+
+
 def test_tool_registry_includes_office_tools():
     from app.operator.tools import register_builtin_tools
     from app.operator.tools.registry import registry
@@ -134,4 +179,5 @@ def test_tool_registry_includes_office_tools():
     assert "send_mail_draft" in names
     assert "list_files" in names
     assert "create_conference" in names
+    assert "office.connector_set" in names
     assert len(names) >= 11
