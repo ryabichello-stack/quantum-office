@@ -212,6 +212,58 @@ def _conference_title(message: str) -> str:
     return "Встреча DELNO"
 
 
+def _wants_mail_draft(message: str) -> bool:
+    """«отправь письмо / черновик» with a clear recipient — DIY send_mail_draft."""
+    low = (message or "").lower()
+    import re
+
+    has_addr = bool(re.search(r"[\w.+-]+@[\w.-]+\.\w+", message or ""))
+    has_mail = any(
+        m in low
+        for m in (
+            "письм",
+            "email",
+            "e-mail",
+            "черновик письм",
+            "send_mail",
+            "отправь на",
+        )
+    )
+    has_send = any(
+        m in low
+        for m in (
+            "отправь",
+            "отправ",
+            "написать",
+            "напиши",
+            "send ",
+            "черновик",
+        )
+    )
+    return has_addr and has_mail and has_send
+
+
+def _mail_draft_fields(message: str) -> dict[str, str]:
+    import re
+
+    text = message or ""
+    addr_m = re.search(r"([\w.+-]+@[\w.-]+\.\w+)", text)
+    to = addr_m.group(1) if addr_m else ""
+    subj = ""
+    body = ""
+    sm = re.search(r"тем[ае]\s+(.+?)(?:\s+тел[оа]\b|$)", text, re.I)
+    if sm:
+        subj = sm.group(1).strip(" .,\"'«»")[:200]
+    bm = re.search(r"тел[оа]\s+(.+)$", text, re.I)
+    if bm:
+        body = bm.group(1).strip()[:4000]
+    if not subj:
+        subj = "Сообщение от Hermes"
+    if not body:
+        body = text.strip()[:2000] or "—"
+    return {"to": to, "subject": subj, "body": body}
+
+
 # hermes_ops checklist id → vault form kind (only when the mapping is unambiguous).
 _SETUP_NEXT_TO_FORM_KIND: dict[str, str] = {
     "phone": "mango_sip",
@@ -386,6 +438,7 @@ def operator_chat(
         or _wants_media_generation(message)
         or _wants_calendar_slots(message)
         or _wants_conference_create(message)
+        or _wants_mail_draft(message)
     )
 
     # Vault forms must reach the cabinet as pending_credential_form. Nous text-only
@@ -589,6 +642,51 @@ def operator_chat(
             }
         err = result.message if isinstance(result, ToolResult) else "conference_failed"
         message = f"{message}\n\n[system: create_conference failed: {err}]"
+
+    # Conduct fast-path: mail draft (Nous often claims send_mail_draft unavailable).
+    if _wants_mail_draft(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        fields = _mail_draft_fields(message)
+        result = registry.run(
+            db,
+            ctx,
+            "send_mail_draft",
+            to=fields["to"],
+            subject=fields["subject"],
+            body=fields["body"],
+        )
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            nested = data.get("data") if isinstance(data.get("data"), dict) else {}
+            stub = bool(data.get("stub") or nested.get("stub") or not data.get("configured", True))
+            note = " (stub/dry-run — SMTP ещё без живых кредов)" if stub else ""
+            return {
+                "ok": True,
+                "engine": "diy_send_mail_draft",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": (
+                    f"Черновик письма{note}:\n"
+                    f"Кому: {fields['to']}\n"
+                    f"Тема: {fields['subject']}\n"
+                    f"Текст: {fields['body'][:400]}\n"
+                    f"{result.message or ''}"
+                ).strip(),
+                "tool_calls": [
+                    {
+                        "tool": "send_mail_draft",
+                        "ok": True,
+                        "to": fields["to"],
+                        "stub": stub,
+                    }
+                ],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "mail_failed"
+        message = f"{message}\n\n[system: send_mail_draft failed: {err}]"
 
     # Feature-flagged Nous Hermes runtime (Stage 0+). DIY loop remains fallback.
     try:

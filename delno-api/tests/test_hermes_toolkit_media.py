@@ -13,8 +13,10 @@ from app.api.v1.operator import (
     _calendar_slot_start_iso,
     _conference_provider,
     _conference_title,
+    _mail_draft_fields,
     _wants_calendar_slots,
     _wants_conference_create,
+    _wants_mail_draft,
     _wants_media_generation,
 )
 from app.core.db import Base
@@ -61,6 +63,16 @@ def test_wants_conference_create_routes():
     assert "Демо DELNO" in _conference_title(msg)
     assert not _wants_conference_create("создай картинку кота")
     assert not _wants_media_generation(msg)
+
+
+def test_wants_mail_draft_routes():
+    msg = "отправь черновик письма на test@example.com тема Smoke тело Привет от Hermes"
+    assert _wants_mail_draft(msg)
+    fields = _mail_draft_fields(msg)
+    assert fields["to"] == "test@example.com"
+    assert "Smoke" in fields["subject"]
+    assert "Привет" in fields["body"]
+    assert not _wants_mail_draft("напиши что-нибудь без адреса")
 
 
 def test_generate_image_prefers_proxy_friendly_models(monkeypatch):
