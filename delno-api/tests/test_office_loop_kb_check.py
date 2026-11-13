@@ -101,7 +101,7 @@ def test_office_loop_kb_ok_uses_kb_check_id(monkeypatch):
         "app.services.hermes_nous.onboarding.hermes_ops.office_setup_status",
         lambda *_a, **_k: {
             "setup_complete": False,
-            "message_ru": "next",
+            "message_ru": "Давайте настроим офис. Следующий шаг: Телефония",
             "progress": {"required_done": 1, "required_total": 7},
             "checks": {
                 "kb": {"ok": True, "detail": {"ok": True}},
@@ -109,12 +109,24 @@ def test_office_loop_kb_ok_uses_kb_check_id(monkeypatch):
                 "mail": {"ok": False},
                 "telephony_script": {"ok": True},
             },
+            "next_steps": [
+                {
+                    "id": "phone",
+                    "title": "Телефония (линия)",
+                    "hint": "DID + SIP в сейфе",
+                    "status": "todo",
+                }
+            ],
         },
     )
 
     loop = office_onboarding.get_office_loop(db, ctx)
     assert loop["kb_ok"] is True
     assert loop["phase"] == "connectors"
+    assert loop["setup_next"]["id"] == "phone"
+    assert "Телефония" in (loop["ui"]["headline"] or "")
+    assert "телефония" in (loop["ui"]["primary_cta"]["text"] or "").lower()
+    assert "импортировать kb" in (loop["ui"]["primary_cta"]["text"] or "").lower()
     company_kb = next(s for s in loop["steps"] if s["id"] == "company_kb")
     assert company_kb["done"] is True
     connectors = next(s for s in loop["steps"] if s["id"] == "connectors")

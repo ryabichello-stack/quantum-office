@@ -92,6 +92,7 @@ def create_run(
     idempotency_key: str | None = None,
     task_id: UUID | None = None,
     mode: str | None = "onboarding",
+    office_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Start a Hermes /v1/runs turn; mint scoped MCP token for this run."""
     runtime = resolve_runtime(db, ctx)
@@ -126,13 +127,26 @@ def create_run(
     headers["X-Delno-Run-Token"] = issued.token
     tool_hint = ", ".join(tools[:24])
     pack = (mode or "onboarding").strip().lower()
+    ctx_bits: list[str] = []
+    if isinstance(office_context, dict):
+        if office_context.get("kb_ok"):
+            ctx_bits.append("KB step is DONE — do not ask to import/rebuild company knowledge.")
+        sn = office_context.get("setup_next")
+        if isinstance(sn, dict) and sn.get("title"):
+            ctx_bits.append(
+                f"hermes_ops next required step: «{sn.get('title')}» "
+                f"(id={sn.get('id')}). hint: {sn.get('hint') or '—'}. Lead with this."
+            )
+        phase = office_context.get("phase")
+        if phase:
+            ctx_bits.append(f"office_loop.phase={phase}")
+    context_line = (" " + " ".join(ctx_bits)) if ctx_bits else ""
     if pack in ("onboarding", "welcome", "kb", "p1"):
         mission = (
-            "Product loop (owner Hermes): (1) greet and explain you will set up the office, "
-            "(2) collect company knowledge via website/import or text → show draft → wait confirm, "
-            "(3) connect tools step-by-step with credentials.open_form (never ask passwords in chat), "
-            "(4) only then take open-ended work orders. Prefer office.import_website, "
-            "upload_knowledge_snippet, hermes.setup_status, hermes.health, credentials.open_form."
+            "Product loop (owner Hermes): follow hermes.setup_status facts, not guesses. "
+            "If KB is done, advance to connectors (credentials.open_form / phones / channels). "
+            "Never invent website URLs or passwords. Prefer hermes.setup_status, hermes.setup_mark, "
+            "credentials.open_form, office.import_website only when KB is missing."
         )
     else:
         mission = (
@@ -144,7 +158,7 @@ def create_run(
         "input": message,
         "session_id": session_id or f"delno-{ctx.tenant_id}-{ctx.user_id or 'owner'}",
         "instructions": (
-            f"You are the company Hermes agent for THIS tenant only. {mission} "
+            f"You are the company Hermes agent for THIS tenant only. {mission}{context_line} "
             f"Use DELNO MCP tools only (delno_office). Granted tools include: {tool_hint}. "
             "Do not invent credentials. Show observable plan steps in Russian."
         ),

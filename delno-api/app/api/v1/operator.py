@@ -139,6 +139,12 @@ def operator_chat(
                     session_id=str(body.conversation_id) if body.conversation_id else None,
                     tool_ids=pack_for_mode(pack_mode),
                     mode=pack_mode,
+                    office_context={
+                        "phase": phase,
+                        "kb_ok": bool(loop.get("kb_ok")),
+                        "setup_next": loop.get("setup_next"),
+                        "setup_complete": setup_done,
+                    },
                 )
                 return {
                     "ok": True,

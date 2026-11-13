@@ -66,6 +66,15 @@ def get_office_loop(db: Session, ctx: TenantContext) -> dict[str, Any]:
         phase = "conduct"
 
     kb_draft = loop.get("kb_draft") if isinstance(loop.get("kb_draft"), dict) else None
+    # Concrete next item from hermes_ops checklist (source of truth for "что дальше").
+    setup_next_raw = (setup.get("next_steps") or [None])[0]
+    setup_next = None
+    if isinstance(setup_next_raw, dict) and setup_next_raw.get("id"):
+        setup_next = {
+            "id": setup_next_raw.get("id"),
+            "title": setup_next_raw.get("title") or setup_next_raw.get("id"),
+            "hint": setup_next_raw.get("hint") or "",
+        }
     steps = [
         {
             "id": "welcome",
@@ -83,7 +92,11 @@ def get_office_loop(db: Session, ctx: TenantContext) -> dict[str, Any]:
             "id": "connectors",
             "title": "Инструменты",
             "done": connector_ready >= 1,
-            "hint": "Почта / Telegram / календарь / телефон — по шагам с формами",
+            "hint": (
+                f"Сейчас по сетапу: {setup_next['title']}. {setup_next.get('hint') or ''}".strip()
+                if setup_next and kb_ok
+                else "Почта / Telegram / календарь / телефон — по шагам с формами"
+            ),
         },
         {
             "id": "ready",
@@ -106,6 +119,7 @@ def get_office_loop(db: Session, ctx: TenantContext) -> dict[str, Any]:
         "phases": list(PHASES),
         "steps": steps,
         "next_step": next_step,
+        "setup_next": setup_next,
         "kb_ok": kb_ok,
         "kb_draft": kb_draft,
         "connectors_ready_count": connector_ready,
@@ -115,8 +129,8 @@ def get_office_loop(db: Session, ctx: TenantContext) -> dict[str, Any]:
             "message_ru": setup.get("message_ru"),
         },
         "ui": {
-            "headline": _headline(phase, kb_ok),
-            "primary_cta": _cta(phase, kb_ok),
+            "headline": _headline(phase, kb_ok, setup_next),
+            "primary_cta": _cta(phase, kb_ok, setup_next),
         },
     }
 
@@ -220,28 +234,55 @@ def confirm_kb_draft(db: Session, ctx: TenantContext) -> dict[str, Any]:
     return {"ok": True, "committed": True, "loop": get_office_loop(db, ctx)}
 
 
-def _headline(phase: str, kb_ok: bool) -> str:
+def _headline(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> str:
     if phase == "welcome":
         return "Давайте настроим ваш офис"
     if phase == "company_kb" or not kb_ok:
         return "Соберём базу знаний компании"
     if phase == "connectors":
+        if setup_next and setup_next.get("title"):
+            return f"Следующий шаг сетапа: {setup_next['title']}"
         return "Подключим инструменты по шагам"
     if phase == "ready":
         return "Офис готов — можно давать поручения"
     return "Гермес дирижирует вашими инструментами"
 
 
-def _cta(phase: str, kb_ok: bool) -> dict[str, str]:
+def _cta(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> dict[str, str]:
     if phase == "welcome" or (phase == "company_kb" and not kb_ok):
         return {
             "title": "Сайт → знания",
-            "text": "Вот ссылка на наш сайт — собери базу знаний и покажи черновик",
+            # Owner must supply a real URL in chat; do not pretend one was given.
+            "text": "Помоги собрать базу знаний: скажи, какую ссылку на сайт прислать, или прими текст о компании и покажи черновик",
         }
     if phase == "connectors":
+        sid = str((setup_next or {}).get("id") or "")
+        title = str((setup_next or {}).get("title") or "инструмент")
+        hint = str((setup_next or {}).get("hint") or "")
+        if sid == "phone":
+            return {
+                "title": f"Настроить: {title}",
+                "text": (
+                    "База знаний уже есть. Следующий шаг hermes_ops — телефония (DID + SIP). "
+                    "Вызови hermes.setup_status, объясни что нужно, открой credentials.open_form "
+                    "для mango_sip если секрета нет. Не предлагай снова импортировать KB."
+                ),
+            }
+        if sid in {"telegram", "max", "mail", "calendar", "conference", "files"}:
+            return {
+                "title": f"Подключить: {title}",
+                "text": (
+                    f"KB готова. Следующий шаг сетапа — «{title}». {hint} "
+                    "Проведи по шагам через hermes.setup_status и credentials.open_form. "
+                    "Не предлагай снова собирать базу знаний."
+                ),
+            }
         return {
-            "title": "Подключить канал",
-            "text": "Что подключить следующим: почту, Telegram или календарь? Проведи меня по шагам",
+            "title": "Подключить инструмент",
+            "text": (
+                "KB готова. Вызови hermes.setup_status и проведи к следующему незакрытому шагу "
+                "(форма секрета при необходимости). Не предлагай импорт KB заново."
+            ),
         }
     if phase == "ready":
         return {
