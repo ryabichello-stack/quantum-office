@@ -116,22 +116,14 @@ HERMES_AGENT_SYSTEM = (
     "Не своди сложную задачу к одному shortcut-ответу.\n"
     "Не жди волшебных фраз и не подменяй задачу шаблонным статусом SIP/сетапа.\n"
     "\n"
-    "«Обогати / собери базу знаний» / сайт компании — работай как коммерческий директор:\n"
-    "1) get_knowledge (вернёт и боевую KB, и черновик office_loop если он есть); "
-    "2) открой браузер (office.build_kb_draft и/или web.research + web.search) "
-    "и набери максимум по теме (услуги, для кого, цены, условия, оферта, кейсы, интеграции);\n"
-    "3) в финальном ответе ВСТАВЬ коммерческий профиль из результата tool "
-    "(услуги / ICP / цены / условия / FAQ / пробелы) — не подменяй оглавлением "
-    "«собрал черновик, подтвердите»; next-step вопросы — после текста профиля;\n"
-    "4) «покажи что нашёл / покажи черновик / покажи профиль» → get_knowledge "
-    "или текст уже собранного draft; НЕ говори «KB пусто», если tool вернул draft.\n"
-    "5) доспроси пробелы (TG/IG/VK, прайс). "
-    "«положи в кб / подтверди черновик» → office.confirm_kb_draft "
-    "(НЕ upload_knowledge_snippet + вторая кнопка «Готов выполнить»).\n"
-    "6) «давай дальше / следующий шаг» после KB → hermes.setup_status и следующий "
-    "connector (телефон/каналы/…). Не предлагай снова положить тот же профиль в KB.\n"
-    "Запрещено: web.research → office.import_website → upload_knowledge_snippet "
-    "с одним «Готов выполнить: добавить в KB» без текста профиля.\n"
+    "Онбординг — playbook skill onboarding.md. Кратко:\n"
+    "Знания: build_kb_draft → ПОКАЖИ весь профиль → спроси «добавить в KB?» → "
+    "стоп (без setup_mark/upload/phones/form в том же ходе) → после «да» "
+    "office.confirm_kb_draft → setup_status → предложи следующий шаг вопросом.\n"
+    "Инструменты (phone/script/tg/max/files/mail/cal/conf): опиши → спроси → "
+    "после «да» tool. Секреты только credentials.open_form.\n"
+    "«покажи базу/черновик» → get_knowledge (боевая+draft). "
+    "Запрещено: setup_mark вместо показа профиля; прыжок на телефонию до commit KB.\n"
     "\n"
     "Каталог tools (выбираешь сам по смыслу задачи):\n"
     "• office.build_kb_draft — сбор/обогащение коммерческой KB (предпочтительно при онбординге);\n"
@@ -1287,6 +1279,41 @@ def _try_cabinet_llm_tools(
                         "role": "tool",
                         "tool_call_id": tc_id,
                         "content": json.dumps({"ok": False, "error": f"unknown tool {tool_name}"}),
+                    }
+                )
+                continue
+
+            # After a fresh commercial KB draft, never steal the turn with a
+            # confirm card (setup_mark / upload) — owner must see the profile first.
+            built_draft_this_turn = any(
+                t.get("tool") == "office.build_kb_draft" and t.get("ok") for t in collected_tools
+            )
+            if built_draft_this_turn and tool_name in (
+                "hermes.setup_mark",
+                "upload_knowledge_snippet",
+                "credentials.open_form",
+                "phones.provision",
+                "office.connector_set",
+            ):
+                entry["ok"] = False
+                entry["error"] = "blocked_until_kb_shown"
+                collected_tools.append(entry)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc_id,
+                        "content": json.dumps(
+                            {
+                                "ok": False,
+                                "error": "blocked_until_kb_shown",
+                                "message": (
+                                    "Сначала покажи владельцу полный коммерческий профиль "
+                                    "из office.build_kb_draft и спроси «Добавить в базу знаний?». "
+                                    f"Tool `{tool_name}` в этом ходе запрещён."
+                                ),
+                            },
+                            ensure_ascii=False,
+                        ),
                     }
                 )
                 continue

@@ -27,7 +27,13 @@ class HermesSetupStatusTool:
 
 class HermesSetupMarkTool:
     name = "hermes.setup_mark"
-    description = "Mark Hermes setup progress (e.g. kb_ready=true after knowledge upload)."
+    description = (
+        "Mark Hermes setup progress after a REAL completed fact "
+        "(e.g. telephony script saved). "
+        "Do NOT use after office.build_kb_draft — show the profile and use "
+        "office.confirm_kb_draft when the owner agrees. "
+        "Do NOT use to skip phone/SIP/Telegram steps."
+    )
     critical_write = True
     parameters_schema = {
         "type": "object",
