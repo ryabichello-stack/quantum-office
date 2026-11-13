@@ -367,6 +367,17 @@ def run_operator_turn(
             if not pending_download and isinstance(tc.get("pending_download"), dict):
                 pending_download = tc["pending_download"]
 
+        # Hermes always forms bottom next-step chips when tools didn't attach any.
+        if not suggested_actions:
+            try:
+                from app.services.hermes_guide import chip_actions_for_office
+
+                suggested_actions = chip_actions_for_office(
+                    db, ctx, tool_calls=list(tool_calls or [])
+                )
+            except Exception:
+                suggested_actions = []
+
         meta: dict[str, Any] = {"tool_calls": tool_calls, "sources": sources}
         if pending:
             meta["pending_confirmation"] = pending
@@ -1345,6 +1356,13 @@ def _try_cabinet_llm_tools(
                         )[:300]
                         if result.data.get("detail"):
                             entry["detail"] = str(result.data.get("detail"))[:300]
+                    suggested = result.data.get("suggested_actions")
+                    if isinstance(suggested, list) and suggested:
+                        entry["suggested_actions"] = [
+                            a
+                            for a in suggested
+                            if isinstance(a, dict) and a.get("title") and a.get("text")
+                        ][:5]
                     form = result.data.get("pending_credential_form")
                     if isinstance(form, dict):
                         pending_form = form

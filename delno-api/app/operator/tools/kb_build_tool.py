@@ -130,9 +130,22 @@ class OfficeConfirmKbDraftTool:
                 message=f"Не удалось положить черновик в KB: {out.get('error') or 'error'}",
             )
         title = str(draft.get("title") or "Профиль компании")
+        next_chips: list[dict[str, str]] = []
+        try:
+            from app.services.hermes_guide import chip_actions_for_office
+
+            next_chips = chip_actions_for_office(db, ctx, tool_calls=None)
+        except Exception:
+            next_chips = [
+                {"title": "Телефон", "text": "Настрой телефон секретаря"},
+                {"title": "Каналы", "text": "Что ещё настроить в каналах?"},
+                {"title": "Статус", "text": "Статус сетапа"},
+            ]
+        data = dict(out or {})
+        data["suggested_actions"] = next_chips
         return ToolResult(
             ok=True,
-            data=out,
+            data=data,
             message=(
                 f"Черновик «{title}» записан в боевую KB. "
                 "Шаг «знания» готов — следующий: инструменты офиса "

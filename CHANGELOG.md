@@ -30,6 +30,7 @@
 
 ### Fixed
 
+- Hermes bottom suggestion chips: after every cabinet/Nous reply Hermes forms `suggested_actions` from tool chips, pending KB draft (confirm/enrich), or `setup_status` next steps — so the UI chips under the reply stay like before even when the LLM path omitted them
 - Hermes onboarding playbook: per-step/per-tool scenario (show → ask → confirm → apply); block `hermes.setup_mark`/upload/phone/form in the same turn as `office.build_kb_draft` so the commercial profile is shown before any confirm card
 - Hermes mic dictation UX: one tap starts live words in the composer (browser interim + faster Whisper ticks), pulsing mic + level waves while listening, tap again / X stops without sending; header mic uses the same dictate path (not voice-dialog)
 - Hermes onboarding: «положи в кб» commits via `office.confirm_kb_draft` (no second upload confirm card); `upload_knowledge_snippet` marks `kb_ready` so «давай дальше» advances to connectors instead of re-proposing the same KB add

@@ -1091,6 +1091,13 @@ def _finish_diy(
 
     calls = list(tool_calls or [])
     actions = list(suggested_actions or [])
+    if not actions:
+        try:
+            from app.services.hermes_guide import chip_actions_for_office
+
+            actions = chip_actions_for_office(db, ctx, tool_calls=calls)
+        except Exception:
+            actions = []
     meta: dict = {"engine": engine, "tool_calls": calls}
     if actions:
         meta["suggested_actions"] = actions
