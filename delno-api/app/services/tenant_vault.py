@@ -19,6 +19,7 @@ SUPPORTED_KINDS = frozenset(
         "files_mailru",
         "files_gdrive",
         "files_onedrive",
+        "telegram_bot",
     }
 )
 
@@ -43,6 +44,26 @@ MANGO_SIP_FORM = {
     "submit_label": "Сохранить безопасно",
     "password_required": True,
     "login_optional": False,
+}
+
+CHANNEL_FORMS: dict[str, dict[str, Any]] = {
+    "telegram_bot": {
+        "kind": "telegram_bot",
+        "title": "Telegram bot — токен",
+        "hint": "Токен от @BotFather. В чат не попадёт; Hermес подключит branded webhook для tenant.",
+        "fields": [
+            {
+                "name": "password",
+                "label": "Bot token",
+                "type": "password",
+                "autocomplete": "off",
+            }
+        ],
+        "submit_label": "Подключить Telegram",
+        "password_required": True,
+        "login_optional": True,
+        "require_foreign_consent": False,
+    },
 }
 
 CLOUD_FORMS: dict[str, dict[str, Any]] = {
@@ -130,11 +151,16 @@ def credential_form_spec(kind: str = "mango_sip", *, prefill: dict[str, str] | N
     kind = (kind or "mango_sip").strip()
     if kind in CLOUD_FORMS:
         form = dict(CLOUD_FORMS[kind])
-    else:
+    elif kind in CHANNEL_FORMS:
+        form = dict(CHANNEL_FORMS[kind])
+    elif kind == "mango_sip":
         form = dict(MANGO_SIP_FORM)
-        form["kind"] = "mango_sip" if kind not in SUPPORTED_KINDS else kind
-        if kind != "mango_sip" and kind not in CLOUD_FORMS:
-            form = dict(MANGO_SIP_FORM)
+    else:
+        # Unknown kinds fall back to SIP form shape but keep requested kind label only
+        # when supported; otherwise mango_sip (legacy callers).
+        form = dict(MANGO_SIP_FORM)
+        if kind in SUPPORTED_KINDS:
+            form["kind"] = kind
     if prefill:
         safe = {}
         if prefill.get("login"):
@@ -258,11 +284,13 @@ def save_secret(
         return {"ok": False, "error": "unsupported_kind"}
     login_s = (login or "").strip()
     password_s = (password or "").strip()
-    max_pw = 4096 if kind in CLOUD_KINDS else 200
+    max_pw = 4096 if kind in CLOUD_KINDS or kind in CHANNEL_FORMS else 200
     if not login_s and not password_s:
         return {"ok": False, "error": "empty"}
     if kind == "files_mailru" and not login_s:
         return {"ok": False, "error": "login_required"}
+    if kind == "telegram_bot" and not password_s:
+        return {"ok": False, "error": "password_required"}
     if password_s and len(password_s) < 4:
         return {"ok": False, "error": "password_too_short"}
     if kind in FOREIGN_CLOUD_KINDS and not foreign_consent:
@@ -309,17 +337,44 @@ def save_secret(
         payload={"kind": kind, "configured": True},
     )
     db.commit()
+    if kind == "telegram_bot":
+        msg = "Токен Telegram сохранён. В чат не попал."
+    elif kind in CLOUD_KINDS:
+        msg = "Данные сохранены в сейфе тенанта. В чат не попали."
+    else:
+        msg = "SIP-данные сохранены в кабинете. В чат не попали."
     out: dict[str, Any] = {
         "ok": True,
         "kind": kind,
         "configured": True,
         "login_masked": _mask(str(current.get("login") or "")),
-        "message": (
-            "Данные сохранены в сейфе тенанта. В чат не попали."
-            if kind in CLOUD_KINDS
-            else "SIP-данные сохранены в кабинете. В чат не попали."
-        ),
+        "message": msg,
     }
+    if kind == "telegram_bot":
+        try:
+            from app.services.telegram_connect import connect_telegram_branded
+
+            connected = connect_telegram_branded(db, ctx, str(current.get("password") or ""))
+            out["channel_connect"] = {
+                k: connected.get(k)
+                for k in ("ok", "error", "account", "bot", "username", "message_ru", "webhook")
+                if k in connected or connected.get(k) is not None
+            }
+            if connected.get("ok"):
+                account = connected.get("account") if isinstance(connected.get("account"), dict) else {}
+                bot = account.get("bot_username") or ""
+                out["message"] = (
+                    f"Telegram бот подключён{(' @' + str(bot).lstrip('@')) if bot else ''}. "
+                    "Токен в чат не попал."
+                )
+            else:
+                out["message"] = (
+                    "Токен сохранён в сейфе, но подключить канал не удалось: "
+                    + str(connected.get("error") or connected.get("message_ru") or "ошибка")
+                )
+        except Exception as exc:  # noqa: BLE001
+            out["channel_connect"] = {"ok": False, "error": "telegram_connect_failed"}
+            out["message"] = f"Токен сохранён, connect упал: {str(exc)[:120]}"
     if kind == "mango_sip":
         try:
             from app.services.sip_probe import after_vault_sip_save

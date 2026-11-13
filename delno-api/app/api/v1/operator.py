@@ -67,6 +67,7 @@ def _wants_media_generation(message: str) -> bool:
 # hermes_ops checklist id → vault form kind (only when the mapping is unambiguous).
 _SETUP_NEXT_TO_FORM_KIND: dict[str, str] = {
     "phone": "mango_sip",
+    "telegram": "telegram_bot",
 }
 
 
@@ -101,7 +102,11 @@ def _credential_form_kind_from_message(
             return "files_gdrive"
         if "onedrive" in low or "one drive" in low:
             return "files_onedrive"
-        if "sip" in low or "mango" in low or "телефон" in low:
+        if "sip" in low or "mango" in low:
+            return "mango_sip"
+        if "telegram" in low or "телеграм" in low or "botfather" in low:
+            return "telegram_bot"
+        if "телефон" in low:
             return "mango_sip"
         # CTA / open_form without kind → use hermes_ops next step when unambiguous.
         mapped = _SETUP_NEXT_TO_FORM_KIND.get(str(setup_next_id or ""))

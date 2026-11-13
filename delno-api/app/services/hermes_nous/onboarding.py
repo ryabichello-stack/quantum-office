@@ -339,7 +339,15 @@ def _cta(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> d
                     "Не открывай SIP форму и не предлагай импортировать KB."
                 ),
             }
-        if sid in {"telegram", "max", "mail", "calendar", "conference", "files"}:
+        if sid == "telegram":
+            return {
+                "title": f"Подключить: {title}",
+                "text": (
+                    "Открой безопасную форму credentials.open_form для telegram_bot "
+                    "(токен @BotFather). Не проси токен в чат и не предлагай импортировать KB."
+                ),
+            }
+        if sid in {"max", "mail", "calendar", "conference", "files"}:
             return {
                 "title": f"Подключить: {title}",
                 "text": (

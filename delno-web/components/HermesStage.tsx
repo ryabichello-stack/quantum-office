@@ -583,26 +583,39 @@ export function HermesStage({ token }: { token: string }) {
       setActiveSecretForm(null);
       const probe = result.sip_probe;
       const cloud = result.cloud_probe;
+      const channel = result.channel_connect;
       const ack =
         result.message ||
-        `Сохранил ${result.kind}: ${result.login_masked || "••••"}. Пароль в чат не попал.`;
+        `Сохранил ${result.kind}: ${result.login_masked || "••••"}. Секрет в чат не попал.`;
       const probeLine = probe?.message_ru
         ? `\nАвтотест линии: ${probe.message_ru}`
         : cloud?.message_ru
           ? `\nОблако: ${cloud.message_ru}`
-          : "";
+          : channel?.account?.bot_username
+            ? `\nTelegram: @${channel.account.bot_username}`
+            : "";
       setLines((prev) => [...prev, { role: "assistant", text: `${ack}${probeLine}` }]);
       void refreshPanels();
       // Follow-up in the same thread so Hermes re-reads vault + setup (no more loop).
       try {
         const isCloud = secretKind.startsWith("files_");
+        const isTelegram = secretKind === "telegram_bot";
         const followAsk = isCloud
           ? cloud?.probe?.ok
             ? "Облако подключено. Какие облака подключены?"
             : "Облако сохранено. Какие облака подключены?"
-          : probe?.ok
-            ? "SIP сохранён и линия Registered. Что дальше — тестовый звонок или сменить голос?"
-            : "SIP сохранён. Проверь регистрацию. Если Rejected — дай задание для Cursor или снова форму.";
+          : isTelegram
+            ? channel?.ok
+              ? "Telegram бот подключён. Какой следующий шаг hermes_ops?"
+              : "Токен Telegram сохранён. Проверь каналы / hermes.setup_status. Что дальше?"
+            : probe?.ok
+              ? "SIP сохранён и линия Registered. Что дальше — тестовый звонок или сменить голос?"
+              : "SIP сохранён. Проверь регистрацию. Если Rejected — дай задание для Cursor или снова форму.";
+        const followUserLabel = isCloud
+          ? "Облако сохранено. Что дальше?"
+          : isTelegram
+            ? "Telegram сохранён. Канал готов? Что дальше?"
+            : "SIP сохранён. Телефон настроен? Что дальше по линии?";
         const follow = await apiOperatorChat(
           token,
           followAsk,
@@ -613,7 +626,7 @@ export function HermesStage({ token }: { token: string }) {
         if (follow.conversation_id) setConversationId(follow.conversation_id);
         setLines((prev) => [
           ...prev,
-          { role: "user", text: "SIP сохранён. Телефон настроен? Что дальше по линии?" },
+          { role: "user", text: followUserLabel },
           {
             role: "assistant",
             text: follow.reply || "Проверил сейф и сетап.",
@@ -627,7 +640,7 @@ export function HermesStage({ token }: { token: string }) {
         /* ack already shown; follow-up is best-effort */
       }
     } catch {
-      setError("Не удалось сохранить SIP-данные. Проверьте сессию и повторите.");
+      setError("Не удалось сохранить секрет. Проверьте сессию и повторите.");
     } finally {
       setSecretBusy(false);
     }
