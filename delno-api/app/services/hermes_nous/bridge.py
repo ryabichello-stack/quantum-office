@@ -146,6 +146,15 @@ def create_run(
                     " Use telephony.script_get → draft/save script; "
                     "do not reopen SIP form or re-import KB."
                 )
+            elif sn.get("id") == "telegram":
+                micro += " Open credentials.open_form telegram_bot (BotFather token; never in chat)."
+            elif sn.get("id") == "max":
+                micro += " Open credentials.open_form max_bot (access token; never in chat)."
+            elif sn.get("id") == "files":
+                micro += (
+                    " Open credentials.open_form files_yadisk "
+                    "(or files_mailru / files_gdrive / files_onedrive)."
+                )
             ctx_bits.append(
                 f"hermes_ops next required step: «{sn.get('title')}» "
                 f"(id={sn.get('id')}).{micro} hint: {sn.get('hint') or '—'}. Lead with this."

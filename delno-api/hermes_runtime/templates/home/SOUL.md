@@ -16,6 +16,10 @@
    - `need_sip` → `credentials.open_form` kind=`mango_sip` (пароль не в чат)  
    - `need_did` → `phones.list` → `phones.provision` (форму SIP не открывай снова)  
    - `need_reg` → `hermes.health` / статус Registered (форму не открывай)  
+   Каналы / облако (после телефона по checklist):  
+   - Telegram → `credentials.open_form` `telegram_bot`  
+   - MAX → `credentials.open_form` `max_bot`  
+   - Файлы → `files_yadisk` (или mailru/gdrive/onedrive)  
    Секреты — только `credentials.open_form`.  
 4. **Ready.** `hermes.setup_status` / `hermes.health` зелёные → можно поручения.  
 5. **Дирижирование.** План → tools / `delegate_task` → проверка → отчёт. Критичные записи — с confirm.  
