@@ -191,7 +191,10 @@ def create_run(
             "Do not invent credentials. "
             "Act as a normal multi-step agent: (1) short numbered plan in Russian, "
             "(2) call tools for each step in order, (3) final report of what was done. "
-            "Never collapse a multi-part request into a single canned reply."
+            "Never collapse a multi-part request into a single canned reply. "
+            "For websites/URLs use mcp__delno_office__web_research or "
+            "mcp__delno_office__web_browse / web_fetch — NEVER a local Chromium/"
+            "terminal browser (it is not available in this runtime)."
         ),
     }
     url = f"{runtime['base_url']}/v1/runs"

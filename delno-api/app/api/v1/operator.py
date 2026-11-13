@@ -1868,6 +1868,20 @@ def operator_chat(
         err = result.message if isinstance(result, ToolResult) else "files_cloud_failed"
         message = f"{message}\n\n[system: files.cloud_status failed: {err}]"
 
+    # Multi-step / compound goals: use the in-API tool agent loop (plan → tools →
+    # report, up to HERMES_AGENT_MAX_ROUNDS). Nous runtime often lacks Chromium /
+    # collapses compound asks — keep it for lighter non-DIY turns.
+    if agent_mode and message and not attachments:
+        return run_operator_turn(
+            db,
+            ctx,
+            message=message,
+            channel=body.channel or "hermes",
+            conversation_id=body.conversation_id,
+            input_modality=modality,
+            attachments=None,
+        )
+
     # Feature-flagged Nous Hermes runtime (Stage 0+). DIY loop remains fallback.
     try:
         from app.services.hermes_nous.bridge import HermesBridgeError, create_run
