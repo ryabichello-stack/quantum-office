@@ -125,14 +125,28 @@ def create_run(
     # Pass run token via header Hermes can map into MCP env (DELNO injects at gateway).
     headers["X-Delno-Run-Token"] = issued.token
     tool_hint = ", ".join(tools[:24])
+    pack = (mode or "onboarding").strip().lower()
+    if pack in ("onboarding", "welcome", "kb", "p1"):
+        mission = (
+            "Product loop (owner Hermes): (1) greet and explain you will set up the office, "
+            "(2) collect company knowledge via website/import or text → show draft → wait confirm, "
+            "(3) connect tools step-by-step with credentials.open_form (never ask passwords in chat), "
+            "(4) only then take open-ended work orders. Prefer office.import_website, "
+            "upload_knowledge_snippet, hermes.setup_status, hermes.health, credentials.open_form."
+        )
+    else:
+        mission = (
+            "Office is being conducted: plan → DELNO MCP tools → report. "
+            "For pictures call generate_image. Ava telephony: phones.*/calls.*/telephony.*. "
+            "Critical writes need confirmation policy."
+        )
     payload: dict[str, Any] = {
         "input": message,
         "session_id": session_id or f"delno-{ctx.tenant_id}-{ctx.user_id or 'owner'}",
         "instructions": (
-            "You are the company Hermes agent. Use DELNO MCP tools only "
-            f"(delno_office). Granted tools include: {tool_hint}. "
-            "For pictures call generate_image. For Ava telephony use phones.*/calls.*/telephony.*. "
-            "Do not invent credentials. Show observable plan steps."
+            f"You are the company Hermes agent for THIS tenant only. {mission} "
+            f"Use DELNO MCP tools only (delno_office). Granted tools include: {tool_hint}. "
+            "Do not invent credentials. Show observable plan steps in Russian."
         ),
     }
     url = f"{runtime['base_url']}/v1/runs"

@@ -123,15 +123,22 @@ def operator_chat(
 
         if is_hermes_nous_enabled(db, ctx) and message and not prefer_diy:
             try:
+                from app.services.hermes_nous.onboarding import get_office_loop
                 from app.services.hermes_nous.tool_packs import pack_for_mode
 
+                # Product loop: until office is ready, Nous runs with onboarding pack
+                # (KB + setup + credentials), not full conduct.
+                loop = get_office_loop(db, ctx)
+                setup_done = bool((loop.get("setup") or {}).get("setup_complete"))
+                phase = str(loop.get("phase") or "welcome")
+                pack_mode = "conduct" if setup_done or phase in ("ready", "conduct") else "onboarding"
                 nous = create_run(
                     db,
                     ctx,
                     message=message,
                     session_id=str(body.conversation_id) if body.conversation_id else None,
-                    tool_ids=pack_for_mode("conduct"),
-                    mode="conduct",
+                    tool_ids=pack_for_mode(pack_mode),
+                    mode=pack_mode,
                 )
                 return {
                     "ok": True,

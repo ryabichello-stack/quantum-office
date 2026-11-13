@@ -16,6 +16,7 @@
 - Hermes media: `generate_image` tool (OpenAI Images); video attachments (mp4/webm/mov) with Whisper audio transcript; `/v1/hermes-nous/toolkit`
 - Voice dialogue: Whisper server fallback when browser SpeechRecognition fails; bridge polls `/v1/runs` for interactive replies
 - Hermes night hardening: image-gen intents route to DIY `generate_image` (proxy models `gpt-image-1-mini` / `chatgpt-image-latest` + direct fast-path); Ava toolkit detail as readable RU status; user bubbles show video previews
+- Hermes PRODUCT_LOOP focus: office-loop reads `kb` check correctly; incomplete setup uses onboarding tool pack; empty/CTA/copy push «настроим офис → KB → тулзы»; KB draft confirm in panel; Nous instructions/SOUL = employee onboarding loop
 - Hermes Nous: `lead.created` → `events_dispatch.on_lead_created` (durable AgentTask + queued AgentRun when `hermes_nous_runtime` on)
 - Hermes Nous: detailed sqlite integration suite (`test_hermes_nous_integration.py`) — A/B run tokens, MCP fail-closed tool call, KB confirm, bridge runs+fallback, flag gate, hermes profile without long-lived key
 - Hermes runtime Dockerfile: Python 3.14 + `uv sync --frozen --extra messaging`; lab smoke A/B on `:18642`/`:18643` (`scripts/lab_smoke.sh`); verified live `/v1/runs` → `completed` on C4B lab

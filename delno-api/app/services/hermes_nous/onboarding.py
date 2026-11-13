@@ -44,21 +44,26 @@ def get_office_loop(db: Session, ctx: TenantContext) -> dict[str, Any]:
     nous = _nous(tenant)
     loop = dict(nous.get("office_loop") or {})
     setup = hermes_ops.office_setup_status(db, ctx)
-    kb_ok = bool((setup.get("checks") or {}).get("company_knowledge", {}).get("ok"))
-    connectors = setup.get("checks") or {}
+    checks = setup.get("checks") if isinstance(setup.get("checks"), dict) else {}
+    # hermes_ops uses check id "kb"; older fixtures used company_knowledge.
+    kb_check = checks.get("kb") if isinstance(checks.get("kb"), dict) else {}
+    if not kb_check:
+        kb_check = checks.get("company_knowledge") if isinstance(checks.get("company_knowledge"), dict) else {}
+    kb_ok = bool(kb_check.get("ok"))
+    # Channels / tools — exclude KB + script meta from connector count.
+    _not_connector = {"kb", "telephony_script", "company_knowledge"}
     connector_ready = sum(
-        1
-        for k, v in connectors.items()
-        if k not in ("company_knowledge",) and isinstance(v, dict) and v.get("ok")
+        1 for k, v in checks.items() if k not in _not_connector and isinstance(v, dict) and v.get("ok")
     )
+    # Auto-advance forward from facts; never clobber an explicit later phase
+    # (set_phase / tests / owner skipping a step).
     phase = str(loop.get("phase") or "welcome")
     if kb_ok and phase in ("welcome", "company_kb"):
-        phase = "connectors" if connector_ready == 0 else phase
-    if kb_ok and connector_ready >= 1 and phase in ("welcome", "company_kb", "connectors"):
-        # at least KB + one connector → can mark ready suggestion
-        pass
-    if setup.get("setup_complete"):
-        phase = loop.get("phase") if loop.get("phase") == "conduct" else "ready"
+        phase = "connectors"
+    if setup.get("setup_complete") and phase not in ("ready", "conduct"):
+        phase = "ready"
+    if setup.get("setup_complete") and loop.get("phase") == "conduct":
+        phase = "conduct"
 
     kb_draft = loop.get("kb_draft") if isinstance(loop.get("kb_draft"), dict) else None
     steps = [
@@ -155,14 +160,21 @@ def save_kb_draft(
 
 def confirm_kb_draft(db: Session, ctx: TenantContext) -> dict[str, Any]:
     """Commit draft into knowledge via upload_knowledge_snippet tool path."""
+    from app.operator.tools import register_builtin_tools
     from app.operator.tools.registry import registry
 
+    register_builtin_tools()
     tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
     nous = _nous(tenant)
     loop = dict(nous.get("office_loop") or {})
     draft = loop.get("kb_draft") if isinstance(loop.get("kb_draft"), dict) else None
     if not draft or not str(draft.get("body") or "").strip():
         return {"ok": False, "error": "no_kb_draft"}
+    if str(draft.get("status") or "") == "committed":
+        loop["phase"] = loop.get("phase") or "connectors"
+        nous["office_loop"] = loop
+        _save_nous(db, tenant, nous)
+        return {"ok": True, "committed": True, "already": True, "loop": get_office_loop(db, ctx)}
 
     title = str(draft.get("title") or "Профиль компании")
     body = str(draft.get("body") or "")

@@ -59,6 +59,7 @@ import {
   apiHermesSetup,
   apiOfficeLoop,
   apiHermesToolkit,
+  apiKbDraftConfirm,
   type AgentTaskItem,
   type HermesToolkit,
   type BillingSummary,
@@ -107,12 +108,27 @@ function triggerMarkdownDownload(file: PendingDownload) {
 }
 
 const QUICK_PROMPTS = [
-  { title: "Статус офиса", text: "Покажи статус сетапа и что сделать следующим шагом." },
-  { title: "Сайт → KB", text: "Зайди на мой сайт и собери знания в базу" },
-  { title: "Ava · телефон", text: "Покажи инструменты Ava и статус телефонии, затем предложи настройку" },
-  { title: "Сгенерируй картинку", text: "Сгенерируй картинку: современный офисный робот-секретарь в минималистичном стиле" },
-  { title: "Здоровье", text: "Проверь здоровье офиса" },
-  { title: "Звонки", text: "Какие звонки были сегодня?" },
+  {
+    title: "Настроить офис",
+    text: "Давайте настроим мой офис: покажи путь (знания → инструменты → ready) и следующий шаг.",
+  },
+  {
+    title: "Сайт → знания",
+    text: "Вот ссылка на наш сайт — собери базу знаний и покажи черновик перед сохранением",
+  },
+  {
+    title: "Подключить инструмент",
+    text: "Что подключить следующим: почту, Telegram или календарь? Проведи меня по шагам с формой секрета",
+  },
+  {
+    title: "Ava · телефон",
+    text: "Покажи инструменты Ava и статус телефонии, затем предложи настройку SIP/DID",
+  },
+  { title: "Здоровье офиса", text: "Проверь здоровье офиса и скажи, что улучшить" },
+  {
+    title: "Поручение",
+    text: "Когда офис ready — ответь по базе знаний: кто мы и что предлагаем клиентам",
+  },
 ];
 
 function useCompactHermes(breakpoint = 720) {
@@ -424,15 +440,17 @@ export function HermesStage({ token }: { token: string }) {
 
   useEffect(() => {
     if (bootstrapped || !setup || !historyReady) return;
+    // Wait for office-loop when Nous is on so welcome follows PRODUCT_LOOP CTA.
+    if (nousStatus?.enabled && !officeLoop) return;
     setBootstrapped(true);
     if (!setup.setup_complete && lines.length === 0) {
-      void sendText(
-        "Я владелец офиса. Покажи статус сетапа и скажи, что сделать следующим шагом.",
-        "text",
-      );
+      const cta =
+        officeLoop?.ui?.primary_cta?.text ||
+        "Я владелец. Давайте настроим офис: следующий шаг по пути знания → инструменты → ready.";
+      void sendText(cta, "text");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot welcome
-  }, [setup, bootstrapped, historyReady]);
+  }, [setup, bootstrapped, historyReady, officeLoop, nousStatus?.enabled]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -743,11 +761,15 @@ export function HermesStage({ token }: { token: string }) {
                   <div className="hx-empty-orb" aria-hidden>
                     <CrystalOrb voiceActive={voiceActive} voicePhase={voicePhase} onOrbClick={toggleVoice} />
                   </div>
-                  <h1 className="hx-empty-title">Чем помочь?</h1>
+                  <h1 className="hx-empty-title">
+                    {officeLoop?.ui?.headline || (setup?.setup_complete ? "Чем помочь?" : "Давайте настроим офис")}
+                  </h1>
                   <p className="hx-empty-lead">
                     {compact
-                      ? "Напишите, продиктуйте или приложите фото/видео."
-                      : "Hermes ведёт офис: знания, каналы, Ava-телефон, почта и поручения. Напишите задачу, приложите файл или включите голосовой диалог."}
+                      ? officeLoop?.next_step?.hint || "Знания → инструменты → поручения."
+                      : officeLoop?.next_step
+                        ? `Сейчас: ${officeLoop.next_step.title}. ${officeLoop.next_step.hint}`
+                        : "Hermes сначала поднимает ваш офис (знания и тулзы), потом выполняет поручения — как сотрудник, а не FAQ-чат."}
                   </p>
                   <div className={cn("hx-suggestions", compact && "hx-suggestions-chips")}>
                     {QUICK_PROMPTS.map((item) => (
@@ -1110,9 +1132,44 @@ export function HermesStage({ token }: { token: string }) {
                       </Button>
                     ) : null}
                     {officeLoop.kb_draft?.status === "draft" ? (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        Черновик KB «{officeLoop.kb_draft.title}» ждёт подтверждения в чате.
-                      </p>
+                      <div className="mt-2 flex flex-col gap-2">
+                        <p className="text-xs text-muted-foreground">
+                          Черновик KB «{officeLoop.kb_draft.title}» — подтвердите, чтобы сохранить в базу.
+                        </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="w-full"
+                          disabled={sending}
+                          onClick={() => {
+                            void (async () => {
+                              setSending(true);
+                              setError("");
+                              try {
+                                const res = await apiKbDraftConfirm(token);
+                                if (!res.ok) {
+                                  setError("Не удалось сохранить черновик KB.");
+                                  return;
+                                }
+                                await refreshPanels();
+                                setLines((prev) => [
+                                  ...prev,
+                                  {
+                                    role: "assistant",
+                                    text: "База знаний обновлена — черновик сохранён. Следующий шаг: подключим инструменты.",
+                                  },
+                                ]);
+                              } catch {
+                                setError("Ошибка сохранения KB.");
+                              } finally {
+                                setSending(false);
+                              }
+                            })();
+                          }}
+                        >
+                          Подтвердить KB
+                        </Button>
+                      </div>
                     ) : null}
                   </>
                 ) : (
