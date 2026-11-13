@@ -793,6 +793,12 @@ def _asks_setup_progress(message_low: str) -> bool:
             "настроим офис",
             "настроить офис",
             "статус сетап",
+            "путь (знания",
+            "знания → инструменты",
+            "знания -> инструменты",
+            "покажи путь",
+            "покажи статус",
+            "первый реальный шаг",
         )
     )
 
@@ -1952,11 +1958,35 @@ def operator_chat(
                 setup_done = bool((loop.get("setup") or {}).get("setup_complete"))
                 phase = str(loop.get("phase") or "welcome")
                 pack_mode = "conduct" if setup_done or phase in ("ready", "conduct") else "onboarding"
+                from app.services import hermes_ops as _hermes_ops_facts
+
+                setup_facts = _hermes_ops_facts.office_setup_status(db, ctx)
+                checks = setup_facts.get("checks") if isinstance(setup_facts.get("checks"), dict) else {}
+                checks_summary = {
+                    k: bool((checks.get(k) or {}).get("ok"))
+                    for k in (
+                        "kb",
+                        "phone",
+                        "telephony_script",
+                        "mail",
+                        "calendar",
+                        "conference",
+                        "telegram",
+                        "max",
+                        "files",
+                    )
+                    if k in checks
+                }
+                # Always Hermes (Nous) speaks — we only ground him with tenant facts.
                 nous = create_run(
                     db,
                     ctx,
                     message=message,
-                    session_id=str(body.conversation_id) if body.conversation_id else None,
+                    session_id=(
+                        f"{ctx.tenant_slug}:{body.conversation_id}"
+                        if body.conversation_id
+                        else None
+                    ),
                     tool_ids=pack_for_mode(pack_mode),
                     mode=pack_mode,
                     office_context={
@@ -1964,6 +1994,9 @@ def operator_chat(
                         "kb_ok": bool(loop.get("kb_ok")),
                         "setup_next": loop.get("setup_next"),
                         "setup_complete": setup_done,
+                        "progress": setup_facts.get("progress")
+                        or (loop.get("setup") or {}).get("progress"),
+                        "checks_summary": checks_summary,
                     },
                 )
                 reply = (

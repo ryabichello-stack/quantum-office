@@ -26,6 +26,37 @@ class HermesBridgeError(RuntimeError):
         self.body = body
 
 
+def _office_facts_block(office_context: dict[str, Any] | None) -> str:
+    """Ground Hermes in THIS tenant's hermes_ops facts (Hermes still speaks — no DIY reply)."""
+    if not isinstance(office_context, dict):
+        return ""
+    progress = office_context.get("progress") if isinstance(office_context.get("progress"), dict) else {}
+    sn = office_context.get("setup_next") if isinstance(office_context.get("setup_next"), dict) else {}
+    checks = office_context.get("checks_summary") if isinstance(office_context.get("checks_summary"), dict) else {}
+    lines = [
+        "[FACTS hermes_ops — только этот кабинет; не выдумывай «уже готово»]",
+        f"setup_complete={bool(office_context.get('setup_complete'))}",
+        f"phase={office_context.get('phase') or '—'}",
+        f"kb_ok={bool(office_context.get('kb_ok'))}",
+    ]
+    if progress:
+        lines.append(
+            f"required_done={progress.get('required_done')}/{progress.get('required_total')}"
+        )
+    if checks:
+        bits = [f"{k}={'ok' if v else 'нет'}" for k, v in checks.items()]
+        lines.append("checks: " + ", ".join(bits))
+    if sn.get("title"):
+        lines.append(
+            f"next_step=«{sn.get('title')}» id={sn.get('id')} hint={sn.get('hint') or '—'}"
+        )
+    if int(progress.get("required_done") or 0) == 0:
+        lines.append(
+            "Кабинет ПУСТОЙ: знания/телефония/секретарь/почта/календарь/ВКС — НЕ готовы."
+        )
+    return "\n".join(lines)
+
+
 def _http_json(
     method: str,
     url: str,
@@ -65,9 +96,15 @@ def _http_json(
 
 
 def resolve_runtime(db: Session, ctx: TenantContext) -> dict[str, Any]:
-    record = tenant_runtime_record(db, ctx)
-    if not record or not record.get("runtime_base_url"):
-        record = ensure_tenant_hermes_home(db, ctx)
+    # Sticky dedicated slot — never silently fall back to the demo container's MCP identity.
+    try:
+        from app.services.hermes_nous.runtime_pool import ensure_tenant_runtime
+
+        record = ensure_tenant_runtime(db, ctx)
+    except Exception:  # noqa: BLE001
+        record = tenant_runtime_record(db, ctx)
+        if not record or not record.get("runtime_base_url"):
+            record = ensure_tenant_hermes_home(db, ctx)
     base = (record or {}).get("runtime_base_url") or os.environ.get("HERMES_NOUS_RUNTIME_URL") or ""
     base = str(base).rstrip("/")
     if not base:
@@ -76,7 +113,16 @@ def resolve_runtime(db: Session, ctx: TenantContext) -> dict[str, Any]:
             body={"hint": "Set HERMES_NOUS_RUNTIME_URL or provision runtime_base_url"},
         )
     key_env = str((record or {}).get("api_server_key_env") or "HERMES_API_SERVER_KEY")
-    api_key = os.environ.get(key_env) or os.environ.get("HERMES_API_SERVER_KEY") or ""
+    api_key = os.environ.get(key_env) or ""
+    if not api_key and key_env != "HERMES_API_SERVER_KEY":
+        # Do NOT fall back to tenant-a's key when this tenant is on slot B —
+        # that couples auth across informational spaces.
+        raise HermesBridgeError(
+            "hermes_api_key_missing_for_slot",
+            body={"env": key_env, "slot_id": (record or {}).get("slot_id"), "base_url": base},
+        )
+    if not api_key:
+        api_key = os.environ.get("HERMES_API_SERVER_KEY") or ""
     if not api_key:
         raise HermesBridgeError("hermes_api_key_missing", body={"env": key_env})
     return {"base_url": base, "api_key": api_key, "record": record}
@@ -129,8 +175,24 @@ def create_run(
     pack = (mode or "onboarding").strip().lower()
     ctx_bits: list[str] = []
     if isinstance(office_context, dict):
+        progress = office_context.get("progress") if isinstance(office_context.get("progress"), dict) else {}
+        req_done = progress.get("required_done")
+        req_total = progress.get("required_total")
+        if req_done is not None and req_total is not None:
+            ctx_bits.append(
+                f"FACT progress required_done={req_done}/{req_total} for THIS tenant only."
+            )
+            if int(req_done or 0) == 0:
+                ctx_bits.append(
+                    "FACT: cabinet is EMPTY — KB/phone/script/mail/calendar/conference are NOT done. "
+                    "Never say «уже готова/готовы». Start at «О компании»."
+                )
         if office_context.get("kb_ok"):
             ctx_bits.append("KB step is DONE — do not ask to import/rebuild company knowledge.")
+        else:
+            ctx_bits.append(
+                "FACT: KB is NOT ready for this tenant — do not claim knowledge/telephony are done."
+            )
         sn = office_context.get("setup_next")
         if isinstance(sn, dict) and sn.get("title"):
             sub = sn.get("substep")
@@ -187,11 +249,24 @@ def create_run(
             "Never bare names, never terminal. Never claim a granted tool is unavailable. "
             "Critical writes need confirmation policy."
         )
+    facts_block = _office_facts_block(office_context if isinstance(office_context, dict) else None)
+    hermes_input = message
+    if facts_block:
+        hermes_input = (
+            f"{facts_block}\n\n"
+            "Ответь владельцу сам, своими словами как Гермес, строго по FACTS выше "
+            "(и/или после вызова mcp__delno_office__hermes_setup_status). "
+            "Не подставляй демо/чужой кабинет.\n\n"
+            f"Сообщение владельца:\n{message}"
+        )
     payload: dict[str, Any] = {
-        "input": message,
-        "session_id": session_id or f"delno-{ctx.tenant_id}-{ctx.user_id or 'owner'}",
+        "input": hermes_input,
+        # Isolate sessions per tenant+conversation so demo memory cannot leak.
+        "session_id": session_id
+        or f"delno-{ctx.tenant_slug or ctx.tenant_id}-{ctx.user_id or 'owner'}",
         "instructions": (
-            f"You are the company Hermes agent for THIS tenant only. {mission}{context_line} "
+            f"You are the company Hermes agent for THIS tenant only "
+            f"(slug={ctx.tenant_slug}). {mission}{context_line} "
             f"Logical grants (map to mcp__delno_office__*): {tool_hint}. "
             "Do not invent credentials. "
             "Act as a normal multi-step agent: (1) short numbered plan in Russian, "

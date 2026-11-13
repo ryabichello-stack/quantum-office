@@ -139,11 +139,28 @@ def register_tenant(
     kb_sync = sync_tenant_settings_to_brain(db, tenant, source="auth.register")
     kb_doc = _seed_welcome_knowledge(db, tenant)
 
+    runtime_meta: dict = {}
+    try:
+        from app.core.tenant import TenantContext
+        from app.services.hermes_nous.runtime_pool import assign_isolated_runtime
+
+        runtime_meta = assign_isolated_runtime(
+            db,
+            TenantContext(tenant_id=tenant.id, tenant_slug=tenant.slug, role="tenant_owner"),
+        )
+    except Exception:  # noqa: BLE001
+        runtime_meta = {"ok": False, "error": "runtime_assign_deferred"}
+
     meta = {
         "legal_enriched": legal_enriched,
         "knowledge_sync": kb_sync,
         "welcome_document": kb_doc,
         "public_key": tenant.public_key,
+        "hermes_runtime": {
+            "slot_id": runtime_meta.get("slot_id"),
+            "runtime_base_url": runtime_meta.get("runtime_base_url"),
+            "isolation": runtime_meta.get("isolation"),
+        },
     }
     return tenant, user, meta
 
