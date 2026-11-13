@@ -64,6 +64,7 @@ def get_mcp_tenant_context(
     x_delno_mcp_key: Optional[str] = Header(default=None, alias="X-Delno-Mcp-Key"),
     x_delno_run_token: Optional[str] = Header(default=None, alias="X-Delno-Run-Token"),
     x_delno_run_id: Optional[str] = Header(default=None, alias="X-Delno-Run-Id"),
+    x_delno_profile_id: Optional[str] = Header(default=None, alias="X-Delno-Profile-Id"),
 ) -> McpAuthContext:
     """Accept JWT, scoped run token, run-binding proxy, or legacy per-tenant mcp_api_key.
 
@@ -158,12 +159,34 @@ def get_mcp_tenant_context(
     if not tenant:
         raise HTTPException(status_code=401, detail="Invalid token or mcp key")
 
+    # If Hermes also sends profile id, it must belong to this tenant (no cross-tenant key reuse).
+    if x_delno_profile_id and x_delno_profile_id.strip():
+        from app.models.hermes_runtime import HermesProfile
+
+        prof = (
+            db.query(HermesProfile)
+            .filter(HermesProfile.profile_id == x_delno_profile_id.strip())
+            .one_or_none()
+        )
+        if prof is None or prof.tenant_id != tenant.id:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "profile_tenant_mismatch",
+                    "hint": "X-Delno-Profile-Id does not belong to this mcp_api_key tenant",
+                },
+            )
+
     # Optional harden: legacy key only sees meta tools (office.health / hermes.profile).
-    meta_only = (os.environ.get("DELNO_MCP_LEGACY_KEY_META_ONLY") or "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-    )
+    # Default ON when DELNO_MCP_STRICT=1 (recommended for Hermes workers).
+    strict = (os.environ.get("DELNO_MCP_STRICT") or "").strip().lower() in ("1", "true", "yes")
+    meta_env = (os.environ.get("DELNO_MCP_LEGACY_KEY_META_ONLY") or "").strip().lower()
+    if meta_env in ("0", "false", "no"):
+        meta_only = False
+    elif meta_env in ("1", "true", "yes") or strict:
+        meta_only = True
+    else:
+        meta_only = False
     return McpAuthContext(
         tenant=TenantContext(
             tenant_id=tenant.id,

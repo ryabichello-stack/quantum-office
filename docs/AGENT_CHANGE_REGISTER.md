@@ -250,3 +250,10 @@
 - Тесты: test_profile_homes, test_reconcile_runs + placement suite.
 - Следующий: C4B migrate/bootstrap; DELNO_MCP_DENY_LEGACY_KEY на Hermes workers; e2e A/B isolation with real containers; DIY ticker → Hermes for scheduled tasks.
 
+## 2026-11-13 ~20:30 МСК — Cursor: schedule→Nous + MCP strict + isolation smoke
+
+- Schedule: при флаге Nous — `create_run`; при unavailable — fail без DIY.
+- MCP: `X-Delno-Profile-Id` vs mcp key tenant check; `DELNO_MCP_STRICT` → legacy meta-only.
+- `scripts/isolation_placement_smoke.py`; hermes compose mem/pids limits.
+- Цель ещё не закрыта без C4B e2e на живых контейнерах.
+

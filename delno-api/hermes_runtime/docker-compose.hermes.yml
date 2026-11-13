@@ -22,6 +22,7 @@ services:
       API_SERVER_KEY: ${API_SERVER_KEY:-dev-hermes-key-aaaa}
       # MUST be this tenant's key only — never fall back to another company's key.
       DELNO_MCP_KEY: ${DELNO_MCP_KEY:-}
+      # Prefer run-token / X-Delno-Run-Id; set on API: DELNO_MCP_STRICT=1
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       HTTPS_PROXY: ${OPENAI_HTTP_PROXY:-}
@@ -32,6 +33,8 @@ services:
     ports:
       - "127.0.0.1:18642:8642"
     init: true
+    mem_limit: 1g
+    pids_limit: 256
     networks:
       - hermes-lab
       - delno-internal
@@ -64,6 +67,8 @@ services:
     ports:
       - "127.0.0.1:18643:8642"
     init: true
+    mem_limit: 1g
+    pids_limit: 256
     networks:
       - hermes-lab
       - delno-internal
