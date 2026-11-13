@@ -69,22 +69,33 @@ def ensure_tenant_hermes_home(
                 text = text.rstrip() + "\n\n" + block
             config_path.write_text(text, encoding="utf-8")
 
-    base = (runtime_base_url or os.environ.get("HERMES_NOUS_RUNTIME_URL") or "").strip().rstrip("/")
+    # Never invent a default worker URL from env — that routed every tenant to A.
+    # Placement (hermes_profiles) is the source of truth for runtime_base_url.
+    settings = _settings(tenant)
+    nous = dict(settings.get("hermes_nous") or {})
+    prev = dict(nous.get("runtime") or {}) if isinstance(nous.get("runtime"), dict) else {}
+    base = (runtime_base_url or prev.get("runtime_base_url") or "").strip().rstrip("/")
+    key_env = api_server_key_env or prev.get("api_server_key_env") or "HERMES_API_SERVER_KEY"
     record = {
         "engine": "nous_hermes_agent",
         "pin": "v0.23.1",
         "hermes_home": str(home),
         "runtime_base_url": base or None,
-        "api_server_key_env": api_server_key_env,
-        "profile_name": f"tenant_{tenant.slug}",
+        "api_server_key_env": key_env,
+        "profile_name": prev.get("profile_name") or f"tenant_{tenant.slug}",
+        "profile_id": prev.get("profile_id"),
+        "worker_id": prev.get("worker_id") or prev.get("slot_id"),
+        "slot_id": prev.get("slot_id") or prev.get("worker_id"),
+        "status": prev.get("status"),
+        "isolation": prev.get("isolation") or "profile_map",
+        "placement": prev.get("placement") or "hermes_profiles",
         "self_setup_policy": {
             "agent_may_edit": ["SOUL.md", "skills/", "cron/", "memories/"],
             "agent_must_not_edit": ["mcp_servers.url", "vault", "egress", ".env secrets"],
         },
         "telephony": "out_of_scope_for_this_runtime",
+        "note": "api_skeleton_home — worker must mount/sync before treating as live HERMES_HOME",
     }
-    settings = _settings(tenant)
-    nous = dict(settings.get("hermes_nous") or {})
     nous["runtime"] = record
     settings["hermes_nous"] = nous
     tenant.settings = settings

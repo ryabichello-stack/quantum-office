@@ -233,3 +233,12 @@
 - Live docker image / telephony / lead.created worker — staging later; prod phone не трогали.
 - Тесты: test_hermes_nous_* + mcp_gateway — 11 passed.
 
+## 2026-11-13 ~20:15 МСК — Cursor: Stage 1 multi-tenant placement (Codex assignment)
+
+- Ветка: `cursor/hermes-multitenant-runtime-9b51` (от `cursor/hermes-live-dictate-thinking-9b51`).
+- Цель: карта `tenant → profile → worker` без silent fallback на worker A; закрыть клиентский `runtime_base_url` / escalate `tool_ids`; честный `hermes_unavailable` вместо DIY-как-Гермес; MCP run-binding proxy (`X-Delno-Run-Id`).
+- Файлы: `delno-api/app/models/hermes_runtime.py`, `services/hermes_nous/placement.py`, `run_bindings.py`, rewrite `runtime_pool.py`/`bridge.resolve_runtime`, `api/v1/hermes_nous.py`, `api/v1/mcp.py`, `api/v1/operator.py`, `provision.py`, `onboarding.py`, `scripts/migrate_prod.py`, tests `test_placement.py` / `test_runtime_pool.py` / `test_run_bindings_mcp.py`, `docs/HERMES_ORIGINAL_INTEGRATION_PLAN.md` status, CHANGELOG.
+- Правила: capacity=1 на dogfood worker до доказанного multiplex на pin v0.23.1; pool exhausted → `provisioning`, не `slots[0]`; MCP internal URL; `api.dlno.ru` = SNI (не полагаться как на «отдельный API host» в DNS).
+- Telephony/Asterisk не трогались. Живой C4B deploy ещё не в этом коммите — сначала git/PR.
+- Следующий шаг: выкат migrate + явная assign demo→A / QL→B через admin; worker-visible HERMES_HOME volume; выключить legacy MCP key для Hermes (`DELNO_MCP_DENY_LEGACY_KEY` / meta-only); tasks reconciler.
+

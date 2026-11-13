@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any, Optional
 from uuid import UUID
@@ -27,7 +28,8 @@ from app.services.mcp_gateway import (
     mcp_tools_catalog,
     unwrap_for_http,
 )
-from app.services.hermes_nous.mcp_scope import filter_tools_catalog, tool_allowed
+from app.services.hermes_nous.mcp_scope import META_ALWAYS, filter_tools_catalog, tool_allowed
+from app.services.hermes_nous.run_bindings import lookup_binding
 from app.services.hermes_nous.run_tokens import verify_run_token
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
@@ -61,8 +63,31 @@ def get_mcp_tenant_context(
     x_api_key: Optional[str] = Header(default=None, alias="X-Api-Key"),
     x_delno_mcp_key: Optional[str] = Header(default=None, alias="X-Delno-Mcp-Key"),
     x_delno_run_token: Optional[str] = Header(default=None, alias="X-Delno-Run-Token"),
+    x_delno_run_id: Optional[str] = Header(default=None, alias="X-Delno-Run-Id"),
 ) -> McpAuthContext:
-    """Accept JWT, scoped run token (Nous), or legacy per-tenant mcp_api_key."""
+    """Accept JWT, scoped run token, run-binding proxy, or legacy per-tenant mcp_api_key.
+
+    Preferred for Hermes: run token OR X-Delno-Run-Id bound at create_run (server-side).
+    Legacy company mcp_api_key must not be the model path for office tools long-term.
+    """
+    # Capability bridge: Hermes may only know the run id; DELNO maps it to tenant+tools.
+    if x_delno_run_id and x_delno_run_id.strip():
+        binding = lookup_binding(db, run_id=x_delno_run_id.strip())
+        if binding:
+            tenant = db.query(Tenant).filter(Tenant.id == binding.tenant_id).one_or_none()
+            if tenant and tenant.is_active:
+                return McpAuthContext(
+                    tenant=TenantContext(
+                        tenant_id=tenant.id,
+                        tenant_slug=tenant.slug,
+                        user_id=binding.actor_user_id,
+                        role="tenant_owner",
+                    ),
+                    auth_via="run_binding",
+                    run_token_tool_ids=list(binding.tool_ids or []),
+                    run_id=binding.run_id,
+                )
+
     raw = ""
     if x_delno_run_token:
         raw = x_delno_run_token.strip()
@@ -119,9 +144,26 @@ def get_mcp_tenant_context(
     except ValueError:
         pass
 
+    if (os.environ.get("DELNO_MCP_DENY_LEGACY_KEY") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="legacy_mcp_api_key_denied — use run token or X-Delno-Run-Id binding",
+        )
+
     tenant = find_tenant_by_mcp_key(db, raw)
     if not tenant:
         raise HTTPException(status_code=401, detail="Invalid token or mcp key")
+
+    # Optional harden: legacy key only sees meta tools (office.health / hermes.profile).
+    meta_only = (os.environ.get("DELNO_MCP_LEGACY_KEY_META_ONLY") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
     return McpAuthContext(
         tenant=TenantContext(
             tenant_id=tenant.id,
@@ -130,14 +172,19 @@ def get_mcp_tenant_context(
             role="tenant_owner",
         ),
         auth_via="mcp_api_key",
+        run_token_tool_ids=sorted(META_ALWAYS) if meta_only else None,
     )
 
 
 def _scoped_catalog(ctx: McpAuthContext) -> list[dict[str, Any]]:
     catalog = mcp_tools_catalog()
-    if ctx.auth_via == "run_token":
+    if ctx.auth_via in ("run_token", "run_binding") or ctx.run_token_tool_ids is not None:
         return filter_tools_catalog(catalog, ctx.run_token_tool_ids)
     return catalog
+
+
+def _grant_enforced(ctx: McpAuthContext) -> bool:
+    return ctx.auth_via in ("run_token", "run_binding") or ctx.run_token_tool_ids is not None
 
 
 @router.get("/health")
@@ -193,7 +240,7 @@ def mcp_tools_call(
     db: Session = Depends(get_db),
     ctx: McpAuthContext = Depends(get_mcp_tenant_context),
 ) -> dict[str, Any]:
-    if ctx.auth_via == "run_token" and not tool_allowed(body.name, ctx.run_token_tool_ids):
+    if _grant_enforced(ctx) and not tool_allowed(body.name, ctx.run_token_tool_ids):
         raise HTTPException(status_code=403, detail={"error": "tool_not_granted", "tool": body.name})
     payload = call_mcp_tool(db, ctx.tenant, body.name, body.arguments or {})
     return unwrap_for_http(body.name, payload)
@@ -229,7 +276,7 @@ async def mcp_jsonrpc(
         arguments = params.get("arguments") if isinstance(params, dict) else {}
         if not isinstance(arguments, dict):
             arguments = {}
-        if ctx.auth_via == "run_token" and not tool_allowed(name, ctx.run_token_tool_ids):
+        if _grant_enforced(ctx) and not tool_allowed(name, ctx.run_token_tool_ids):
             return JSONResponse(
                 content={
                     "jsonrpc": "2.0",
@@ -263,14 +310,14 @@ def hermes_profile(
 
     With run_token auth: never return long-lived mcp_api_key; catalog is scoped.
     """
-    include_key = ctx.auth_via != "run_token"
+    include_key = ctx.auth_via not in ("run_token", "run_binding")
     profile = build_hermes_profile(db, ctx.tenant, include_mcp_key=include_key)
-    if ctx.auth_via == "run_token":
+    if _grant_enforced(ctx):
         profile["toolset"] = {
             "total": len(_scoped_catalog(ctx)),
             "tools": _scoped_catalog(ctx),
         }
-        profile["auth_via"] = "run_token"
+        profile["auth_via"] = ctx.auth_via
         profile["run_id"] = ctx.run_id
         profile.pop("mcp_api_key", None)
     return profile
