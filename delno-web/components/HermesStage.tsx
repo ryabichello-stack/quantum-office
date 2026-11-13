@@ -13,6 +13,7 @@ import {
   ArrowUp,
   Camera,
   CheckCircle2,
+  LifeBuoy,
   Mic,
   PanelRight,
   Paperclip,
@@ -48,6 +49,7 @@ import {
   apiConversationMessages,
   apiOperatorChat,
   apiOperatorConfirm,
+  apiOperatorHelp,
   apiTenantSecretSave,
   type CredentialFormSpec as ApiCredentialFormSpec,
   type KnowledgeSource,
@@ -192,6 +194,9 @@ export function HermesStage({ token }: { token: string }) {
   const [pendingFiles, setPendingFiles] = useState<PendingHermesAttachment[]>([]);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpNote, setHelpNote] = useState("");
+  const [helpBusy, setHelpBusy] = useState(false);
   const mountRef = useRef<HTMLDivElement>(null);
   const threadEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -871,6 +876,49 @@ export function HermesStage({ token }: { token: string }) {
     toggleDictate(messageRef.current);
   }
 
+  async function submitHelp() {
+    if (helpBusy) return;
+    setHelpBusy(true);
+    setError("");
+    try {
+      const out = await apiOperatorHelp(token, {
+        conversation_id: conversationId,
+        note: helpNote.trim(),
+        channel: "hermes",
+        client_meta: {
+          path: typeof window !== "undefined" ? window.location.pathname : "",
+          href: typeof window !== "undefined" ? window.location.href : "",
+          user_agent: typeof navigator !== "undefined" ? navigator.userAgent : "",
+          locale: typeof navigator !== "undefined" ? navigator.language : "",
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          viewport:
+            typeof window !== "undefined"
+              ? `${window.innerWidth}x${window.innerHeight}`
+              : "",
+          compact,
+          lines_on_screen: lines.length,
+        },
+      });
+      setHelpOpen(false);
+      setHelpNote("");
+      if (out.conversation_id) setConversationId(out.conversation_id);
+      setLines((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text:
+            out.message ||
+            `Снимок сохранён (тикет ${(out.ticket_id || "").slice(0, 8)}). Команда DELNO разберёт.`,
+        },
+      ]);
+      void refreshPanels();
+    } catch {
+      setError("Не удалось отправить обращение. Проверьте сессию и повторите.");
+    } finally {
+      setHelpBusy(false);
+    }
+  }
+
   function dedupeSources(sources: KnowledgeSource[] | undefined): KnowledgeSource[] {
     if (!sources?.length) return [];
     const seen = new Set<string>();
@@ -973,6 +1021,23 @@ export function HermesStage({ token }: { token: string }) {
               <CrystalOrb voiceActive={voiceActive} voicePhase={voicePhase} onOrbClick={toggleVoice} />
             </div>
           )}
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="hx-top-btn"
+                  onClick={() => setHelpOpen(true)}
+                  aria-label="Помощь — зафиксировать проблему"
+                  disabled={helpBusy}
+                />
+              }
+            >
+              <LifeBuoy size={compact ? 16 : 18} />
+            </TooltipTrigger>
+            <TooltipContent>Помощь: снимок чата для команды DELNO</TooltipContent>
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger
               render={
@@ -1340,6 +1405,45 @@ export function HermesStage({ token }: { token: string }) {
           </div>
         </main>
       </div>
+
+      <Sheet open={helpOpen} onOpenChange={setHelpOpen}>
+        <SheetContent
+          side="bottom"
+          className={cn(
+            "hx-help-sheet flex flex-col gap-3 rounded-t-2xl border-t",
+            compact ? "max-h-[85vh]" : "mx-auto max-h-[70vh] max-w-lg",
+          )}
+        >
+          <SheetHeader className="text-left">
+            <SheetTitle className="flex items-center gap-2 text-base">
+              <LifeBuoy size={18} /> Помощь
+            </SheetTitle>
+            <SheetDescription>
+              Если застряли в настройке или Hermes отвечает не так — нажмите «Отправить снимок».
+              Мы сохраним переписку и состояние кабинета (без паролей) и разберём проблему.
+            </SheetDescription>
+          </SheetHeader>
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="text-muted-foreground">Что пошло не так? (необязательно)</span>
+            <Textarea
+              value={helpNote}
+              onChange={(e) => setHelpNote(e.target.value)}
+              placeholder="Например: нажал «делай», а форма SIP не открылась…"
+              rows={compact ? 3 : 4}
+              maxLength={2000}
+              disabled={helpBusy}
+            />
+          </label>
+          <div className="flex flex-wrap items-center gap-2 pb-2">
+            <Button onClick={() => void submitHelp()} disabled={helpBusy}>
+              {helpBusy ? "Сохраняю…" : "Отправить снимок"}
+            </Button>
+            <Button variant="ghost" onClick={() => setHelpOpen(false)} disabled={helpBusy}>
+              Отмена
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <Sheet open={panelOpen} onOpenChange={setPanelOpen}>
         <SheetContent

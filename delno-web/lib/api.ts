@@ -550,6 +550,35 @@ export function apiOperatorConfirm(token: string, toolName: string, params: Reco
   });
 }
 
+/** Freeze chat + office state when owner is stuck (onboarding / Hermes bug). */
+export function apiOperatorHelp(
+  token: string,
+  body: {
+    conversation_id?: string | null;
+    note?: string;
+    channel?: string;
+    client_meta?: Record<string, unknown>;
+  } = {},
+) {
+  return apiFetch<{
+    ok: boolean;
+    ticket_id: string;
+    event_id: string;
+    conversation_id?: string | null;
+    message_count?: number;
+    message: string;
+  }>("/v1/operator/help", token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      conversation_id: body.conversation_id || null,
+      note: body.note || "",
+      channel: body.channel || "hermes",
+      client_meta: body.client_meta || {},
+    }),
+  });
+}
+
 export function apiTenantLegalGet(token: string) {
   return apiFetch<{ ok: boolean; legal: LegalProfile | null }>("/v1/tenant/legal", token);
 }

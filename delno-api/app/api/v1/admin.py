@@ -141,3 +141,31 @@ def admin_billing_overview(
     from app.services import billing as billing_svc
 
     return billing_svc.platform_cost_overview(db)
+
+
+@router.get("/help-requests")
+def admin_help_requests(
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_platform_admin),
+    limit: int = Query(default=50, ge=1, le=200),
+    status: str | None = Query(default=None, max_length=32),
+) -> dict:
+    """Platform support: Hermes «Помощь» snapshots across tenants."""
+    from app.services.hermes_help import list_help_requests
+
+    items = list_help_requests(db, status=status, limit=limit)
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/help-requests/{ticket_id}")
+def admin_help_request_detail(
+    ticket_id: str,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_platform_admin),
+) -> dict:
+    from app.services.hermes_help import get_help_request
+
+    row = get_help_request(db, ticket_id=ticket_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="help_ticket_not_found")
+    return row
