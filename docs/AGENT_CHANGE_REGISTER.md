@@ -257,3 +257,10 @@
 - `scripts/isolation_placement_smoke.py`; hermes compose mem/pids limits.
 - Цель ещё не закрыта без C4B e2e на живых контейнерах.
 
+## 2026-11-13 20:30 МСК — Cursor: C4B deploy multi-tenant placement (PR #88)
+
+- Выкатан код на `/opt/delno/api` (backup `hermes-mt-*`); volume `hermes-profiles`; recreate `delno-api`.
+- Bootstrap: `delno-demo→tenant-a`, `quantum-labs→tenant-b`; **tenant-beta = provisioning** (resolve blocked, no fallback to A).
+- Live smoke: QL with FACTS → «кабинет пустой, 0/6, начать с знаний»; demo create_run ok на A.
+- Telephony не трогали. Полный e2e двух новых регистраций / multiplex — ещё впереди.
+
