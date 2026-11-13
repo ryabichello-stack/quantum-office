@@ -342,6 +342,18 @@ export function createVoiceController(options: VoiceSessionOptions) {
             body: form,
           });
           if (!res.ok) {
+            // Silence / STT_EMPTY: keep the dialogue loop (ChatGPT-class), do not kill the session.
+            let detail = "";
+            try {
+              const errBody = (await res.json()) as { detail?: string };
+              detail = String(errBody.detail || "");
+            } catch {
+              /* ignore */
+            }
+            if (engaged && (res.status === 400 || detail === "STT_EMPTY")) {
+              startMic();
+              return;
+            }
             showError("Голос", "Не удалось распознать речь.");
             return;
           }
