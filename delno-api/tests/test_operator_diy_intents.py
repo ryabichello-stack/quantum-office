@@ -2,6 +2,7 @@
 
 from app.api.v1.operator import (
     _wants_billing_summary,
+    _wants_files_cloud_status,
     _wants_get_knowledge,
     _wants_hermes_capabilities,
     _wants_office_health,
@@ -41,3 +42,10 @@ def test_wants_hermes_capabilities():
     assert _wants_hermes_capabilities("что подключено")
     assert _wants_hermes_capabilities("какие инструменты доступны")
     assert not _wants_hermes_capabilities("нарисуй логотип")
+
+
+def test_wants_files_cloud_status():
+    assert _wants_files_cloud_status("какие облака подключены")
+    assert _wants_files_cloud_status("files.cloud_status")
+    assert _wants_files_cloud_status("статус яндекс диск")
+    assert not _wants_files_cloud_status("перечисли номера")
