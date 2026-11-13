@@ -1042,6 +1042,10 @@ def operator_chat(
 
     # Compound / multi-step goals → agent loop (Nous or DIY LLM), not a single shortcut.
     agent_mode = _wants_agent_orchestration(message)
+    from app.services import agent_schedule as _agent_schedule
+
+    schedule_intent = _agent_schedule.parse_schedule_intent(message) if message else None
+    wants_sched_list = _agent_schedule.wants_tasks_list(message) if message else False
 
     # Attachments + clear single-intent shortcuts stay on DIY — unless agent_mode.
     prefer_diy = (not agent_mode) and (
@@ -1061,6 +1065,8 @@ def operator_chat(
         or _wants_files_cloud_status(message)
         or _wants_channel_connect_flow(message)
         or _wants_web_research(message)
+        or bool(schedule_intent)
+        or wants_sched_list
     )
 
     # Vault forms must reach the cabinet as pending_credential_form. Nous text-only
@@ -1867,6 +1873,53 @@ def operator_chat(
             )
         err = result.message if isinstance(result, ToolResult) else "files_cloud_failed"
         message = f"{message}\n\n[system: files.cloud_status failed: {err}]"
+
+    # Periodic поручения — create / list (before agent/Nous).
+    if not attachments and (schedule_intent or wants_sched_list):
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        if wants_sched_list and not schedule_intent:
+            result = registry.run(db, ctx, "hermes.tasks_list", limit=30)
+            if isinstance(result, ToolResult) and result.ok:
+                return _finish_diy(
+                    db,
+                    ctx,
+                    body,
+                    modality=modality,
+                    engine="diy_hermes_tasks",
+                    reply=result.message or "Поручений нет.",
+                    tool_calls=[{"tool": "hermes.tasks_list", "ok": True}],
+                )
+        if schedule_intent:
+            result = registry.run(
+                db,
+                ctx,
+                "hermes.tasks_create",
+                goal=schedule_intent["goal"],
+                every_minutes=schedule_intent["every_minutes"],
+                run_immediately=False,
+            )
+            if isinstance(result, ToolResult) and result.ok:
+                data = result.data or {}
+                return _finish_diy(
+                    db,
+                    ctx,
+                    body,
+                    modality=modality,
+                    engine="diy_hermes_tasks",
+                    reply=result.message
+                    or f"Поручение создано (id={data.get('id')}).",
+                    tool_calls=[
+                        {
+                            "tool": "hermes.tasks_create",
+                            "ok": True,
+                            "every_minutes": schedule_intent["every_minutes"],
+                            "task_id": data.get("id"),
+                        }
+                    ],
+                )
 
     # Multi-step / compound goals: use the in-API tool agent loop (plan → tools →
     # report, up to HERMES_AGENT_MAX_ROUNDS). Nous runtime often lacks Chromium /

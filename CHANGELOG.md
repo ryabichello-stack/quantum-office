@@ -12,6 +12,7 @@
 
 ### Added
 
+- Hermes scheduled поручения: `hermes.tasks_create/list/pause/resume` + DIY («проверяй заявки каждый час»); API background ticker runs due tasks via the tool agent; `/v1/hermes-nous/tasks/tick` for manual kick
 - Hermes browser research: pasted URL / «зайди на сайт» runs `web.research` (browse + same-host crawl + optional search) and answers from the live dossier — visible in thinking as page visits; Playwright Chromium in API image
 - Hermes composer: live dictation (browser word/phrase interim + rolling Whisper ticks while speaking)
 - Hermes chat: Claude-style live «Думаю…» before the reply (not a post-hoc checklist)
@@ -19,7 +20,7 @@
 
 ### Fixed
 
-- Hermes multi-step agent: compound «по шагам / план / сайт+KB+…» no longer stolen by DIY shortcuts (incl. bare «настрой» → Telegram); routes to Nous/LLM tool loop with plan→tools→report
+- Hermes multi-step agent: compound «по шагам / план / сайт+KB+…» no longer stolen by DIY shortcuts (incl. bare «настрой» → Telegram); routes to in-API LLM tool loop with plan→tools→report
 - DIY Hermes turns now persist to conversation history (tab switch / reload no longer wipes the chat)
 - Hermes media DIY: «сгенерируй простую картинку» (adverb between verb and noun) now matches `_wants_media_generation` and hits `generate_image` instead of a Nous dead-end during connectors phase
 - Hermes setup progress («что дальше» / «настроим офис») on vault steps (`need_sip`, telegram, max, files) opens `pending_credential_form` instead of a Nous text waffle; post-save «SIP сохранён… что дальше» still skips the form

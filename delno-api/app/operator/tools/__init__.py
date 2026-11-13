@@ -45,6 +45,10 @@ from app.operator.tools.hermes import (
     HermesHealthTool,
     HermesSetupMarkTool,
     HermesSetupStatusTool,
+    HermesTasksCreateTool,
+    HermesTasksListTool,
+    HermesTasksPauseTool,
+    HermesTasksResumeTool,
 )
 from app.operator.tools.office_setup import (
     CredentialsOpenFormTool,
@@ -103,6 +107,10 @@ def register_builtin_tools() -> None:
     registry.register(HermesHealthTool())
     registry.register(HermesAlertsTool())
     registry.register(HermesCapabilitiesTool())
+    registry.register(HermesTasksCreateTool())
+    registry.register(HermesTasksListTool())
+    registry.register(HermesTasksPauseTool())
+    registry.register(HermesTasksResumeTool())
     # Telephony script + cloud disks + secure forms (agent-callable)
     registry.register(TelephonyScriptGetTool())
     registry.register(TelephonyScriptProposeTool())

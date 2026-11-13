@@ -25,6 +25,7 @@ const ENGINE_LABELS: Record<string, string> = {
   diy_hermes_capabilities: "Проверяю готовность коннекторов",
   diy_files_cloud_status: "Смотрю статус облаков",
   diy_web_research: "Открываю сайт в браузере Hermes",
+  diy_hermes_tasks: "Управляю поручениями по расписанию",
   nous_hermes_agent: "Думаю через Hermes Agent",
   diy_llm: "Формирую ответ",
 };
@@ -53,6 +54,11 @@ function toolLabel(tool: string): string {
     "web.fetch": "Скачиваю страницу",
     "web.browse": "Захожу на страницу в браузере",
     "web.research": "Исследую сайт в браузере",
+    "hermes.tasks_create": "Создаю поручение по расписанию",
+    "hermes.tasks_list": "Смотрю поручения",
+    "hermes.tasks_pause": "Ставлю поручение на паузу",
+    "hermes.tasks_resume": "Возобновляю поручение",
+    "hermes.agent_run": "Агентный прогон",
   };
   return map[tool] || `Инструмент: ${tool}`;
 }
@@ -61,6 +67,11 @@ function toolLabel(tool: string): string {
 export function liveThinkingPlan(message: string): ThinkingStep[] {
   const low = (message || "").toLowerCase();
   const steps: ThinkingStep[] = [{ label: "Читаю запрос" }];
+  if (/кажд|расписан|поручен|периодическ|ежеднев|ежечас/.test(low)) {
+    steps.push({ label: "Разбираю расписание поручения" });
+    steps.push({ label: "Создаю или обновляю периодическую задачу" });
+    return steps;
+  }
   if (/https?:\/\//.test(low) || /зайди|открой сайт|проскан|изучи сайт|instagram|инстаграм|t\.me/.test(low)) {
     steps.push({ label: "Открываю ссылку в браузере Hermes" });
     steps.push({ label: "Снимаю текст со страниц" });

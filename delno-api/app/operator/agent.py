@@ -63,6 +63,10 @@ CABINET_LLM_TOOLS = (
     "hermes.setup_mark",
     "hermes.health",
     "hermes.alerts",
+    "hermes.tasks_create",
+    "hermes.tasks_list",
+    "hermes.tasks_pause",
+    "hermes.tasks_resume",
     # Phones + calls
     "phones.list",
     "phones.provision",
@@ -115,6 +119,8 @@ HERMES_AGENT_SYSTEM = (
     "только материалы ЭТОГО tenant (локальная база), не замена интернету;\n"
     "• hermes.capabilities — проверь реальные возможности перед онбордингом и задачами;\n"
     "• hermes.setup_status / health / alerts — состояние офиса;\n"
+    "• hermes.tasks_create / tasks_list / tasks_pause / tasks_resume — "
+    "периодические поручения (каждый N мин/час/день): проверки заявок, почты, сайта, health;\n"
     "• phones.* / calls.* / telephony.script_* / telephony.tools_set — телефония Ava;\n"
     "• files.cloud_* / credentials.open_form — облака и секреты "
     "(SIP: mango_sip; диски: files_yadisk|mailru|gdrive|onedrive; Google/OneDrive с согласием);\n"
