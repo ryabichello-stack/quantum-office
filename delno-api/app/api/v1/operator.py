@@ -70,13 +70,20 @@ _SETUP_NEXT_TO_FORM_KIND: dict[str, str] = {
 }
 
 
-def _credential_form_kind_from_message(message: str, *, setup_next_id: str | None = None) -> str | None:
+def _credential_form_kind_from_message(
+    message: str,
+    *,
+    setup_next_id: str | None = None,
+    setup_substep: str | None = None,
+) -> str | None:
     """Map owner intent → vault form kind. Secrets never belong in chat text.
 
     Aligns with PRODUCT_LOOP: credentials.open_form must reach the cabinet as
     pending_credential_form. Nous text-only replies cannot surface the card, so
     the API opens the form when intent (or the office-loop CTA) is clear.
     Do not over-match generic «подключи …» — that would open the wrong vault.
+    After SIP is saved (substep need_did / need_reg) do not reopen mango_sip
+    unless the owner explicitly asks for the form.
     """
     low = (message or "").lower()
     wants_form = (
@@ -116,7 +123,9 @@ def _credential_form_kind_from_message(message: str, *, setup_next_id: str | Non
         )
     ):
         return None
-    if setup_next_id == "phone" and any(
+    # Only auto-open SIP while vault is still empty (need_sip). Later micro-steps
+    # are DID provision / registration — Hermes tools, not the form.
+    if setup_next_id == "phone" and (setup_substep in (None, "", "need_sip")) and any(
         m in low
         for m in (
             "sip",
@@ -154,11 +163,16 @@ def operator_chat(
         from app.services.hermes_nous.onboarding import get_office_loop
 
         loop_preview = get_office_loop(db, ctx)
-        setup_next_id = str(((loop_preview.get("setup_next") or {}) if isinstance(loop_preview, dict) else {}).get("id") or "") or None
+        sn = (loop_preview.get("setup_next") or {}) if isinstance(loop_preview, dict) else {}
+        setup_next_id = str(sn.get("id") or "") or None
+        setup_substep = str(sn.get("substep") or "") or None
     except Exception:  # noqa: BLE001
         loop_preview = None
         setup_next_id = None
-    form_kind = _credential_form_kind_from_message(message, setup_next_id=setup_next_id)
+        setup_substep = None
+    form_kind = _credential_form_kind_from_message(
+        message, setup_next_id=setup_next_id, setup_substep=setup_substep
+    )
     if form_kind and not attachments:
         from app.operator.tools import register_builtin_tools
         from app.operator.tools.registry import ToolResult, registry

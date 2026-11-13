@@ -37,8 +37,21 @@ def test_kind_open_form_without_kind_or_setup_next_is_none():
 
 def test_kind_phone_step_sip_intent():
     assert (
-        _credential_form_kind_from_message("настрой телефонную линию SIP", setup_next_id="phone")
+        _credential_form_kind_from_message(
+            "настрой телефонную линию SIP", setup_next_id="phone", setup_substep="need_sip"
+        )
         == "mango_sip"
+    )
+
+
+def test_kind_phone_need_did_does_not_auto_open_sip_form():
+    assert (
+        _credential_form_kind_from_message(
+            "подключи DID на телефонную линию",
+            setup_next_id="phone",
+            setup_substep="need_did",
+        )
+        is None
     )
 
 

@@ -70,11 +70,18 @@ def get_office_loop(db: Session, ctx: TenantContext) -> dict[str, Any]:
     setup_next_raw = (setup.get("next_steps") or [None])[0]
     setup_next = None
     if isinstance(setup_next_raw, dict) and setup_next_raw.get("id"):
+        check = setup_next_raw.get("check") if isinstance(setup_next_raw.get("check"), dict) else {}
+        detail = check.get("detail") if isinstance(check.get("detail"), dict) else {}
         setup_next = {
             "id": setup_next_raw.get("id"),
             "title": setup_next_raw.get("title") or setup_next_raw.get("id"),
             "hint": setup_next_raw.get("hint") or "",
+            "substep": _setup_substep(str(setup_next_raw.get("id") or ""), detail),
+            "detail": detail or None,
         }
+        # Prefer concrete substep hint over generic SETUP_STEPS hint.
+        if setup_next["substep"] and setup_next["id"] == "phone":
+            setup_next["hint"] = _phone_hint(setup_next["substep"], detail) or setup_next["hint"]
     steps = [
         {
             "id": "welcome",
@@ -234,6 +241,31 @@ def confirm_kb_draft(db: Session, ctx: TenantContext) -> dict[str, Any]:
     return {"ok": True, "committed": True, "loop": get_office_loop(db, ctx)}
 
 
+def _setup_substep(step_id: str, detail: dict[str, Any]) -> str | None:
+    """Break hermes_ops phone (and similar) into actionable micro-steps."""
+    if step_id != "phone":
+        return None
+    if not detail.get("sip_configured"):
+        return "need_sip"
+    if int(detail.get("active_dids") or 0) <= 0:
+        return "need_did"
+    if not detail.get("registration_ok"):
+        return "need_reg"
+    return None
+
+
+def _phone_hint(substep: str, detail: dict[str, Any]) -> str:
+    if substep == "need_sip":
+        return "Сначала SIP в сейфе (форма mango_sip) — пароль не в чат"
+    if substep == "need_did":
+        return "SIP сохранён — нужен активный DID (phones.provision / линия)"
+    if substep == "need_reg":
+        status = detail.get("registration_status") or "unknown"
+        msg = detail.get("registration_message") or ""
+        return f"DID есть, SIP не Registered (status={status}). {msg}".strip()
+    return ""
+
+
 def _headline(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> str:
     if phase == "welcome":
         return "Давайте настроим ваш офис"
@@ -241,6 +273,13 @@ def _headline(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None)
         return "Соберём базу знаний компании"
     if phase == "connectors":
         if setup_next and setup_next.get("title"):
+            sub = setup_next.get("substep")
+            if setup_next.get("id") == "phone" and sub == "need_sip":
+                return "Телефония: сохраните SIP в сейфе"
+            if setup_next.get("id") == "phone" and sub == "need_did":
+                return "Телефония: подключите DID"
+            if setup_next.get("id") == "phone" and sub == "need_reg":
+                return "Телефония: дождитесь Registered"
             return f"Следующий шаг сетапа: {setup_next['title']}"
         return "Подключим инструменты по шагам"
     if phase == "ready":
@@ -259,7 +298,25 @@ def _cta(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> d
         sid = str((setup_next or {}).get("id") or "")
         title = str((setup_next or {}).get("title") or "инструмент")
         hint = str((setup_next or {}).get("hint") or "")
+        sub = str((setup_next or {}).get("substep") or "")
         if sid == "phone":
+            if sub == "need_did":
+                return {
+                    "title": "Подключить DID",
+                    "text": (
+                        "SIP уже в сейфе. Следующий микрошаг hermes_ops — активный DID: "
+                        "вызови phones.list, если пусто — phones.provision с номером. "
+                        "Не открывай форму SIP снова и не предлагай импортировать KB."
+                    ),
+                }
+            if sub == "need_reg":
+                return {
+                    "title": "Проверить регистрацию SIP",
+                    "text": (
+                        "SIP и DID есть, но линия не Registered. Вызови hermes.setup_status / "
+                        "hermes.health, объясни status и next_actions. Не предлагай импортировать KB."
+                    ),
+                }
             return {
                 "title": f"Настроить: {title}",
                 # Owner-facing CTA: DIY chat path opens pending_credential_form;

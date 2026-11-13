@@ -115,6 +115,14 @@ def test_office_loop_kb_ok_uses_kb_check_id(monkeypatch):
                     "title": "Телефония (линия)",
                     "hint": "DID + SIP в сейфе",
                     "status": "todo",
+                    "check": {
+                        "ok": False,
+                        "detail": {
+                            "active_dids": 0,
+                            "sip_configured": False,
+                            "registration_ok": False,
+                        },
+                    },
                 }
             ],
         },
@@ -124,8 +132,9 @@ def test_office_loop_kb_ok_uses_kb_check_id(monkeypatch):
     assert loop["kb_ok"] is True
     assert loop["phase"] == "connectors"
     assert loop["setup_next"]["id"] == "phone"
-    assert "Телефония" in (loop["ui"]["headline"] or "")
-    assert "телефония" in (loop["ui"]["primary_cta"]["text"] or "").lower()
+    assert loop["setup_next"]["substep"] == "need_sip"
+    assert "SIP" in (loop["ui"]["headline"] or "") or "Телефония" in (loop["ui"]["headline"] or "")
+    assert "credentials.open_form" in (loop["ui"]["primary_cta"]["text"] or "")
     assert "импортировать kb" in (loop["ui"]["primary_cta"]["text"] or "").lower()
     company_kb = next(s for s in loop["steps"] if s["id"] == "company_kb")
     assert company_kb["done"] is True
@@ -133,4 +142,50 @@ def test_office_loop_kb_ok_uses_kb_check_id(monkeypatch):
     assert connectors["done"] is False
     # telephony_script must not inflate connector count
     assert loop["connectors_ready_count"] == 0
+    db.close()
+
+
+def test_office_loop_phone_substep_need_did(monkeypatch):
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    tenant = Tenant(id=uuid.uuid4(), slug="loop-did", name="Loop", settings={}, is_active=True)
+    db.add(tenant)
+    db.commit()
+    ctx = TenantContext(tenant_id=tenant.id, tenant_slug=tenant.slug, role="tenant_owner")
+
+    monkeypatch.setattr(
+        "app.services.hermes_nous.onboarding.hermes_ops.office_setup_status",
+        lambda *_a, **_k: {
+            "setup_complete": False,
+            "message_ru": "next",
+            "progress": {"required_done": 1, "required_total": 7},
+            "checks": {"kb": {"ok": True}, "phone": {"ok": False}},
+            "next_steps": [
+                {
+                    "id": "phone",
+                    "title": "Телефония (линия)",
+                    "hint": "DID + SIP",
+                    "status": "todo",
+                    "check": {
+                        "ok": False,
+                        "detail": {
+                            "active_dids": 0,
+                            "sip_configured": True,
+                            "registration_ok": False,
+                        },
+                    },
+                }
+            ],
+        },
+    )
+    loop = office_onboarding.get_office_loop(db, ctx)
+    assert loop["setup_next"]["substep"] == "need_did"
+    assert "DID" in (loop["ui"]["primary_cta"]["title"] or "")
+    assert "phones.provision" in (loop["ui"]["primary_cta"]["text"] or "")
+    assert "credentials.open_form" not in (loop["ui"]["primary_cta"]["text"] or "")
     db.close()

@@ -20,6 +20,7 @@
 - Hermes logic align: KB confirm → `hermes_ops.mark_setup_progress` (`settings.hermes`, not `hermes_nous`); onboarding pack includes `hermes.setup_mark`; auto-welcome no longer fakes «вот ссылка на сайт»
 - Office-loop CTA/headline follow `hermes_ops.next_steps`; Nous run gets `setup_next` context so after KB it steers to phone/SIP, not «импортируй KB»
 - Hermes vault UX: DIY `credentials.open_form` fast-path returns `pending_credential_form` (Nous text cannot surface the card); phone CTA opens mango_sip; panel shows hermes_ops `setup_next`
+- Hermes phone micro-steps from `hermes_ops` detail: `need_sip` → form, `need_did` → phones.provision CTA, `need_reg` → registration check (no form loop)
 - Hermes Nous: `lead.created` → `events_dispatch.on_lead_created` (durable AgentTask + queued AgentRun when `hermes_nous_runtime` on)
 - Hermes Nous: detailed sqlite integration suite (`test_hermes_nous_integration.py`) — A/B run tokens, MCP fail-closed tool call, KB confirm, bridge runs+fallback, flag gate, hermes profile without long-lived key
 - Hermes runtime Dockerfile: Python 3.14 + `uv sync --frozen --extra messaging`; lab smoke A/B on `:18642`/`:18643` (`scripts/lab_smoke.sh`); verified live `/v1/runs` → `completed` on C4B lab
