@@ -155,6 +155,63 @@ def _calendar_duration_min(message: str) -> int:
     return 60
 
 
+def _wants_conference_create(message: str) -> bool:
+    """«создай видеовстречу / Telemost» — DIY create_conference (stub-capable)."""
+    low = (message or "").lower()
+    markers = (
+        "видеовстреч",
+        "видеоконференц",
+        "конференц",
+        "telemost",
+        "телемост",
+        "google meet",
+        "zoom",
+        "вкс",
+        "create_conference",
+        "create a meeting",
+    )
+    create = any(
+        m in low
+        for m in (
+            "создай",
+            "создать",
+            "организуй",
+            "организовать",
+            "сделай встреч",
+            "create conference",
+            "create a meeting",
+            "schedule a call",
+        )
+    )
+    return create and any(m in low for m in markers)
+
+
+def _conference_provider(message: str) -> str:
+    low = (message or "").lower()
+    if "zoom" in low:
+        return "zoom"
+    if "meet" in low or "google" in low:
+        return "google_meet"
+    if "teams" in low:
+        return "teams"
+    if "jitsi" in low:
+        return "jitsi"
+    # Telemost / default
+    return "yandex"
+
+
+def _conference_title(message: str) -> str:
+    import re
+
+    m = re.search(r"названи[ея]\s+(.+)$", message or "", re.I)
+    if m:
+        return m.group(1).strip(" .,\"'«»")[:200] or "Встреча DELNO"
+    m = re.search(r"[«\"]([^»\"]{3,120})[»\"]", message or "")
+    if m:
+        return m.group(1).strip()[:200]
+    return "Встреча DELNO"
+
+
 # hermes_ops checklist id → vault form kind (only when the mapping is unambiguous).
 _SETUP_NEXT_TO_FORM_KIND: dict[str, str] = {
     "phone": "mango_sip",
@@ -323,11 +380,12 @@ def operator_chat(
     if not message and not attachments:
         raise HTTPException(status_code=422, detail="message_or_attachment_required")
 
-    # Attachments + media/calendar intents stay on DIY (Images / vision / STT / slots).
+    # Attachments + media/calendar/conference intents stay on DIY.
     prefer_diy = (
         bool(attachments)
         or _wants_media_generation(message)
         or _wants_calendar_slots(message)
+        or _wants_conference_create(message)
     )
 
     # Vault forms must reach the cabinet as pending_credential_form. Nous text-only
@@ -475,6 +533,62 @@ def operator_chat(
             }
         err = result.message if isinstance(result, ToolResult) else "calendar_failed"
         message = f"{message}\n\n[system: suggest_calendar_slots failed: {err}]"
+
+    # Conduct fast-path: create conference (Nous often asks for Telemost login instead of tool).
+    if _wants_conference_create(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        title = _conference_title(message)
+        provider = _conference_provider(message)
+        when_text = message.strip()[:240]
+        result = registry.run(
+            db,
+            ctx,
+            "create_conference",
+            title=title,
+            provider=provider,
+            when_text=when_text,
+        )
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            nested = data.get("data") if isinstance(data.get("data"), dict) else {}
+            upstream = data.get("upstream") if isinstance(data.get("upstream"), dict) else {}
+            if not upstream and isinstance(nested.get("upstream"), dict):
+                upstream = nested["upstream"]
+            join_url = (
+                data.get("join_url")
+                or nested.get("join_url")
+                or upstream.get("join_url")
+                or upstream.get("url")
+            )
+            stub = bool(data.get("stub") or nested.get("stub") or upstream.get("stub"))
+            note = " (stub — provider без живых кредов)" if stub else ""
+            link = f"\nСсылка: {join_url}" if join_url else ""
+            return {
+                "ok": True,
+                "engine": "diy_create_conference",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": (
+                    f"Создал конференцию «{title}» ({provider}){note}.{link}\n"
+                    f"{result.message or ''}"
+                ).strip(),
+                "tool_calls": [
+                    {
+                        "tool": "create_conference",
+                        "ok": True,
+                        "title": title,
+                        "provider": provider,
+                        "stub": stub,
+                        "join_url": join_url,
+                    }
+                ],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "conference_failed"
+        message = f"{message}\n\n[system: create_conference failed: {err}]"
 
     # Feature-flagged Nous Hermes runtime (Stage 0+). DIY loop remains fallback.
     try:

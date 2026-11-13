@@ -11,7 +11,10 @@ from sqlalchemy.pool import StaticPool
 from app.api.v1.operator import (
     _calendar_duration_min,
     _calendar_slot_start_iso,
+    _conference_provider,
+    _conference_title,
     _wants_calendar_slots,
+    _wants_conference_create,
     _wants_media_generation,
 )
 from app.core.db import Base
@@ -49,6 +52,15 @@ def test_wants_calendar_slots_routes():
     assert _calendar_duration_min("на 30 минут") == 30
     start = _calendar_slot_start_iso("завтра утром")
     assert "+03:00" in start or "+03" in start
+
+
+def test_wants_conference_create_routes():
+    msg = "создай видеовстречу Telemost на завтра в 11:00, название Демо DELNO"
+    assert _wants_conference_create(msg)
+    assert _conference_provider(msg) == "yandex"
+    assert "Демо DELNO" in _conference_title(msg)
+    assert not _wants_conference_create("создай картинку кота")
+    assert not _wants_media_generation(msg)
 
 
 def test_generate_image_prefers_proxy_friendly_models(monkeypatch):

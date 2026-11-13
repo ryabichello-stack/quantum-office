@@ -20,6 +20,7 @@
 - Telegram/MAX/files connect intents («подключи телеграм») open vault forms without requiring «открой форму» wording
 - hermes_ops: Telegram marked optional (like MAX) so office can reach ready/conduct without a BotFather token; form CTA remains for when the owner connects later
 - Conduct DIY: «предложи слоты календаря» hits `suggest_calendar_slots` directly (Nous often claimed the tool was unavailable)
+- Conduct DIY: «создай видеовстречу / Telemost» hits `create_conference` (Nous asked for Telemost login instead of the stub tool)
 
 ### Changed
 
