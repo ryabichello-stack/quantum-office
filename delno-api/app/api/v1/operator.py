@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -529,6 +530,105 @@ def _wants_crm_funnel(message: str) -> bool:
     )
 
 
+def _extract_http_urls(message: str) -> list[str]:
+    from app.services.web_browser import extract_urls
+
+    return extract_urls(message or "")
+
+
+def _wants_web_research(message: str) -> bool:
+    """User pasted a link or asked Hermes to open/study a site / public channel."""
+    if _extract_http_urls(message):
+        return True
+    low = (message or "").lower()
+    verbs = (
+        "зайди",
+        "зайди на",
+        "зайди в",
+        "открой",
+        "открой сайт",
+        "посмотри",
+        "посмотреть",
+        "просканируй",
+        "проскан",
+        "проанализируй",
+        "изучи",
+        "собери информацию",
+        "что за сайт",
+        "расскажи про сайт",
+        "browse",
+        "fetch",
+    )
+    targets = (
+        "сайт",
+        "ссылк",
+        "url",
+        "instagram",
+        "инстаграм",
+        "телеграм",
+        "telegram",
+        "t.me",
+        "макс",
+        " max",
+        "группу",
+        "канал",
+        "страниц",
+    )
+    if any(v in low for v in verbs) and any(t in low for t in targets):
+        return True
+    # Bare domain-ish without scheme: example.com / company.ru/path
+    if re.search(r"(?<!@)\b[a-z0-9][a-z0-9.-]+\.(ru|com|org|net|io|ai|рф)\b", low):
+        if any(v in low for v in ("сайт", "открой", "зайди", "посмотри", "изучи", "проскан")):
+            return True
+    return False
+
+
+def _summarize_web_dossier(question: str, dossier: str, *, note: str = "") -> str:
+    """LLM summary grounded in browsed text; fallback to extract if model unavailable."""
+    body = (dossier or "").strip()
+    if not body:
+        return note or "Не удалось снять текст со страницы (возможна авторизация или блокировка)."
+    try:
+        from app.services.model_provider import get_model_provider
+
+        provider = get_model_provider()
+        system = (
+            "Ты Hermes. Тебе дали ДОСЬЕ страниц, которые уже открыл браузер. "
+            "Ответь по-русски связно и по делу: чем занимается, продукты/услуги, "
+            "аудитория, контакты, ключевые факты. Только факты из досье — "
+            "не выдумывай. Если данных мало — скажи честно. "
+            "Не упоминай базу знаний tenant, если её не было в досье."
+        )
+        user = f"Запрос владельца:\n{question}\n\n"
+        if note:
+            user += f"Замечание браузера: {note}\n\n"
+        user += f"Досье:\n{body[:28000]}"
+        out = provider.chat_completion(
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            max_tokens=1200,
+        )
+        if out.get("ok"):
+            data = out.get("data") if isinstance(out.get("data"), dict) else out
+            text = ""
+            try:
+                text = str(data["choices"][0]["message"]["content"] or "")
+            except Exception:  # noqa: BLE001
+                text = str(out.get("reply") or out.get("content") or "")
+            text = (text or "").strip()
+            if text:
+                return text
+    except Exception:  # noqa: BLE001
+        pass
+    preview = body[:3500].strip()
+    head = "Открыл страницы в браузере. Краткое содержимое:\n\n"
+    if note:
+        head = f"{note}\n\n" + head
+    return head + preview
+
+
 def _wants_mail_draft(message: str) -> bool:
     """«отправь письмо / черновик» with a clear recipient — DIY send_mail_draft."""
     low = (message or "").lower()
@@ -871,6 +971,7 @@ def operator_chat(
         or _wants_hermes_capabilities(message)
         or _wants_files_cloud_status(message)
         or _wants_channel_connect_flow(message)
+        or _wants_web_research(message)
     )
 
     # Vault forms must reach the cabinet as pending_credential_form. Nous text-only
@@ -1015,6 +1116,119 @@ def operator_chat(
                 pending_credential_form=form if isinstance(form, dict) else None,
                 office_loop=loop_preview,
             )
+
+    # Fast-path: pasted URL / «зайди на сайт» → real browser research (not KB).
+    if _wants_web_research(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+        from app.services import web_browser
+
+        register_builtin_tools()
+        urls = _extract_http_urls(message)
+        if not urls:
+            # Bare domain in text
+            m_dom = re.search(
+                r"(?<!@)\b([a-z0-9][a-z0-9.-]+\.(?:ru|com|org|net|io|ai))\b",
+                message,
+                flags=re.I,
+            )
+            if m_dom:
+                urls = [f"https://{m_dom.group(1)}"]
+        if urls:
+            primary = urls[0]
+            result = registry.run(
+                db, ctx, "web.research", url=primary, max_pages=5, also_search=True
+            )
+            if isinstance(result, ToolResult) and result.ok:
+                data = result.data or {}
+                reply = _summarize_web_dossier(
+                    message,
+                    str(data.get("dossier") or ""),
+                    note=str(data.get("note") or ""),
+                )
+                pages = data.get("pages") or []
+                page_bits = " · ".join(
+                    f"{p.get('title') or p.get('url')}" for p in pages[:4] if isinstance(p, dict)
+                )
+                if page_bits:
+                    reply = f"Зашёл в браузере: {page_bits}\n\n{reply}"
+                trace = data.get("tool_trace") or [{"tool": "web.research", "ok": True, "url": primary}]
+                return _finish_diy(
+                    db,
+                    ctx,
+                    body,
+                    modality=modality,
+                    engine="diy_web_research",
+                    reply=reply,
+                    tool_calls=trace if isinstance(trace, list) else [{"tool": "web.research", "ok": True}],
+                )
+            # If research tool failed, try a single browse then search.
+            browsed = web_browser.browse_page(primary)
+            calls = [
+                {
+                    "tool": "web.browse",
+                    "ok": bool(browsed.get("ok")),
+                    "url": browsed.get("url") or primary,
+                    "title": browsed.get("title") or "",
+                    "engine": browsed.get("engine") or "",
+                    "chars": browsed.get("chars") or 0,
+                }
+            ]
+            if browsed.get("ok") and browsed.get("text"):
+                reply = _summarize_web_dossier(
+                    message,
+                    f"### {browsed.get('title')}\nURL: {browsed.get('url')}\n{browsed.get('text')}",
+                    note=str(browsed.get("playwright_error") or ""),
+                )
+                return _finish_diy(
+                    db,
+                    ctx,
+                    body,
+                    modality=modality,
+                    engine="diy_web_research",
+                    reply=f"Зашёл на {browsed.get('url')}:\n\n{reply}",
+                    tool_calls=calls,
+                )
+            err = result.message if isinstance(result, ToolResult) else browsed.get("error")
+            message = f"{message}\n\n[system: web.research failed: {err}]"
+        else:
+            # Verb intent without URL — search then browse top hits.
+            q = re.sub(
+                r"(зайди|открой|посмотри|изучи|просканируй|проанализируй|на сайт|сайт)\s*",
+                " ",
+                message,
+                flags=re.I,
+            ).strip() or message
+            searched = web_browser.search_web(q, limit=5)
+            calls = [
+                {
+                    "tool": "web.search",
+                    "ok": bool(searched.get("ok")),
+                    "query": q,
+                    "count": len(searched.get("items") or []),
+                }
+            ]
+            items = searched.get("items") or []
+            if items:
+                top = str(items[0].get("url") or "")
+                research = web_browser.research_site(top, max_pages=4, also_search=False)
+                calls.extend(research.get("tool_trace") or [])
+                if research.get("ok"):
+                    reply = _summarize_web_dossier(
+                        message,
+                        str(research.get("dossier") or ""),
+                        note=str(research.get("note") or ""),
+                    )
+                    return _finish_diy(
+                        db,
+                        ctx,
+                        body,
+                        modality=modality,
+                        engine="diy_web_research",
+                        reply=reply,
+                        tool_calls=calls,
+                    )
+            message = f"{message}\n\n[system: web research — no URL and search empty]"
 
     # Fast-path: never rely on the LLM to "agree" to draw — call generate_image now.
     if _wants_media_generation(message) and not attachments:

@@ -90,6 +90,7 @@ CABINET_LLM_TOOLS = (
     "web.search",
     "web.fetch",
     "web.browse",
+    "web.research",
     "office.import_website",
     "billing.summary",
 )
@@ -105,7 +106,9 @@ HERMES_AGENT_SYSTEM = (
     "или если tools реально не нужны (приветствие, уточняющий вопрос).\n"
     "Не жди волшебных фраз и не подменяй задачу шаблонным статусом SIP/сетапа.\n"
     "Каталог tools (выбираешь сам по смыслу задачи):\n"
-    "• web.search / web.fetch / web.browse — открытый интернет;\n"
+    "• web.search / web.fetch / web.browse / web.research — открытый интернет и браузер; "
+    "если пользователь дал ссылку на сайт/Telegram/Instagram/MAX — СРАЗУ web.research "
+    "(не отвечай из KB и не выдумывай содержимое страницы);\n"
     "• get_knowledge / upload_knowledge_snippet / office.import_website — "
     "только материалы ЭТОГО tenant (локальная база), не замена интернету;\n"
     "• hermes.capabilities — проверь реальные возможности перед онбордингом и задачами;\n"

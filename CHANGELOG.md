@@ -12,8 +12,9 @@
 
 ### Added
 
-- Hermes composer: live dictation into the input field (browser interim STT first; Whisper fallback shows «…» while listening)
-- Hermes chat: collapsible «Размышления» trail (engine + tool steps) above assistant replies
+- Hermes browser research: pasted URL / «зайди на сайт» runs `web.research` (browse + same-host crawl + optional search) and answers from the live dossier — visible in thinking as page visits; Playwright Chromium in API image
+- Hermes composer: live dictation (browser word/phrase interim + rolling Whisper ticks while speaking)
+- Hermes chat: Claude-style live «Думаю…» before the reply (not a post-hoc checklist)
 - Hermes Telegram/MAX dual-path chooser: ask bot token vs QR (Telegram Web-style), pros/cons, step-by-step bot creation, then vault form; QR starts `pending_qr` session with honest status until live QR worker
 
 ### Fixed

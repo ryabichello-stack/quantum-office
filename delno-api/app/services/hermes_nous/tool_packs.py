@@ -20,6 +20,7 @@ ONBOARDING_KB = META + (
     "web.search",
     "web.fetch",
     "web.browse",
+    "web.research",
     "get_tenant_summary",
     "credentials.open_form",
     "office.connector_set",
