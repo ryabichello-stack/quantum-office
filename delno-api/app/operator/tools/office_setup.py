@@ -8,7 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.core.tenant import TenantContext
 from app.operator.tools.registry import ToolResult
+from app.adapters.connectors import CONNECTOR_KINDS
 from app.services import files_cloud, telephony_script
+from app.services.connectors import list_tenant_connector_readiness, probe_tenant_connector, update_tenant_connector
 from app.services.tenant_vault import credential_form_spec
 
 
@@ -152,8 +154,8 @@ class CredentialsOpenFormTool:
     name = "credentials.open_form"
     description = (
         "Open a secure UI credential form (never ask to paste secrets in chat). "
-        "Kinds: mango_sip, files_yadisk, files_mailru, files_gdrive, files_onedrive. "
-        "Use for SIP or when connecting a cloud disk."
+        "Kinds: mango_sip, telegram_bot, max_bot, files_yadisk, files_mailru, files_gdrive, files_onedrive. "
+        "Use for SIP, Telegram/MAX bot tokens, or cloud disks."
     )
     critical_write = False
     parameters_schema = {
@@ -161,7 +163,7 @@ class CredentialsOpenFormTool:
         "properties": {
             "kind": {
                 "type": "string",
-                "description": "mango_sip | files_yadisk | files_mailru | files_gdrive | files_onedrive",
+                "description": "mango_sip | telegram_bot | max_bot | files_yadisk | files_mailru | files_gdrive | files_onedrive",
             }
         },
         "required": ["kind"],
@@ -172,6 +174,8 @@ class CredentialsOpenFormTool:
         form = credential_form_spec(kind)
         titles = {
             "mango_sip": "SIP Mango",
+            "telegram_bot": "Telegram bot",
+            "max_bot": "MAX bot",
             "files_yadisk": "Яндекс.Диск",
             "files_mailru": "Облако Mail.ru",
             "files_gdrive": "Google Drive",
@@ -190,4 +194,56 @@ class CredentialsOpenFormTool:
                     else ""
                 )
             ),
+        )
+
+
+class OfficeConnectorSetTool:
+    name = "office.connector_set"
+    description = (
+        "Enable or disable an office connector for this tenant "
+        "(mail | calendar | conference | files | outreach). "
+        "tools_first: enabling opts the tenant into the shared upstream; "
+        "then probe readiness. Use on hermes_ops mail/calendar/conference steps."
+    )
+    critical_write = True
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "kind": {
+                "type": "string",
+                "description": "mail | calendar | conference | files | outreach",
+            },
+            "enabled": {"type": "boolean", "description": "true to enable, false to disable"},
+        },
+        "required": ["kind", "enabled"],
+    }
+
+    def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult:
+        kind = str(params.get("kind") or "").strip().lower()
+        if kind not in CONNECTOR_KINDS:
+            return ToolResult(ok=False, data={"kind": kind}, message=f"unknown_connector:{kind}")
+        enabled = bool(params.get("enabled"))
+        updated = update_tenant_connector(db, ctx, kind, enabled=enabled)
+        if not updated.get("ok"):
+            return ToolResult(
+                ok=False,
+                data=updated,
+                message=str(updated.get("error") or "connector_update_failed"),
+            )
+        probed = probe_tenant_connector(db, ctx, kind)
+        ready_rows = {r["kind"]: r for r in list_tenant_connector_readiness(db, ctx)}
+        row = ready_rows.get(kind) or {}
+        usable = bool(row.get("usable"))
+        state = "включён" if enabled else "выключен"
+        detail = "готов (usable)" if usable else f"не готов: {row.get('reason') or 'check probe'}"
+        return ToolResult(
+            ok=True,
+            data={
+                "kind": kind,
+                "enabled": enabled,
+                "update": updated,
+                "probe": probed,
+                "readiness": row,
+            },
+            message=f"Коннектор «{kind}» {state}; {detail}.",
         )

@@ -1,0 +1,23 @@
+# DELNO-provisioned Hermes profile skeleton (tenant-scoped).
+# Agent MAY edit SOUL.md / skills / cron under policy.
+# Agent MUST NOT change mcp_servers URL, vault credentials, or egress.
+
+model:
+  default: gpt-4.1-mini
+
+# DELNO MCP — business tools only. Auth: long-lived tenant mcp key in DELNO_MCP_KEY
+# (Stage-0 dogfood). Prefer per-run tokens when the runtime forwards X-Delno-Run-Token.
+mcp_servers:
+  delno_office:
+    url: "http://delno-api:8020/v1/mcp"
+    headers:
+      Authorization: "Bearer ${DELNO_MCP_KEY}"
+
+# Terminal / browser: keep disabled or sandboxed in tenant runtime.
+# Business data only via DELNO MCP.
+
+gateway:
+  multiplex_profiles: false
+
+display:
+  tool_progress: true

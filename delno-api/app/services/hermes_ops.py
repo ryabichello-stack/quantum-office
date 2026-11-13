@@ -98,7 +98,11 @@ SETUP_STEPS: list[dict[str, str]] = [
         "title": "Сценарий секретаря",
         "hint": "Надиктуйте сценарий, предложите из знаний или заполните шаблон",
     },
-    {"id": "telegram", "title": "Telegram", "hint": "Подключите branded bot token"},
+    {
+        "id": "telegram",
+        "title": "Telegram",
+        "hint": "Рекомендуется: branded bot token (@BotFather) — можно после ready",
+    },
     {"id": "max", "title": "MAX", "hint": "Опционально: MAX bot access token"},
     {
         "id": "files",
@@ -197,7 +201,9 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
                 "greeting": (telephony.get("greeting") or "")[:120],
             },
         },
-        "telegram": {"ok": tg > 0, "detail": f"accounts={tg}"},
+        # Messenger bots are recommended but not blockers for office ready —
+        # phone + mail/calendar/conference + KB/script already enable conduct.
+        "telegram": {"ok": tg > 0, "detail": f"accounts={tg}", "optional": True},
         "max": {"ok": max_n > 0, "detail": f"accounts={max_n}", "optional": True},
         "files": {"ok": False, "detail": {}, "optional": True},
         "calendar": {"ok": _conn_ok("calendar"), "detail": (by_kind.get("calendar") or {}).get("status")},
@@ -359,42 +365,48 @@ def office_health_report(db: Session, ctx: TenantContext) -> dict[str, Any]:
             {
                 "code": "phone.sip_missing",
                 "severity": "warning",
-                "message_ru": "SIP Mango ещё не сохранён в сейфе кабинета — линия не зарегистрируется.",
+                "message_ru": "SIP Mango ещё не сохранён в сейфе кабинета — линия не регистрируется.",
                 "fix": "Скажите «настрой телефон» и заполните безопасную форму (логин вида номер/сотрудник).",
             }
         )
-    elif "/" not in str(sip_row.get("login_masked") or ""):
-        alerts.append(
-            {
-                "code": "phone.sip_login_partial",
-                "severity": "warning",
-                "message_ru": "SIP-логин похож на неполный (нужен вид номер/сотрудник).",
-                "fix": "Откройте форму SIP ещё раз и сохраните полный логин Mango.",
-            }
-        )
     else:
+        # Always probe live registration. A missing "/" in the masked login is only a
+        # heuristic for incomplete vault saves — if Mango already shows Registered,
+        # do not mark the office unhealthy on that heuristic alone.
         try:
             from app.services.sip_probe import probe_registration
 
             reg = probe_registration()
         except Exception:  # noqa: BLE001
             reg = {"ok": False, "status": "unknown", "reachable": False}
+        login_masked = str(sip_row.get("login_masked") or "")
+        looks_partial = "/" not in login_masked
         if not reg.get("ok"):
-            status = str(reg.get("status") or "unknown")
-            alerts.append(
-                {
-                    "code": f"phone.sip_{status}",
-                    "severity": "critical" if status == "rejected" else "warning",
-                    "message_ru": (
-                        reg.get("message_ru")
-                        or "Линия SIP не Registered — входящие уйдут в «все операторы заняты»."
-                    ),
-                    "fix": (
-                        "Откройте форму SIP и сохраните актуальный SIP-пароль сотрудника Mango "
-                        "(не пароль от веб-кабинета). Затем скажите «проверь регистрацию SIP»."
-                    ),
-                }
-            )
+            if looks_partial:
+                alerts.append(
+                    {
+                        "code": "phone.sip_login_partial",
+                        "severity": "warning",
+                        "message_ru": "SIP-логин похож на неполный (нужен вид номер/сотрудник).",
+                        "fix": "Откройте форму SIP ещё раз и сохраните полный логин Mango.",
+                    }
+                )
+            else:
+                status = str(reg.get("status") or "unknown")
+                alerts.append(
+                    {
+                        "code": f"phone.sip_{status}",
+                        "severity": "critical" if status == "rejected" else "warning",
+                        "message_ru": (
+                            reg.get("message_ru")
+                            or "Линия SIP не Registered — входящие уйдут в «все операторы заняты»."
+                        ),
+                        "fix": (
+                            "Откройте форму SIP и сохраните актуальный SIP-пароль сотрудника Mango "
+                            "(не пароль от веб-кабинета). Затем скажите «проверь регистрацию SIP»."
+                        ),
+                    }
+                )
     for item in connectors.get("items") or []:
         if item.get("enabled") and not item.get("configured"):
             alerts.append(

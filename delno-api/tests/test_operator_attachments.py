@@ -38,3 +38,24 @@ def test_normalize_text_file():
     assert out["items"][0]["kind"] == "file"
     assert "привет" in out["text_context"]
     assert isinstance(build_user_content("прочитай", out), str)
+
+
+def test_normalize_pdf_uses_brain_extract(monkeypatch):
+    pdf = b"%PDF-1.1\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n"
+    raw = base64.b64encode(pdf).decode("ascii")
+
+    def _fake_extract(data, *, filename, content_type):
+        assert filename.endswith(".pdf")
+        assert data.startswith(b"%PDF")
+        return {"ok": True, "text": "Прайс DELNO: офисный ИИ 100₽", "method": "pdf"}
+
+    monkeypatch.setattr(
+        "app.services.onboarding_upload._extract_via_brain",
+        _fake_extract,
+    )
+    out = normalize_attachments(
+        [{"filename": "price.pdf", "content_type": "application/pdf", "data_base64": raw}]
+    )
+    assert out["ok"] is True
+    assert "Прайс DELNO" in out["text_context"]
+    assert "pdf" in out["text_context"]

@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { CrystalOrb } from "@/components/CrystalOrb";
+import { HermesMessageBody } from "@/components/HermesMessageBody";
 import { ConfirmCard } from "@/components/ConfirmCard";
 import { CredentialFormCard, type CredentialFormSpec } from "@/components/CredentialFormCard";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -52,12 +53,21 @@ import {
   apiBillingSummary,
   apiCallsList,
   apiChannelQrStart,
+  apiAgentTasks,
   apiHermesHealth,
+  apiHermesNousStatus,
   apiHermesSetup,
+  apiOfficeLoop,
+  apiHermesToolkit,
+  apiKbDraftConfirm,
+  type AgentTaskItem,
+  type HermesToolkit,
   type BillingSummary,
   type CallSessionItem,
   type HermesHealthStatus,
+  type HermesNousStatus,
   type HermesSetupStatus,
+  type OfficeLoopStatus,
 } from "@/lib/hermesApi";
 import {
   canAddMore,
@@ -84,7 +94,7 @@ type ChatLine = {
   credentialForm?: CredentialFormSpec | null;
   download?: PendingDownload | null;
   suggestions?: SuggestedAction[];
-  previews?: { url: string; name: string }[];
+  previews?: { url: string; name: string; kind?: "image" | "video" | "file" }[];
 };
 
 function triggerMarkdownDownload(file: PendingDownload) {
@@ -98,14 +108,27 @@ function triggerMarkdownDownload(file: PendingDownload) {
 }
 
 const QUICK_PROMPTS = [
-  { title: "О компании", text: "Я владелец офиса. Покажи статус сетапа и скажи, что сделать следующим шагом." },
-  { title: "Сайт → знания", text: "Зайди на мой сайт и собери знания в базу" },
-  { title: "Телефон", text: "Настрой телефон секретаря" },
-  { title: "SIP Mango", text: "Открой безопасную форму SIP-пароля Mango" },
-  { title: "Сетап", text: "Что ещё настроить в офисе?" },
-  { title: "Здоровье", text: "Проверь здоровье офиса" },
-  { title: "Звонки", text: "Какие звонки были сегодня?" },
-  { title: "Затраты", text: "Покажи расход токенов и баланс" },
+  {
+    title: "Настроить офис",
+    text: "Давайте настроим мой офис: покажи путь (знания → инструменты → ready) и следующий шаг.",
+  },
+  {
+    title: "Сайт → знания",
+    text: "Вот ссылка на наш сайт — собери базу знаний и покажи черновик перед сохранением",
+  },
+  {
+    title: "Подключить инструмент",
+    text: "Что подключить следующим: почту, Telegram или календарь? Проведи меня по шагам с формой секрета",
+  },
+  {
+    title: "Ava · телефон",
+    text: "Покажи инструменты Ava и статус телефонии, затем предложи настройку SIP/DID",
+  },
+  { title: "Здоровье офиса", text: "Проверь здоровье офиса и скажи, что улучшить" },
+  {
+    title: "Поручение",
+    text: "Когда офис ready — ответь по базе знаний: кто мы и что предлагаем клиентам",
+  },
 ];
 
 function useCompactHermes(breakpoint = 720) {
@@ -145,6 +168,10 @@ export function HermesStage({ token }: { token: string }) {
   const [health, setHealth] = useState<HermesHealthStatus | null>(null);
   const [calls, setCalls] = useState<CallSessionItem[]>([]);
   const [billing, setBilling] = useState<BillingSummary | null>(null);
+  const [officeLoop, setOfficeLoop] = useState<OfficeLoopStatus | null>(null);
+  const [nousStatus, setNousStatus] = useState<HermesNousStatus | null>(null);
+  const [agentTasks, setAgentTasks] = useState<AgentTaskItem[]>([]);
+  const [toolkit, setToolkit] = useState<HermesToolkit | null>(null);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [qrBusy, setQrBusy] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingHermesAttachment[]>([]);
@@ -164,18 +191,26 @@ export function HermesStage({ token }: { token: string }) {
 
   const refreshPanels = useCallback(async () => {
     try {
-      const [s, h, c, b] = await Promise.all([
+      const [s, h, c, b, loop, nous, tasks, tk] = await Promise.all([
         apiHermesSetup(token).catch(() => null),
         apiHermesHealth(token).catch(() => null),
         apiCallsList(token, 8).catch(() => ({ ok: true, items: [] as CallSessionItem[] })),
         apiBillingEnsure(token)
           .catch(() => apiBillingSummary(token))
           .catch(() => null),
+        apiOfficeLoop(token).catch(() => null),
+        apiHermesNousStatus(token).catch(() => null),
+        apiAgentTasks(token, 8).catch(() => ({ ok: true, items: [] as AgentTaskItem[] })),
+        apiHermesToolkit(token).catch(() => null),
       ]);
       if (s) setSetup(s);
       if (h) setHealth(h);
       setCalls(c?.items || []);
       if (b) setBilling(b);
+      if (loop) setOfficeLoop(loop);
+      if (nous) setNousStatus(nous);
+      setAgentTasks(tasks?.items || []);
+      if (tk) setToolkit(tk);
     } catch {
       /* panels are best-effort; chat still works */
     }
@@ -246,12 +281,20 @@ export function HermesStage({ token }: { token: string }) {
       setError("");
       setActivePending(null);
       const previews = attachSource
-        .filter((a) => a.previewUrl)
-        .map((a) => ({ url: a.previewUrl!, name: a.filename }));
+        .filter((a) => a.previewUrl || a.kind === "file")
+        .map((a) => ({
+          url: a.previewUrl || "",
+          name: a.filename,
+          kind: a.kind,
+        }));
       const label =
         question ||
         (attachSource.length
-          ? attachSource.map((a) => (a.kind === "image" ? `🖼 ${a.filename}` : `📎 ${a.filename}`)).join(" ")
+          ? attachSource
+              .map((a) =>
+                a.kind === "image" ? `🖼 ${a.filename}` : a.kind === "video" ? `🎬 ${a.filename}` : `📎 ${a.filename}`,
+              )
+              .join(" ")
           : "");
       if (modality === "text") {
         setLines((prev) => [...prev, { role: "user", text: label, previews }]);
@@ -397,15 +440,21 @@ export function HermesStage({ token }: { token: string }) {
 
   useEffect(() => {
     if (bootstrapped || !setup || !historyReady) return;
+    // Wait for office-loop when Nous is on so welcome follows PRODUCT_LOOP phase.
+    if (nousStatus?.enabled && !officeLoop) return;
     setBootstrapped(true);
     if (!setup.setup_complete && lines.length === 0) {
-      void sendText(
-        "Я владелец офиса. Покажи статус сетапа и скажи, что сделать следующим шагом.",
-        "text",
-      );
+      // Never auto-send primary_cta text — it may pretend the owner already
+      // gave a website URL. Ask Hermes for the real next step instead.
+      const nextTitle = officeLoop?.next_step?.title;
+      const welcome =
+        nextTitle && nextTitle !== "Старт"
+          ? `Я владелец. Офис ещё не ready. Следующий шаг по чеклисту: «${nextTitle}». Покажи статус и что нужно от меня (без выдуманных ссылок/секретов).`
+          : "Я владелец. Давайте настроим офис по пути знания → инструменты → ready. Покажи статус и первый реальный шаг.";
+      void sendText(welcome, "text");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot welcome
-  }, [setup, bootstrapped, historyReady]);
+  }, [setup, bootstrapped, historyReady, officeLoop, nousStatus?.enabled]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -534,26 +583,46 @@ export function HermesStage({ token }: { token: string }) {
       setActiveSecretForm(null);
       const probe = result.sip_probe;
       const cloud = result.cloud_probe;
+      const channel = result.channel_connect;
       const ack =
         result.message ||
-        `Сохранил ${result.kind}: ${result.login_masked || "••••"}. Пароль в чат не попал.`;
+        `Сохранил ${result.kind}: ${result.login_masked || "••••"}. Секрет в чат не попал.`;
       const probeLine = probe?.message_ru
         ? `\nАвтотест линии: ${probe.message_ru}`
         : cloud?.message_ru
           ? `\nОблако: ${cloud.message_ru}`
-          : "";
+          : channel?.account?.bot_username
+            ? `\nTelegram: @${channel.account.bot_username}`
+            : "";
       setLines((prev) => [...prev, { role: "assistant", text: `${ack}${probeLine}` }]);
       void refreshPanels();
       // Follow-up in the same thread so Hermes re-reads vault + setup (no more loop).
       try {
         const isCloud = secretKind.startsWith("files_");
+        const isTelegram = secretKind === "telegram_bot";
+        const isMax = secretKind === "max_bot";
         const followAsk = isCloud
           ? cloud?.probe?.ok
             ? "Облако подключено. Какие облака подключены?"
             : "Облако сохранено. Какие облака подключены?"
-          : probe?.ok
-            ? "SIP сохранён и линия Registered. Что дальше — тестовый звонок или сменить голос?"
-            : "SIP сохранён. Проверь регистрацию. Если Rejected — дай задание для Cursor или снова форму.";
+          : isTelegram
+            ? channel?.ok
+              ? "Telegram бот подключён. Какой следующий шаг hermes_ops?"
+              : "Токен Telegram сохранён. Проверь каналы / hermes.setup_status. Что дальше?"
+            : isMax
+              ? channel?.ok
+                ? "MAX бот подключён. Какой следующий шаг hermes_ops?"
+                : "Токен MAX сохранён. Проверь каналы / hermes.setup_status. Что дальше?"
+              : probe?.ok
+                ? "SIP сохранён и линия Registered. Что дальше — тестовый звонок или сменить голос?"
+                : "SIP сохранён. Проверь регистрацию. Если Rejected — дай задание для Cursor или снова форму.";
+        const followUserLabel = isCloud
+          ? "Облако сохранено. Что дальше?"
+          : isTelegram
+            ? "Telegram сохранён. Канал готов? Что дальше?"
+            : isMax
+              ? "MAX сохранён. Канал готов? Что дальше?"
+              : "SIP сохранён. Телефон настроен? Что дальше по линии?";
         const follow = await apiOperatorChat(
           token,
           followAsk,
@@ -564,7 +633,7 @@ export function HermesStage({ token }: { token: string }) {
         if (follow.conversation_id) setConversationId(follow.conversation_id);
         setLines((prev) => [
           ...prev,
-          { role: "user", text: "SIP сохранён. Телефон настроен? Что дальше по линии?" },
+          { role: "user", text: followUserLabel },
           {
             role: "assistant",
             text: follow.reply || "Проверил сейф и сетап.",
@@ -578,7 +647,7 @@ export function HermesStage({ token }: { token: string }) {
         /* ack already shown; follow-up is best-effort */
       }
     } catch {
-      setError("Не удалось сохранить SIP-данные. Проверьте сессию и повторите.");
+      setError("Не удалось сохранить секрет. Проверьте сессию и повторите.");
     } finally {
       setSecretBusy(false);
     }
@@ -713,12 +782,18 @@ export function HermesStage({ token }: { token: string }) {
             <div className="hx-thread">
               {lines.length === 0 && !sending && (
                 <div className="hx-empty">
-                  {!compact && <p className="hx-empty-kicker">DELNO · office agent</p>}
-                  <h1 className="hx-empty-title">Hermes</h1>
+                  <div className="hx-empty-orb" aria-hidden>
+                    <CrystalOrb voiceActive={voiceActive} voicePhase={voicePhase} onOrbClick={toggleVoice} />
+                  </div>
+                  <h1 className="hx-empty-title">
+                    {officeLoop?.ui?.headline || (setup?.setup_complete ? "Чем помочь?" : "Давайте настроим офис")}
+                  </h1>
                   <p className="hx-empty-lead">
                     {compact
-                      ? "Задача, фото или mic — ответ здесь."
-                      : "Диалог сохраняется: после обновления страницы Hermes помнит этот тред. Пишите задачу, кидайте фото или нажмите mic."}
+                      ? officeLoop?.next_step?.hint || "Знания → инструменты → поручения."
+                      : officeLoop?.next_step
+                        ? `Сейчас: ${officeLoop.next_step.title}. ${officeLoop.next_step.hint}`
+                        : "Hermes сначала поднимает ваш офис (знания и тулзы), потом выполняет поручения — как сотрудник, а не FAQ-чат."}
                   </p>
                   <div className={cn("hx-suggestions", compact && "hx-suggestions-chips")}>
                     {QUICK_PROMPTS.map((item) => (
@@ -753,13 +828,21 @@ export function HermesStage({ token }: { token: string }) {
                     <div className="hx-bubble hx-bubble-user">
                       {line.previews && line.previews.length > 0 && (
                         <div className="hx-previews">
-                          {line.previews.map((p) => (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img key={p.url} src={p.url} alt={p.name} />
-                          ))}
+                          {line.previews.map((p, i) =>
+                            p.kind === "video" && p.url ? (
+                              <video key={`${p.name}-${i}`} src={p.url} controls playsInline preload="metadata" />
+                            ) : p.url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img key={`${p.name}-${i}`} src={p.url} alt={p.name} />
+                            ) : (
+                              <span key={`${p.name}-${i}`} className="hx-preview-file">
+                                {p.name}
+                              </span>
+                            ),
+                          )}
                         </div>
                       )}
-                      <div className="hx-text">{line.text}</div>
+                      <HermesMessageBody text={line.text} className="hx-text" />
                     </div>
                   </article>
                 ) : (
@@ -767,7 +850,7 @@ export function HermesStage({ token }: { token: string }) {
                     {!compact && <HermesAvatar />}
                     <div className="hx-assistant-col">
                       <div className="hx-bubble hx-bubble-assistant">
-                        <div className="hx-text">{line.text}</div>
+                        <HermesMessageBody text={line.text} className="hx-text" />
                         {(() => {
                           const sources = dedupeSources(line.sources);
                           if (!sources.length) return null;
@@ -863,9 +946,11 @@ export function HermesStage({ token }: { token: string }) {
               <div className="hx-attach-strip">
                 {pendingFiles.map((item) => (
                   <div key={item.id} className="hx-attach-chip" data-kind={item.kind}>
-                    {item.previewUrl ? (
+                    {item.previewUrl && item.kind === "image" ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={item.previewUrl} alt={item.filename} />
+                    ) : item.previewUrl && item.kind === "video" ? (
+                      <video src={item.previewUrl} muted playsInline />
                     ) : (
                       <span>{item.filename}</span>
                     )}
@@ -889,7 +974,7 @@ export function HermesStage({ token }: { token: string }) {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*,.pdf,.docx,.xlsx,.csv,.txt,.md,.html,.json"
+                accept="image/*,video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.pdf,.docx,.xlsx,.csv,.txt,.md,.html,.json"
                 multiple
                 hidden
                 onChange={onPickFiles}
@@ -1025,10 +1110,130 @@ export function HermesStage({ token }: { token: string }) {
             >
               Офис
             </SheetTitle>
-            {!compact && <SheetDescription>Сетап, здоровье, тариф и каналы</SheetDescription>}
+            {!compact && (
+              <SheetDescription>
+                Онбординг → знания → тулзы → поручения
+                {nousStatus?.enabled ? " · Nous" : " · DIY fallback"}
+              </SheetDescription>
+            )}
           </SheetHeader>
           <ScrollArea className={compact ? "h-[calc(100%-3.5rem)]" : "h-[calc(100%-5rem)]"}>
             <div className={cn("flex flex-col gap-3", compact ? "p-3 pb-6" : "p-4")}>
+              <section className="hx-card">
+                <header>
+                  <span>Путь офиса</span>
+                  {officeLoop?.next_step ? (
+                    <Badge variant="secondary">{officeLoop.phase}</Badge>
+                  ) : null}
+                </header>
+                {officeLoop ? (
+                  <>
+                    <p>{officeLoop.ui?.headline || "Настройка офиса"}</p>
+                    {officeLoop.setup_next ? (
+                      <p className="text-muted-foreground mt-1 text-xs leading-snug">
+                        hermes_ops: <strong>{officeLoop.setup_next.title}</strong>
+                        {officeLoop.setup_next.substep
+                          ? ` [${officeLoop.setup_next.substep}]`
+                          : ""}
+                        {officeLoop.setup_next.hint ? ` — ${officeLoop.setup_next.hint}` : ""}
+                      </p>
+                    ) : null}
+                    <ul className="hermes-checklist">
+                      {(officeLoop.steps || []).map((step) => (
+                        <li key={step.id} data-done={step.done ? "1" : "0"}>
+                          <span className="hermes-check-dot" />
+                          <div>
+                            <strong>{step.title}</strong>
+                            <small>{step.done ? "готово" : step.hint}</small>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                    {officeLoop.ui?.primary_cta ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-2 w-full"
+                        disabled={sending}
+                        onClick={() => {
+                          setPanelOpen(false);
+                          void sendText(officeLoop.ui!.primary_cta!.text);
+                        }}
+                      >
+                        {officeLoop.ui.primary_cta.title}
+                      </Button>
+                    ) : null}
+                    {officeLoop.kb_draft?.status === "draft" ? (
+                      <div className="mt-2 flex flex-col gap-2">
+                        <p className="text-xs text-muted-foreground">
+                          Черновик KB «{officeLoop.kb_draft.title}» — подтвердите, чтобы сохранить в базу.
+                        </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="w-full"
+                          disabled={sending}
+                          onClick={() => {
+                            void (async () => {
+                              setSending(true);
+                              setError("");
+                              try {
+                                const res = await apiKbDraftConfirm(token);
+                                if (!res.ok) {
+                                  setError("Не удалось сохранить черновик KB.");
+                                  return;
+                                }
+                                await refreshPanels();
+                                setLines((prev) => [
+                                  ...prev,
+                                  {
+                                    role: "assistant",
+                                    text: "База знаний обновлена — черновик сохранён. Следующий шаг: подключим инструменты.",
+                                  },
+                                ]);
+                              } catch {
+                                setError("Ошибка сохранения KB.");
+                              } finally {
+                                setSending(false);
+                              }
+                            })();
+                          }}
+                        >
+                          Подтвердить KB
+                        </Button>
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <p>Загружаю путь…</p>
+                )}
+              </section>
+
+              <section className="hx-card">
+                <header>
+                  <span>Поручения</span>
+                  <Badge variant="secondary">{agentTasks.length}</Badge>
+                </header>
+                {agentTasks.length ? (
+                  <ul className="hermes-checklist">
+                    {agentTasks.slice(0, 5).map((t) => (
+                      <li key={t.id} data-done={t.status === "completed" ? "1" : "0"}>
+                        <span className="hermes-check-dot" />
+                        <div>
+                          <strong>{t.trigger_kind}</strong>
+                          <small>
+                            {t.status} · {t.goal.slice(0, 80)}
+                          </small>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-muted-foreground text-sm">Пока нет сохранённых поручений.</p>
+                )}
+              </section>
+
               <section className="hx-card">
                 <header>
                   <span>Сетап</span>
@@ -1134,6 +1339,75 @@ export function HermesStage({ token }: { token: string }) {
               </section>
 
               <Separator />
+
+              <section className="hx-card">
+                <header>
+                  <span>Инструменты</span>
+                  <Badge variant="secondary">{toolkit?.tool_count ?? "…"}</Badge>
+                </header>
+                {toolkit ? (
+                  <>
+                    <div className="hx-tool-pillrow">
+                      <span data-ok={toolkit.ava?.ready ? "1" : "0"}>Ava {toolkit.ava?.ready ? "· ready" : "· setup"}</span>
+                      <span data-ok={toolkit.ava?.script_ready ? "1" : "0"}>
+                        Script {toolkit.ava?.script_ready ? "· ok" : "· —"}
+                      </span>
+                      <span data-ok={toolkit.health?.healthy ? "1" : "0"}>Health</span>
+                      <span data-ok={toolkit.setup?.complete ? "1" : "0"}>Setup</span>
+                    </div>
+                    <p className="text-muted-foreground text-sm">{toolkit.ava?.detail || toolkit.ava?.label || "Телефония Ava"}</p>
+                    <ul className="hermes-checklist hx-tool-list">
+                      {(toolkit.ava?.tools || []).slice(0, 8).map((tool) => (
+                        <li key={tool.id} data-done={tool.registered ? "1" : "0"}>
+                          <span className="hermes-check-dot" />
+                          <div>
+                            <strong>{tool.id}</strong>
+                            <small>{tool.description?.slice(0, 90) || "Ava tool"}</small>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                    {(toolkit.media?.tools || []).length > 0 && (
+                      <div className="hx-channel-row mt-2">
+                        {(toolkit.media?.tools || []).map((tool) => (
+                          <Button
+                            key={tool.id}
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            disabled={sending}
+                            onClick={() => {
+                              setPanelOpen(false);
+                              void sendText(
+                                tool.id === "generate_image"
+                                  ? "Сгенерируй картинку: светлый премиальный офис с ИИ-секретарём"
+                                  : `Используй инструмент ${tool.id}`,
+                              );
+                            }}
+                          >
+                            {tool.id === "generate_image" ? "Картинка" : tool.id.split(".").pop()}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+                    {(toolkit.connectors || []).length > 0 && (
+                      <ul className="hermes-checklist mt-2">
+                        {(toolkit.connectors || []).slice(0, 6).map((c) => (
+                          <li key={c.kind} data-done={c.ready || c.ok ? "1" : "0"}>
+                            <span className="hermes-check-dot" />
+                            <div>
+                              <strong>{c.label || c.kind}</strong>
+                              <small>{c.detail || (c.ready || c.ok ? "подключено" : "не готово")}</small>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                ) : (
+                  <p>Загружаю каталог tools…</p>
+                )}
+              </section>
 
               <section className="hx-card">
                 <header>

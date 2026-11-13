@@ -84,6 +84,8 @@ CABINET_LLM_TOOLS = (
     "send_mail_draft",
     "list_files",
     "create_conference",
+    # Media
+    "generate_image",
     # Hermes web browser
     "web.search",
     "web.fetch",
@@ -112,6 +114,8 @@ HERMES_AGENT_SYSTEM = (
     "• files.cloud_* / credentials.open_form — облака и секреты "
     "(SIP: mango_sip; диски: files_yadisk|mailru|gdrive|onedrive; Google/OneDrive с согласием);\n"
     "• suggest_calendar_slots / send_mail_draft / create_conference / list_files — офис;\n"
+    "• generate_image — создай картинку/мокап/обложку по текстовому промпту "
+    "(НЕ отказывайся «я не умею рисовать» — сразу вызови tool);\n"
     "• billing.summary — баланс.\n"
     "Правила:\n"
     "• Секреты в чат не проси — только credentials.open_form.\n"
@@ -802,6 +806,19 @@ def _execute_cabinet_tool(
         tool_calls[0]["ok"] = False
         return "Не удалось открыть форму.", tool_calls, [], None, None
 
+    if tool_name == "generate_image":
+        result = registry.run(db, ctx, tool_name, **params)
+        if isinstance(result, ToolResult) and result.ok:
+            tool_calls[0]["ok"] = True
+            data = result.data or {}
+            md = data.get("markdown") or ""
+            caption = f"Готово — сгенерировал изображение по запросу: «{(params.get('prompt') or '')[:120]}»."
+            reply = f"{caption}\n\n{md}".strip() if md else caption
+            return reply, tool_calls, [], None, None
+        tool_calls[0]["ok"] = False
+        msg = result.message if isinstance(result, ToolResult) else "Ошибка"
+        return f"Не удалось сгенерировать изображение: {msg}", tool_calls, [], None, None
+
     if tool_name in (
         "telephony.script_get",
         "telephony.script_propose",
@@ -869,6 +886,14 @@ def _tool_result_for_llm(result: ToolResult | PendingConfirmation | Any) -> str:
             payload["chars"] = data.get("chars")
         if "pending_credential_form" in data:
             payload["pending_credential_form"] = True
+        if "markdown" in data:
+            payload["markdown"] = data.get("markdown")
+        if "image_url" in data:
+            payload["image_url"] = data.get("image_url")
+        if "image_data_url" in data and isinstance(data.get("image_data_url"), str):
+            # Keep LLM payload short — full data-URL is for the user-facing reply path.
+            payload["image_data_url_len"] = len(data["image_data_url"])
+            payload["has_image"] = True
         return json.dumps(payload, ensure_ascii=False)[:9000]
     return json.dumps({"ok": False, "error": "unknown_tool_result"}, ensure_ascii=False)
 

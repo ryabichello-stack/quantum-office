@@ -151,7 +151,14 @@ def connector_config_for(db: Session, ctx: TenantContext, kind: str) -> dict[str
 
 
 def list_tenant_connector_readiness(db: Session, ctx: TenantContext) -> list[dict[str, Any]]:
-    """Operational readiness for this tenant, beyond a reachable shared service."""
+    """Operational readiness for this tenant, beyond a reachable shared service.
+
+    Aligns with PRODUCT_LOOP + tools_first: when upstream reports
+    ``creds_policy=tools_first``, owner opt-in (``enabled``) + reachable probe
+    is enough for hermes_ops. Live SMTP/CalDAV/OAuth can arrive later via vault;
+    stub/dry_run still counts as usable for rehearsal. Files still need a cloud
+    vault token. Strict provider checks apply only when creds_policy is not tools_first.
+    """
     from app.services.files_cloud import cloud_status
 
     items = []
@@ -163,36 +170,54 @@ def list_tenant_connector_readiness(db: Session, ctx: TenantContext) -> list[dic
         except Exception:
             probe = None
         health = ((probe.data or {}).get("health") or {}) if probe else {}
-        service_ready = bool(item.get("enabled") and probe and probe.ok and probe.configured)
-        if kind == "mail":
-            service_ready = service_ready and bool(health.get("smtp_configured"))
-        elif kind == "calendar":
-            service_ready = service_ready and not bool(health.get("stub_mode"))
-        elif kind == "conference":
-            default = health.get("default_provider")
-            service_ready = service_ready and any(
-                p.get("provider") == default and p.get("configured")
-                for p in health.get("providers") or []
-            )
+        creds_policy = str(health.get("creds_policy") or "").strip().lower()
+        enabled = bool(item.get("enabled"))
+        service_ready = bool(enabled and probe and probe.ok and probe.configured)
+
         if kind == "files":
             try:
                 tenant_authorized = int(cloud_status(db, ctx).get("ready_count") or 0) > 0
             except Exception:
                 tenant_authorized = False
+        elif creds_policy == "tools_first":
+            # Opt-in is the tenant authorization for shared upstream.
+            tenant_authorized = enabled or bool((probe.data or {}).get("tenant_account_verified"))
         else:
+            if kind == "mail":
+                service_ready = service_ready and bool(health.get("smtp_configured"))
+            elif kind == "calendar":
+                service_ready = service_ready and not bool(health.get("stub_mode"))
+            elif kind == "conference":
+                default = health.get("default_provider")
+                service_ready = service_ready and any(
+                    p.get("provider") == default and p.get("configured")
+                    for p in health.get("providers") or []
+                )
             tenant_authorized = bool((probe.data or {}).get("tenant_account_verified")) if probe else False
+
         usable = bool(service_ready and tenant_authorized)
+        reason = None
+        if not usable:
+            if not enabled:
+                reason = "not_enabled"
+            elif probe and probe.error:
+                reason = probe.error
+            elif kind == "files":
+                reason = "cloud_vault_required"
+            else:
+                reason = "account_or_provider_not_configured"
         items.append({
             "kind": kind,
-            "enabled": bool(item.get("enabled")),
+            "enabled": enabled,
             "service_reachable": bool(probe and probe.ok),
             "service_ready": service_ready,
             "tenant_authorized": tenant_authorized,
             "usable": usable,
+            "creds_policy": creds_policy or None,
             "providers": [
                 {"name": p.get("provider") or p.get("source"), "configured": bool(p.get("configured"))}
                 for p in health.get("providers") or []
             ],
-            "reason": None if usable else (probe.error if probe and probe.error else "account_or_provider_not_configured"),
+            "reason": reason,
         })
     return items

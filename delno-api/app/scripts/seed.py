@@ -17,6 +17,7 @@ DEFAULT_FLAGS = (
     "phone",
     "outbound_calls",
     "experimental_operator",
+    "hermes_nous_runtime",
 )
 
 

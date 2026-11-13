@@ -10,6 +10,7 @@ from typing import Any
 MAX_ATTACHMENTS = 4
 MAX_IMAGE_BYTES = 4 * 1024 * 1024
 MAX_FILE_BYTES = 8 * 1024 * 1024
+MAX_VIDEO_BYTES = 16 * 1024 * 1024
 
 IMAGE_TYPES = frozenset(
     {
@@ -18,6 +19,14 @@ IMAGE_TYPES = frozenset(
         "image/png",
         "image/webp",
         "image/gif",
+    }
+)
+
+VIDEO_TYPES = frozenset(
+    {
+        "video/mp4",
+        "video/webm",
+        "video/quicktime",
     }
 )
 
@@ -103,6 +112,34 @@ def normalize_attachments(raw_items: list[dict[str, Any]] | None) -> dict[str, A
             content_type = "image/jpeg"
 
         ext = _ext(filename)
+        is_video = content_type in VIDEO_TYPES or ext in {".mp4", ".webm", ".mov"}
+        if is_video:
+            if len(data) > MAX_VIDEO_BYTES:
+                return {"ok": False, "error": "video_too_large", "items": []}
+            transcript = ""
+            try:
+                from app.services.stt import transcribe_audio
+
+                transcript, _stt_err = transcribe_audio(data, filename=filename)
+            except Exception:  # noqa: BLE001
+                transcript = ""
+            note = (
+                f"--- видео: {filename} ({content_type}, {len(data)} байт) ---\n"
+                + (f"Расшифровка звука:\n{transcript.strip()}\n" if (transcript or "").strip() else "(звук не распознан; опишите, что сделать с роликом)")
+            )
+            text_chunks.append(note)
+            items.append(
+                {
+                    "filename": filename,
+                    "content_type": content_type or "video/mp4",
+                    "kind": "video",
+                    "size": len(data),
+                    "text_excerpt": (transcript or "")[:2000],
+                }
+            )
+            labels.append(f"🎬 {filename}")
+            continue
+
         is_image = content_type in IMAGE_TYPES or ext in {".jpg", ".jpeg", ".png", ".webp", ".gif"}
         if is_image:
             if len(data) > MAX_IMAGE_BYTES:
@@ -136,26 +173,53 @@ def normalize_attachments(raw_items: list[dict[str, Any]] | None) -> dict[str, A
             return {"ok": False, "error": "unsupported_type", "items": []}
 
         excerpt = ""
+        extract_method = "utf8"
         if content_type in TEXT_TYPES or ext in {".txt", ".md", ".csv", ".json", ".html", ".htm"}:
             try:
                 excerpt = data.decode("utf-8", errors="replace")
             except Exception:  # noqa: BLE001
                 excerpt = ""
-        if not excerpt:
-            # Best-effort: still try utf-8 for unknown docs; PDF/DOCX need brain later
+        # PDF/DOCX/XLSX — reuse onboarding brain extract (PRODUCT_LOOP attachments).
+        if (not excerpt.strip() or ext in {".pdf", ".docx", ".xlsx"}) and ext in {
+            ".pdf",
+            ".docx",
+            ".xlsx",
+        }:
+            try:
+                from app.services.onboarding_upload import _extract_via_brain
+
+                extracted = _extract_via_brain(
+                    data,
+                    filename=filename,
+                    content_type=content_type or "application/octet-stream",
+                )
+                if extracted.get("ok") and (extracted.get("text") or "").strip():
+                    excerpt = str(extracted.get("text") or "")
+                    extract_method = str(extracted.get("method") or "brain")
+                elif extracted.get("error"):
+                    extract_method = f"brain_error:{extracted.get('error')}"
+            except Exception as exc:  # noqa: BLE001
+                extract_method = f"brain_exc:{type(exc).__name__}"
+        if not excerpt.strip():
+            # Best-effort utf-8 fallback for unknown docs
             try:
                 excerpt = data.decode("utf-8", errors="replace")
+                extract_method = "utf8_fallback"
             except Exception:  # noqa: BLE001
                 excerpt = ""
         excerpt = excerpt.strip()
+        # Drop PDF binary garbage that looks like raw objects, not prose.
+        if extract_method.startswith("utf8") and ext == ".pdf" and "obj" in excerpt[:80].lower():
+            excerpt = ""
         if len(excerpt) > 12000:
             excerpt = excerpt[:12000] + "\n…[обрезано]"
         if excerpt:
-            text_chunks.append(f"--- файл: {filename} ---\n{excerpt}")
+            text_chunks.append(f"--- файл: {filename} ({extract_method}) ---\n{excerpt}")
         else:
             text_chunks.append(
-                f"--- файл: {filename} ({content_type}, {len(data)} байт) ---\n"
-                "(бинарный документ: текст не извлечён; опишите, что с ним сделать)"
+                f"--- файл: {filename} ({content_type}, {len(data)} байт, {extract_method}) ---\n"
+                "(бинарный документ: текст не извлечён; опишите, что с ним сделать "
+                "или пришлите TXT/DOCX)"
             )
         items.append(
             {

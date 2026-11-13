@@ -115,4 +115,24 @@ def create_lead_record(
             "party_enriched": enrich_result.get("enriched"),
         },
     )
-    return lead, {"telegram_notified": notified, "enrichment": enrich_result}
+    hermes_queue: dict | None = None
+    try:
+        from app.services.hermes_nous.events_dispatch import on_lead_created
+
+        hermes_queue = on_lead_created(
+            db,
+            tenant_id=ctx.tenant_id,
+            lead_id=str(lead.id),
+            payload={
+                "source": lead.source,
+                "channel": channel or source,
+                "name": lead.name,
+            },
+        )
+    except Exception:  # noqa: BLE001
+        hermes_queue = None
+    return lead, {
+        "telegram_notified": notified,
+        "enrichment": enrich_result,
+        "hermes_nous": hermes_queue,
+    }

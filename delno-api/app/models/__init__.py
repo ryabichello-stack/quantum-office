@@ -1,4 +1,5 @@
 from app.models.cms import CmsPage, CmsRevision
+from app.models.agent_task import AgentRun, AgentStep, AgentTask
 from app.models.audit import AuditLog
 from app.models.call_job import CallJob
 from app.models.call_session import CallSession
@@ -18,6 +19,9 @@ from app.models.user import User
 __all__ = [
     "CmsPage",
     "CmsRevision",
+    "AgentTask",
+    "AgentRun",
+    "AgentStep",
     "AuditLog",
     "CallJob",
     "CallSession",

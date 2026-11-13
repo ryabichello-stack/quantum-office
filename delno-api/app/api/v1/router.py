@@ -8,6 +8,7 @@ from app.api.v1 import (
     channels,
     connectors,
     health,
+    hermes_nous,
     leads,
     mcp,
     operator,
@@ -35,5 +36,6 @@ router.include_router(telephony.router)
 router.include_router(connectors.router)
 router.include_router(mcp.router)
 router.include_router(mcp.hermes_router)
+router.include_router(hermes_nous.router)
 router.include_router(leads.router)
 router.include_router(operator.router)

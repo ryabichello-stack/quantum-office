@@ -160,3 +160,54 @@ def test_hermes_setup_and_health(db):
     assert health["ok"] is True
     assert "+79699665899" in health["telephony"]["active_dids"]
     assert health["message_ru"]
+
+
+def test_health_skips_partial_login_when_sip_registered(db, monkeypatch):
+    """Vault login without '/' must not unhealthy the office if Mango is Registered."""
+    tenant = _tenant(db, slug="sip-partial-ok")
+    ctx = TenantContext(tenant_id=tenant.id, tenant_slug=tenant.slug, role="tenant_owner")
+    phone_provision.provision_phone(db, ctx, e164="+79991234567")
+    settings = dict(tenant.settings or {})
+    settings["secrets"] = {
+        "mango_sip": {
+            "login": "gask",
+            "password": "x",
+            "updated_at": "2026-11-13T00:00:00+00:00",
+        }
+    }
+    tenant.settings = settings
+    db.commit()
+
+    monkeypatch.setattr(
+        "app.services.sip_probe.probe_registration",
+        lambda: {"ok": True, "status": "registered", "reachable": True, "message_ru": "Registered"},
+    )
+    health = hermes_ops.office_health_report(db, ctx)
+    codes = [a.get("code") for a in (health.get("alerts") or [])]
+    assert "phone.sip_login_partial" not in codes
+    assert health.get("healthy") is True
+
+
+def test_health_partial_login_when_sip_not_registered(db, monkeypatch):
+    tenant = _tenant(db, slug="sip-partial-bad")
+    ctx = TenantContext(tenant_id=tenant.id, tenant_slug=tenant.slug, role="tenant_owner")
+    phone_provision.provision_phone(db, ctx, e164="+79991234568")
+    settings = dict(tenant.settings or {})
+    settings["secrets"] = {
+        "mango_sip": {
+            "login": "gask",
+            "password": "x",
+            "updated_at": "2026-11-13T00:00:00+00:00",
+        }
+    }
+    tenant.settings = settings
+    db.commit()
+
+    monkeypatch.setattr(
+        "app.services.sip_probe.probe_registration",
+        lambda: {"ok": False, "status": "rejected", "reachable": True, "message_ru": "Rejected"},
+    )
+    health = hermes_ops.office_health_report(db, ctx)
+    codes = [a.get("code") for a in (health.get("alerts") or [])]
+    assert "phone.sip_login_partial" in codes
+    assert health.get("healthy") is False

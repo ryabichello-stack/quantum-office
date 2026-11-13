@@ -51,6 +51,9 @@ services:
     restart: unless-stopped
     networks:
       - delno-internal
+    # One hostname per entry. Do NOT join names with commas — Docker treats the
+    # whole string as a single hostname and SIP probe (ASTERISK_SIP_APPLY_URL)
+    # breaks with «Name or service not known».
     extra_hosts:
       - "host.docker.internal:host-gateway"
     env_file:

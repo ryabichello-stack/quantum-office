@@ -167,3 +167,97 @@ export function apiChannelQrStart(token: string, channel_type: string, label?: s
     body: JSON.stringify({ channel_type, label }),
   });
 }
+
+/** Nous Hermes product loop (P1+) — available even when runtime flag is off. */
+export type OfficeLoopStep = {
+  id: string;
+  title: string;
+  done: boolean;
+  hint: string;
+};
+
+export type OfficeLoopStatus = {
+  ok: boolean;
+  phase: string;
+  steps: OfficeLoopStep[];
+  next_step?: OfficeLoopStep;
+  /** Concrete hermes_ops checklist item (source of truth for «что дальше»). */
+  setup_next?: {
+    id: string;
+    title: string;
+    hint?: string;
+    substep?: string | null;
+    detail?: Record<string, unknown> | null;
+  } | null;
+  kb_ok?: boolean;
+  kb_draft?: { title?: string; body?: string; status?: string; source_url?: string } | null;
+  connectors_ready_count?: number;
+  ui?: { headline?: string; primary_cta?: { title: string; text: string } };
+  setup?: { setup_complete?: boolean; message_ru?: string };
+};
+
+export type HermesNousStatus = {
+  ok: boolean;
+  enabled: boolean;
+  engine?: string;
+  pin?: string;
+  office_loop?: OfficeLoopStatus | null;
+  runtime?: Record<string, unknown> | null;
+};
+
+export type AgentTaskItem = {
+  id: string;
+  goal: string;
+  trigger_kind: string;
+  status: string;
+  hermes_cron_id?: string | null;
+  created_at?: string | null;
+};
+
+export function apiHermesNousStatus(token: string) {
+  return apiFetch<HermesNousStatus>("/v1/hermes-nous/status", token);
+}
+
+export function apiOfficeLoop(token: string) {
+  return apiFetch<OfficeLoopStatus>("/v1/hermes-nous/office-loop", token);
+}
+
+export function apiKbDraftConfirm(token: string) {
+  return apiFetch<{ ok: boolean; committed?: boolean }>("/v1/hermes-nous/kb-draft/confirm", token, {
+    method: "POST",
+  });
+}
+
+export function apiAgentTasks(token: string, limit = 20) {
+  return apiFetch<{ ok: boolean; items: AgentTaskItem[] }>(`/v1/hermes-nous/tasks?limit=${limit}`, token);
+}
+
+export function apiAgentTaskCreate(token: string, goal: string, trigger_kind = "manual") {
+  return apiFetch<{ ok: boolean; task: AgentTaskItem }>("/v1/hermes-nous/tasks", token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ goal, trigger_kind }),
+  });
+}
+
+export type HermesToolkit = {
+  ok: boolean;
+  tool_count?: number;
+  setup?: { complete?: boolean; message_ru?: string };
+  health?: { healthy?: boolean; message_ru?: string; alerts?: { code?: string; message_ru?: string; severity?: string; fix?: string }[] };
+  connectors?: { kind: string; ready?: boolean; label?: string; detail?: string; ok?: boolean }[];
+  ava?: {
+    label?: string;
+    ready?: boolean;
+    script_ready?: boolean;
+    detail?: string;
+    status?: { script_ready?: boolean; active_dids?: number; sip_configured?: boolean };
+    tools?: { id: string; title: string; description?: string; registered?: boolean }[];
+  };
+  media?: { tools?: { id: string; title: string; description?: string }[] };
+  tools?: { id: string; description?: string; confirmation?: string }[];
+};
+
+export function apiHermesToolkit(token: string) {
+  return apiFetch<HermesToolkit>("/v1/hermes-nous/toolkit", token);
+}

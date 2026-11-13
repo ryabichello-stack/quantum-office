@@ -457,6 +457,11 @@ export function apiTenantSecretSave(
       message_ru?: string;
       probe?: { ok?: boolean; message_ru?: string; next_actions?: { title: string; text: string }[] };
     };
+    channel_connect?: {
+      ok?: boolean;
+      error?: string;
+      account?: { bot_username?: string; status?: string; type?: string };
+    };
   }>("/v1/tenant/vault", token, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

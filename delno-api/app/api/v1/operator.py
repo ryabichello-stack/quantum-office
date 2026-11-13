@@ -1,4 +1,6 @@
+from datetime import datetime, timedelta
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field
 
@@ -44,6 +46,710 @@ class OperatorConfirmRequest(BaseModel):
     params: dict = Field(default_factory=dict)
 
 
+def _wants_media_generation(message: str) -> bool:
+    """Route image/video generation asks to DIY tools (reliable OpenAI Images path).
+
+    Match contiguous phrases and adverb-interrupted ones
+    («сгенерируй простую картинку») — otherwise Nous onboarding pack has no
+    generate_image and the owner gets a dead-end reply.
+    """
+    low = (message or "").lower()
+    markers = (
+        "generate_image",
+        "сгенерируй картин",
+        "сгенерируй изображ",
+        "создай картин",
+        "нарисуй",
+        "сгенерируй фото",
+        "сделай картин",
+        "сделай изображ",
+        "generate an image",
+        "generate image",
+        "draw me",
+        "create an image",
+        "create a picture",
+        "draw a",
+    )
+    if any(m in low for m in markers):
+        return True
+    verbs = (
+        "сгенерируй",
+        "сгенерировать",
+        "создай",
+        "нарисуй",
+        "сделай",
+        "generate",
+        "draw",
+    )
+    nouns = (
+        "картин",
+        "изображ",
+        "фото",
+        "image",
+        "picture",
+        "illustration",
+        "mockup",
+        "мокап",
+        "обложк",
+    )
+    return any(v in low for v in verbs) and any(n in low for n in nouns)
+
+
+def _wants_calendar_slots(message: str) -> bool:
+    """Clear «предложи слоты» intents — DIY, do not trust Nous to call the tool."""
+    low = (message or "").lower()
+    has_cal = any(
+        m in low
+        for m in (
+            "слот",
+            "календар",
+            "свободн",
+            "встреч",
+            "meeting slot",
+            "calendar slot",
+        )
+    )
+    has_ask = any(
+        m in low
+        for m in (
+            "предлож",
+            "найди",
+            "покажи",
+            "подбери",
+            "suggest",
+            "свободные",
+        )
+    )
+    return has_cal and has_ask
+
+
+def _calendar_slot_start_iso(message: str) -> str:
+    """Best-effort start ISO in Europe/Moscow from owner wording."""
+    low = (message or "").lower()
+    tz = ZoneInfo("Europe/Moscow")
+    now = datetime.now(tz)
+    day = now.date()
+    if "послезавтра" in low:
+        day = (now + timedelta(days=2)).date()
+    elif "завтра" in low:
+        day = (now + timedelta(days=1)).date()
+    hour = 10
+    for h, keys in (
+        (9, ("утром", "9:", "09:")),
+        (12, ("в обед", "12:")),
+        (15, ("днём", "днев", "15:")),
+        (18, ("вечером", "18:")),
+    ):
+        if any(k in low for k in keys):
+            hour = h
+            break
+    return datetime(day.year, day.month, day.day, hour, 0, tzinfo=tz).isoformat()
+
+
+def _calendar_duration_min(message: str) -> int:
+    low = (message or "").lower()
+    if "30" in low or "полчас" in low:
+        return 30
+    if "2 час" in low or "два час" in low:
+        return 120
+    return 60
+
+
+def _wants_conference_create(message: str) -> bool:
+    """«создай видеовстречу / Telemost» — DIY create_conference (stub-capable)."""
+    low = (message or "").lower()
+    markers = (
+        "видеовстреч",
+        "видеоконференц",
+        "конференц",
+        "telemost",
+        "телемост",
+        "google meet",
+        "zoom",
+        "вкс",
+        "create_conference",
+        "create a meeting",
+    )
+    create = any(
+        m in low
+        for m in (
+            "создай",
+            "создать",
+            "организуй",
+            "организовать",
+            "сделай встреч",
+            "create conference",
+            "create a meeting",
+            "schedule a call",
+        )
+    )
+    return create and any(m in low for m in markers)
+
+
+def _conference_provider(message: str) -> str:
+    low = (message or "").lower()
+    if "zoom" in low:
+        return "zoom"
+    if "meet" in low or "google" in low:
+        return "google_meet"
+    if "teams" in low:
+        return "teams"
+    if "jitsi" in low:
+        return "jitsi"
+    # Telemost / default
+    return "yandex"
+
+
+def _conference_title(message: str) -> str:
+    import re
+
+    m = re.search(r"названи[ея]\s+(.+)$", message or "", re.I)
+    if m:
+        return m.group(1).strip(" .,\"'«»")[:200] or "Встреча DELNO"
+    m = re.search(r"[«\"]([^»\"]{3,120})[»\"]", message or "")
+    if m:
+        return m.group(1).strip()[:200]
+    return "Встреча DELNO"
+
+
+def _wants_office_health(message: str) -> bool:
+    low = (message or "").lower()
+    return any(
+        m in low
+        for m in (
+            "hermes.health",
+            "office.health",
+            "статус офиса",
+            "здоровье офиса",
+            "office health",
+            "проверь офис",
+            "health офиса",
+            "регистраци",  # «проверь регистрацию SIP»
+            "sip registered",
+            "проверь sip",
+            "статус sip",
+        )
+    )
+
+
+def _wants_phones_list(message: str) -> bool:
+    low = (message or "").lower()
+    asks = any(
+        m in low
+        for m in (
+            "phones.list",
+            "телефонн",
+            "мои номер",
+            "номера did",
+            "list phones",
+            "какие номер",
+            "покажи номер",
+            "перечисли номер",
+            "список номер",
+        )
+    )
+    phoneish = any(m in low for m in ("телефон", "номер", "did", "phones", "линии"))
+    return asks or (
+        phoneish
+        and any(m in low for m in ("перечисл", "покажи", "список", "какие", "list"))
+    )
+
+
+def _wants_calls_list(message: str) -> bool:
+    """«покажи звонки / история звонков» — DIY calls.list (not phones.list / dial)."""
+    low = (message or "").lower()
+    if any(m in low for m in ("позвони", "набери", "набрать", "calls.dial", "dial ")):
+        return False
+    if "calls.list" in low:
+        return True
+    callish = any(
+        m in low
+        for m in (
+            "звонк",
+            "call history",
+            "call log",
+            "recent calls",
+            "list calls",
+        )
+    )
+    ask = any(
+        m in low
+        for m in (
+            "покажи",
+            "перечисл",
+            "список",
+            "какие",
+            "история",
+            "последн",
+            "list",
+            "recent",
+        )
+    )
+    return callish and ask
+
+
+def _wants_telephony_script(message: str) -> bool:
+    """Ava script get/propose — DIY so Nous cannot skip telephony.script_* tools."""
+    low = (message or "").lower()
+    if "telephony.script_get" in low or "telephony.script_propose" in low:
+        return True
+    scriptish = any(
+        m in low
+        for m in (
+            "сценари",
+            "скрипт секретар",
+            "скрипт ava",
+            "скрипт авы",
+            "ava script",
+            "secretary script",
+        )
+    )
+    ask = any(
+        m in low
+        for m in (
+            "покажи",
+            "какой",
+            "какая",
+            "предложи",
+            "сгенерир",
+            "создай",
+            "надиктуй",
+            "готов",
+            "есть ли",
+            "проверь",
+            "сохрани",
+            "сохранить",
+            "запиши",
+            "get",
+            "propose",
+            "save",
+        )
+    )
+    # Avoid stealing generic «создай конференцию» / CRM — need scriptish.
+    return scriptish and ask
+
+
+def _telephony_script_wants_propose(message: str) -> bool:
+    low = (message or "").lower()
+    if "telephony.script_propose" in low:
+        return True
+    if _telephony_script_wants_save(message):
+        return False
+    return any(
+        m in low
+        for m in (
+            "предложи",
+            "сгенерир",
+            "создай сценари",
+            "надиктуй",
+            "черновик",
+            "propose",
+        )
+    )
+
+
+def _telephony_script_wants_save(message: str) -> bool:
+    low = (message or "").lower()
+    if "telephony.script_save" in low:
+        return True
+    return any(
+        m in low
+        for m in (
+            "сохрани сценари",
+            "сохранить сценари",
+            "сохрани скрипт",
+            "запиши сценари",
+            "save script",
+            "script_save",
+        )
+    )
+
+
+def _wants_get_knowledge(message: str) -> bool:
+    low = (message or "").lower()
+    kb = any(
+        m in low
+        for m in (
+            "get_knowledge",
+            "базе знаний",
+            "база знаний",
+            "базу знаний",
+            "knowledge base",
+            "в kb",
+            "из kb",
+            "что известно о компан",
+            "что в баз",
+        )
+    )
+    ask = any(
+        m in low
+        for m in (
+            "найди",
+            "поиск",
+            "кратко",
+            "расскажи",
+            "что ",
+            "покажи",
+            "get_knowledge",
+            "про ",
+        )
+    )
+    return kb and ask
+
+
+def _wants_files_cloud_status(message: str) -> bool:
+    low = (message or "").lower()
+    # Imperative connect («подключи / настрой») → vault form, not status DIY.
+    # Past/participle «подключены» is status and must stay here.
+    if any(
+        m in low
+        for m in (
+            "подключи",
+            "подключить",
+            "настрой",
+            "настроить",
+            "открой форму",
+            "пришли форму",
+        )
+    ):
+        return False
+    return any(
+        m in low
+        for m in (
+            "files.cloud_status",
+            "какие облак",
+            "какие диск",
+            "облака подключен",
+            "облако подключен",
+            "статус облак",
+            "cloud status",
+            "cloud disks",
+        )
+    ) and any(
+        m in low
+        for m in (
+            "облак",
+            "диск",
+            "yadisk",
+            "cloud",
+            "drive",
+            "onedrive",
+            "mail.ru",
+            "файлы",
+            "files.cloud",
+            "яндекс",
+        )
+    )
+
+
+def _wants_hermes_capabilities(message: str) -> bool:
+    low = (message or "").lower()
+    return any(
+        m in low
+        for m in (
+            "hermes.capabilities",
+            "office.connectors",
+            "какие коннектор",
+            "готовые коннектор",
+            "какие тул",
+            "какие инструмент",
+            "что подключено",
+            "capabilities",
+            "готовность подключен",
+            "статус коннектор",
+        )
+    )
+
+
+def _wants_billing_summary(message: str) -> bool:
+    low = (message or "").lower()
+    return any(
+        m in low
+        for m in (
+            "billing.summary",
+            "баланс биллинг",
+            "баланс токен",
+            "покажи баланс",
+            "billing",
+            "тариф",
+            "сколько токен",
+            "usage summary",
+        )
+    ) and any(
+        m in low
+        for m in (
+            "баланс",
+            "биллинг",
+            "billing",
+            "тариф",
+            "токен",
+            "usage",
+            "summary",
+            "покажи",
+            "показать",
+        )
+    )
+
+
+def _wants_crm_funnel(message: str) -> bool:
+    low = (message or "").lower()
+    return any(
+        m in low
+        for m in (
+            "crm.funnel",
+            "crm воронк",
+            "воронк",
+            "воронку",
+            "funnel",
+            "crm статус",
+        )
+    ) and any(
+        m in low
+        for m in (
+            "покажи",
+            "показать",
+            "кратко",
+            "статус",
+            "воронк",
+            "funnel",
+            "crm",
+        )
+    )
+
+
+def _wants_mail_draft(message: str) -> bool:
+    """«отправь письмо / черновик» with a clear recipient — DIY send_mail_draft."""
+    low = (message or "").lower()
+    import re
+
+    has_addr = bool(re.search(r"[\w.+-]+@[\w.-]+\.\w+", message or ""))
+    has_mail = any(
+        m in low
+        for m in (
+            "письм",
+            "email",
+            "e-mail",
+            "черновик письм",
+            "send_mail",
+            "отправь на",
+        )
+    )
+    has_send = any(
+        m in low
+        for m in (
+            "отправь",
+            "отправ",
+            "написать",
+            "напиши",
+            "send ",
+            "черновик",
+        )
+    )
+    return has_addr and has_mail and has_send
+
+
+def _mail_draft_fields(message: str) -> dict[str, str]:
+    import re
+
+    text = message or ""
+    addr_m = re.search(r"([\w.+-]+@[\w.-]+\.\w+)", text)
+    to = addr_m.group(1) if addr_m else ""
+    subj = ""
+    body = ""
+    sm = re.search(r"тем[ае]\s+(.+?)(?:\s+тел[оа]\b|$)", text, re.I)
+    if sm:
+        subj = sm.group(1).strip(" .,\"'«»")[:200]
+    bm = re.search(r"тел[оа]\s+(.+)$", text, re.I)
+    if bm:
+        body = bm.group(1).strip()[:4000]
+    if not subj:
+        subj = "Сообщение от Hermes"
+    if not body:
+        body = text.strip()[:2000] or "—"
+    return {"to": to, "subject": subj, "body": body}
+
+
+# hermes_ops checklist id → vault form kind (only when the mapping is unambiguous).
+_SETUP_NEXT_TO_FORM_KIND: dict[str, str] = {
+    "phone": "mango_sip",
+    "telegram": "telegram_bot",
+    "max": "max_bot",
+    "files": "files_yadisk",
+}
+
+
+def _asks_setup_progress(message_low: str) -> bool:
+    """Owner asks «what's next» / continue office setup — not a post-save status ping."""
+    return any(
+        m in message_low
+        for m in (
+            "что дальше",
+            "следующий шаг",
+            "что сейчас по сетап",
+            "что по сетап",
+            "продолжим",
+            "продолжить сетап",
+            "продолжить настройк",
+            "давай дальше",
+            "давайте дальше",
+            "настроим офис",
+            "настроить офис",
+            "статус сетап",
+        )
+    )
+
+
+def _form_kind_for_setup_next(
+    setup_next_id: str | None,
+    setup_substep: str | None,
+) -> str | None:
+    """Vault kind for the current hermes_ops step, or None when tools (not form) are next."""
+    sid = str(setup_next_id or "")
+    mapped = _SETUP_NEXT_TO_FORM_KIND.get(sid)
+    if not mapped:
+        return None
+    # Phone: form only while SIP vault empty. need_did / need_reg → Hermes tools.
+    if sid == "phone" and setup_substep not in (None, "", "need_sip"):
+        return None
+    return mapped
+
+
+def _credential_form_kind_from_message(
+    message: str,
+    *,
+    setup_next_id: str | None = None,
+    setup_substep: str | None = None,
+) -> str | None:
+    """Map owner intent → vault form kind. Secrets never belong in chat text.
+
+    Aligns with PRODUCT_LOOP: credentials.open_form must reach the cabinet as
+    pending_credential_form. Nous text-only replies cannot surface the card, so
+    the API opens the form when intent (or the office-loop CTA) is clear.
+    Do not over-match generic «подключи …» — that would open the wrong vault.
+    After SIP is saved (substep need_did / need_reg) do not reopen mango_sip
+    unless the owner explicitly asks for the form.
+    """
+    low = (message or "").lower()
+    wants_form = (
+        "credentials.open_form" in low
+        or "открой форму" in low
+        or "открой безопасную форму" in low
+        or "пришли форму" in low
+    )
+    if wants_form:
+        if "yadisk" in low or "яндекс" in low:
+            return "files_yadisk"
+        if "mail.ru" in low or "mailru" in low:
+            return "files_mailru"
+        if "gdrive" in low or "google drive" in low or "гугл диск" in low:
+            return "files_gdrive"
+        if "onedrive" in low or "one drive" in low:
+            return "files_onedrive"
+        if "sip" in low or "mango" in low:
+            return "mango_sip"
+        if "telegram" in low or "телеграм" in low or "botfather" in low:
+            return "telegram_bot"
+        if "max_bot" in low or "макс" in low or (setup_next_id == "max" and "max" in low):
+            return "max_bot"
+        if "телефон" in low:
+            return "mango_sip"
+        # CTA / open_form without kind → use hermes_ops next step when unambiguous.
+        return _form_kind_for_setup_next(setup_next_id, setup_substep)
+    # Do NOT match post-save follow-ups («SIP сохранён…») — those must reach Hermes/DIY
+    # for status, not reopen the vault card in a loop. Bare «что дальше» is handled below.
+    if any(
+        x in low
+        for x in (
+            "сохранён",
+            "сохранен",
+            "проверь регистрац",
+            "телефон настроен",
+            "registered",
+        )
+    ):
+        return None
+    # PRODUCT_LOOP: «что дальше / настроим офис» on a vault step → open the form
+    # instead of a Nous text waffle that cannot surface CredentialFormCard.
+    progress_kind = _form_kind_for_setup_next(setup_next_id, setup_substep)
+    if progress_kind and _asks_setup_progress(low):
+        return progress_kind
+    # Only auto-open SIP while vault is still empty (need_sip). Later micro-steps
+    # are DID provision / registration — Hermes tools, not the form.
+    if setup_next_id == "phone" and (setup_substep in (None, "", "need_sip")) and any(
+        m in low
+        for m in (
+            "sip",
+            "mango",
+            "телефон",
+            "did",
+            "линию",
+            "линия",
+            "телефони",
+            "настроить: телефон",
+        )
+    ):
+        return "mango_sip"
+    # Messenger / files vault steps — clear connect intent opens the form
+    # (Nous cannot surface CredentialFormCard).
+    # Do NOT use bare «подключ» — it matches status «подключены».
+    connectish = any(
+        m in low
+        for m in (
+            "подключи",
+            "подключить",
+            "подключим",
+            "подключение",
+            "настрой",
+            "настроить",
+            "открой",
+            "пришли",
+            "токен",
+            "botfather",
+            "подключить:",
+            "настроить:",
+        )
+    )
+    if connectish or setup_next_id == "telegram":
+        if any(m in low for m in ("telegram", "телеграм", "tg bot", "тг бот")):
+            return "telegram_bot"
+    if connectish or setup_next_id == "max":
+        if any(m in low for m in ("max_bot", "макс бот", "бот max", "бот макс")) or (
+            setup_next_id == "max" and ("max" in low or "макс" in low)
+        ):
+            return "max_bot"
+    # Status inventory («какие облака подключены») → DIY, never vault form —
+    # even when setup_next is still files.
+    if _wants_files_cloud_status(message):
+        return None
+    # Files / cloud disks — connect intent opens vault even after setup_complete
+    # (conduct phase still needs CredentialFormCard; Nous cannot show it).
+    cloudish = any(
+        m in low
+        for m in (
+            "файл",
+            "диск",
+            "yadisk",
+            "яндекс",
+            "облак",
+            "mail.ru",
+            "gdrive",
+            "onedrive",
+            "google",
+            "гугл",
+            "drive",
+        )
+    )
+    if (connectish or setup_next_id == "files") and cloudish:
+        if "mail.ru" in low or "mailru" in low:
+            return "files_mailru"
+        if "gdrive" in low or "google" in low or "гугл" in low:
+            return "files_gdrive"
+        if "onedrive" in low:
+            return "files_onedrive"
+        return "files_yadisk"
+    return None
+
+
 @router.post("/chat")
 def operator_chat(
     body: OperatorChatRequest,
@@ -55,6 +761,652 @@ def operator_chat(
     message = (body.message or "").strip()
     if not message and not attachments:
         raise HTTPException(status_code=422, detail="message_or_attachment_required")
+
+    # Attachments + media/calendar/conference intents stay on DIY.
+    prefer_diy = (
+        bool(attachments)
+        or _wants_media_generation(message)
+        or _wants_calendar_slots(message)
+        or _wants_conference_create(message)
+        or _wants_mail_draft(message)
+        or _wants_office_health(message)
+        or _wants_crm_funnel(message)
+        or _wants_phones_list(message)
+        or _wants_calls_list(message)
+        or _wants_telephony_script(message)
+        or _wants_billing_summary(message)
+        or _wants_get_knowledge(message)
+        or _wants_hermes_capabilities(message)
+        or _wants_files_cloud_status(message)
+    )
+
+    # Vault forms must reach the cabinet as pending_credential_form. Nous text-only
+    # runs cannot surface the UI card — open the form server-side when intent is clear.
+    try:
+        from app.services.hermes_nous.onboarding import get_office_loop
+
+        loop_preview = get_office_loop(db, ctx)
+        sn = (loop_preview.get("setup_next") or {}) if isinstance(loop_preview, dict) else {}
+        setup_next_id = str(sn.get("id") or "") or None
+        setup_substep = str(sn.get("substep") or "") or None
+    except Exception:  # noqa: BLE001
+        loop_preview = None
+        setup_next_id = None
+        setup_substep = None
+    form_kind = _credential_form_kind_from_message(
+        message, setup_next_id=setup_next_id, setup_substep=setup_substep
+    )
+    if form_kind and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        result = registry.run(db, ctx, "credentials.open_form", kind=form_kind)
+        if isinstance(result, ToolResult) and result.ok:
+            form = (result.data or {}).get("pending_credential_form")
+            return {
+                "ok": True,
+                "engine": "diy_credential_form",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": result.message
+                or "Открыл безопасную форму. Секрет не пишите в чат — только в форме.",
+                "tool_calls": [{"tool": "credentials.open_form", "ok": True, "kind": form_kind}],
+                "pending_credential_form": form if isinstance(form, dict) else None,
+                "modality": modality,
+                "office_loop": loop_preview,
+            }
+
+    # Fast-path: never rely on the LLM to "agree" to draw — call generate_image now.
+    if _wants_media_generation(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        prompt = message
+        for prefix in (
+            "сгенерируй картинку:",
+            "сгенерируй изображение:",
+            "создай картинку:",
+            "нарисуй:",
+            "generate_image:",
+            "generate an image:",
+            "generate image:",
+        ):
+            if message.lower().startswith(prefix):
+                prompt = message[len(prefix) :].strip() or message
+                break
+        result = registry.run(db, ctx, "generate_image", prompt=prompt)
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            md = str(data.get("markdown") or "")
+            caption = f"Готово — сгенерировал изображение по запросу: «{prompt[:120]}»."
+            return {
+                "ok": True,
+                "engine": "diy_generate_image",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": f"{caption}\n\n{md}".strip() if md else caption,
+                "tool_calls": [{"tool": "generate_image", "ok": True, "model": data.get("model")}],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "image_failed"
+        # Fall through to DIY LLM with the error context so the owner sees a clear reply.
+        message = f"{message}\n\n[system: generate_image failed: {err}]"
+
+    # Conduct fast-path: calendar slots (Nous often fails to call the MCP tool).
+    if _wants_calendar_slots(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        start = _calendar_slot_start_iso(message)
+        duration = _calendar_duration_min(message)
+        result = registry.run(
+            db,
+            ctx,
+            "suggest_calendar_slots",
+            start=start,
+            duration_min=duration,
+        )
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            nested = data.get("data") if isinstance(data.get("data"), dict) else {}
+            upstream = data.get("upstream") if isinstance(data.get("upstream"), dict) else {}
+            if not upstream and isinstance(nested.get("upstream"), dict):
+                upstream = nested["upstream"]
+            suggestions = (
+                data.get("suggestions")
+                or nested.get("suggestions")
+                or upstream.get("suggestions")
+                or upstream.get("slots")
+                or upstream.get("items")
+                or []
+            )
+            if not isinstance(suggestions, list):
+                suggestions = []
+            lines = []
+            for i, slot in enumerate(suggestions[:5], 1):
+                if isinstance(slot, dict):
+                    label = (
+                        slot.get("label")
+                        or slot.get("start")
+                        or slot.get("when")
+                        or slot.get("datetime")
+                        or str(slot)
+                    )
+                else:
+                    label = str(slot)
+                lines.append(f"{i}. {label}")
+            body_txt = "\n".join(lines) if lines else (result.message or "Слоты получены.")
+            stub = bool(
+                data.get("stub")
+                or nested.get("stub")
+                or upstream.get("stub")
+                or any(isinstance(s, dict) and s.get("stub") for s in suggestions)
+            )
+            note = " (черновик/stub — CalDAV ещё без живых кредов)" if stub else ""
+            return {
+                "ok": True,
+                "engine": "diy_calendar_slots",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": f"Варианты слотов на {start} · {duration} мин{note}:\n{body_txt}",
+                "tool_calls": [
+                    {
+                        "tool": "suggest_calendar_slots",
+                        "ok": True,
+                        "start": start,
+                        "duration_min": duration,
+                        "stub": stub,
+                    }
+                ],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "calendar_failed"
+        message = f"{message}\n\n[system: suggest_calendar_slots failed: {err}]"
+
+    # Conduct fast-path: create conference (Nous often asks for Telemost login instead of tool).
+    if _wants_conference_create(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        title = _conference_title(message)
+        provider = _conference_provider(message)
+        when_text = message.strip()[:240]
+        result = registry.run(
+            db,
+            ctx,
+            "create_conference",
+            title=title,
+            provider=provider,
+            when_text=when_text,
+        )
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            nested = data.get("data") if isinstance(data.get("data"), dict) else {}
+            upstream = data.get("upstream") if isinstance(data.get("upstream"), dict) else {}
+            if not upstream and isinstance(nested.get("upstream"), dict):
+                upstream = nested["upstream"]
+            join_url = (
+                data.get("join_url")
+                or nested.get("join_url")
+                or upstream.get("join_url")
+                or upstream.get("url")
+            )
+            stub = bool(data.get("stub") or nested.get("stub") or upstream.get("stub"))
+            note = " (stub — provider без живых кредов)" if stub else ""
+            link = f"\nСсылка: {join_url}" if join_url else ""
+            return {
+                "ok": True,
+                "engine": "diy_create_conference",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": (
+                    f"Создал конференцию «{title}» ({provider}){note}.{link}\n"
+                    f"{result.message or ''}"
+                ).strip(),
+                "tool_calls": [
+                    {
+                        "tool": "create_conference",
+                        "ok": True,
+                        "title": title,
+                        "provider": provider,
+                        "stub": stub,
+                        "join_url": join_url,
+                    }
+                ],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "conference_failed"
+        message = f"{message}\n\n[system: create_conference failed: {err}]"
+
+    # Conduct fast-path: mail draft (Nous often claims send_mail_draft unavailable).
+    if _wants_mail_draft(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        fields = _mail_draft_fields(message)
+        result = registry.run(
+            db,
+            ctx,
+            "send_mail_draft",
+            to=fields["to"],
+            subject=fields["subject"],
+            body=fields["body"],
+        )
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            nested = data.get("data") if isinstance(data.get("data"), dict) else {}
+            stub = bool(data.get("stub") or nested.get("stub") or not data.get("configured", True))
+            note = " (stub/dry-run — SMTP ещё без живых кредов)" if stub else ""
+            return {
+                "ok": True,
+                "engine": "diy_send_mail_draft",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": (
+                    f"Черновик письма{note}:\n"
+                    f"Кому: {fields['to']}\n"
+                    f"Тема: {fields['subject']}\n"
+                    f"Текст: {fields['body'][:400]}\n"
+                    f"{result.message or ''}"
+                ).strip(),
+                "tool_calls": [
+                    {
+                        "tool": "send_mail_draft",
+                        "ok": True,
+                        "to": fields["to"],
+                        "stub": stub,
+                    }
+                ],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "mail_failed"
+        message = f"{message}\n\n[system: send_mail_draft failed: {err}]"
+
+    # Conduct fast-path: office health (Nous invents missing office.health).
+    if _wants_office_health(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        result = registry.run(db, ctx, "hermes.health")
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            healthy = bool(data.get("healthy"))
+            alerts = data.get("alerts") or []
+            alert_lines = []
+            for a in alerts[:5]:
+                if isinstance(a, dict):
+                    alert_lines.append(
+                        f"- {a.get('code') or 'alert'}: {a.get('message_ru') or a.get('message') or ''}"
+                    )
+            body_txt = "\n".join(alert_lines) if alert_lines else "Алертов нет."
+            return {
+                "ok": True,
+                "engine": "diy_hermes_health",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": (
+                    f"{'Офис в норме.' if healthy else 'Есть проблемы по офису.'}\n"
+                    f"{data.get('message_ru') or result.message or ''}\n{body_txt}"
+                ).strip(),
+                "tool_calls": [{"tool": "hermes.health", "ok": True, "healthy": healthy}],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "health_failed"
+        message = f"{message}\n\n[system: hermes.health failed: {err}]"
+
+    if _wants_crm_funnel(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        result = registry.run(db, ctx, "crm.funnel")
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            stages = data.get("stages") or data.get("funnel") or data.get("items") or []
+            lines = []
+            if isinstance(stages, dict):
+                for k, v in stages.items():
+                    lines.append(f"- {k}: {v}")
+            elif isinstance(stages, list):
+                for s in stages[:12]:
+                    if isinstance(s, dict):
+                        lines.append(
+                            f"- {s.get('stage') or s.get('name') or s}: "
+                            f"{s.get('count') if 'count' in s else s.get('leads') or s}"
+                        )
+                    else:
+                        lines.append(f"- {s}")
+            if not lines:
+                import json as _json
+
+                body_txt = _json.dumps(data, ensure_ascii=False)[:800]
+            else:
+                body_txt = "\n".join(lines)
+            return {
+                "ok": True,
+                "engine": "diy_crm_funnel",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": f"CRM воронка:\n{body_txt}\n{result.message or ''}".strip(),
+                "tool_calls": [{"tool": "crm.funnel", "ok": True}],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "crm_failed"
+        message = f"{message}\n\n[system: crm.funnel failed: {err}]"
+
+    if _wants_phones_list(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        result = registry.run(db, ctx, "phones.list")
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            items = data.get("items") or data.get("phones") or data.get("numbers") or []
+            if isinstance(data, list):
+                items = data
+            lines = []
+            for p in items[:20] if isinstance(items, list) else []:
+                if isinstance(p, dict):
+                    lines.append(
+                        f"- {p.get('e164') or p.get('number') or p}: "
+                        f"{p.get('status') or '—'} ({p.get('label') or 'did'})"
+                    )
+                else:
+                    lines.append(f"- {p}")
+            body_txt = "\n".join(lines) if lines else "Активных DID пока нет."
+            return {
+                "ok": True,
+                "engine": "diy_phones_list",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": f"Телефонные номера:\n{body_txt}\n{result.message or ''}".strip(),
+                "tool_calls": [{"tool": "phones.list", "ok": True, "count": len(lines)}],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "phones_failed"
+        message = f"{message}\n\n[system: phones.list failed: {err}]"
+
+    if _wants_calls_list(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        result = registry.run(db, ctx, "calls.list", limit=20)
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            items = data.get("items") if isinstance(data, dict) else data
+            lines = []
+            for c in items[:20] if isinstance(items, list) else []:
+                if not isinstance(c, dict):
+                    lines.append(f"- {c}")
+                    continue
+                direction = c.get("direction") or "?"
+                status = c.get("status") or "—"
+                peer = c.get("to_e164") or c.get("from_e164") or c.get("did_e164") or "—"
+                when = (c.get("started_at") or c.get("created_at") or "")[:19]
+                outcome = c.get("outcome") or ""
+                extra = f" / {outcome}" if outcome else ""
+                lines.append(f"- {when} {direction} {peer}: {status}{extra}")
+            body_txt = "\n".join(lines) if lines else "Звонков пока нет."
+            return {
+                "ok": True,
+                "engine": "diy_calls_list",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": f"Последние звонки:\n{body_txt}\n{result.message or ''}".strip(),
+                "tool_calls": [
+                    {
+                        "tool": "calls.list",
+                        "ok": True,
+                        "count": len(lines),
+                    }
+                ],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "calls_failed"
+        message = f"{message}\n\n[system: calls.list failed: {err}]"
+
+    if _wants_telephony_script(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        if _telephony_script_wants_save(message):
+            tool_name = "telephony.script_save"
+        elif _telephony_script_wants_propose(message):
+            tool_name = "telephony.script_propose"
+        else:
+            tool_name = "telephony.script_get"
+        result = registry.run(db, ctx, tool_name)
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            if tool_name == "telephony.script_propose":
+                draft = str(data.get("draft") or "")[:3500]
+                reply = (result.message or "Черновик сценария готов.").strip()
+                if draft and draft not in reply:
+                    reply = f"{reply}\n\n{draft}".strip()
+            elif tool_name == "telephony.script_save":
+                reply = (result.message or data.get("message_ru") or "Сценарий сохранён.").strip()
+            else:
+                script = str(
+                    data.get("script")
+                    or data.get("body")
+                    or (data.get("telephony") or {}).get("script")
+                    or ""
+                )[:3500]
+                configured = bool(data.get("configured"))
+                head = result.message or (
+                    "Сценарий сохранён." if configured else "Сценария ещё нет."
+                )
+                reply = f"{head}\n\n{script}".strip() if script else str(head)
+            return {
+                "ok": True,
+                "engine": "diy_telephony_script",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": reply,
+                "tool_calls": [{"tool": tool_name, "ok": True}],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "script_failed"
+        message = f"{message}\n\n[system: {tool_name} failed: {err}]"
+
+    if _wants_billing_summary(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        result = registry.run(db, ctx, "billing.summary")
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            reply = (
+                result.message
+                or data.get("message_ru")
+                or (
+                    f"Баланс: {data.get('balance') if 'balance' in data else data.get('tokens_remaining', '—')}\n"
+                    f"Тариф: {data.get('tariff') or data.get('rub_per_1k') or '—'}"
+                )
+            )
+            return {
+                "ok": True,
+                "engine": "diy_billing_summary",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": str(reply).strip(),
+                "tool_calls": [{"tool": "billing.summary", "ok": True}],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "billing_failed"
+        message = f"{message}\n\n[system: billing.summary failed: {err}]"
+
+    if _wants_get_knowledge(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        # Prefer an explicit query after «про/о»; else whole message.
+        import re
+
+        q = message
+        m = re.search(r"(?:про|о|about|query\s*=\s*)\s+(.+)$", message or "", re.I)
+        if m:
+            q = m.group(1).strip(" .,\"'«»")[:400] or message
+        result = registry.run(db, ctx, "get_knowledge", query=q[:400] or "компания")
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            # KnowledgeAdapter returns matches[] + aggregated text (not snippets/hits).
+            matches = data.get("matches") or data.get("results") or data.get("hits") or []
+            lines = []
+            if isinstance(matches, list):
+                for s in matches[:5]:
+                    if isinstance(s, dict):
+                        lines.append(
+                            f"- {s.get('title') or s.get('source') or 'doc'}: "
+                            f"{(s.get('snippet') or s.get('text') or s.get('body') or '')[:280]}"
+                        )
+                    else:
+                        lines.append(f"- {str(s)[:280]}")
+            body_txt = "\n".join(lines) if lines else (
+                str(data.get("text") or result.message or "")[:1200] or "Пусто."
+            )
+            return {
+                "ok": True,
+                "engine": "diy_get_knowledge",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": f"Из базы знаний:\n{body_txt}".strip(),
+                "tool_calls": [
+                    {
+                        "tool": "get_knowledge",
+                        "ok": True,
+                        "query": q[:120],
+                        "hits": len(matches) if isinstance(matches, list) else 0,
+                    }
+                ],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "kb_failed"
+        message = f"{message}\n\n[system: get_knowledge failed: {err}]"
+
+    if _wants_hermes_capabilities(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        result = registry.run(db, ctx, "hermes.capabilities")
+        if isinstance(result, ToolResult) and result.ok:
+            data = result.data or {}
+            connectors = data.get("connectors") or []
+            lines = []
+            if isinstance(connectors, list):
+                for c in connectors[:12]:
+                    if not isinstance(c, dict):
+                        continue
+                    usable = c.get("usable")
+                    ready = c.get("ready") if "ready" in c else usable
+                    flag = "ok" if ready or usable else "нет"
+                    lines.append(
+                        f"- {c.get('kind') or c.get('label') or '?'}: {flag}"
+                        + (f" — {c.get('detail') or c.get('message') or ''}" if c.get("detail") or c.get("message") else "")
+                    )
+            missing = data.get("missing") or []
+            miss_txt = ", ".join(str(m) for m in missing) if missing else "нет"
+            body_txt = "\n".join(lines) if lines else (result.message or "—")
+            return {
+                "ok": True,
+                "engine": "diy_hermes_capabilities",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": (
+                    f"Готовность коннекторов:\n{body_txt}\n"
+                    f"Требуют настройки: {miss_txt}\n"
+                    f"{result.message or ''}"
+                ).strip(),
+                "tool_calls": [{"tool": "hermes.capabilities", "ok": True}],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "capabilities_failed"
+        message = f"{message}\n\n[system: hermes.capabilities failed: {err}]"
+
+    if _wants_files_cloud_status(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+
+        register_builtin_tools()
+        result = registry.run(db, ctx, "files.cloud_status")
+        if isinstance(result, ToolResult) and result.ok:
+            # Tool message already lists each cloud; prefer it over re-formatting.
+            reply = (result.message or "").strip() or "Облака не настроены."
+            return {
+                "ok": True,
+                "engine": "diy_files_cloud_status",
+                "channel": body.channel,
+                "conversation_id": body.conversation_id,
+                "reply": reply,
+                "tool_calls": [{"tool": "files.cloud_status", "ok": True}],
+                "modality": modality,
+            }
+        err = result.message if isinstance(result, ToolResult) else "files_cloud_failed"
+        message = f"{message}\n\n[system: files.cloud_status failed: {err}]"
+
+    # Feature-flagged Nous Hermes runtime (Stage 0+). DIY loop remains fallback.
+    try:
+        from app.services.hermes_nous.bridge import HermesBridgeError, create_run
+        from app.services.hermes_nous.flags import is_hermes_nous_enabled
+
+        if is_hermes_nous_enabled(db, ctx) and message and not prefer_diy:
+            try:
+                from app.services.hermes_nous.onboarding import get_office_loop
+                from app.services.hermes_nous.tool_packs import pack_for_mode
+
+                # Product loop: until office is ready, Nous runs with onboarding pack
+                # (KB + setup + credentials), not full conduct.
+                loop = get_office_loop(db, ctx)
+                setup_done = bool((loop.get("setup") or {}).get("setup_complete"))
+                phase = str(loop.get("phase") or "welcome")
+                pack_mode = "conduct" if setup_done or phase in ("ready", "conduct") else "onboarding"
+                nous = create_run(
+                    db,
+                    ctx,
+                    message=message,
+                    session_id=str(body.conversation_id) if body.conversation_id else None,
+                    tool_ids=pack_for_mode(pack_mode),
+                    mode=pack_mode,
+                    office_context={
+                        "phase": phase,
+                        "kb_ok": bool(loop.get("kb_ok")),
+                        "setup_next": loop.get("setup_next"),
+                        "setup_complete": setup_done,
+                    },
+                )
+                return {
+                    "ok": True,
+                    "engine": "nous_hermes_agent",
+                    "channel": body.channel,
+                    "conversation_id": body.conversation_id,
+                    "reply": nous.get("output")
+                    or (nous.get("hermes") or {}).get("output")
+                    or "Hermes run started — progress via /v1/hermes-nous/runs/{run_id}.",
+                    "hermes_run": nous,
+                    "modality": modality,
+                }
+            except HermesBridgeError as exc:
+                # Runtime not up yet → fall through to DIY (documented Stage 0 behavior)
+                if exc.status not in (None, 503, 404, 502):
+                    raise HTTPException(
+                        status_code=exc.status or 503,
+                        detail={"error": str(exc), "body": exc.body},
+                    ) from exc
+    except ImportError:
+        pass
+
     return run_operator_turn(
         db,
         ctx,
