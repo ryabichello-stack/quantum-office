@@ -2485,6 +2485,68 @@ def operator_confirm(
     }
 
 
+class OperatorHelpRequest(BaseModel):
+    conversation_id: UUID | None = None
+    note: str = Field(default="", max_length=2000)
+    channel: str = Field(default="hermes", max_length=32)
+    client_meta: dict = Field(default_factory=dict)
+
+
+@router.post("/help")
+def operator_help(
+    body: OperatorHelpRequest,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """Freeze chat + office state when the owner is stuck (onboarding / Hermes bug)."""
+    from app.services.hermes_help import capture_help_request
+
+    out = capture_help_request(
+        db,
+        ctx,
+        conversation_id=body.conversation_id,
+        note=body.note,
+        client_meta=body.client_meta,
+        channel=body.channel or "hermes",
+    )
+    if not out.get("ok"):
+        code = str(out.get("error") or "help_failed")
+        status = 429 if code == "rate_limited" else 404 if code == "conversation_not_found" else 400
+        raise HTTPException(status_code=status, detail=out)
+    return out
+
+
+@router.get("/help")
+def operator_help_list(
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict:
+    """Owner's own help tickets (no cross-tenant)."""
+    from app.services.hermes_help import list_help_requests
+
+    items = list_help_requests(db, tenant_id=ctx.tenant_id, limit=limit)
+    # Strip full transcripts from list view — use GET /help/{id} for detail.
+    slim = []
+    for it in items:
+        slim.append({k: v for k, v in it.items() if k != "messages"})
+    return {"items": slim, "total": len(slim)}
+
+
+@router.get("/help/{ticket_id}")
+def operator_help_get(
+    ticket_id: str,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    from app.services.hermes_help import get_help_request
+
+    row = get_help_request(db, ticket_id=ticket_id, tenant_id=ctx.tenant_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="help_ticket_not_found")
+    return row
+
+
 @router.get("/conversations")
 def list_conversations(
     db: Session = Depends(get_db),

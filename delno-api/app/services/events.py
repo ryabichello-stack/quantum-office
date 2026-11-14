@@ -23,6 +23,7 @@ OPERATIONAL_EVENT_TYPES = frozenset(
         "party.suggest_failed",
         "hermes.setup.progress",
         "hermes.health.checked",
+        "hermes.help_request",
         "hermes_nous.run_started",
         "hermes_nous.lead_queued",
         "office.alert",
