@@ -30,6 +30,8 @@ BIND = os.getenv("ASTERISK_SIP_APPLY_BIND", "172.17.0.1")
 PORT = int(os.getenv("ASTERISK_SIP_APPLY_PORT", "18099"))
 MANGO_PROXY = os.getenv("MANGO_SIP_OUTBOUND_PROXY", "sip:81.88.86.37:5060;lr")
 LEGACY_REG_NAME = os.getenv("ASTERISK_SIP_LEGACY_REG", "mango-registration")
+# Only this tenant may inherit the pre-multi-tenant shared registration while migrating.
+LEGACY_TENANT = os.getenv("ASTERISK_SIP_LEGACY_TENANT", "quantum-labs")
 
 
 def _asterisk(cmd: str) -> str:
@@ -186,10 +188,16 @@ def probe(tenant_slug: str | None = None) -> dict:
     if slug:
         reg_name = _object_names(slug)["reg"]
         status = _status_from_regs_output(out, reg_name)
-        # Legacy bridge: quantum-labs may still be on mango-registration until first re-apply
-        if status == "unknown" and _tenant_conf_path(slug).exists() is False:
+        # Legacy bridge: ONLY the designated legacy tenant may read the old shared
+        # mango-registration. Other cabinets must not look Registered on QL's line.
+        if (
+            status == "unknown"
+            and slug == LEGACY_TENANT
+            and not _tenant_conf_path(slug).exists()
+        ):
             status = _status_from_regs_output(out, LEGACY_REG_NAME)
-            reg_name = LEGACY_REG_NAME if status != "unknown" else reg_name
+            if status != "unknown":
+                reg_name = LEGACY_REG_NAME
     else:
         reg_name = LEGACY_REG_NAME
         status = _status_from_regs_output(out, LEGACY_REG_NAME)
