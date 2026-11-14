@@ -11,6 +11,7 @@
 ## [Unreleased]
 
 ### Added
+- Hermes onboarding canon: `docs/hermes-nous/ONBOARDING_FULL_SCRIPT.md` — goal/tariff/skip/Draft First сценарий (Codex review)
 
 - Hermes **Draft First & Knowledge Enrichment**: после `office.build_kb_draft` сразу полный черновик в чате + три действия (сохранить / обогатить поиском / доработать); «обогати» ≠ confirm (DIY rebuild + agent block); Nous thin-status → подстановка draft; SOUL / onboarding / Nous mission
 - Hermes **Помощь**: кнопка в шапке чата фиксирует переписку + office_loop/setup (без паролей) в `hermes.help_request`; ack в чате; список для owner `/v1/operator/help` и platform admin `/v1/admin/help-requests`
@@ -81,10 +82,12 @@
 - Onboarding pack + office-loop CTA: `office.connector_set` for hermes_ops mail/calendar/conference steps
 
 ### Added
+- Hermes onboarding canon: `docs/hermes-nous/ONBOARDING_FULL_SCRIPT.md` — goal/tariff/skip/Draft First сценарий (Codex review)
 
 - Hermes tool `office.connector_set` — enable/disable tenant connectors with probe + readiness
 
 ### Added
+- Hermes onboarding canon: `docs/hermes-nous/ONBOARDING_FULL_SCRIPT.md` — goal/tariff/skip/Draft First сценарий (Codex review)
 
 - Hermes cabinet ChatGPT-class UI: empty state «Чем помочь?», refined composer, markdown/images in bubbles, toolkit panel (Ava telephony + connectors + generate_image)
 - Hermes media: `generate_image` tool (OpenAI Images); video attachments (mp4/webm/mov) with Whisper audio transcript; `/v1/hermes-nous/toolkit`
@@ -141,6 +144,7 @@
 ## [0.2.0] — 2026-08-20
 
 ### Added
+- Hermes onboarding canon: `docs/hermes-nous/ONBOARDING_FULL_SCRIPT.md` — goal/tariff/skip/Draft First сценарий (Codex review)
 
 - `console/` — Quantum Console как единый **пульт** секретаря (`:8013`)
   - вкладка «Пульт»: автолиния входящих, робот, outreach/campaign glance, последние звонки
@@ -162,5 +166,6 @@
 ## [0.1.0] — 2026-08-20
 
 ### Added
+- Hermes onboarding canon: `docs/hermes-nous/ONBOARDING_FULL_SCRIPT.md` — goal/tariff/skip/Draft First сценарий (Codex review)
 
 - Первичный импорт `outreach/`, `mailer/`, `text-bot/`, `docs/`
