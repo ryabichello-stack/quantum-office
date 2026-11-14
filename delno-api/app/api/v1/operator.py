@@ -669,9 +669,35 @@ def _wants_web_research(message: str) -> bool:
     return False
 
 
+def _wants_enrich_kb_draft(message: str) -> bool:
+    """Owner asks to deepen the draft via search — not to publish it."""
+    low = (message or "").lower()
+    return any(
+        m in low
+        for m in (
+            "обогати",
+            "обогатить",
+            "дообогати",
+            "дособери",
+            "дособери базу",
+            "найди ещё",
+            "найди еще",
+            "через поиск",
+            "из внешних",
+            "интернет-поиск",
+            "интернет поиск",
+            "enrich draft",
+            "enrich kb",
+        )
+    )
+
+
 def _wants_confirm_kb_draft(message: str) -> bool:
     """Owner explicitly commits the commercial draft — not a second confirm card."""
     low = (message or "").lower()
+    # Enrich phrasing must never be treated as commit.
+    if _wants_enrich_kb_draft(message):
+        return False
     return any(
         m in low
         for m in (
@@ -1287,6 +1313,47 @@ def operator_chat(
     # Binary media never goes through Nous — DIY normalizes + KB-from-attachments.
     if attachments:
         prefer_diy = True
+
+    # «обогати» with an existing draft → rebuild via search, never confirm/publish.
+    if _wants_enrich_kb_draft(message) and not attachments:
+        from app.operator.tools import register_builtin_tools
+        from app.operator.tools.registry import ToolResult, registry
+        from app.services.hermes_guide import kb_draft_next_actions, prefer_pending_kb_draft_reply
+        from app.services.hermes_nous.onboarding import get_office_loop
+
+        register_builtin_tools()
+        loop = get_office_loop(db, ctx) or {}
+        draft = loop.get("kb_draft") if isinstance(loop.get("kb_draft"), dict) else {}
+        source_url = str((draft or {}).get("source_url") or "").strip()
+        enrich_params: dict = {"also_search": True, "message": message, "max_pages": 12}
+        if source_url:
+            enrich_params["url"] = source_url
+        enrich_res = registry.run(db, ctx, "office.build_kb_draft", **enrich_params)
+        if isinstance(enrich_res, ToolResult) and enrich_res.ok:
+            tool_entry = {
+                "tool": "office.build_kb_draft",
+                "ok": True,
+                "message": (enrich_res.message or "")[:500],
+                "full_message": enrich_res.message or "",
+                "kb_draft": True,
+            }
+            if isinstance(enrich_res.data, dict):
+                sa = enrich_res.data.get("suggested_actions")
+                if isinstance(sa, list) and sa:
+                    tool_entry["suggested_actions"] = sa
+            reply = prefer_pending_kb_draft_reply(
+                db, ctx, enrich_res.message or "", tool_calls=[tool_entry]
+            )
+            return _finish_diy(
+                db,
+                ctx,
+                body,
+                modality=modality,
+                engine="diy_enrich_kb_draft",
+                reply=reply,
+                tool_calls=[tool_entry],
+                suggested_actions=tool_entry.get("suggested_actions") or kb_draft_next_actions(),
+            )
 
     # «положи в кб» with an existing draft → commit immediately (text IS the confirm).
     # Do not open a second upload_knowledge_snippet card.
@@ -2302,6 +2369,16 @@ def operator_chat(
                 if agent_mode and reply and not str(reply).lstrip().startswith(("1.", "1)", "План", "Шаг")):
                     # Keep UI honest: agent was asked to plan; prefix if runtime omitted it.
                     reply = f"План выполнен агентом (режим {pack_mode}).\n\n{reply}"
+                nous_tools = _tool_calls_from_nous(nous)
+                # Draft First: if Nous collapsed the commercial profile, surface office_loop draft.
+                try:
+                    from app.services.hermes_guide import prefer_pending_kb_draft_reply
+
+                    reply = prefer_pending_kb_draft_reply(
+                        db, ctx, str(reply or ""), tool_calls=nous_tools
+                    )
+                except Exception:
+                    pass
                 return _finish_diy(
                     db,
                     ctx,
@@ -2309,7 +2386,7 @@ def operator_chat(
                     modality=modality,
                     engine="nous_hermes_agent",
                     reply=reply,
-                    tool_calls=_tool_calls_from_nous(nous),
+                    tool_calls=nous_tools,
                     hermes_run=nous,
                 )
             except HermesBridgeError as exc:

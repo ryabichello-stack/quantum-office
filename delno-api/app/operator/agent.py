@@ -117,9 +117,15 @@ HERMES_AGENT_SYSTEM = (
     "Не жди волшебных фраз и не подменяй задачу шаблонным статусом SIP/сетапа.\n"
     "\n"
     "Онбординг — playbook skill onboarding.md. Кратко:\n"
-    "Знания: build_kb_draft → ПОКАЖИ весь профиль → спроси «добавить в KB?» → "
-    "стоп (без setup_mark/upload/phones/form в том же ходе) → после «да» "
-    "office.confirm_kb_draft → setup_status → предложи следующий шаг вопросом.\n"
+    "Знания (Draft First): build_kb_draft → СРАЗУ покажи весь профиль в ответе "
+    "(секции, не статус «черновик есть») → предложи РОВНО три действия: "
+    "1) Сохранить в KB  2) Обогатить через поиск  3) Доработать. "
+    "Стоп (без setup_mark/upload/phones/form в том же ходе). "
+    "«да / положи в кб / подтверди» → office.confirm_kb_draft → setup_status → "
+    "следующий шаг вопросом. "
+    "«обогати / обогатить / найди ещё / дособери» → снова office.build_kb_draft "
+    "(also_search=true) → покажи ОБНОВЛЁННЫЙ черновик + те же три действия. "
+    "НИКОГДА не вызывай office.confirm_kb_draft на «обогати» — это не сохранение.\n"
     "Инструменты (phone/script/tg/max/files/mail/cal/conf): опиши → спроси → "
     "после «да» tool. Секреты только credentials.open_form.\n"
     "«делай / сделай / продолжай / давай / поехали / действуй» = СРАЗУ выполни "
@@ -127,14 +133,15 @@ HERMES_AGENT_SYSTEM = (
     "затем open_form SIP; need_reg/Rejected→снова credentials.open_form mango_sip). "
     "Не пересказывай путь. Не отвечай «проверьте пароль» без open_form.\n"
     "«покажи базу/черновик» → get_knowledge (боевая+draft). "
-    "Запрещено: setup_mark вместо показа профиля; прыжок на телефонию до commit KB.\n"
+    "Запрещено: setup_mark вместо показа профиля; прыжок на телефонию до commit KB; "
+    "утверждать «сохранил/обогатил», пока tool реально не выполнен.\n"
     "\n"
     "Каталог tools (выбираешь сам по смыслу задачи):\n"
-    "• office.build_kb_draft — сбор KB из сайта ИЛИ соцссылки (t.me/IG/VK/MAX) ИЛИ "
-    "свободного текста «кто мы/услуги/цены» ИЛИ картинки/файла (КП, презентация, прайс → "
-    "vision/extract → free_text) ИЛИ микса; отдельная настройка соцсетей/медиа не нужна "
-    "(login-wall → честно скажи); предпочтительно при онбординге;\n"
-    "• office.confirm_kb_draft — «положи в кб» после черновика (закрывает шаг знаний);\n"
+    "• office.build_kb_draft — сбор ИЛИ обогащение KB из сайта / соцссылки / текста / "
+    "вложения / микса; при «обогати» обязательно also_search=true; "
+    "login-wall → честно скажи; после сбора всегда полный текст профиля в ответе;\n"
+    "• office.confirm_kb_draft — ТОЛЬКО явные «положи в кб / подтверди / сохрани в базу»; "
+    "не для «обогати»;\n"
     "• web.search / web.fetch / web.browse / web.research — открытый интернет; "
     "разовый разбор URL, когда KB уже ok или вопрос не про сбор базы "
     "(не выдумывай содержимое страницы);\n"
@@ -1061,6 +1068,13 @@ def _prefer_kb_draft_in_reply(content: str, collected_tools: list[dict[str, Any]
     has_sections = "## " in text
     # Thin status-style reply after a real draft build → replace with draft.
     if len(text) < 1500 or not has_sections:
+        if "Следующее действие" not in draft and "Обогатить" not in draft:
+            try:
+                from app.services.hermes_guide import kb_draft_cta_footer
+
+                return draft.rstrip() + "\n" + kb_draft_cta_footer()
+            except Exception:
+                return draft
         return draft
     return text
 
@@ -1306,6 +1320,59 @@ def _try_cabinet_llm_tools(
                 )
                 continue
 
+            # «обогати» ≠ сохранение — never confirm draft on enrich phrasing.
+            low_msg = (message or "").lower()
+            enrich_ask = any(
+                m in low_msg
+                for m in (
+                    "обогати",
+                    "обогатить",
+                    "дособери",
+                    "дообогати",
+                    "найди ещё",
+                    "найди еще",
+                    "через поиск",
+                    "из внешних",
+                    "enrich",
+                )
+            )
+            confirm_ask = any(
+                m in low_msg
+                for m in (
+                    "положи в кб",
+                    "положи в базу",
+                    "подтверди черновик",
+                    "подтверди kb",
+                    "сохрани в базу",
+                    "сохрани в кб",
+                    "запиши в базу",
+                )
+            )
+            if tool_name == "office.confirm_kb_draft" and enrich_ask and not confirm_ask:
+                entry["ok"] = False
+                entry["error"] = "enrich_is_not_confirm"
+                collected_tools.append(entry)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc_id,
+                        "content": json.dumps(
+                            {
+                                "ok": False,
+                                "error": "enrich_is_not_confirm",
+                                "message": (
+                                    "Владелец просит ОБОГАТИТЬ черновик, не сохранить. "
+                                    "Вызови office.build_kb_draft с also_search=true, "
+                                    "покажи обновлённый профиль и три действия "
+                                    "(сохранить / обогатить / доработать)."
+                                ),
+                            },
+                            ensure_ascii=False,
+                        ),
+                    }
+                )
+                continue
+
             # After a fresh commercial KB draft, never steal the turn with a
             # confirm card (setup_mark / upload) — owner must see the profile first.
             built_draft_this_turn = any(
@@ -1317,6 +1384,7 @@ def _try_cabinet_llm_tools(
                 "credentials.open_form",
                 "phones.provision",
                 "office.connector_set",
+                "office.confirm_kb_draft",
             ):
                 entry["ok"] = False
                 entry["error"] = "blocked_until_kb_shown"

@@ -1016,6 +1016,109 @@ def llm_unavailable_reply(message: str) -> str:
     )
 
 
+def kb_draft_next_actions() -> list[dict[str, str]]:
+    """Draft-first trio: save / enrich / edit — never auto-publish."""
+    return [
+        {"title": "Сохранить в KB", "text": "Подтверди черновик базы знаний"},
+        {"title": "Обогатить поиском", "text": "Обогати черновик через интернет-поиск"},
+        {"title": "Доработать", "text": "Доработай черновик: "},
+    ]
+
+
+def kb_draft_cta_footer(*, gaps: list[str] | None = None) -> str:
+    """Owner-facing status + next actions after every draft show/update."""
+    lines = [
+        "",
+        "**Статус:** черновик, ещё не сохранён в боевой базе знаний.",
+        "",
+        "**Следующее действие:**",
+        "1. Сохранить в базу знаний",
+        "2. Обогатить через интернет-поиск",
+        "3. Доработать (напишите правки обычным сообщением)",
+    ]
+    if gaps:
+        lines.append("")
+        lines.append(
+            "Материал неполный — рекомендую **обогатить поиском**. "
+            "Смогу добрать: " + "; ".join(str(g) for g in gaps[:4]) + "."
+        )
+    return "\n".join(lines)
+
+
+def format_kb_draft_owner_reply(
+    draft: dict[str, Any],
+    *,
+    gaps: list[str] | None = None,
+    intro: str | None = None,
+) -> str:
+    """Full draft body for chat — Draft First, no status stub."""
+    title = str(draft.get("title") or "Черновик KB").strip()
+    body = str(draft.get("body") or "").strip()
+    parts: list[str] = []
+    if intro:
+        parts.append(intro.strip())
+        parts.append("")
+    if body.lstrip().startswith("#"):
+        parts.append(body)
+    else:
+        parts.append(f"# {title}")
+        parts.append("")
+        parts.append(body)
+    parts.append(kb_draft_cta_footer(gaps=gaps))
+    return "\n".join(parts).strip()
+
+
+def prefer_pending_kb_draft_reply(
+    db: Session,
+    ctx: TenantContext,
+    reply: str,
+    *,
+    tool_calls: list[dict[str, Any]] | None = None,
+) -> str:
+    """If this turn built/has a draft but the model/Nous collapsed it — surface the draft."""
+    text = (reply or "").strip()
+    built = any(
+        isinstance(t, dict) and t.get("tool") == "office.build_kb_draft" and t.get("ok")
+        for t in (tool_calls or [])
+    )
+    draft: dict[str, Any] | None = None
+    gaps: list[str] | None = None
+    for t in tool_calls or []:
+        if not isinstance(t, dict) or t.get("tool") != "office.build_kb_draft" or not t.get("ok"):
+            continue
+        full = str(t.get("full_message") or "").strip()
+        if len(full) >= 400 and ("## " in full or "черновик" in full.lower()):
+            # Prefer tool message (already includes sources); still ensure CTA trio.
+            if "Следующее действие" not in full and "Обогатить" not in full:
+                return full.rstrip() + "\n" + kb_draft_cta_footer()
+            return full
+    try:
+        from app.services.hermes_nous.onboarding import get_office_loop
+
+        loop = get_office_loop(db, ctx) or {}
+        raw = loop.get("kb_draft") if isinstance(loop, dict) else None
+        if (
+            isinstance(raw, dict)
+            and str(raw.get("status") or "") == "draft"
+            and str(raw.get("body") or "").strip()
+        ):
+            draft = raw
+            g = raw.get("gaps") if isinstance(raw.get("gaps"), list) else None
+            gaps = [str(x) for x in g] if g else None
+    except Exception:
+        draft = None
+    if not draft:
+        return text
+    thin = len(text) < 1500 or "## " not in text
+    talks_draft = any(
+        m in text.lower()
+        for m in ("черновик", "добавить в", "баз", "kb", "профиль", "собрал")
+    )
+    if built or (thin and talks_draft):
+        return format_kb_draft_owner_reply(draft, gaps=gaps)
+    return text
+
+
 def chip_actions_for_office(
     db: Session,
     ctx: TenantContext,
@@ -1026,7 +1129,7 @@ def chip_actions_for_office(
 
     Priority:
     1) suggested_actions already produced by a tool this turn
-    2) pending KB draft → confirm / enrich chips
+    2) pending KB draft → save / enrich / edit chips
     3) setup_status.next_steps → next onboarding chips
     4) safe defaults (status / health / channels)
     """
@@ -1048,7 +1151,7 @@ def chip_actions_for_office(
             return out[:5]
 
     try:
-        from app.services.office_loop import get_office_loop
+        from app.services.hermes_nous.onboarding import get_office_loop
 
         loop = get_office_loop(db, ctx) or {}
         draft = loop.get("kb_draft") if isinstance(loop, dict) else None
@@ -1057,12 +1160,7 @@ def chip_actions_for_office(
             and str(draft.get("status") or "") == "draft"
             and str(draft.get("body") or "").strip()
         ):
-            return [
-                {"title": "Добавить в KB", "text": "Подтверди черновик базы знаний"},
-                {"title": "Показать профиль", "text": "Покажи что нашёл в черновике"},
-                {"title": "Уточнить цены", "text": "Цены и условия такие: "},
-                {"title": "Добавить каналы", "text": "Вот ссылки на Telegram / Instagram / VK: "},
-            ]
+            return kb_draft_next_actions()
     except Exception:
         pass
 

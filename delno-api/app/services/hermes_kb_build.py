@@ -532,10 +532,12 @@ def build_company_kb_draft(
     if social_found:
         social_label = "; ".join(f"{k}: {len(v)}" for k, v in social_found.items())
 
-    # Show the commercial draft in chat (owner must see structure, not a confirm stub).
+    # Draft First: show the commercial profile in chat (not a confirm stub).
+    from app.services.hermes_guide import kb_draft_cta_footer, kb_draft_next_actions
+
     preview = synthesized["body"]
-    if len(preview) > 4500:
-        preview = preview[:4500].rstrip() + "\n\n… (полный черновик сохранён в кабинете)"
+    if len(preview) > 16000:
+        preview = preview[:16000].rstrip() + "\n\n… (полный черновик сохранён в кабинете)"
 
     lines = [
         f"Собрал коммерческий черновик KB для «{company}» "
@@ -549,14 +551,16 @@ def build_company_kb_draft(
         lines.append("Публичные Telegram / Instagram / VK на сайте не нашёл.")
     lines.append(
         "Это черновик для коммерческой работы (услуги / ICP / цены / условия / FAQ). "
-        "Пока не публикую в боевую KB — проверьте и подтвердите."
+        "Пока не публикую в боевую KB."
     )
     lines.append("")
     lines.append(preview)
-    lines.append("")
-    lines.append("Дальше уточним вместе:")
-    for i, q in enumerate(questions, 1):
-        lines.append(f"{i}. {q}")
+    if questions:
+        lines.append("")
+        lines.append("Пробелы / уточнения:")
+        for i, q in enumerate(questions, 1):
+            lines.append(f"{i}. {q}")
+    lines.append(kb_draft_cta_footer(gaps=gaps))
 
     return {
         "ok": True,
@@ -573,9 +577,5 @@ def build_company_kb_draft(
         "loop": draft_save.get("loop"),
         "tool_trace": tool_trace,
         "message": "\n".join(lines),
-        "suggested_actions": [
-            {"title": "Подтвердить KB", "text": "Подтверди черновик базы знаний"},
-            {"title": "Уточнить цены", "text": "Цены и условия такие: "},
-            {"title": "Добавить каналы", "text": "Вот ссылки на Telegram / Instagram / VK: "},
-        ],
+        "suggested_actions": kb_draft_next_actions(),
     }
