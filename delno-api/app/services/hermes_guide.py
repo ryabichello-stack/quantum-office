@@ -46,7 +46,7 @@ def _phone_block(db: Session, ctx: TenantContext, *, sip: dict[str, Any] | None 
         if sip.get("login_looks_partial"):
             lines.append(
                 "Внимание: логин выглядит неполным (ожидается вид `номер/сотрудник`, "
-                "например `400348777/garik`). Откройте форму ещё раз и сохраните полный логин."
+                "например `123456789/ivan`). Откройте форму ещё раз и сохраните полный логин."
             )
         else:
             lines.append(

@@ -200,15 +200,16 @@ def create_run(
         if isinstance(sn, dict) and sn.get("title"):
             sub = sn.get("substep")
             micro = f" micro-step={sub}." if sub else ""
-            if sub == "need_sip":
+            if sub == "need_did":
                 micro += (
-                    " MUST call credentials.open_form mango_sip now "
-                    "(never ask password in chat; never only describe the form)."
+                    " Ask THIS tenant's public DID — never invent/demo/QL number. "
+                    "phones.list → phones.provision. Do NOT open SIP form until DID is attached."
                 )
-            elif sub == "need_did":
+            elif sub == "need_sip":
                 micro += (
-                    " phones.list → phones.provision; after DID succeeds in same turn "
-                    "open credentials.open_form mango_sip if SIP not Registered yet."
+                    " DID attached. MUST call credentials.open_form mango_sip now "
+                    "(login account/employee + SIP password; never ask password in chat; "
+                    "per-tenant registration only)."
                 )
             elif sub == "need_reg":
                 micro += (

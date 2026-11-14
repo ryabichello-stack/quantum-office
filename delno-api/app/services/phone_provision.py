@@ -63,18 +63,36 @@ def provision_phone(
         .filter(PhoneNumber.tenant_id == ctx.tenant_id, PhoneNumber.e164 == e164_n)
         .one_or_none()
     )
+    from app.services.sip_probe import trunk_id_for_tenant
+
+    default_routing = {
+        "frontline": True,
+        "outbound": True,
+        # Asterisk endpoint id for THIS tenant's Mango registration (multi-tenant).
+        "trunk_id": trunk_id_for_tenant(ctx.tenant_slug),
+    }
     if row:
         row.label = label or row.label
         row.status = status
         if routing_config is not None:
-            row.routing_config = routing_config
+            merged = dict(default_routing)
+            merged.update(row.routing_config or {})
+            merged.update(routing_config)
+            row.routing_config = merged
+        elif not (row.routing_config or {}).get("trunk_id"):
+            merged = dict(default_routing)
+            merged.update(row.routing_config or {})
+            row.routing_config = merged
     else:
+        merged = dict(default_routing)
+        if routing_config:
+            merged.update(routing_config)
         row = PhoneNumber(
             tenant_id=ctx.tenant_id,
             e164=e164_n,
             label=label or "main",
             status=status,
-            routing_config=routing_config or {"frontline": True, "outbound": True},
+            routing_config=merged,
         )
         db.add(row)
     db.flush()

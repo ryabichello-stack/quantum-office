@@ -225,7 +225,8 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
         try:
             from app.services.sip_probe import probe_registration
 
-            registration = probe_registration()
+            # Always probe THIS tenant's registration — never a shared dogfood line.
+            registration = probe_registration(ctx.tenant_slug)
         except Exception:  # noqa: BLE001
             registration = {"ok": False, "status": "unknown", "reachable": False}
     reg_ok = bool(sip_ok and registration.get("ok"))
@@ -455,7 +456,7 @@ def office_health_report(db: Session, ctx: TenantContext) -> dict[str, Any]:
         try:
             from app.services.sip_probe import probe_registration
 
-            reg = probe_registration()
+            reg = probe_registration(ctx.tenant_slug)
         except Exception:  # noqa: BLE001
             reg = {"ok": False, "status": "unknown", "reachable": False}
         login_masked = str(sip_row.get("login_masked") or "")

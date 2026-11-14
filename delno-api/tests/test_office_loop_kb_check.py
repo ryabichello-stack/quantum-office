@@ -132,9 +132,10 @@ def test_office_loop_kb_ok_uses_kb_check_id(monkeypatch):
     assert loop["kb_ok"] is True
     assert loop["phase"] == "connectors"
     assert loop["setup_next"]["id"] == "phone"
-    assert loop["setup_next"]["substep"] == "need_sip"
-    assert "SIP" in (loop["ui"]["headline"] or "") or "Телефония" in (loop["ui"]["headline"] or "")
-    assert "credentials.open_form" in (loop["ui"]["primary_cta"]["text"] or "")
+    # Battle order: DID before SIP for any tenant.
+    assert loop["setup_next"]["substep"] == "need_did"
+    assert "DID" in (loop["ui"]["headline"] or "") or "Телефония" in (loop["ui"]["headline"] or "")
+    assert "phones.provision" in (loop["ui"]["primary_cta"]["text"] or "")
     assert "импортировать kb" in (loop["ui"]["primary_cta"]["text"] or "").lower()
     company_kb = next(s for s in loop["steps"] if s["id"] == "company_kb")
     assert company_kb["done"] is True

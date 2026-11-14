@@ -1,7 +1,8 @@
-"""Probe / apply Mango SIP on the host Asterisk (dogfood / single-host).
+"""Probe / apply Mango SIP on the host Asterisk — multi-tenant.
 
-Vault save alone is not enough — Asterisk must get the password and re-register.
-Enabled only when ASTERISK_SIP_APPLY_URL or local CLI is configured.
+Each tenant saves ``mango_sip`` (login ``VPBX_ACCOUNT/employee`` + SIP password).
+Apply creates a dedicated PJSIP registration/endpoint for that tenant via the
+host helper (`apply_mango_sip_server.py`). Never reuse another tenant's trunk.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import os
 import re
 import subprocess
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any
 
@@ -20,20 +22,47 @@ logger = logging.getLogger(__name__)
 CURSOR_TASK_SIP_REJECTED = """# Task for Cursor — Mango SIP registration Rejected
 
 ## Context
-- Host: Cloud4Box (`161.104.89.123`)
-- Asterisk PJSIP registration `mango-registration` → `vpbx400348777.mangosip.ru` status **Rejected**
-- Tenant vault has `mango_sip` credentials; apply path: `delno-api` → Asterisk `mango-auth`
+- Host: Cloud4Box Asterisk PJSIP (per-tenant `delno-<slug>-reg`)
+- Tenant vault has `mango_sip`; apply path: `delno-api` → host SIP apply helper
 
 ## Do
-1. Confirm login format is Mango employee `номер/сотрудник` (e.g. `400348777/garik`) and password is the **SIP** password from Mango (not web UI).
-2. Apply via vault form in Hermes or `/opt/delno/scripts/apply_mango_sip.py`.
-3. `asterisk -rx "pjsip send register mango-registration"` then `pjsip show registrations` → expect **Registered**.
-4. Smoke: inbound to DID / `quantum_sip_test_call.py` if available.
-5. Do **not** SSH to destroyed Beget `5.35.86.62`.
+1. Confirm login is Mango ``VPBX_ACCOUNT/employee`` (not web UI login) and password is the **SIP** password.
+2. Confirm DID is provisioned for THIS tenant (`phones.provision`) — never assume a shared dogfood number.
+3. Re-save via Hermes vault form (triggers per-tenant apply) or POST host `/apply` with tenant_slug.
+4. `pjsip show registrations` → expect **Registered** on `delno-<slug>-reg`.
+5. Smoke inbound to the tenant's own DID.
 
 ## Done when
-`pjsip show registrations` shows Registered and a test call reaches AVA (`openai_realtime` / cedar).
+Tenant-specific registration is Registered and inbound on that DID routes to the tenant.
 """
+
+
+def parse_mango_login(login: str) -> dict[str, str | None]:
+    """Split ``account/employee``; account digits-only, employee SIP user."""
+    raw = (login or "").strip()
+    if not raw:
+        return {"account": None, "employee": None, "error": "missing_login"}
+    if "/" not in raw:
+        return {
+            "account": None,
+            "employee": raw,
+            "error": "login_must_be_account_slash_employee",
+        }
+    account, _, employee = raw.partition("/")
+    account_n = re.sub(r"\D", "", account)
+    employee_n = re.sub(r"[^a-zA-Z0-9._-]", "", employee.strip())
+    if len(account_n) < 5 or not employee_n:
+        return {
+            "account": account_n or None,
+            "employee": employee_n or None,
+            "error": "login_must_be_account_slash_employee",
+        }
+    return {"account": account_n, "employee": employee_n, "error": None}
+
+
+def trunk_id_for_tenant(tenant_slug: str) -> str:
+    safe = re.sub(r"[^a-z0-9]+", "-", (tenant_slug or "").strip().lower()).strip("-") or "tenant"
+    return f"delno-{safe[:48]}"
 
 
 def _run_asterisk(cmd: str, timeout: float = 8.0) -> tuple[bool, str]:
@@ -51,12 +80,17 @@ def _run_asterisk(cmd: str, timeout: float = 8.0) -> tuple[bool, str]:
         return False, str(exc)[:300]
 
 
-def probe_registration() -> dict[str, Any]:
-    """Read current mango-registration status without secrets."""
+def probe_registration(tenant_slug: str | None = None) -> dict[str, Any]:
+    """Read THIS tenant's registration status (never another cabinet's line)."""
     apply_url = (os.getenv("ASTERISK_SIP_APPLY_URL") or "").strip()
     if apply_url:
-        return _probe_via_http(apply_url.rstrip("/") + "/probe")
+        q = ""
+        if tenant_slug:
+            q = "?" + urllib.parse.urlencode({"tenant_slug": tenant_slug})
+        return _probe_via_http(apply_url.rstrip("/") + "/probe" + q)
 
+    slug = (tenant_slug or "").strip()
+    reg_name = f"{trunk_id_for_tenant(slug)}-reg" if slug else "mango-registration"
     ok, out = _run_asterisk("pjsip show registrations")
     if not ok:
         return {
@@ -67,74 +101,85 @@ def probe_registration() -> dict[str, Any]:
             "message_ru": "Не удалось спросить Asterisk о регистрации SIP.",
         }
     status = "unknown"
-    lower = out.lower()
-    if "registered" in lower and "rejected" not in lower:
-        status = "registered"
-    elif "rejected" in lower:
-        status = "rejected"
-    elif "unregistered" in lower or "exp." in lower:
-        status = "unregistered"
+    for line in out.splitlines():
+        if reg_name not in line:
+            continue
+        lower = line.lower()
+        if "rejected" in lower:
+            status = "rejected"
+            break
+        if "registered" in lower:
+            status = "registered"
+            break
+        if "unregistered" in lower:
+            status = "unregistered"
+            break
     return {
         "ok": status == "registered",
         "reachable": True,
         "status": status,
-        "detail": "mango-registration",
+        "tenant_slug": slug or None,
+        "detail": reg_name,
+        "trunk_id": trunk_id_for_tenant(slug) if slug else None,
         "message_ru": _status_message(status),
         "raw_excerpt": _safe_excerpt(out),
     }
 
 
-def apply_mango_sip(*, username: str, password: str) -> dict[str, Any]:
-    """Push credentials to Asterisk auth objects and request re-register."""
-    user = (username or "").strip()
-    if "/" in user:
-        user = user.split("/", 1)[-1].strip()
-    if not user or not password:
+def apply_mango_sip(
+    *,
+    tenant_slug: str,
+    login: str,
+    password: str,
+    did: str | None = None,
+) -> dict[str, Any]:
+    """Push THIS tenant's credentials to a dedicated Asterisk registration."""
+    slug = (tenant_slug or "").strip()
+    if not slug:
+        return {"ok": False, "error": "tenant_slug_required"}
+    parsed = parse_mango_login(login)
+    if parsed.get("error"):
+        return {
+            "ok": False,
+            "error": parsed["error"],
+            "message_ru": (
+                "Нужен логин Mango вида «номер_аккаунта/сотрудник» "
+                "(из карточки SIP сотрудника), не пароль веб-кабинета."
+            ),
+        }
+    if not password:
         return {"ok": False, "error": "missing_credentials"}
 
     apply_url = (os.getenv("ASTERISK_SIP_APPLY_URL") or "").strip()
     if apply_url:
-        return _apply_via_http(apply_url.rstrip("/") + "/apply", user=user, password=password)
+        return _apply_via_http(
+            apply_url.rstrip("/") + "/apply",
+            tenant_slug=slug,
+            login=login,
+            password=password,
+            did=did,
+        )
 
-    # Local CLI path (host process, not typical inside API container)
-    conf = os.getenv("ASTERISK_PJSIP_CONF", "/etc/asterisk/pjsip.conf")
-    try:
-        path_ok = _patch_pjsip_file(conf, user=user, password=password)
-        if not path_ok.get("ok"):
-            return path_ok
-        _run_asterisk("module reload res_pjsip.so")
-        _run_asterisk("pjsip send register mango-registration")
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("sip apply failed")
-        return {"ok": False, "error": "apply_failed", "detail": str(exc)[:200]}
-
-    import time
-
-    time.sleep(2.5)
-    probe = probe_registration()
+    # Local CLI path (host process) — write via helper logic is preferred;
+    # without HTTP helper we cannot safely mutate shared pjsip.conf for N tenants.
     return {
-        "ok": bool(probe.get("ok")),
-        "applied": True,
-        "username": user,
-        "registration": probe,
-        "message_ru": probe.get("message_ru"),
-        "cursor_task": None if probe.get("ok") else CURSOR_TASK_SIP_REJECTED,
-        "next_actions": _next_actions(probe),
+        "ok": False,
+        "error": "apply_url_required",
+        "message_ru": (
+            "SIP сохранён в сейфе, но хост-helper apply URL не настроен "
+            "(ASTERISK_SIP_APPLY_URL). Линию для кабинета не регистрирую."
+        ),
     }
 
 
-def after_vault_sip_save(*, tenant_slug: str, login: str | None, password: str | None) -> dict[str, Any]:
-    """Called after tenant vault mango_sip save — apply+probe when enabled."""
-    # Legacy apply endpoint edits one shared Asterisk profile. Never send another
-    # tenant's SIP credentials there until the endpoint routes by tenant/DID.
-    allowed_tenant = (os.getenv("ASTERISK_SIP_APPLY_TENANT_SLUG") or "").strip()
-    if not allowed_tenant or tenant_slug != allowed_tenant:
-        return {
-            "ok": False,
-            "skipped": True,
-            "reason": "tenant_route_not_configured",
-            "message_ru": "SIP сохранён. Для этой компании ещё не настроен отдельный маршрут телефонии; общую линию не меняю.",
-        }
+def after_vault_sip_save(
+    *,
+    tenant_slug: str,
+    login: str | None,
+    password: str | None,
+    did: str | None = None,
+) -> dict[str, Any]:
+    """Called after tenant vault mango_sip save — apply+probe for THIS tenant only."""
     try:
         from app.core.config import get_settings
 
@@ -152,8 +197,11 @@ def after_vault_sip_save(*, tenant_slug: str, login: str | None, password: str |
             "on",
         )
         url = (os.getenv("ASTERISK_SIP_APPLY_URL") or "").strip()
+
+    # Multi-tenant: every cabinet may apply. Legacy ASTERISK_SIP_APPLY_TENANT_SLUG
+    # is ignored (was a dogfood single-line gate).
     if not enabled:
-        probe = probe_registration()
+        probe = probe_registration(tenant_slug)
         return {
             "ok": False,
             "skipped": True,
@@ -169,19 +217,27 @@ def after_vault_sip_save(*, tenant_slug: str, login: str | None, password: str |
         }
     if not password:
         return {"ok": False, "error": "password_required_for_apply"}
-    return apply_mango_sip(username=login or "", password=password)
+    return apply_mango_sip(
+        tenant_slug=tenant_slug,
+        login=login or "",
+        password=password,
+        did=did,
+    )
 
 
 def _next_actions(probe: dict[str, Any]) -> list[dict[str, str]]:
     if probe.get("ok"):
         return [
-            {"title": "Тестовый звонок", "text": "Сделай тестовый входящий/исходящий звонок на наш DID"},
-            {"title": "Голос", "text": "Какой голос Realtime сейчас? Смени на cedar"},
+            {"title": "Тестовый звонок", "text": "Сделай тестовый входящий на наш DID"},
+            {"title": "Голос", "text": "Какой голос Realtime сейчас?"},
             {"title": "Здоровье", "text": "Проверь здоровье офиса"},
         ]
     return [
-        {"title": "Форма SIP ещё раз", "text": "Открой безопасную форму SIP — логин номер/сотрудник и SIP-пароль Mango"},
-        {"title": "Задание Cursor", "text": "Дай задание для Cursor: починить Mango SIP registration Rejected"},
+        {
+            "title": "Форма SIP ещё раз",
+            "text": "Открой безопасную форму SIP — логин аккаунт/сотрудник и SIP-пароль Mango",
+        },
+        {"title": "DID", "text": "Привяжи номер DID этого кабинета"},
         {"title": "Статус линии", "text": "Проверь регистрацию SIP и здоровье телефонии"},
     ]
 
@@ -200,48 +256,29 @@ def _safe_excerpt(raw: str) -> str:
     for line in (raw or "").splitlines():
         if "password" in line.lower():
             continue
-        if any(k in line for k in ("mango", "Registration", "Status", "Registered", "Rejected", "Objects")):
+        if any(k in line for k in ("delno-", "mango", "Registration", "Status", "Registered", "Rejected", "Objects")):
             lines.append(line[:160])
     return "\n".join(lines[:8])
 
 
-def _patch_pjsip_file(path: str, *, user: str, password: str) -> dict[str, Any]:
-    from pathlib import Path
-
-    p = Path(path)
-    if not p.exists():
-        return {"ok": False, "error": "pjsip_conf_missing", "path": path}
-    text = p.read_text()
-    bak = p.with_suffix(p.suffix + ".bak.hermes_sip")
-    if not bak.exists():
-        bak.write_text(text)
-    lines = text.splitlines(True)
-    out: list[str] = []
-    in_sec = False
-    target_secs = {"mango-auth", "mango-employee-auth"}
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("[") and stripped.endswith("]"):
-            in_sec = stripped[1:-1] in target_secs
-            out.append(line)
-            continue
-        if in_sec and stripped.startswith("username="):
-            out.append(f"username={user}\n")
-            continue
-        if in_sec and stripped.startswith("password="):
-            out.append(f"password={password}\n")
-            continue
-        out.append(line)
-    new = "".join(out)
-    if re.search(r"password=__MANGO_SIP_PASSWORD__", new):
-        return {"ok": False, "error": "placeholder_remains"}
-    p.write_text(new)
-    return {"ok": True}
-
-
-def _apply_via_http(url: str, *, user: str, password: str) -> dict[str, Any]:
+def _apply_via_http(
+    url: str,
+    *,
+    tenant_slug: str,
+    login: str,
+    password: str,
+    did: str | None = None,
+) -> dict[str, Any]:
     token = (os.getenv("ASTERISK_SIP_APPLY_TOKEN") or os.getenv("OFFICE_WEBHOOK_TOKEN") or "").strip()
-    body = json.dumps({"username": user, "password": password}).encode()
+    body = json.dumps(
+        {
+            "tenant_slug": tenant_slug,
+            "login": login,
+            "username": login,  # back-compat with older helpers
+            "password": password,
+            "did": did or "",
+        }
+    ).encode()
     req = urllib.request.Request(
         url,
         data=body,
@@ -260,7 +297,7 @@ def _apply_via_http(url: str, *, user: str, password: str) -> dict[str, Any]:
         return {"ok": False, "error": "apply_http_failed", "detail": str(exc)[:200]}
     probe = data.get("registration") if isinstance(data, dict) else None
     if not isinstance(probe, dict):
-        probe = probe_registration()
+        probe = probe_registration(tenant_slug)
     data = dict(data) if isinstance(data, dict) else {"ok": False}
     data.setdefault("next_actions", _next_actions(probe))
     if not data.get("ok"):

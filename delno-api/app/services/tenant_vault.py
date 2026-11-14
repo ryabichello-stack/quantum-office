@@ -37,10 +37,25 @@ FOREIGN_CLOUD_KINDS = frozenset({"files_gdrive", "files_onedrive"})
 MANGO_SIP_FORM = {
     "kind": "mango_sip",
     "title": "SIP Mango — безопасный ввод",
-    "hint": "Пароль не попадёт в ленту чата. Сохраняется только в кабинете tenant.",
+    "hint": (
+        "Логин вида «номер_аккаунта/сотрудник» из карточки SIP Mango "
+        "(не веб-кабинет). Пароль — SIP-пароль сотрудника. "
+        "Не попадёт в ленту чата; сохраняется только в этом кабинете."
+    ),
     "fields": [
-        {"name": "login", "label": "Логин / extension", "type": "text", "autocomplete": "username"},
-        {"name": "password", "label": "SIP-пароль", "type": "password", "autocomplete": "current-password"},
+        {
+            "name": "login",
+            "label": "Логин (аккаунт/сотрудник)",
+            "type": "text",
+            "autocomplete": "username",
+            "placeholder": "123456789/ivan",
+        },
+        {
+            "name": "password",
+            "label": "SIP-пароль",
+            "type": "password",
+            "autocomplete": "current-password",
+        },
     ],
     "submit_label": "Сохранить безопасно",
     "password_required": True,
@@ -417,9 +432,23 @@ def save_secret(
             out["message"] = f"Токен сохранён, MAX connect упал: {str(exc)[:120]}"
     if kind == "mango_sip":
         try:
-            from app.services.sip_probe import after_vault_sip_save
+            from app.models.phone_number import PhoneNumber
+            from app.services.sip_probe import after_vault_sip_save, trunk_id_for_tenant
 
-            probe = after_vault_sip_save(tenant_slug=ctx.tenant_slug, login=current.get("login"), password=current.get("password"))
+            # Prefer an active DID of THIS tenant — never a shared dogfood number.
+            did_row = (
+                db.query(PhoneNumber)
+                .filter(PhoneNumber.tenant_id == ctx.tenant_id, PhoneNumber.status == "active")
+                .order_by(PhoneNumber.created_at.desc())
+                .first()
+            )
+            did = did_row.e164 if did_row else None
+            probe = after_vault_sip_save(
+                tenant_slug=ctx.tenant_slug,
+                login=current.get("login"),
+                password=current.get("password"),
+                did=did,
+            )
             out["sip_probe"] = {
                 k: probe.get(k)
                 for k in (
@@ -431,9 +460,18 @@ def save_secret(
                     "next_actions",
                     "cursor_task",
                     "error",
+                    "trunk_id",
                 )
                 if k in probe
             }
+            trunk_id = str(probe.get("trunk_id") or trunk_id_for_tenant(ctx.tenant_slug))
+            if did_row and trunk_id:
+                cfg = dict(did_row.routing_config or {})
+                cfg["trunk_id"] = trunk_id
+                cfg["frontline"] = True
+                cfg["outbound"] = True
+                did_row.routing_config = cfg
+                db.commit()
             if probe.get("message_ru"):
                 out["message"] = (out["message"] + " " + str(probe.get("message_ru"))).strip()
             # Rejected / not Registered → reopen SIP form so owner can fix password without
@@ -442,7 +480,12 @@ def save_secret(
                 out["pending_credential_form"] = credential_form_spec("mango_sip")
                 out["message"] = (
                     (out.get("message") or "")
-                    + " Открою форму SIP снова — проверьте логин (номер/сотрудник) и пароль."
+                    + " Открою форму SIP снова — проверьте логин (аккаунт/сотрудник) и SIP-пароль."
+                ).strip()
+            elif probe.get("ok") and not did:
+                out["message"] = (
+                    (out.get("message") or "")
+                    + " SIP Registered. Следующий шаг — привяжите DID этого кабинета (скажите номер)."
                 ).strip()
         except Exception:  # noqa: BLE001
             __import__("logging").getLogger(__name__).exception("sip probe after vault save failed")

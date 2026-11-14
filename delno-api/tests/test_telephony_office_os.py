@@ -180,7 +180,12 @@ def test_health_skips_partial_login_when_sip_registered(db, monkeypatch):
 
     monkeypatch.setattr(
         "app.services.sip_probe.probe_registration",
-        lambda: {"ok": True, "status": "registered", "reachable": True, "message_ru": "Registered"},
+        lambda *_a, **_k: {
+            "ok": True,
+            "status": "registered",
+            "reachable": True,
+            "message_ru": "Registered",
+        },
     )
     health = hermes_ops.office_health_report(db, ctx)
     codes = [a.get("code") for a in (health.get("alerts") or [])]
@@ -205,7 +210,12 @@ def test_health_partial_login_when_sip_not_registered(db, monkeypatch):
 
     monkeypatch.setattr(
         "app.services.sip_probe.probe_registration",
-        lambda: {"ok": False, "status": "rejected", "reachable": True, "message_ru": "Rejected"},
+        lambda *_a, **_k: {
+            "ok": False,
+            "status": "rejected",
+            "reachable": True,
+            "message_ru": "Rejected",
+        },
     )
     health = hermes_ops.office_health_report(db, ctx)
     codes = [a.get("code") for a in (health.get("alerts") or [])]

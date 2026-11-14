@@ -242,35 +242,45 @@ def confirm_kb_draft(db: Session, ctx: TenantContext) -> dict[str, Any]:
 
 
 def _setup_substep(step_id: str, detail: dict[str, Any]) -> str | None:
-    """Break hermes_ops phone (and similar) into actionable micro-steps."""
+    """Break hermes_ops phone (and similar) into actionable micro-steps.
+
+    Battle order for ANY tenant: DID first (owner's number) → SIP vault → Registered.
+    Never assume a shared dogfood line or a pre-known Mango account.
+    """
     if step_id != "phone":
         return None
-    if not detail.get("sip_configured"):
-        return "need_sip"
     if int(detail.get("active_dids") or 0) <= 0:
         return "need_did"
+    if not detail.get("sip_configured"):
+        return "need_sip"
     if not detail.get("registration_ok"):
         return "need_reg"
     return None
 
 
 def _phone_hint(substep: str, detail: dict[str, Any]) -> str:
-    if substep == "need_sip":
-        return "Сначала SIP в сейфе (форма mango_sip) — пароль не в чат"
     if substep == "need_did":
-        return "SIP сохранён — нужен активный DID (phones.provision / линия)"
+        return (
+            "Спросите публичный номер клиента (DID) и привяжите phones.provision — "
+            "только номер ЭТОГО кабинета, без чужих/демо линий"
+        )
+    if substep == "need_sip":
+        return (
+            "DID есть — открой credentials.open_form mango_sip "
+            "(логин аккаунт/сотрудник + SIP-пароль; пароль не в чат)"
+        )
     if substep == "need_reg":
         status = detail.get("registration_status") or "unknown"
         msg = detail.get("registration_message") or ""
         if str(status).lower() == "rejected" or "reject" in str(msg).lower():
             return (
                 f"Mango Rejected (status={status}). "
-                "Сразу credentials.open_form mango_sip — проверить логин номер/сотрудник и пароль. "
+                "Сразу credentials.open_form mango_sip — проверить логин аккаунт/сотрудник и SIP-пароль. "
                 f"{msg}"
             ).strip()
         return (
-            f"DID есть, SIP не Registered (status={status}). "
-            "Если не Registered — снова credentials.open_form mango_sip. "
+            f"DID и SIP в сейфе, линия не Registered (status={status}). "
+            "Снова credentials.open_form mango_sip. "
             f"{msg}"
         ).strip()
     return ""
@@ -284,10 +294,10 @@ def _headline(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None)
     if phase == "connectors":
         if setup_next and setup_next.get("title"):
             sub = setup_next.get("substep")
-            if setup_next.get("id") == "phone" and sub == "need_sip":
-                return "Телефония: сохраните SIP в сейфе"
             if setup_next.get("id") == "phone" and sub == "need_did":
-                return "Телефония: подключите DID"
+                return "Телефония: какой номер (DID) подключаем?"
+            if setup_next.get("id") == "phone" and sub == "need_sip":
+                return "Телефония: SIP Mango этого кабинета"
             if setup_next.get("id") == "phone" and sub == "need_reg":
                 return "Телефония: дождитесь Registered"
             if setup_next.get("id") == "telephony_script":
@@ -322,26 +332,27 @@ def _cta(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> d
                 return {
                     "title": "Подключить DID",
                     "text": (
-                        "SIP уже в сейфе. Следующий микрошаг hermes_ops — активный DID: "
-                        "вызови phones.list, если пусто — phones.provision с номером. "
-                        "Не открывай форму SIP снова и не предлагай импортировать KB."
+                        "Спроси у владельца публичный номер ЭТОГО кабинета (DID). "
+                        "Никогда не подставляй чужой/демо/QL номер. "
+                        "phones.list → если пусто и номер назван — phones.provision. "
+                        "Форму SIP пока не открывай. Не предлагай импортировать KB."
                     ),
                 }
             if sub == "need_reg":
                 return {
                     "title": "Проверить регистрацию SIP",
                     "text": (
-                        "SIP и DID есть, но линия не Registered. Вызови hermes.setup_status / "
-                        "hermes.health, объясни status и next_actions. Не предлагай импортировать KB."
+                        "SIP и DID этого кабинета есть, но линия не Registered. Вызови "
+                        "hermes.setup_status / hermes.health, объясни status и next_actions. "
+                        "Не предлагай импортировать KB."
                     ),
                 }
             return {
                 "title": f"Настроить: {title}",
-                # Owner-facing CTA: DIY chat path opens pending_credential_form;
-                # if it falls through to Nous, same text is a clear tool instruction.
                 "text": (
-                    "Открой безопасную форму credentials.open_form для mango_sip. "
-                    "Это следующий шаг hermes_ops — телефония (DID + SIP). "
+                    "DID уже привязан. Открой credentials.open_form mango_sip — "
+                    "логин вида аккаунт/сотрудник + SIP-пароль Mango (не веб). "
+                    "Линия регистрируется только для ЭТОГО tenant. "
                     "Не предлагай снова импортировать KB."
                 ),
             }

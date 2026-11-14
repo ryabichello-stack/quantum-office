@@ -10,6 +10,9 @@
 
 ## [Unreleased]
 
+### Changed
+- **Mango SIP multi-tenant (battle)**: любой tenant / любой аккаунт Mango. Host apply helper пишет отдельную PJSIP registration+endpoint в `pjsip.d/` (`delno-<slug>-*`); probe/apply идут с `tenant_slug`. Убран dogfood-гейт `ASTERISK_SIP_APPLY_TENANT_SLUG`. Онбординг: DID → SIP → Registered (без подстановки чужих/QL номеров). Форма: логин `аккаунт/сотрудник`.
+
 ### Added
 - Hermes onboarding canon: `docs/hermes-nous/ONBOARDING_FULL_SCRIPT.md` — goal/tariff/skip/Draft First сценарий (Codex review)
 
