@@ -11,6 +11,10 @@ def test_soul_template_documents_phone_micro_steps():
     soul = (_TEMPLATES / "SOUL.md").read_text(encoding="utf-8")
     assert "need_sip" in soul
     assert "need_did" in soul
+    # Draft First: must show full draft body, not a status stub
+    assert "ЖЁСТКОЕ ПРАВИЛО" in soul or "полный текст черновика" in soul
+    assert "Запрещено вместо полного черновика" in soul or "без секций" in soul
+    assert "##" in soul
     assert "need_reg" in soul
     assert "credentials.open_form" in soul
     assert "telegram_bot" in soul
