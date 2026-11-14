@@ -1087,8 +1087,10 @@ def prefer_pending_kb_draft_reply(
         if not isinstance(t, dict) or t.get("tool") != "office.build_kb_draft" or not t.get("ok"):
             continue
         full = str(t.get("full_message") or "").strip()
-        if len(full) >= 400 and ("## " in full or "черновик" in full.lower()):
-            # Prefer tool message (already includes sources); still ensure CTA trio.
+        # Only trust tool full_message when it actually contains the profile sections.
+        # A long status stub that merely says «черновик» / «Обогатить» must NOT win —
+        # that was collapsing Draft First to a thin CTA without the body.
+        if len(full) >= 400 and "## " in full:
             if "Следующее действие" not in full and "Обогатить" not in full:
                 return full.rstrip() + "\n" + kb_draft_cta_footer()
             return full
@@ -1109,12 +1111,24 @@ def prefer_pending_kb_draft_reply(
         draft = None
     if not draft:
         return text
+    # Draft First: any turn that built a draft OR mentions a draft without showing
+    # sections → force the full office_loop body into the chat reply.
     thin = len(text) < 1500 or "## " not in text
     talks_draft = any(
         m in text.lower()
-        for m in ("черновик", "добавить в", "баз", "kb", "профиль", "собрал")
+        for m in (
+            "черновик",
+            "добавить в",
+            "баз",
+            "kb",
+            "профиль",
+            "собрал",
+            "сохранить в kb",
+            "обогатить",
+            "доработать",
+        )
     )
-    if built or (thin and talks_draft):
+    if built or thin or talks_draft:
         return format_kb_draft_owner_reply(draft, gaps=gaps)
     return text
 

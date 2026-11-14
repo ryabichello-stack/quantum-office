@@ -10,6 +10,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- Hermes **Draft First**: тонкий tool `full_message` со словом «черновик»/CTA больше не перехватывает ответ — в чат подставляется полный `office_loop.kb_draft` с секциями `##`
+
 ### Changed
 - **Mango SIP multi-tenant (battle)**: любой tenant / любой аккаунт Mango. Host apply helper пишет отдельную PJSIP registration+endpoint в `pjsip.d/` (`delno-<slug>-*`); probe/apply идут с `tenant_slug`. Убран dogfood-гейт `ASTERISK_SIP_APPLY_TENANT_SLUG`. Онбординг: DID → SIP → Registered (без подстановки чужих/QL номеров). Форма: логин `аккаунт/сотрудник`.
 

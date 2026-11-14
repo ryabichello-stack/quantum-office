@@ -69,6 +69,54 @@ def test_prefer_pending_replaces_thin_nous_status():
     assert "Обогатить" in out or "обогати" in out.lower()
 
 
+def test_prefer_pending_ignores_thin_tool_full_message(monkeypatch):
+    """Status stub in tool full_message must not block office_loop body."""
+
+    class _FakeDb:
+        pass
+
+    class _FakeCtx:
+        tenant_id = None
+        tenant_slug = "t"
+
+    draft = {
+        "status": "draft",
+        "title": "Acme",
+        "body": "## 1. Кто мы\nAcme Corp\n\n## 2. Продукты\nAPI\n" * 8,
+    }
+
+    def _loop(_db, _ctx):
+        return {"kb_draft": draft}
+
+    monkeypatch.setattr(
+        "app.services.hermes_nous.onboarding.get_office_loop",
+        _loop,
+    )
+    thin_tool = (
+        "Я уже собрал черновик по сайту example.com. В черновике есть профиль: "
+        "услуги, ICP, цены, FAQ, контакты и пробелы. " * 8
+        + "\nСледующее действие — выберите одно из трёх:\n"
+        "1. Сохранить в KB\n2. Обогатить через поиск\n3. Доработать\n"
+    )
+    tools = [
+        {
+            "tool": "office.build_kb_draft",
+            "ok": True,
+            "full_message": thin_tool,
+        }
+    ]
+    out = prefer_pending_kb_draft_reply(
+        _FakeDb(),  # type: ignore[arg-type]
+        _FakeCtx(),  # type: ignore[arg-type]
+        thin_tool,
+        tool_calls=tools,
+    )
+    assert "## 1. Кто мы" in out
+    assert "В черновике есть профиль" not in out or out.index("## 1. Кто мы") < out.index(
+        "Статус"
+    )
+
+
 def test_format_kb_draft_owner_reply_includes_status():
     text = format_kb_draft_owner_reply(
         {"title": "QL", "body": "## Услуги\nВыплаты"},
