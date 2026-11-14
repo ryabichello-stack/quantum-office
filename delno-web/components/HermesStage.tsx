@@ -1563,7 +1563,7 @@ export function HermesStage({ token }: { token: string }) {
                           className="w-full"
                           disabled={sending}
                           onClick={() => {
-                            setRailOpen(false);
+                            setPanelOpen(false);
                             void sendText("Обогати черновик через интернет-поиск");
                           }}
                         >
@@ -1576,7 +1576,7 @@ export function HermesStage({ token }: { token: string }) {
                           className="w-full"
                           disabled={sending}
                           onClick={() => {
-                            setRailOpen(false);
+                            setPanelOpen(false);
                             void sendText("Доработай черновик: ");
                           }}
                         >
