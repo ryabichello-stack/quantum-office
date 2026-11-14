@@ -15,11 +15,13 @@ from app.services.hermes_nous.onboarding import confirm_kb_draft, get_office_loo
 class OfficeBuildKbDraftTool:
     name = "office.build_kb_draft"
     description = (
-        "Deep company knowledge onboarding: crawl the website (many pages), "
+        "Deep company knowledge onboarding OR enrichment: crawl the website (many pages), "
         "harvest Telegram/Instagram/VK/MAX links, search the open web by company "
-        "profile, structure a KB draft for owner confirm, and ask clarifying "
-        "questions. Prefer this over office.import_website when building KB "
-        "together with the client. Does not auto-publish."
+        "profile, structure a KB draft for owner review, and ask clarifying "
+        "questions. Use again with also_search=true when the owner says «обогати» / "
+        "enrich — that is NOT a publish. Prefer this over office.import_website when "
+        "building KB together with the client. Does not auto-publish; after the draft "
+        "the reply must show the full profile and offer save / enrich / edit."
     )
     critical_write = False
     parameters_schema = {
@@ -97,9 +99,11 @@ class OfficeConfirmKbDraftTool:
     name = "office.confirm_kb_draft"
     description = (
         "Commit the saved commercial KB draft into the live knowledge base and "
-        "mark the office KB setup step done. Use when the owner says "
-        "«положи в кб», «подтверди черновик», «сохрани профиль» after a draft "
-        "exists. Prefer this over upload_knowledge_snippet for onboarding drafts."
+        "mark the office KB setup step done. Use ONLY when the owner explicitly says "
+        "«положи в кб», «подтверди черновик», «сохрани в базу / профиль» after a draft "
+        "exists. NEVER use for «обогати» / enrich / «найди ещё» — that needs "
+        "office.build_kb_draft instead. Prefer this over upload_knowledge_snippet "
+        "for onboarding drafts."
     )
     critical_write = False  # owner already confirmed in chat text
     parameters_schema = {"type": "object", "properties": {}}

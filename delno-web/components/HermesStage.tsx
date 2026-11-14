@@ -1521,7 +1521,7 @@ export function HermesStage({ token }: { token: string }) {
                     {officeLoop.kb_draft?.status === "draft" ? (
                       <div className="mt-2 flex flex-col gap-2">
                         <p className="text-xs text-muted-foreground">
-                          Черновик KB «{officeLoop.kb_draft.title}» — подтвердите, чтобы сохранить в базу.
+                          Черновик KB «{officeLoop.kb_draft.title}» — ещё не в боевой базе.
                         </p>
                         <Button
                           type="button"
@@ -1554,7 +1554,33 @@ export function HermesStage({ token }: { token: string }) {
                             })();
                           }}
                         >
-                          Подтвердить KB
+                          Сохранить в KB
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          disabled={sending}
+                          onClick={() => {
+                            setPanelOpen(false);
+                            void sendText("Обогати черновик через интернет-поиск");
+                          }}
+                        >
+                          Обогатить поиском
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          disabled={sending}
+                          onClick={() => {
+                            setPanelOpen(false);
+                            void sendText("Доработай черновик: ");
+                          }}
+                        >
+                          Доработать
                         </Button>
                       </div>
                     ) : null}
