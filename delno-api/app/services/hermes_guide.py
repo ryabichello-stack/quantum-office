@@ -1111,9 +1111,12 @@ def prefer_pending_kb_draft_reply(
         draft = None
     if not draft:
         return text
-    # Draft First: any turn that built a draft OR mentions a draft without showing
-    # sections → force the full office_loop body into the chat reply.
-    thin = len(text) < 1500 or "## " not in text
+    draft_body = str(draft.get("body") or "")
+    section_count = draft_body.count("## ")
+    reply_sections = text.count("## ")
+    # Draft First: force full body whenever the chat reply does not already contain
+    # the profile sections (at least 3 ## headings). Status stubs / path summaries lose.
+    thin = len(text) < max(1500, len(draft_body) // 2) or reply_sections < 3
     talks_draft = any(
         m in text.lower()
         for m in (
@@ -1126,9 +1129,11 @@ def prefer_pending_kb_draft_reply(
             "сохранить в kb",
             "обогатить",
             "доработать",
+            "знани",
+            "quantumpayouts",
         )
     )
-    if built or thin or talks_draft:
+    if built or thin or talks_draft or (section_count >= 3 and reply_sections < 3):
         return format_kb_draft_owner_reply(draft, gaps=gaps)
     return text
 

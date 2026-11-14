@@ -1202,6 +1202,14 @@ def _finish_diy(
     from app.operator.agent import persist_operator_exchange
 
     calls = list(tool_calls or [])
+    # Draft First hard gate: every finish path must surface full office_loop draft
+    # when the model/Nous collapsed it to a status stub (even if prefer was skipped upstream).
+    try:
+        from app.services.hermes_guide import prefer_pending_kb_draft_reply
+
+        reply = prefer_pending_kb_draft_reply(db, ctx, reply or "", tool_calls=calls)
+    except Exception:
+        pass
     actions = list(suggested_actions or [])
     if not actions:
         try:
@@ -1393,6 +1401,39 @@ def operator_chat(
                 office_loop=get_office_loop(db, ctx),
             )
         # No draft / failed → fall through to agent to rebuild or explain.
+
+    # «покажи черновик» → always paste full office_loop draft (DIY, no Nous collapse).
+    if _wants_show_kb_findings(message) and not attachments:
+        from app.services.hermes_guide import (
+            format_kb_draft_owner_reply,
+            kb_draft_next_actions,
+        )
+        from app.services.hermes_nous.onboarding import get_office_loop
+
+        loop = get_office_loop(db, ctx) or {}
+        draft = loop.get("kb_draft") if isinstance(loop.get("kb_draft"), dict) else None
+        if (
+            isinstance(draft, dict)
+            and str(draft.get("status") or "") == "draft"
+            and str(draft.get("body") or "").strip()
+        ):
+            gaps = draft.get("gaps") if isinstance(draft.get("gaps"), list) else None
+            return _finish_diy(
+                db,
+                ctx,
+                body,
+                modality=modality,
+                engine="diy_show_kb_draft",
+                reply=format_kb_draft_owner_reply(
+                    draft,
+                    gaps=[str(x) for x in gaps] if gaps else None,
+                    intro="Черновик KB (полный текст):",
+                ),
+                tool_calls=[{"tool": "office_loop.kb_draft", "ok": True}],
+                suggested_actions=kb_draft_next_actions(),
+                office_loop=loop,
+            )
+
 
     # Periodic поручения — create / list (before agent/Nous).
     if not attachments and (schedule_intent or wants_sched_list):

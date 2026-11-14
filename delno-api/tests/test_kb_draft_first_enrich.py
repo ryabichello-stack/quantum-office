@@ -125,3 +125,46 @@ def test_format_kb_draft_owner_reply_includes_status():
     assert "## Услуги" in text
     assert "ещё не сохранён" in text.lower() or "не сохранён" in text.lower()
     assert "Telegram" in text
+
+
+def test_prefer_pending_replaces_path_summary_without_sections(monkeypatch):
+    class _FakeDb:
+        pass
+
+    class _FakeCtx:
+        tenant_id = None
+        tenant_slug = "t"
+
+    body = "\n".join(
+        [
+            "## 1. Кто мы",
+            "Acme",
+            "## 2. Продукты",
+            "API",
+            "## 3. Для кого",
+            "B2B",
+            "## 4. Цены",
+            "от 0,4%",
+        ]
+    )
+    draft = {"status": "draft", "title": "Acme", "body": body}
+
+    monkeypatch.setattr(
+        "app.services.hermes_nous.onboarding.get_office_loop",
+        lambda *_a, **_k: {"kb_draft": draft},
+    )
+    thin = (
+        "Понял. Знания — готовы. Я собрал коммерческий профиль. "
+        "Что уже известно: услуги, ICP, цены. Инструменты не подключены. "
+        "Следующий шаг: 1. Сохранить в KB 2. Обогатить 3. Доработать"
+    )
+    tools = [{"tool": "office.build_kb_draft", "ok": True, "full_message": thin * 3}]
+    out = prefer_pending_kb_draft_reply(
+        _FakeDb(),  # type: ignore[arg-type]
+        _FakeCtx(),  # type: ignore[arg-type]
+        thin,
+        tool_calls=tools,
+    )
+    assert "## 1. Кто мы" in out
+    assert out.count("## ") >= 3
+    assert "Знания — готовы" not in out or out.index("## 1. Кто мы") < 80
