@@ -2564,22 +2564,63 @@ def operator_confirm(
     if ok and body.tool_name == "phones.provision":
         phone = data.get("phone") if isinstance(data.get("phone"), dict) else {}
         e164 = str((phone or {}).get("e164") or (body.params or {}).get("e164") or "").strip()
-        message = (
-            f"Номер {e164 or 'DID'} привязан к кабинету.\n"
-            "Следующий шаг — SIP Mango: логин вида «номер/сотрудник» и пароль в сейфе, "
-            "пока линия не станет Registered. Без SIP Mango может отвечать «операторы заняты»."
-        )
-        form_res = registry.run(db, ctx, "credentials.open_form", kind="mango_sip")
-        if isinstance(form_res, ToolResult) and form_res.ok:
-            form = (form_res.data or {}).get("pending_credential_form")
-            if isinstance(form, dict):
-                pending_credential_form = form
-                message += "\n\nОткрою форму SIP ниже — заполните и сохраните."
-        suggested = [
-            {"title": "SIP", "text": "Открой форму SIP Mango"},
-            {"title": "Статус линии", "text": "Проверь регистрацию SIP"},
-            {"title": "Сетап", "text": "Статус сетапа"},
-        ]
+        # Do NOT reopen SIP form if THIS tenant already has mango_sip + Registered.
+        sip_configured = False
+        sip_registered = False
+        try:
+            from app.services.hermes_ops import office_setup_status
+
+            phone_check = ((office_setup_status(db, ctx).get("checks") or {}).get("phone") or {})
+            detail = phone_check.get("detail") if isinstance(phone_check, dict) else {}
+            if isinstance(detail, dict):
+                sip_configured = bool(detail.get("sip_configured"))
+                sip_registered = bool(detail.get("registration_ok"))
+        except Exception:
+            pass
+        if sip_registered:
+            message = (
+                f"Номер {e164 or 'DID'} привязан к кабинету.\n"
+                "SIP уже Registered — форма не нужна. "
+                "Дальше: тестовый звонок или сценарий секретаря Ava."
+            )
+            suggested = [
+                {"title": "Тестовый звонок", "text": "Сделай тестовый входящий на наш DID"},
+                {"title": "Сценарий секретаря", "text": "Настрой сценарий секретаря Ava"},
+                {"title": "Статус линии", "text": "Проверь регистрацию SIP и здоровье телефонии"},
+            ]
+        elif sip_configured:
+            message = (
+                f"Номер {e164 or 'DID'} привязан к кабинету.\n"
+                "SIP уже в сейфе, но линия ещё не Registered — "
+                "открою форму, чтобы проверить логин «аккаунт/сотрудник» и SIP-пароль."
+            )
+            form_res = registry.run(db, ctx, "credentials.open_form", kind="mango_sip")
+            if isinstance(form_res, ToolResult) and form_res.ok:
+                form = (form_res.data or {}).get("pending_credential_form")
+                if isinstance(form, dict):
+                    pending_credential_form = form
+            suggested = [
+                {"title": "Статус линии", "text": "Проверь регистрацию SIP"},
+                {"title": "Форма SIP", "text": "Открой безопасную форму SIP Mango"},
+                {"title": "Сетап", "text": "Статус сетапа"},
+            ]
+        else:
+            message = (
+                f"Номер {e164 or 'DID'} привязан к кабинету.\n"
+                "Следующий шаг — SIP Mango: логин вида «аккаунт/сотрудник» и SIP-пароль в сейфе. "
+                "Без Registered Mango может отвечать «операторы заняты»."
+            )
+            form_res = registry.run(db, ctx, "credentials.open_form", kind="mango_sip")
+            if isinstance(form_res, ToolResult) and form_res.ok:
+                form = (form_res.data or {}).get("pending_credential_form")
+                if isinstance(form, dict):
+                    pending_credential_form = form
+                    message += "\n\nОткрою форму SIP ниже — заполните и сохраните."
+            suggested = [
+                {"title": "SIP", "text": "Открой форму SIP Mango"},
+                {"title": "Статус линии", "text": "Проверь регистрацию SIP"},
+                {"title": "Сетап", "text": "Статус сетапа"},
+            ]
 
     if ok and not suggested:
         try:

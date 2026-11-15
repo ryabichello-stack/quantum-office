@@ -11,6 +11,7 @@
 ## [Unreleased]
 
 ### Fixed
+- Hermes telephony: after `phones.provision`, do **not** reopen SIP form when THIS tenant is already Registered — go to test call / Ava script instead of the DID↔SIP loop
 - Hermes **Draft First**: тонкий tool `full_message` со словом «черновик»/CTA больше не перехватывает ответ — в чат подставляется полный `office_loop.kb_draft` с секциями `##`
 - Hermes инструкции (SOUL / onboarding / Nous mission / ONBOARDING_FULL_SCRIPT): жёстко — после сбора черновик **обязан** быть в том же ответе целиком; статус-stub без `##` = провал хода
 - Hermes Draft First hard gate: `prefer_pending_kb_draft_reply` на **каждом** `_finish_diy`; DIY «покажи черновик» отдаёт полный draft без Nous; stub с <3 секций `##` всегда заменяется телом
