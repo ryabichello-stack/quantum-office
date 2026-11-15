@@ -5,9 +5,10 @@ import {
   initialDictate,
   micButtonLabel,
   reduceDictate,
-  ruSteps,
+  doneActionsLabel,
+  humanAction,
+  ruActions,
   thinkingView,
-  thoughtsLabel,
   waveHeights,
   type DictateSnapshot,
 } from "./hermesUiStates";
@@ -97,43 +98,59 @@ describe("microphone states", () => {
 
 describe("Hermes thinking block", () => {
   const steps = [
-    { label: "Читаю запрос" },
-    { label: "Смотрю каналы и способ подключения", detail: "telegram" },
-    { label: "Готовлю ответ" },
+    { label: "Читаю запрос…" },
+    { label: "web.research", detail: "https://dlno.ru · diy_web_research" },
+    { label: "phones.provision" },
+    { label: "Думаю над ответом…" },
   ];
 
-  it("shows only the current step large and folds the rest", () => {
+  it("shows the current action in the collapsed line and keeps the same words in the list", () => {
     const first = thinkingView(steps, { live: true, liveIndex: 1 });
-    assert.equal(first.showSummary, false);
-    assert.equal(first.current?.label, "Читаю запрос");
-    assert.deepEqual(first.summarySteps, []);
+    assert.equal(first.line, "Читаю запрос…");
+    assert.equal(first.steps.length, 1);
 
     const mid = thinkingView(steps, { live: true, liveIndex: 2 });
-    assert.equal(mid.showSummary, true);
-    assert.equal(mid.summaryLabel, "Ход мыслей · 1 шаг");
-    assert.equal(mid.summarySteps.length, 1);
-    assert.equal(mid.current?.label, "Смотрю каналы и способ подключения");
+    assert.equal(mid.line, "Ищу на сайте компании…");
+    assert.equal(mid.line.includes("web.research"), false);
+    assert.equal(mid.steps.length, 2);
+    assert.equal(mid.steps[1].label, "Ищу на сайте компании…");
+    assert.equal(mid.steps[1].detail, "https://dlno.ru");
+    assert.equal(JSON.stringify(mid).includes("diy_web_research"), false);
 
-    const last = thinkingView(steps, { live: true, liveIndex: 3 });
-    assert.equal(last.summaryLabel, "Ход мыслей · 2 шага");
-    assert.equal(last.current?.label, "Готовлю ответ");
+    const last = thinkingView(steps, { live: true, liveIndex: 4 });
+    assert.equal(last.line, "Думаю над ответом…");
+    assert.equal(last.steps[2].label, "Привязываю номер…");
   });
 
-  it("collapses the whole trace once the answer is ready", () => {
+  it("collapses to a short count once the answer is ready", () => {
     const done = thinkingView(steps, { live: false });
-    assert.equal(done.current, null);
-    assert.equal(done.showSummary, true);
-    assert.equal(done.summarySteps.length, 3);
-    assert.equal(done.summaryLabel, thoughtsLabel(3));
-    assert.equal(done.summaryLabel, "Ход мыслей · 3 шага");
+    assert.equal(done.line, "Сделал 4 действия");
+    assert.equal(done.line.includes("Ход мыслей"), false);
+    assert.equal(done.steps.length, 4);
+    assert.equal(done.steps.every((step) => !step.label.includes(".")), true);
   });
 
-  it("pluralizes the step count", () => {
-    assert.equal(ruSteps(1), "1 шаг");
-    assert.equal(ruSteps(2), "2 шага");
-    assert.equal(ruSteps(5), "5 шагов");
-    assert.equal(ruSteps(11), "11 шагов");
-    assert.equal(ruSteps(21), "21 шаг");
-    assert.equal(thoughtsLabel(11), "Ход мыслей · 11 шагов");
+  it("names tools in plain language and hides unknown ids", () => {
+    assert.equal(humanAction("credentials.open_form"), "Открываю безопасную форму…");
+    assert.equal(humanAction("web.search"), "Ищу в интернете…");
+    assert.equal(humanAction("web.fetch"), "Читаю страницу…");
+    assert.equal(humanAction("get_knowledge"), "Проверяю базу знаний…");
+    assert.equal(humanAction("telephony.script_save"), "Сохраняю сценарий звонков…");
+    assert.equal(humanAction("suggest_calendar_slots"), "Смотрю свободное время…");
+    assert.equal(humanAction("send_mail_draft"), "Готовлю письмо…");
+    assert.equal(humanAction("Инструмент: phones.list"), "Смотрю номера…");
+    const unknown = humanAction("mystery.tool_x");
+    assert.equal(unknown, "Выполняю действие…");
+    assert.equal(unknown.includes("mystery"), false);
+  });
+
+  it("pluralizes the finished summary", () => {
+    assert.equal(ruActions(1), "1 действие");
+    assert.equal(ruActions(2), "2 действия");
+    assert.equal(ruActions(4), "4 действия");
+    assert.equal(ruActions(5), "5 действий");
+    assert.equal(ruActions(11), "11 действий");
+    assert.equal(ruActions(21), "21 действие");
+    assert.equal(doneActionsLabel(4), "Сделал 4 действия");
   });
 });

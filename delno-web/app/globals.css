@@ -1818,7 +1818,7 @@ p {
   .hx-mic-btn.is-recording::after,
   .hx-dictate-dot,
   .hx-spin,
-  .hx-think-current {
+  .hx-think-line {
     animation: none;
   }
 }
@@ -3568,7 +3568,7 @@ aside a.nav-operator.selected .nav-orb-icon {
   padding: 0.1em 0.35em;
   border-radius: 6px;
 }
-/* Hermes thoughts: one large live step, earlier steps behind a summary. */
+/* Hermes thoughts: one cabinet-font line, full list on click. */
 .hx-think {
   margin: 0 0 10px;
   max-width: min(100%, 640px);
@@ -3577,15 +3577,25 @@ aside a.nav-operator.selected .nav-orb-icon {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  max-width: 100%;
   border: 0;
   background: transparent;
   color: var(--hx-muted);
-  font-family: inherit;
-  font-size: 13px;
+  font-family: "Manrope", "Segoe UI", sans-serif;
+  font-size: 14px;
   font-weight: 600;
+  line-height: 1.35;
   padding: 2px 0;
   cursor: pointer;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.011em;
+  text-align: left;
+}
+.hx-think.is-live .hx-think-toggle {
+  color: var(--hx-ink);
+  font-size: 18px;
+}
+.hx-think-line {
+  animation: hx-think-in 0.35s ease;
 }
 .hx-think-toggle:hover {
   color: var(--hx-ink);
@@ -3598,7 +3608,7 @@ aside a.nav-operator.selected .nav-orb-icon {
 .hx-think-list {
   list-style: none;
   margin: 8px 0 0;
-  padding: 0 0 0 12px;
+  padding: 0 0 0 18px;
   border-left: 2px solid rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
@@ -3609,6 +3619,7 @@ aside a.nav-operator.selected .nav-orb-icon {
   flex-direction: column;
   gap: 1px;
   color: var(--hx-muted);
+  font-family: "Manrope", "Segoe UI", sans-serif;
   font-size: 13px;
   line-height: 1.4;
 }
@@ -3616,55 +3627,19 @@ aside a.nav-operator.selected .nav-orb-icon {
   font-size: 12px;
   color: #8a8a8a;
 }
-.hx-think-current {
-  margin: 10px 0 0;
-  font-family: "Fraunces", Georgia, serif;
-  font-size: clamp(20px, 2.6vw, 28px);
-  font-weight: 560;
-  letter-spacing: -0.03em;
-  line-height: 1.25;
-  color: var(--hx-ink);
-  animation: hx-think-in 0.48s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-.hx-think-current small {
-  display: block;
-  margin-top: 4px;
-  font-family: "Manrope", "Segoe UI", sans-serif;
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0;
-  color: var(--hx-muted);
-}
-.hx-think.is-live .hx-think-label::after {
-  content: "";
-  display: inline-block;
-  width: 0.38em;
-  height: 0.38em;
-  margin-left: 0.35em;
-  border-radius: 50%;
-  background: currentColor;
-  vertical-align: 0.08em;
-  animation: hx-think-dot 1s ease-in-out infinite;
+@media (max-width: 720px) {
+  .hx-think.is-live .hx-think-toggle {
+    font-size: 17px;
+  }
 }
 @keyframes hx-think-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
     transform: none;
-  }
-}
-@keyframes hx-think-dot {
-  0%,
-  100% {
-    opacity: 0.25;
-    transform: scale(0.85);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1);
   }
 }
 .hx-tool-pillrow {

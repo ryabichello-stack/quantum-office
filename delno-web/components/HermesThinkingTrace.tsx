@@ -7,9 +7,9 @@ import { thinkingView } from "@/lib/hermesUiStates";
 import { cn } from "@/lib/utils";
 
 /**
- * While Hermes is working, only the current step is shown large.
- * Earlier steps sit behind «Ход мыслей · N …».
- * When the answer arrives the whole trace collapses; the reply stays outside.
+ * One line while Hermes works: the current action, in plain present tense.
+ * The owner can open the full list in the same words.
+ * When the reply is ready the line becomes «Сделал N действий».
  */
 export function HermesThinkingTrace({
   steps,
@@ -17,7 +17,7 @@ export function HermesThinkingTrace({
   liveIndex,
 }: {
   steps: ThinkingStep[];
-  /** Request still in flight — current step stays open. */
+  /** Request still in flight — the line is the current action. */
   live?: boolean;
   /** How many steps of the plan are active so far (1-based). */
   liveIndex?: number;
@@ -32,32 +32,29 @@ export function HermesThinkingTrace({
     if (!live) setOpen(false);
   }, [live]);
 
-  if (!steps.length || (!view.showSummary && !view.current)) return null;
-
-  const expanded = view.showSummary && open;
-  const currentKey = view.current ? `${liveIndex ?? 0}:${view.current.label}` : "";
+  if (!view.line) return null;
 
   return (
     <div
       className={cn("hx-think", live && "is-live")}
       data-state={live ? "live" : "done"}
-      data-open={expanded ? "true" : "false"}
+      data-open={open ? "true" : "false"}
     >
-      {view.showSummary ? (
-        <button
-          type="button"
-          className="hx-think-toggle"
-          aria-expanded={open}
-          aria-controls={expanded ? listId : undefined}
-          onClick={() => setOpen((v) => !v)}
-        >
-          {open ? <ChevronDown size={14} strokeWidth={2} /> : <ChevronRight size={14} strokeWidth={2} />}
-          <span>{view.summaryLabel}</span>
-        </button>
-      ) : null}
-      {expanded ? (
+      <button
+        type="button"
+        className="hx-think-toggle"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? <ChevronDown size={14} strokeWidth={2} /> : <ChevronRight size={14} strokeWidth={2} />}
+        <span className="hx-think-line" key={view.line}>
+          {view.line}
+        </span>
+      </button>
+      {open ? (
         <ol id={listId} className="hx-think-list">
-          {view.summarySteps.map((step, i) => (
+          {view.steps.map((step, i) => (
             <li key={`${i}-${step.label}`}>
               <span>{step.label}</span>
               {step.detail ? <small>{step.detail}</small> : null}
@@ -65,11 +62,10 @@ export function HermesThinkingTrace({
           ))}
         </ol>
       ) : null}
-      {view.current ? (
-        <p className="hx-think-current" key={currentKey} aria-live="polite">
-          <span className="hx-think-label">{view.current.label}</span>
-          {view.current.detail ? <small>{view.current.detail}</small> : null}
-        </p>
+      {live ? (
+        <span className="sr-only" aria-live="polite">
+          {view.line}
+        </span>
       ) : null}
     </div>
   );
