@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Asterisk dialplan hook → DELNO telephony bridge (inbound start/end + live memory).
 #
-# Dialplan examples:
-#   System(/opt/delno/api/deploy/asterisk_delno_bridge.sh start ${CDR(uniqueid)} ${CALLERID(num)} ${EXTEN})
-#   System(/opt/delno/api/deploy/asterisk_delno_bridge.sh end ${CDR(uniqueid)} "" "" "${SESSION_ID}" "${SUMMARY}" "${TRANSCRIPT}")
+# Dialplan / AGI:
+#   AGI delno_route_call.py → bridge start uniqueid callerid did dnid trunk_id
+#   On start, args 5–6 are did_candidate + trunk_id (not session/summary).
+#   System(... end uniqueid "" "" "${SESSION_ID}" "${SUMMARY}" "${TRANSCRIPT}")
 #
 # On start, session_id is written to /tmp/delno-call-<uniqueid>.session for hangup.
 set -euo pipefail
@@ -35,10 +36,20 @@ json_escape() {
 }
 
 if [ "$ACTION" = "start" ]; then
+  # Positional reuse: SESSION_ID ← dnid (did candidate), SUMMARY ← trunk_id from AGI.
+  payload="$(python3 - "$DID" "$FROM_NUM" "$UNIQUEID" "$SESSION_ID" "$SUMMARY" <<'JSON'
+import json,sys
+print(json.dumps({
+    "did": sys.argv[1],
+    "from_number": sys.argv[2],
+    "external_id": sys.argv[3],
+    "did_candidates": [sys.argv[4]] if sys.argv[4] else [],
+    "trunk_id": sys.argv[5],
+}))
+JSON
+  )"
   resp="$(curl -sf "${API_BASE}/v1/telephony/inbound/start" \
-    "${hdr[@]}" \
-    -d "{\"did\":\"${DID}\",\"from_number\":\"${FROM_NUM}\",\"external_id\":\"${UNIQUEID}\"}" \
-    || true)"
+    "${hdr[@]}" -d "$payload" || true)"
   if [ -n "$resp" ] && [ -n "$UNIQUEID" ]; then
     sid="$(python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); print((d.get("session") or {}).get("id") or "")' <<<"$resp" || true)"
     if [ -n "$sid" ]; then
@@ -88,5 +99,5 @@ if [ "$ACTION" = "turn" ]; then
   exit 0
 fi
 
-echo "usage: $0 start|end|turn uniqueid from did [session_id] [summary|text] [transcript] [recording_url]" >&2
+echo "usage: $0 start|end|turn uniqueid from did [session_id|dnid] [summary|trunk_id|text] [transcript] [recording_url]" >&2
 exit 2

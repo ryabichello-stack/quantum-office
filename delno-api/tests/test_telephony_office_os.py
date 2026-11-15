@@ -76,12 +76,19 @@ def test_provision_phone_and_inbound_session(db, monkeypatch):
     out = phone_provision.provision_phone(db, ctx, e164="79699665899", label="ql-main")
     assert out["ok"] is True
     assert out["phone"]["e164"] == "+79699665899"
+    assert out["phone"]["routing_config"]["voice_agent_slug"] == "default"
+    assert out["phone"]["routing_config"]["trunk_id"] == "delno-quantum-labs"
 
     started = telephony.start_inbound_call(
-        db, did="+79699665899", from_number="+79001112233", external_id="ast-1"
+        db,
+        did="+79699665899",
+        from_number="+79001112233",
+        external_id="ast-1",
+        trunk_id="delno-quantum-labs",
     )
     assert started["ok"] is True
     assert started["tenant_slug"] == "quantum-labs"
+    assert started["voice_agent_slug"] == "default"
     sid = uuid.UUID(started["session"]["id"])
 
     monkeypatch.setattr(
@@ -124,6 +131,56 @@ def test_provision_phone_and_inbound_session(db, monkeypatch):
     assert detail.get("summary")
     assert detail.get("call_session", {}).get("id") == str(sid)
     assert detail.get("call_session", {}).get("has_transcript") is True
+
+
+def test_inbound_requires_trunk_and_voice_agent(db):
+    tenant = _tenant(db)
+    ctx = TenantContext(tenant_id=tenant.id, tenant_slug=tenant.slug, role="tenant_owner")
+    phone_provision.provision_phone(db, ctx, e164="+79699665899")
+
+    assert telephony.start_inbound_call(
+        db, did="+79699665899", from_number="+79001112233", trunk_id=""
+    )["error"] == "trunk_not_provisioned"
+
+    assert telephony.start_inbound_call(
+        db, did="+79699665899", from_number="+79001112233", trunk_id="other-tenant"
+    )["error"] == "trunk_not_provisioned"
+
+    # Legacy mango-trunk alias still routes QL during dual-registration transition.
+    via_legacy = telephony.start_inbound_call(
+        db,
+        did="+79699665899",
+        from_number="+79001112233",
+        trunk_id="mango-trunk",
+        external_id="ast-legacy",
+    )
+    assert via_legacy["ok"] is True
+    assert via_legacy["voice_agent_slug"] == "default"
+
+    other = _tenant(db, slug="tenant-beta")
+    other_ctx = TenantContext(tenant_id=other.id, tenant_slug=other.slug, role="tenant_owner")
+    phone_provision.provision_phone(db, other_ctx, e164="+79990001122")
+    phone = (
+        db.query(PhoneNumber)
+        .filter(PhoneNumber.tenant_id == other.id, PhoneNumber.e164 == "+79990001122")
+        .one()
+    )
+    assert phone.routing_config["voice_agent_slug"].startswith("delno_")
+    assert phone.routing_config["voice_agent_slug"] != "default"
+
+    # Strip voice agent → fail closed (what made the live line Busy).
+    cfg = dict(phone.routing_config or {})
+    cfg.pop("voice_agent_slug", None)
+    phone.routing_config = cfg
+    db.commit()
+    bad = telephony.start_inbound_call(
+        db,
+        did="+79990001122",
+        from_number="+79001112233",
+        trunk_id=phone.routing_config["trunk_id"],
+    )
+    assert bad["ok"] is False
+    assert bad["error"] == "voice_agent_not_provisioned"
 
 
 def test_outbound_job_and_claim(db):

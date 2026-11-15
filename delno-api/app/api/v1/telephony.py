@@ -32,7 +32,9 @@ def _require_telephony_token(
 
 
 class InboundStartRequest(BaseModel):
-    did: str = Field(min_length=5, max_length=20)
+    did: str = Field(default="", max_length=120)
+    did_candidates: list[str] = Field(default_factory=list, max_length=5)
+    trunk_id: str = Field(default="", max_length=80)
     from_number: str = Field(min_length=5, max_length=20)
     external_id: str | None = Field(default=None, max_length=120)
     meta: dict = Field(default_factory=dict)
@@ -69,6 +71,8 @@ def telephony_inbound_start(
     out = telephony.start_inbound_call(
         db,
         did=body.did,
+        did_candidates=body.did_candidates,
+        trunk_id=body.trunk_id,
         from_number=body.from_number,
         external_id=body.external_id,
         meta=body.meta,

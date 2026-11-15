@@ -64,13 +64,26 @@ def provision_phone(
         .one_or_none()
     )
     from app.services.sip_probe import trunk_id_for_tenant
+    from app.services.telephony import tenant_voice_agent_slug, voice_agent_belongs_to_tenant
 
-    default_routing = {
+    trunk = trunk_id_for_tenant(ctx.tenant_slug)
+    # Dogfood QL keeps shared Ava profile `default`; new tenants get delno_<uuid>.
+    if voice_agent_belongs_to_tenant(ctx.tenant_id, ctx.tenant_slug, "default"):
+        voice_slug = "default"
+    else:
+        voice_slug = tenant_voice_agent_slug(ctx.tenant_id)
+
+    default_routing: dict[str, Any] = {
         "frontline": True,
         "outbound": True,
         # Asterisk endpoint id for THIS tenant's Mango registration (multi-tenant).
-        "trunk_id": trunk_id_for_tenant(ctx.tenant_slug),
+        "trunk_id": trunk,
+        "voice_agent_slug": voice_slug,
     }
+    # Transitional: legacy mango-trunk registration may still receive INVITEs for QL.
+    if ctx.tenant_slug == "quantum-labs":
+        default_routing["trunk_aliases"] = ["mango-trunk"]
+
     if row:
         row.label = label or row.label
         row.status = status
@@ -79,9 +92,15 @@ def provision_phone(
             merged.update(row.routing_config or {})
             merged.update(routing_config)
             row.routing_config = merged
-        elif not (row.routing_config or {}).get("trunk_id"):
+        else:
             merged = dict(default_routing)
             merged.update(row.routing_config or {})
+            if not merged.get("trunk_id"):
+                merged["trunk_id"] = trunk
+            if not merged.get("voice_agent_slug"):
+                merged["voice_agent_slug"] = voice_slug
+            if ctx.tenant_slug == "quantum-labs" and not merged.get("trunk_aliases"):
+                merged["trunk_aliases"] = ["mango-trunk"]
             row.routing_config = merged
     else:
         merged = dict(default_routing)

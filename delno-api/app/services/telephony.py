@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import uuid
 from datetime import datetime, timezone
@@ -16,7 +17,6 @@ from app.models.call_session import CallSession
 from app.models.conversation import Conversation, Message
 from app.models.phone_number import PhoneNumber
 from app.models.tenant import Tenant
-from app.services.channel_router import resolve_by_phone_e164
 from app.services.events import emit_event
 
 _E164_RE = re.compile(r"^\+?[1-9]\d{7,14}$")
@@ -87,67 +87,150 @@ def job_to_dict(row: CallJob) -> dict[str, Any]:
     }
 
 
+def tenant_voice_agent_slug(tenant_id: uuid.UUID) -> str:
+    """Per-tenant Ava profile name in asterisk-ai-voice-agent."""
+    return "delno_" + tenant_id.hex
+
+
+def voice_agent_belongs_to_tenant(tenant_id: uuid.UUID, tenant_slug: str, slug: str) -> bool:
+    """Reject shared/foreign voice profiles — fail closed for multi-tenant."""
+    if slug == tenant_voice_agent_slug(tenant_id):
+        return True
+    if slug != "default":
+        return False
+    # Legacy shared Ava profile (`default` in ai-agent.local.yaml) — only dogfood owner.
+    legacy = (
+        (os.getenv("DELNO_LEGACY_VOICE_TENANT_SLUG") or "").strip()
+        or (os.getenv("ASTERISK_SIP_APPLY_TENANT_SLUG") or "").strip()
+        or "quantum-labs"
+    )
+    return tenant_slug == legacy
+
+
+def _phone_trunk_ids(phone: PhoneNumber) -> set[str]:
+    cfg = phone.routing_config or {}
+    ids: set[str] = set()
+    primary = str(cfg.get("trunk_id") or "").strip()
+    if primary:
+        ids.add(primary)
+    aliases = cfg.get("trunk_aliases") or []
+    if isinstance(aliases, list):
+        for item in aliases:
+            a = str(item or "").strip()
+            if a:
+                ids.add(a)
+    return ids
+
+
 def start_inbound_call(
     db: Session,
     *,
     did: str,
     from_number: str,
+    did_candidates: list[str] | None = None,
+    trunk_id: str = "",
     external_id: str | None = None,
     meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    did_n = normalize_e164(did)
-    from_n = normalize_e164(from_number)
-    if not _valid_e164(did_n):
-        return {"ok": False, "error": "invalid_did"}
+    """Resolve SIP registration (trunk) first; ambiguous / missing voice agent fail closed.
 
-    ctx_chan = resolve_by_phone_e164(db, did_n)
-    if not ctx_chan:
-        # try without plus variants
-        alt = did_n[1:] if did_n.startswith("+") else did_n
-        ctx_chan = resolve_by_phone_e164(db, did_n) or resolve_by_phone_e164(db, "+" + alt)
-    if not ctx_chan:
+    Asterisk AGI requires ``voice_agent_slug`` in the response to set AI_AGENT and
+    DELNO_ROUTE_OK=1. Without it the dialplan Busy's the call («линия не настроена»).
+    """
+    from_n = normalize_e164(from_number)
+    trunk = (trunk_id or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", trunk):
+        return {"ok": False, "error": "trunk_not_provisioned"}
+
+    phones = [
+        p
+        for p in db.query(PhoneNumber).filter(PhoneNumber.status == "active").all()
+        if trunk in _phone_trunk_ids(p)
+    ]
+    if not phones:
+        return {"ok": False, "error": "trunk_not_provisioned"}
+    if len({p.tenant_id for p in phones}) != 1:
+        return {"ok": False, "error": "trunk_shared_between_tenants"}
+
+    candidates = [
+        normalize_e164(v)
+        for v in [did, *(did_candidates or [])]
+        if _valid_e164(normalize_e164(v))
+    ]
+    matched = [p for p in phones if p.e164 in candidates]
+    if candidates and not matched:
         emit_event(
             db,
             event_type="call.inbound.unrouted",
             category="operational",
             source="telephony",
-            payload={"did": did_n, "from": from_n, "external_id": external_id},
+            payload={
+                "did": did,
+                "candidates": candidates,
+                "from": from_n,
+                "trunk_id": trunk,
+                "external_id": external_id,
+            },
         )
-        return {"ok": False, "error": "did_not_provisioned", "did": did_n}
+        return {"ok": False, "error": "did_not_provisioned"}
+    if len(matched) > 1 or (not matched and len(phones) != 1):
+        return {"ok": False, "error": "ambiguous_did"}
+
+    phone = matched[0] if matched else phones[0]
+    tenant = (
+        db.query(Tenant)
+        .filter(Tenant.id == phone.tenant_id, Tenant.is_active.is_(True))
+        .one_or_none()
+    )
+    if tenant is None:
+        return {"ok": False, "error": "tenant_not_found"}
+
+    route = phone.routing_config or {}
+    slug = str(route.get("voice_agent_slug") or "").strip()
+    if not voice_agent_belongs_to_tenant(tenant.id, tenant.slug, slug):
+        return {"ok": False, "error": "voice_agent_not_provisioned"}
 
     if external_id:
-        existing = (
-            db.query(CallSession)
-            .filter(
-                CallSession.tenant_id == ctx_chan.tenant_id,
-                CallSession.external_id == external_id,
-            )
-            .one_or_none()
+        existing_rows = (
+            db.query(CallSession).filter(CallSession.external_id == external_id).limit(2).all()
         )
-        if existing:
-            return {"ok": True, "resumed": True, "session": session_to_dict(existing)}
+        if existing_rows:
+            if len(existing_rows) != 1 or existing_rows[0].tenant_id != tenant.id:
+                return {"ok": False, "error": "external_id_conflict"}
+            return {
+                "ok": True,
+                "resumed": True,
+                "tenant_id": str(tenant.id),
+                "tenant_slug": tenant.slug,
+                "session": session_to_dict(existing_rows[0]),
+                "voice_agent_slug": slug,
+            }
 
     conv = Conversation(
-        tenant_id=ctx_chan.tenant_id,
+        tenant_id=tenant.id,
         channel="phone",
         status="open",
         contact_ref=from_n,
-        meta={"direction": "inbound", "did": did_n, "principal_id": PRINCIPAL_VOICE_PUBLIC},
+        meta={
+            "direction": "inbound",
+            "did": phone.e164,
+            "principal_id": PRINCIPAL_VOICE_PUBLIC,
+        },
     )
     db.add(conv)
     db.flush()
 
     session = CallSession(
-        tenant_id=ctx_chan.tenant_id,
+        tenant_id=tenant.id,
         conversation_id=conv.id,
         direction="inbound",
         status="active",
         from_e164=from_n,
-        to_e164=did_n,
-        did_e164=did_n,
+        to_e164=phone.e164,
+        did_e164=phone.e164,
         external_id=external_id,
         started_at=_utc_now(),
-        meta=meta or {},
+        meta={**(meta or {}), "trunk_id": trunk},
     )
     db.add(session)
     db.flush()
@@ -156,24 +239,28 @@ def start_inbound_call(
         db,
         event_type="call.inbound.started",
         category="domain",
-        tenant_id=ctx_chan.tenant_id,
+        tenant_id=tenant.id,
         source="telephony",
         payload={
             "session_id": str(session.id),
             "conversation_id": str(conv.id),
             "from": from_n,
-            "did": did_n,
+            "did": phone.e164,
+            "trunk_id": trunk,
+            "voice_agent_slug": slug,
             "external_id": external_id,
         },
     )
     db.commit()
     return {
         "ok": True,
-        "tenant_slug": ctx_chan.tenant_slug,
-        "tenant_id": str(ctx_chan.tenant_id),
+        "tenant_slug": tenant.slug,
+        "tenant_id": str(tenant.id),
         "session": session_to_dict(session),
         "conversation_id": str(conv.id),
         "principal_id": PRINCIPAL_VOICE_PUBLIC,
+        "routing_source": "sip_trunk",
+        "voice_agent_slug": slug,
     }
 
 

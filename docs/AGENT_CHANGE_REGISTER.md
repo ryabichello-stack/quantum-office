@@ -100,6 +100,14 @@
 - Clarify email: в legacy только промпт секретаря, отдельного tool `ask_email` не было — оставляем агенту, не phrase-router.
 
 
+## 2026-11-15 ~03:20 МСК — Cursor: восстановлен voice_agent_slug (Busy «линия не настроена»)
+
+- Симптом: SIP Registered + DID active, но входящий Busy. AGI `/usr/local/bin/delno_route_call.py` требует `voice_agent_slug` в ответе bridge; git/prod `inbound/start` его не отдавал → `DELNO_ROUTE_OK=0`.
+- Не Гермес: путь Asterisk AGI → bridge → `/v1/telephony/inbound/start` → Stasis.
+- Файлы: `delno-api/app/services/telephony.py`, `api/v1/telephony.py`, `phone_provision.py`, `deploy/asterisk_delno_bridge.sh`, `deploy/delno_route_call.py`, тесты.
+- Восстановлено из Codex backup (trunk_id + voice_agent_slug); QL `default` + `trunk_aliases: [mango-trunk]`; новые tenant → `delno_<uuid>`.
+- Статус: см. проверку после деплоя на C4B.
+
 ## 2026-11-12 23:04 МСК — Codex: входящая маршрутизация DID → tenant → голосовой агент
 
 - Цель: убрать фиксированный номер и общий голосовой профиль из пути входящего звонка; не направлять звонок чужому клиенту.
