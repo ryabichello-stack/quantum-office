@@ -14,7 +14,6 @@ import {
   Camera,
   CheckCircle2,
   LifeBuoy,
-  Mic,
   PanelRight,
   Paperclip,
   Sparkles,
@@ -23,6 +22,7 @@ import {
 import { CrystalOrb } from "@/components/CrystalOrb";
 import { HermesMessageBody } from "@/components/HermesMessageBody";
 import { HermesThinkingTrace } from "@/components/HermesThinkingTrace";
+import { HermesDictateStatus, HermesMicButton } from "@/components/HermesMicControl";
 import { ConfirmCard } from "@/components/ConfirmCard";
 import { CredentialFormCard, type CredentialFormSpec } from "@/components/CredentialFormCard";
 import {
@@ -483,10 +483,13 @@ export function HermesStage({ token }: { token: string }) {
   );
 
   const {
+    phase: dictatePhase,
     dictating,
     supported: dictateSupported,
     error: dictateError,
     level: dictateLevel,
+    elapsedMs: dictateElapsed,
+    streaming: dictateStreaming,
     stop: stopDictate,
     toggle: toggleDictate,
     clearError: clearDictateError,
@@ -606,7 +609,8 @@ export function HermesStage({ token }: { token: string }) {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    stopDictate();
+    // Recording finishes into the field. Send stays a separate explicit action.
+    if (dictatePhase !== "idle") return;
     const q = message.trim();
     if (!q && pendingFiles.length === 0) return;
     setMessage("");
@@ -953,10 +957,12 @@ export function HermesStage({ token }: { token: string }) {
     return "готово";
   }
 
-  const statusHint = dictating
+  const statusHint = dictatePhase === "recording"
     ? compact
-      ? "Диктовка… tap stop"
-      : "Диктовка… нажмите mic ещё раз, чтобы остановить"
+      ? "Запись…"
+      : "Идёт запись — нажмите «Стоп»"
+    : dictatePhase === "transcribing"
+      ? "Распознаю…"
     : voicePhase === "listen"
       ? "Слушаю…"
       : voicePhase === "think"
@@ -975,7 +981,8 @@ export function HermesStage({ token }: { token: string }) {
                   ? "Напишите, приложите фото или нажмите mic"
                   : "Напишите, приложите фото или файл";
 
-  const canSend = !sending && (Boolean(message.trim()) || pendingFiles.length > 0);
+  const canSend =
+    !sending && dictatePhase === "idle" && (Boolean(message.trim()) || pendingFiles.length > 0);
 
   return (
     <div
@@ -983,6 +990,7 @@ export function HermesStage({ token }: { token: string }) {
       ref={mountRef}
       data-voice-active={voiceActive ? "true" : "false"}
       data-compact={compact ? "1" : "0"}
+      data-dictate={dictatePhase}
     >
       <header className="hx-topbar">
         <div className="hx-brand">
@@ -996,24 +1004,24 @@ export function HermesStage({ token }: { token: string }) {
           <Tooltip>
             <TooltipTrigger
               render={
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className={cn(
-                    "hx-top-btn",
-                    dictating && "hx-mic-live border-sky-400/60 bg-sky-50",
-                  )}
-                  onClick={onMicToggle}
+                <HermesMicButton
+                  phase={dictatePhase}
+                  level={dictateLevel}
+                  elapsedMs={dictateElapsed}
+                  compact={compact}
                   disabled={sending || !dictateSupported}
-                  aria-label={dictating ? "Остановить диктовку" : "Диктовка в поле ввода"}
-                  aria-pressed={dictating}
+                  onClick={onMicToggle}
+                  variant="outline"
+                  className="hx-top-btn"
                 />
               }
-            >
-              {dictating ? <X size={compact ? 16 : 18} /> : <Mic size={compact ? 16 : 18} />}
-            </TooltipTrigger>
+            />
             <TooltipContent>
-              {dictating ? "Стоп — текст останется в поле" : "Диктовка: слова появятся в поле ввода"}
+              {dictatePhase === "recording"
+                ? "Стоп — текст останется в поле, без отправки"
+                : dictatePhase === "transcribing"
+                  ? "Распознаю речь"
+                  : "Голосовой ввод в поле сообщения"}
             </TooltipContent>
           </Tooltip>
           {!compact && (
@@ -1233,7 +1241,18 @@ export function HermesStage({ token }: { token: string }) {
           </ScrollArea>
 
           <div className="hx-composer-wrap">
-            {(error || dictateError) && <p className="hx-error">{error || dictateError}</p>}
+            {(error || dictateError) && (
+              <p className="hx-error" role="alert">
+                {error || dictateError}
+              </p>
+            )}
+
+            <HermesDictateStatus
+              phase={dictatePhase}
+              level={dictateLevel}
+              elapsedMs={dictateElapsed}
+              onStop={() => void stopDictate()}
+            />
 
             {pendingFiles.length > 0 && (
               <div className="hx-attach-strip">
@@ -1317,75 +1336,63 @@ export function HermesStage({ token }: { token: string }) {
                   </TooltipTrigger>
                   <TooltipContent>Снимок с камеры</TooltipContent>
                 </Tooltip>
-                <div className={cn("hx-mic-wrap", dictating && "is-live")}>
-                  {dictating ? (
-                    <span className="hx-mic-waves" aria-hidden>
-                      {[0, 1, 2, 3, 4].map((i) => (
-                        <i
-                          key={i}
-                          style={{
-                            // Center bar tallest; level scales all bars live from mic energy.
-                            height: `${10 + dictateLevel * (10 + Math.abs(2 - i) * 4)}px`,
-                          }}
-                        />
-                      ))}
-                    </span>
-                  ) : null}
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          type="button"
-                          variant={dictating ? "default" : "ghost"}
-                          size="icon"
-                          disabled={sending || !dictateSupported}
-                          aria-label={dictating ? "Остановить диктовку" : "Диктовка"}
-                          aria-pressed={dictating}
-                          onClick={onMicToggle}
-                          onContextMenu={(e) => e.preventDefault()}
-                          className={cn("hx-tool-btn touch-none", dictating && "is-live hx-mic-live")}
-                        />
-                      }
-                    >
-                      {dictating ? <X size={compact ? 16 : 18} /> : <Mic size={compact ? 16 : 18} />}
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {dictateSupported
-                        ? dictating
-                          ? "Стоп — текст останется в поле, потом отправьте"
-                          : "Один раз нажмите: слова появятся в поле, пока говорите"
-                        : "Диктовка недоступна в этом браузере"}
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <HermesMicButton
+                        phase={dictatePhase}
+                        level={dictateLevel}
+                        elapsedMs={dictateElapsed}
+                        compact={compact}
+                        disabled={sending || !dictateSupported}
+                        onClick={onMicToggle}
+                      />
+                    }
+                  />
+                  <TooltipContent>
+                    {dictateSupported
+                      ? dictatePhase === "recording"
+                        ? "Стоп — текст останется в поле, потом отправьте"
+                        : dictatePhase === "transcribing"
+                          ? "Распознаю речь"
+                          : "Голосовой ввод: текст появится в поле после «Стоп»"
+                      : "Голосовой ввод недоступен в этом браузере"}
+                  </TooltipContent>
+                </Tooltip>
               </div>
               <Textarea
                 ref={textareaRef}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder={
-                  dictating
-                    ? "Слушаю… говорите — слова появятся здесь"
-                    : compact
-                      ? "Сообщение…"
-                      : "Сообщение Hermes…"
+                  dictatePhase === "transcribing"
+                    ? "Распознаю…"
+                    : dictatePhase === "recording"
+                      ? dictateStreaming
+                        ? "Говорите — текст появляется здесь"
+                        : "Идёт запись…"
+                      : compact
+                        ? "Сообщение…"
+                        : "Сообщение Hermes…"
                 }
                 disabled={sending}
                 rows={1}
                 className={cn(
                   "max-h-40 flex-1 resize-none border-0 bg-transparent px-1 shadow-none focus-visible:ring-0",
                   compact ? "min-h-8 py-1.5 text-[15px]" : "min-h-9 py-2",
-                  dictating && "hx-composer-dictating",
+                  dictatePhase === "recording" && "hx-composer-dictating",
                 )}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    if (canSend) {
-                      stopDictate();
-                      const q = message.trim();
-                      setMessage("");
-                      void sendText(q, "text", true);
+                    if (dictatePhase === "recording") {
+                      void stopDictate();
+                      return;
                     }
+                    if (dictatePhase !== "idle" || !canSend) return;
+                    const q = message.trim();
+                    setMessage("");
+                    void sendText(q, "text", true);
                   }
                 }}
               />

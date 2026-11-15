@@ -1,77 +1,75 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { ThinkingStep } from "@/lib/hermesThinking";
-import { thinkingNarrative } from "@/lib/hermesThinking";
+import { thinkingView } from "@/lib/hermesUiStates";
 import { cn } from "@/lib/utils";
 
 /**
- * Claude/ChatGPT-style thinking: muted italic stream above the reply.
- * While live — open, shows the current thought. After — collapsed by default.
+ * While Hermes is working, only the current step is shown large.
+ * Earlier steps sit behind «Ход мыслей · N …».
+ * When the answer arrives the whole trace collapses; the reply stays outside.
  */
 export function HermesThinkingTrace({
   steps,
   live = false,
   liveIndex,
-  durationMs,
 }: {
   steps: ThinkingStep[];
-  /** Request still in flight — thinking shown before the answer. */
+  /** Request still in flight — current step stays open. */
   live?: boolean;
-  /** How many steps of the plan are “active” so far (1-based). */
+  /** How many steps of the plan are active so far (1-based). */
   liveIndex?: number;
-  /** Wall time for the finished thought (ms). */
+  /** Kept so existing callers can pass the measured duration. */
   durationMs?: number;
 }) {
-  const [open, setOpen] = useState(live);
+  const view = thinkingView(steps, { live, liveIndex });
+  const [open, setOpen] = useState(false);
+  const listId = useId();
+
   useEffect(() => {
-    if (live) setOpen(true);
-    else setOpen(false);
+    if (!live) setOpen(false);
   }, [live]);
 
-  if (!steps.length) return null;
-  const visible = live && liveIndex ? steps.slice(0, Math.max(1, liveIndex)) : steps;
-  const body = thinkingNarrative(visible);
-  const current = visible[visible.length - 1];
-  const secs =
-    typeof durationMs === "number" && durationMs > 0
-      ? Math.max(1, Math.round(durationMs / 1000))
-      : null;
+  if (!steps.length || (!view.showSummary && !view.current)) return null;
+
+  const expanded = view.showSummary && open;
+  const currentKey = view.current ? `${liveIndex ?? 0}:${view.current.label}` : "";
 
   return (
-    <div className={cn("hx-cot", live && "is-live")}>
-      <button
-        type="button"
-        className="hx-cot-toggle"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-      >
-        {open ? <ChevronDown size={13} strokeWidth={2} /> : <ChevronRight size={13} strokeWidth={2} />}
-        <span className="hx-cot-label">
-          {live ? (
-            <>
-              Думаю
-              <span className="hx-cot-pulse" aria-hidden>
-                …
-              </span>
-            </>
-          ) : secs ? (
-            <>Думал {secs} с</>
-          ) : (
-            <>Размышления</>
-          )}
-        </span>
-      </button>
-      {open ? (
-        <div className="hx-cot-body">
-          <pre className="hx-cot-text">{body}</pre>
-          {live && current ? (
-            <p className="hx-cot-now">
-              Сейчас: <em>{current.label}</em>
-            </p>
-          ) : null}
-        </div>
+    <div
+      className={cn("hx-think", live && "is-live")}
+      data-state={live ? "live" : "done"}
+      data-open={expanded ? "true" : "false"}
+    >
+      {view.showSummary ? (
+        <button
+          type="button"
+          className="hx-think-toggle"
+          aria-expanded={open}
+          aria-controls={expanded ? listId : undefined}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? <ChevronDown size={14} strokeWidth={2} /> : <ChevronRight size={14} strokeWidth={2} />}
+          <span>{view.summaryLabel}</span>
+        </button>
+      ) : null}
+      {expanded ? (
+        <ol id={listId} className="hx-think-list">
+          {view.summarySteps.map((step, i) => (
+            <li key={`${i}-${step.label}`}>
+              <span>{step.label}</span>
+              {step.detail ? <small>{step.detail}</small> : null}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      {view.current ? (
+        <p className="hx-think-current" key={currentKey} aria-live="polite">
+          <span className="hx-think-label">{view.current.label}</span>
+          {view.current.detail ? <small>{view.current.detail}</small> : null}
+        </p>
       ) : null}
     </div>
   );
