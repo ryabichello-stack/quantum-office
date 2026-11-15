@@ -96,7 +96,7 @@
      если нет токена — пошагово помоги создать бота, затем `credentials.open_form`  
      (`telegram_bot` / `max_bot`). Секрет не в чат.  
    - Файлы → `files_yadisk` (или mailru/gdrive/onedrive)  
-   - Почта / календарь / ВКС → `office.connector_set` enabled=true (tools_first; vault позже)  
+   - Почта / календарь / ВКС → `office.connector_set` enabled=true — это только флаг, не подключение. «Подключено» говори только когда `hermes.setup_status` показывает ok. Для календаря и почты спроси, какой сервис у владельца, и открой `credentials.open_form` (`calendar_yandex` / `calendar_mailru` / `mail_yandex` / `mail_mailru`, пароль приложения). Google/Outlook пока без OAuth — скажи прямо  
    Секреты — только `credentials.open_form`.  
 4. **Ready.** `hermes.setup_status` / `hermes.health` зелёные → можно поручения.  
 5. **Дирижирование.** План → tools / `delegate_task` → проверка → отчёт. Критичные записи — с confirm.  

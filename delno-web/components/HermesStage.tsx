@@ -14,7 +14,6 @@ import {
   Camera,
   CheckCircle2,
   LifeBuoy,
-  Mic,
   PanelRight,
   Paperclip,
   Sparkles,
@@ -23,13 +22,14 @@ import {
 import { CrystalOrb } from "@/components/CrystalOrb";
 import { HermesMessageBody } from "@/components/HermesMessageBody";
 import { HermesThinkingTrace } from "@/components/HermesThinkingTrace";
+import { HermesDictateStatus, HermesMicButton } from "@/components/HermesMicControl";
 import { ConfirmCard } from "@/components/ConfirmCard";
 import { CredentialFormCard, type CredentialFormSpec } from "@/components/CredentialFormCard";
 import {
   buildThinkingChain,
-  liveThinkingPlan,
   type ThinkingStep,
 } from "@/lib/hermesThinking";
+import { reduceLiveTrace, type LiveTrace } from "@/lib/hermesUiStates";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,6 +50,7 @@ import {
   apiTenantVaultForm,
   apiTenantVaultStatus,
   apiOperatorChat,
+  readOperatorChatStream,
   apiOperatorConfirm,
   apiOperatorHelp,
   apiTenantSecretSave,
@@ -109,6 +110,9 @@ type ChatLine = {
   thinking?: ThinkingStep[];
   /** Thinking is still in progress — show before the reply body. */
   thinkingLive?: boolean;
+  /** No tool is running right now — the line says «Думаю над ответом…». */
+  thinkingAwaiting?: boolean;
+  thinkingSeen?: string[];
   thinkingLiveIndex?: number;
   thinkingMs?: number;
   previews?: { url: string; name: string; kind?: "image" | "video" | "file" }[];
@@ -416,11 +420,26 @@ export function HermesStage({ token }: { token: string }) {
               )
               .join(" ")
           : "");
-      const plan = liveThinkingPlan(question || label);
       const sentAt = new Date().toISOString();
       const userLineId = lineId();
       const assistantLineId = lineId();
-      // Show user bubble + live thinking placeholder BEFORE any reply text.
+      const emptyTrace = (): LiveTrace => ({ steps: [], awaiting: true, seen: [] });
+      const applyLive = (event: { phase?: string; tool?: string; preview?: string; tool_call_id?: string }) => {
+        setLines((prev) => {
+          if (!prev.length) return prev;
+          const last = prev[prev.length - 1];
+          if (last?.role !== "assistant" || !last.thinkingLive) return prev;
+          const next = reduceLiveTrace(
+            { steps: last.thinking || [], awaiting: last.thinkingAwaiting !== false, seen: last.thinkingSeen || [] },
+            event,
+          );
+          return [
+            ...prev.slice(0, -1),
+            { ...last, thinking: next.steps, thinkingAwaiting: next.awaiting, thinkingSeen: next.seen },
+          ];
+        });
+      };
+      // Real Hermes events fill the line. Until the first tool, the owner sees «Думаю над ответом…».
       if (modality === "text") {
         setLines((prev) => [
           ...prev,
@@ -430,9 +449,10 @@ export function HermesStage({ token }: { token: string }) {
             createdAt: sentAt,
             role: "assistant",
             text: "",
-            thinking: plan,
+            thinking: emptyTrace().steps,
             thinkingLive: true,
-            thinkingLiveIndex: 1,
+            thinkingAwaiting: true,
+            thinkingSeen: [],
           },
         ]);
       } else {
@@ -444,24 +464,13 @@ export function HermesStage({ token }: { token: string }) {
             createdAt: sentAt,
             role: "assistant",
             text: "",
-            thinking: plan,
+            thinking: [],
             thinkingLive: true,
-            thinkingLiveIndex: 1,
+            thinkingAwaiting: true,
+            thinkingSeen: [],
           },
         ]);
       }
-
-      let liveIdx = 1;
-      const tick = window.setInterval(() => {
-        liveIdx = Math.min(plan.length, liveIdx + 1);
-        const idx = liveIdx;
-        setLines((prev) => {
-          if (!prev.length) return prev;
-          const last = prev[prev.length - 1];
-          if (last?.role !== "assistant" || !last.thinkingLive) return prev;
-          return [...prev.slice(0, -1), { ...last, thinkingLiveIndex: idx }];
-        });
-      }, 700);
 
       try {
         const attachments = await Promise.all(attachSource.map((a) => fileToOperatorAttachment(a.file)));
@@ -469,15 +478,25 @@ export function HermesStage({ token }: { token: string }) {
           clearPending(attachSource);
           setPendingFiles([]);
         }
-        const result = await apiOperatorChat(
+        const streamed = await readOperatorChatStream(
           token,
           question,
           conversationId || undefined,
           modality,
           "hermes",
+          applyLive,
           attachments,
         );
-        window.clearInterval(tick);
+        const result =
+          streamed.result ||
+          (await apiOperatorChat(
+            token,
+            question,
+            conversationId || undefined,
+            modality,
+            "hermes",
+            attachments,
+          ));
         setConversationId(result.conversation_id);
         const pending = result.pending_confirmation || null;
         if (pending) setActivePending(pending);
@@ -487,7 +506,7 @@ export function HermesStage({ token }: { token: string }) {
         const suggestions = (result.suggested_actions || []).filter(
           (a) => a?.title && a?.text,
         );
-        const thinking = buildThinkingChain({
+        const fromChat = buildThinkingChain({
           engine: result.engine,
           tool_calls: result.tool_calls,
           hermes_run: result.hermes_run,
@@ -498,13 +517,12 @@ export function HermesStage({ token }: { token: string }) {
           ? "[логин/пароль — через безопасную форму]"
           : question || label;
 
-        // Keep thinking visible a beat with real steps, still without reply —
-        // then reveal the answer (thinking collapses via component).
         const userStamp = (result.messages || []).find((item) => item.role === "user");
         const assistantStamp = (result.messages || []).find((item) => item.role === "assistant");
         setLines((prev) => {
           let base = prev;
-          // Replace trailing live assistant stub; fix redacted user if needed.
+          const live = base.length && base[base.length - 1]?.role === "assistant" ? base[base.length - 1] : undefined;
+          const liveSteps = live?.thinking?.length ? live.thinking : fromChat;
           if (base.length && base[base.length - 1]?.role === "assistant") {
             base = base.slice(0, -1);
           }
@@ -528,10 +546,10 @@ export function HermesStage({ token }: { token: string }) {
               id: assistantStamp?.id || assistantLineId,
               createdAt: assistantStamp?.created_at || sentAt,
               role: "assistant" as const,
-              text: "",
-              thinking: thinking.length ? thinking : plan,
-              thinkingLive: true,
-              thinkingLiveIndex: (thinking.length ? thinking : plan).length,
+              text: result.reply,
+              thinking: liveSteps.length ? liveSteps : undefined,
+              thinkingLive: false,
+              thinkingAwaiting: false,
               thinkingMs: elapsed,
               pending,
               credentialForm: secretForm,
@@ -541,27 +559,9 @@ export function HermesStage({ token }: { token: string }) {
             },
           ];
         });
-
-        await new Promise((r) => window.setTimeout(r, Math.min(900, Math.max(350, thinking.length * 120))));
-
-        setLines((prev) => {
-          if (!prev.length) return prev;
-          const last = prev[prev.length - 1];
-          if (last?.role !== "assistant") return prev;
-          return [
-            ...prev.slice(0, -1),
-            {
-              ...last,
-              text: result.reply,
-              thinkingLive: false,
-              thinkingMs: Date.now() - startedAt,
-            },
-          ];
-        });
         void refreshPanels();
         return result.reply;
       } catch {
-        window.clearInterval(tick);
         setLines((prev) => {
           if (!prev.length) return prev;
           const last = prev[prev.length - 1];
@@ -585,10 +585,13 @@ export function HermesStage({ token }: { token: string }) {
   );
 
   const {
+    phase: dictatePhase,
     dictating,
     supported: dictateSupported,
     error: dictateError,
     level: dictateLevel,
+    elapsedMs: dictateElapsed,
+    streaming: dictateStreaming,
     stop: stopDictate,
     toggle: toggleDictate,
     clearError: clearDictateError,
@@ -737,7 +740,8 @@ export function HermesStage({ token }: { token: string }) {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    stopDictate();
+    // Recording finishes into the field. Send stays a separate explicit action.
+    if (dictatePhase !== "idle") return;
     const q = message.trim();
     if (!q && pendingFiles.length === 0) return;
     setMessage("");
@@ -927,7 +931,10 @@ export function HermesStage({ token }: { token: string }) {
       const ack =
         result.message ||
         `Сохранил ${result.kind}: ${result.login_masked || "••••"}. Секрет в чат не попал.`;
-      const probeLine = probe?.message_ru
+      const sipOutcome = secretKind === "mango_sip" ? result.sip_outcome : undefined;
+      const probeLine = sipOutcome?.message_ru && sipOutcome.code !== "registered"
+        ? "" // already in result.message in plain words
+        : probe?.message_ru
         ? `\nАвтотест линии: ${probe.message_ru}`
         : cloud?.message_ru
           ? `\nОблако: ${cloud.message_ru}`
@@ -945,17 +952,48 @@ export function HermesStage({ token }: { token: string }) {
       ]);
       void refreshPanels();
 
-      // SIP still Rejected — form is the next step; skip status waffle that kills the card.
-      if (sipRejected) {
-        return;
-      }
+      // SIP not connected: still tell Hermes what happened (in plain words) so he explains
+      // instead of re-asking. The form card stays open; Hermes must not reopen it.
+      const sipFollow = (() => {
+        if (secretKind !== "mango_sip") return null;
+        const code = sipOutcome?.code || (probe?.ok ? "registered" : sipRejected ? "not_registered" : "saved_only");
+        const said = sipOutcome?.message_ru || probe?.message_ru || "";
+        if (code === "registered") {
+          return {
+            ask: "SIP сохранён и линия Registered. Что дальше — тестовый звонок или сменить голос?",
+            label: "SIP Registered. Что дальше по линии?",
+          };
+        }
+        const why =
+          code === "format"
+            ? "логин не в том виде"
+            : code === "rejected"
+              ? "Манго отклонил логин или пароль (ошибка доступа, обычно неверный SIP-пароль)"
+              : code === "saved_only"
+                ? "данные сохранены, линию автоматически не подключали"
+                : "линия пока не зарегистрировалась";
+        return {
+          ask:
+            `Результат формы SIP: линия не подключена — ${why}. ${said} ` +
+            "Объясни мне простыми словами, что не так и что сделать. " +
+            "Форма уже открыта на экране — не открывай её заново и не проси логин в чат.",
+          label: "Отправил SIP через форму. Что с линией?",
+        };
+      })();
 
       // Follow-up in the same thread so Hermes re-reads vault + setup (no more loop).
       try {
         const isCloud = secretKind.startsWith("files_");
         const isTelegram = secretKind === "telegram_bot";
         const isMax = secretKind === "max_bot";
-        const followAsk = isCloud
+        const isAccount = secretKind.startsWith("calendar_") || secretKind.startsWith("mail_");
+        const accountProbe = result.account_probe;
+        const accountWhat = secretKind.startsWith("calendar_") ? "календаря" : "почты";
+        const followAsk = isAccount
+          ? accountProbe?.ok
+            ? `Аккаунт ${accountWhat} проверен: ${accountProbe.message_ru || ""} Проверь hermes.setup_status и скажи честно, что уже работает, а что нет.`
+            : `Аккаунт ${accountWhat} не прошёл проверку: ${accountProbe?.message_ru || "ошибка"} Объясни простыми словами, что сделать. Форма уже открыта — не открывай её заново.`
+          : isCloud
           ? cloud?.probe?.ok
             ? "Облако подключено. Какие облака подключены?"
             : "Облако сохранено. Какие облака подключены?"
@@ -967,14 +1005,16 @@ export function HermesStage({ token }: { token: string }) {
               ? channel?.ok
                 ? "MAX бот подключён. Какой следующий шаг hermes_ops?"
                 : "Токен MAX сохранён. Проверь каналы / hermes.setup_status. Что дальше?"
-              : "SIP сохранён и линия Registered. Что дальше — тестовый звонок или сменить голос?";
-        const followUserLabel = isCloud
+              : sipFollow?.ask || "SIP сохранён. Проверь линию через hermes.setup_status. Что дальше?";
+        const followUserLabel = isAccount
+          ? `Отправил данные ${accountWhat} через форму. Что дальше?`
+          : isCloud
           ? "Облако сохранено. Что дальше?"
           : isTelegram
             ? "Telegram сохранён. Канал готов? Что дальше?"
             : isMax
               ? "MAX сохранён. Канал готов? Что дальше?"
-              : "SIP Registered. Что дальше по линии?";
+              : sipFollow?.label || "SIP сохранён. Что дальше по линии?";
         const follow = await apiOperatorChat(
           token,
           followAsk,
@@ -983,8 +1023,10 @@ export function HermesStage({ token }: { token: string }) {
           "hermes",
         );
         if (follow.conversation_id) setConversationId(follow.conversation_id);
-        const secretForm = (follow.pending_credential_form || null) as ApiCredentialFormSpec | null;
-        if (secretForm) setActiveSecretForm(secretForm);
+        const followForm = (follow.pending_credential_form || null) as ApiCredentialFormSpec | null;
+        // After a failed SIP save the card already sits on the ack line — don't render a second one.
+        const secretForm = sipRejected || reopenForm ? null : followForm;
+        if (followForm) setActiveSecretForm(followForm);
         setLines((prev) => [
           ...prev,
           withStamp(
@@ -1096,10 +1138,12 @@ export function HermesStage({ token }: { token: string }) {
     return "готово";
   }
 
-  const statusHint = dictating
+  const statusHint = dictatePhase === "recording"
     ? compact
-      ? "Диктовка… tap stop"
-      : "Диктовка… нажмите mic ещё раз, чтобы остановить"
+      ? "Запись…"
+      : "Идёт запись — нажмите «Стоп»"
+    : dictatePhase === "transcribing"
+      ? "Распознаю…"
     : voicePhase === "listen"
       ? "Слушаю…"
       : voicePhase === "think"
@@ -1118,7 +1162,8 @@ export function HermesStage({ token }: { token: string }) {
                   ? "Напишите, приложите фото или нажмите mic"
                   : "Напишите, приложите фото или файл";
 
-  const canSend = !sending && (Boolean(message.trim()) || pendingFiles.length > 0);
+  const canSend =
+    !sending && dictatePhase === "idle" && (Boolean(message.trim()) || pendingFiles.length > 0);
 
   return (
     <div
@@ -1126,6 +1171,7 @@ export function HermesStage({ token }: { token: string }) {
       ref={mountRef}
       data-voice-active={voiceActive ? "true" : "false"}
       data-compact={compact ? "1" : "0"}
+      data-dictate={dictatePhase}
     >
       <header className="hx-topbar">
         <div className="hx-brand">
@@ -1139,24 +1185,24 @@ export function HermesStage({ token }: { token: string }) {
           <Tooltip>
             <TooltipTrigger
               render={
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className={cn(
-                    "hx-top-btn",
-                    dictating && "hx-mic-live border-sky-400/60 bg-sky-50",
-                  )}
-                  onClick={onMicToggle}
+                <HermesMicButton
+                  phase={dictatePhase}
+                  level={dictateLevel}
+                  elapsedMs={dictateElapsed}
+                  compact={compact}
                   disabled={sending || !dictateSupported}
-                  aria-label={dictating ? "Остановить диктовку" : "Диктовка в поле ввода"}
-                  aria-pressed={dictating}
+                  onClick={onMicToggle}
+                  variant="outline"
+                  className="hx-top-btn"
                 />
               }
-            >
-              {dictating ? <X size={compact ? 16 : 18} /> : <Mic size={compact ? 16 : 18} />}
-            </TooltipTrigger>
+            />
             <TooltipContent>
-              {dictating ? "Стоп — текст останется в поле" : "Диктовка: слова появятся в поле ввода"}
+              {dictatePhase === "recording"
+                ? "Стоп — текст останется в поле, без отправки"
+                : dictatePhase === "transcribing"
+                  ? "Распознаю речь"
+                  : "Голосовой ввод в поле сообщения"}
             </TooltipContent>
           </Tooltip>
           {!compact && (
@@ -1276,11 +1322,12 @@ export function HermesStage({ token }: { token: string }) {
                   <article key={line.id || idx} id={line.id ? `msg-${line.id}` : undefined} className="hx-row hx-row-assistant">
                     {!compact && <HermesAvatar />}
                     <div className="hx-assistant-col">
-                      {line.thinking && line.thinking.length > 0 ? (
+                      {line.thinkingLive || (line.thinking && line.thinking.length > 0) ? (
                         <HermesThinkingTrace
-                          steps={line.thinking}
+                          steps={line.thinking || []}
                           live={Boolean(line.thinkingLive)}
                           liveIndex={line.thinkingLiveIndex}
+                          awaiting={Boolean(line.thinkingAwaiting)}
                           durationMs={line.thinkingMs}
                         />
                       ) : null}
@@ -1381,7 +1428,18 @@ export function HermesStage({ token }: { token: string }) {
           </ScrollArea>
 
           <div className="hx-composer-wrap">
-            {(error || dictateError) && <p className="hx-error">{error || dictateError}</p>}
+            {(error || dictateError) && (
+              <p className="hx-error" role="alert">
+                {error || dictateError}
+              </p>
+            )}
+
+            <HermesDictateStatus
+              phase={dictatePhase}
+              level={dictateLevel}
+              elapsedMs={dictateElapsed}
+              onStop={() => void stopDictate()}
+            />
 
             {pendingFiles.length > 0 && (
               <div className="hx-attach-strip">
@@ -1465,75 +1523,63 @@ export function HermesStage({ token }: { token: string }) {
                   </TooltipTrigger>
                   <TooltipContent>Снимок с камеры</TooltipContent>
                 </Tooltip>
-                <div className={cn("hx-mic-wrap", dictating && "is-live")}>
-                  {dictating ? (
-                    <span className="hx-mic-waves" aria-hidden>
-                      {[0, 1, 2, 3, 4].map((i) => (
-                        <i
-                          key={i}
-                          style={{
-                            // Center bar tallest; level scales all bars live from mic energy.
-                            height: `${10 + dictateLevel * (10 + Math.abs(2 - i) * 4)}px`,
-                          }}
-                        />
-                      ))}
-                    </span>
-                  ) : null}
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          type="button"
-                          variant={dictating ? "default" : "ghost"}
-                          size="icon"
-                          disabled={sending || !dictateSupported}
-                          aria-label={dictating ? "Остановить диктовку" : "Диктовка"}
-                          aria-pressed={dictating}
-                          onClick={onMicToggle}
-                          onContextMenu={(e) => e.preventDefault()}
-                          className={cn("hx-tool-btn touch-none", dictating && "is-live hx-mic-live")}
-                        />
-                      }
-                    >
-                      {dictating ? <X size={compact ? 16 : 18} /> : <Mic size={compact ? 16 : 18} />}
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {dictateSupported
-                        ? dictating
-                          ? "Стоп — текст останется в поле, потом отправьте"
-                          : "Один раз нажмите: слова появятся в поле, пока говорите"
-                        : "Диктовка недоступна в этом браузере"}
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <HermesMicButton
+                        phase={dictatePhase}
+                        level={dictateLevel}
+                        elapsedMs={dictateElapsed}
+                        compact={compact}
+                        disabled={sending || !dictateSupported}
+                        onClick={onMicToggle}
+                      />
+                    }
+                  />
+                  <TooltipContent>
+                    {dictateSupported
+                      ? dictatePhase === "recording"
+                        ? "Стоп — текст останется в поле, потом отправьте"
+                        : dictatePhase === "transcribing"
+                          ? "Распознаю речь"
+                          : "Голосовой ввод: текст появится в поле после «Стоп»"
+                      : "Голосовой ввод недоступен в этом браузере"}
+                  </TooltipContent>
+                </Tooltip>
               </div>
               <Textarea
                 ref={textareaRef}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder={
-                  dictating
-                    ? "Слушаю… говорите — слова появятся здесь"
-                    : compact
-                      ? "Сообщение…"
-                      : "Сообщение Hermes…"
+                  dictatePhase === "transcribing"
+                    ? "Распознаю…"
+                    : dictatePhase === "recording"
+                      ? dictateStreaming
+                        ? "Говорите — текст появляется здесь"
+                        : "Идёт запись…"
+                      : compact
+                        ? "Сообщение…"
+                        : "Сообщение Hermes…"
                 }
                 disabled={sending}
                 rows={1}
                 className={cn(
                   "max-h-40 flex-1 resize-none border-0 bg-transparent px-1 shadow-none focus-visible:ring-0",
                   compact ? "min-h-8 py-1.5 text-[15px]" : "min-h-9 py-2",
-                  dictating && "hx-composer-dictating",
+                  dictatePhase === "recording" && "hx-composer-dictating",
                 )}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    if (canSend) {
-                      stopDictate();
-                      const q = message.trim();
-                      setMessage("");
-                      void sendText(q, "text", true);
+                    if (dictatePhase === "recording") {
+                      void stopDictate();
+                      return;
                     }
+                    if (dictatePhase !== "idle" || !canSend) return;
+                    const q = message.trim();
+                    setMessage("");
+                    void sendText(q, "text", true);
                   }
                 }}
               />

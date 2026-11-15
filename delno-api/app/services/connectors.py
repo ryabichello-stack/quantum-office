@@ -153,14 +153,17 @@ def connector_config_for(db: Session, ctx: TenantContext, kind: str) -> dict[str
 def list_tenant_connector_readiness(db: Session, ctx: TenantContext) -> list[dict[str, Any]]:
     """Operational readiness for this tenant, beyond a reachable shared service.
 
-    Aligns with PRODUCT_LOOP + tools_first: when upstream reports
-    ``creds_policy=tools_first``, owner opt-in (``enabled``) + reachable probe
-    is enough for hermes_ops. Live SMTP/CalDAV/OAuth can arrive later via vault;
-    stub/dry_run still counts as usable for rehearsal. Files still need a cloud
-    vault token. Strict provider checks apply only when creds_policy is not tools_first.
+    Honesty rule (2026-11-15): an opt-in flag never counts as «подключено».
+    Calendar/mail need the owner's own account verified by a real check
+    (office_accounts) AND an upstream that acts with tenant credentials.
+    Conference needs a really configured provider. Files need a cloud vault token.
+    Stub/dry_run is never usable.
     """
     from app.services.files_cloud import cloud_status
+    from app.services.office_accounts import verified_accounts
 
+    tenant_row = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
+    verified = verified_accounts(tenant_row.settings if isinstance(tenant_row.settings, dict) else {})
     items = []
     for item in list_tenant_connectors(db, ctx).get("items") or []:
         kind = item["kind"]
@@ -179,9 +182,19 @@ def list_tenant_connector_readiness(db: Session, ctx: TenantContext) -> list[dic
                 tenant_authorized = int(cloud_status(db, ctx).get("ready_count") or 0) > 0
             except Exception:
                 tenant_authorized = False
-        elif creds_policy == "tools_first":
-            # Opt-in is the tenant authorization for shared upstream.
-            tenant_authorized = enabled or bool((probe.data or {}).get("tenant_account_verified"))
+        elif kind in ("calendar", "mail"):
+            # Honesty rule: an opt-in flag is NOT a connected calendar/mail. Only the owner's
+            # own account that passed a real check (CalDAV read / SMTP login) counts, and the
+            # shared upstream must be able to act with tenant credentials (health.tenant_creds).
+            # Until delno-calendar / delno-mail support that, these stay «не подключено».
+            tenant_authorized = kind in verified
+            service_ready = bool(service_ready and health.get("tenant_creds"))
+        elif kind == "conference":
+            # Links must come from a provider that is really configured (e.g. Jitsi).
+            tenant_authorized = enabled
+            service_ready = service_ready and any(
+                p.get("configured") for p in health.get("providers") or []
+            )
         else:
             if kind == "mail":
                 service_ready = service_ready and bool(health.get("smtp_configured"))
@@ -204,6 +217,10 @@ def list_tenant_connector_readiness(db: Session, ctx: TenantContext) -> list[dic
                 reason = probe.error
             elif kind == "files":
                 reason = "cloud_vault_required"
+            elif kind in ("calendar", "mail") and kind not in verified:
+                reason = "owner_account_required"
+            elif kind in ("calendar", "mail"):
+                reason = "account_verified_upstream_pending"
             else:
                 reason = "account_or_provider_not_configured"
         items.append({
@@ -219,5 +236,6 @@ def list_tenant_connector_readiness(db: Session, ctx: TenantContext) -> list[dic
                 for p in health.get("providers") or []
             ],
             "reason": reason,
+            "account_verified": verified.get(kind),
         })
     return items

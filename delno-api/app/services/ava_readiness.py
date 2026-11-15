@@ -64,8 +64,12 @@ def set_tenant_voice(db: Session, ctx: TenantContext, voice: str = CEDAR_VOICE) 
     }
 
 
-def line_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
-    """Facts only. test_call_allowed is true only after script + Cedar + tools."""
+def line_status(db: Session, ctx: TenantContext, *, phone_ok: bool | None = None) -> dict[str, Any]:
+    """Facts only. test_call_allowed is true only after script + Cedar + tools.
+
+    ``phone_ok=False`` means the number/SIP line is not connected yet: never say
+    «Номер уже работает» then. ``None`` keeps the legacy wording (caller did not check).
+    """
     try:
         cfg = get_telephony_config(db, ctx)
     except Exception:  # noqa: BLE001
@@ -79,7 +83,7 @@ def line_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
     script_ready = bool(cfg.get("configured"))
     voice_ready = voice == CEDAR_VOICE
     tools_ready = script_ready and not missing_tools
-    test_call_allowed = script_ready and voice_ready and tools_ready
+    test_call_allowed = script_ready and voice_ready and tools_ready and phone_ok is not False
 
     gaps: list[dict[str, str]] = []
     if not script_ready:
@@ -129,11 +133,12 @@ def line_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
             parts.append("поставить голос Cedar")
         if not tools_ready:
             parts.append("подключить календарь, почту и видеовстречу")
-        message = (
-            "Номер уже работает. Пробный звонок рано — сначала "
-            + ", ".join(parts)
-            + "."
+        lead = (
+            "Номер ещё не подключён: сначала телефон (номер и SIP-линия Манго). Потом "
+            if phone_ok is False
+            else "Номер уже работает. Пробный звонок рано — сначала "
         )
+        message = lead + ", ".join(parts) + "."
         suggested = [{"title": g["title"], "text": g["text"]} for g in gaps]
         next_tool = gaps[0]["tool"] if gaps else None
 

@@ -165,6 +165,10 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
         platform = bool(item.get("configured") or (item.get("status") or {}).get("configured"))
         if usable:
             summary = "подключено и usable для этого кабинета"
+        elif enabled and row.get("reason") == "owner_account_required":
+            summary = "НЕ подключено: флаг включён, но своего аккаунта владельца нет — спроси, какой сервис"
+        elif enabled and row.get("reason") == "account_verified_upstream_pending":
+            summary = "аккаунт владельца проверен, но платформа ещё не работает через него — НЕ подключено"
         elif enabled:
             summary = f"включено у тенанта, но не usable ({row.get('reason') or 'нет кредов'})"
         elif platform:
@@ -317,7 +321,7 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
         from app.services.ava_readiness import line_status
         from app.services.instrument_catalog import inventory_from_checks
 
-        ava = line_status(db, ctx)
+        ava = line_status(db, ctx, phone_ok=bool((checks.get("phone") or {}).get("ok")))
         instruments = inventory_from_checks(checks, deferred=deferred)
     except Exception:  # noqa: BLE001
         ava = {"test_call_allowed": False, "message_ru": ""}
@@ -333,6 +337,9 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
         "deferred_instruments": sorted(deferred),
         "instruments": instruments,
         "ava": ava,
+        "sip_last": settings.get("telephony_sip_last")
+        if isinstance(settings.get("telephony_sip_last"), dict)
+        else None,
         "hermes": {
             "setup_started_at": hermes.get("setup_started_at"),
             "setup_completed_at": hermes.get("setup_completed_at"),
@@ -467,7 +474,7 @@ def office_health_report(db: Session, ctx: TenantContext) -> dict[str, Any]:
                 "code": "phone.sip_missing",
                 "severity": "warning",
                 "message_ru": "SIP Mango ещё не сохранён в сейфе кабинета — линия не регистрируется.",
-                "fix": "Скажите «настрой телефон» и заполните безопасную форму (логин вида номер/сотрудник).",
+                "fix": "Скажите «настрой телефон» и заполните безопасную форму (SIP-логин вида ivan@vpbx123456789.mangosip.ru).",
             }
         )
     else:

@@ -1,77 +1,74 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { ThinkingStep } from "@/lib/hermesThinking";
-import { thinkingNarrative } from "@/lib/hermesThinking";
+import { thinkingView } from "@/lib/hermesUiStates";
 import { cn } from "@/lib/utils";
 
 /**
- * Claude/ChatGPT-style thinking: muted italic stream above the reply.
- * While live — open, shows the current thought. After — collapsed by default.
+ * One line while Hermes works: the current action, in plain present tense.
+ * The owner can open the full list in the same words.
+ * When the reply is ready the line becomes «Сделал N действий».
  */
 export function HermesThinkingTrace({
   steps,
   live = false,
   liveIndex,
-  durationMs,
+  awaiting = false,
 }: {
   steps: ThinkingStep[];
-  /** Request still in flight — thinking shown before the answer. */
+  /** Request still in flight — the line is the current action. */
   live?: boolean;
-  /** How many steps of the plan are “active” so far (1-based). */
+  /** How many steps of the plan are active so far (1-based). */
   liveIndex?: number;
-  /** Wall time for the finished thought (ms). */
+  /** Between tools, or before the first one: «Думаю над ответом…». */
+  awaiting?: boolean;
+  /** Kept so existing callers can pass the measured duration. */
   durationMs?: number;
 }) {
-  const [open, setOpen] = useState(live);
+  const view = thinkingView(steps, { live, liveIndex, awaiting });
+  const [open, setOpen] = useState(false);
+  const listId = useId();
+
   useEffect(() => {
-    if (live) setOpen(true);
-    else setOpen(false);
+    if (!live) setOpen(false);
   }, [live]);
 
-  if (!steps.length) return null;
-  const visible = live && liveIndex ? steps.slice(0, Math.max(1, liveIndex)) : steps;
-  const body = thinkingNarrative(visible);
-  const current = visible[visible.length - 1];
-  const secs =
-    typeof durationMs === "number" && durationMs > 0
-      ? Math.max(1, Math.round(durationMs / 1000))
-      : null;
+  if (!view.line) return null;
 
   return (
-    <div className={cn("hx-cot", live && "is-live")}>
+    <div
+      className={cn("hx-think", live && "is-live")}
+      data-state={live ? "live" : "done"}
+      data-open={open ? "true" : "false"}
+    >
       <button
         type="button"
-        className="hx-cot-toggle"
+        className="hx-think-toggle"
         aria-expanded={open}
+        aria-controls={open ? listId : undefined}
         onClick={() => setOpen((v) => !v)}
       >
-        {open ? <ChevronDown size={13} strokeWidth={2} /> : <ChevronRight size={13} strokeWidth={2} />}
-        <span className="hx-cot-label">
-          {live ? (
-            <>
-              Думаю
-              <span className="hx-cot-pulse" aria-hidden>
-                …
-              </span>
-            </>
-          ) : secs ? (
-            <>Думал {secs} с</>
-          ) : (
-            <>Размышления</>
-          )}
+        {open ? <ChevronDown size={14} strokeWidth={2} /> : <ChevronRight size={14} strokeWidth={2} />}
+        <span className="hx-think-line" key={view.line}>
+          {view.line}
         </span>
       </button>
       {open ? (
-        <div className="hx-cot-body">
-          <pre className="hx-cot-text">{body}</pre>
-          {live && current ? (
-            <p className="hx-cot-now">
-              Сейчас: <em>{current.label}</em>
-            </p>
-          ) : null}
-        </div>
+        <ol id={listId} className="hx-think-list">
+          {view.steps.map((step, i) => (
+            <li key={`${i}-${step.label}`}>
+              <span>{step.label}</span>
+              {step.detail ? <small>{step.detail}</small> : null}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      {live ? (
+        <span className="sr-only" aria-live="polite">
+          {view.line}
+        </span>
       ) : null}
     </div>
   );

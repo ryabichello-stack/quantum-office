@@ -21,8 +21,66 @@ SUPPORTED_KINDS = frozenset(
         "files_onedrive",
         "telegram_bot",
         "max_bot",
+        "calendar_yandex",
+        "calendar_mailru",
+        "mail_yandex",
+        "mail_mailru",
     }
 )
+
+_APP_PASSWORD_HELP = {
+    "yandex": (
+        "Пароль приложения, не обычный пароль: Яндекс ID → Безопасность → "
+        "Пароли приложений → создать (тип «{what}»)."
+    ),
+    "mailru": (
+        "Пароль для внешнего приложения, не обычный пароль: Mail.ru → Настройки → "
+        "Безопасность → Пароли для внешних приложений → добавить."
+    ),
+}
+
+
+def _account_form(kind: str, title: str, provider: str, what: str, example: str) -> dict[str, Any]:
+    return {
+        "kind": kind,
+        "title": title,
+        "hint": (
+            "Подключаю ваш собственный аккаунт. Сразу проверю его по-настоящему; "
+            "в чат данные не попадут."
+        ),
+        "fields": [
+            {
+                "name": "login",
+                "label": "Адрес почты",
+                "type": "text",
+                "autocomplete": "username",
+                "placeholder": example,
+                "help": f"Полный адрес, например {example}.",
+            },
+            {
+                "name": "password",
+                "label": "Пароль приложения",
+                "type": "password",
+                "autocomplete": "off",
+                "help": _APP_PASSWORD_HELP[provider].format(what=what),
+            },
+        ],
+        "submit_label": "Подключить и проверить",
+        "password_required": True,
+        "login_optional": False,
+    }
+
+
+ACCOUNT_FORMS: dict[str, dict[str, Any]] = {
+    "calendar_yandex": _account_form(
+        "calendar_yandex", "Яндекс Календарь", "yandex", "Календарь CalDAV", "ivan@yandex.ru"
+    ),
+    "calendar_mailru": _account_form(
+        "calendar_mailru", "Календарь Mail.ru", "mailru", "Календарь", "ivan@mail.ru"
+    ),
+    "mail_yandex": _account_form("mail_yandex", "Яндекс Почта", "yandex", "Почта", "ivan@yandex.ru"),
+    "mail_mailru": _account_form("mail_mailru", "Почта Mail.ru", "mailru", "Почта", "ivan@mail.ru"),
+}
 
 CLOUD_KINDS = frozenset(
     {
@@ -38,23 +96,32 @@ MANGO_SIP_FORM = {
     "kind": "mango_sip",
     "title": "SIP Mango — безопасный ввод",
     "hint": (
-        "Логин вида «номер_аккаунта/сотрудник» из карточки SIP Mango "
-        "(не веб-кабинет). Пароль — SIP-пароль сотрудника. "
-        "Не попадёт в ленту чата; сохраняется только в этом кабинете."
+        "Данные SIP-учётной записи сотрудника из личного кабинета Манго: логин вида "
+        "сотрудник@vpbxНОМЕР.mangosip.ru или номер_аккаунта/сотрудник и SIP-пароль. "
+        "В ленту чата они не попадут и сохранятся только в этом кабинете."
     ),
     "fields": [
         {
             "name": "login",
-            "label": "Логин (аккаунт/сотрудник)",
+            "label": "SIP-логин сотрудника",
             "type": "text",
             "autocomplete": "username",
-            "placeholder": "123456789/ivan",
+            "placeholder": "ivan@vpbx123456789.mangosip.ru",
+            "help": (
+                "SIP-адрес целиком, например ivan@vpbx123456789.mangosip.ru "
+                "или 123456789/ivan."
+            ),
         },
         {
             "name": "password",
             "label": "SIP-пароль",
             "type": "password",
             "autocomplete": "current-password",
+            "help": (
+                "СИП-пароль сотрудника: ЛК Манго → Сотрудники → карточка сотрудника → "
+                "Телефония → учётная запись SIP → «Показать». "
+                "Пароль от личного кабинета не подойдёт."
+            ),
         },
     ],
     "submit_label": "Сохранить безопасно",
@@ -188,6 +255,8 @@ def credential_form_spec(kind: str = "mango_sip", *, prefill: dict[str, str] | N
         form = dict(CHANNEL_FORMS[kind])
     elif kind == "mango_sip":
         form = dict(MANGO_SIP_FORM)
+    elif kind in ACCOUNT_FORMS:
+        form = dict(ACCOUNT_FORMS[kind])
     else:
         # Unknown kinds fall back to SIP form shape but keep requested kind label only
         # when supported; otherwise mango_sip (legacy callers).
@@ -338,6 +407,10 @@ def save_secret(
         "has_password": bool(current.get("password")),
         "foreign_consent": bool(current.get("foreign_consent_at")),
     }
+    if login_s and kind == "mango_sip":
+        from app.services.sip_probe import normalize_mango_login
+
+        login_s = normalize_mango_login(login_s)
     if login_s:
         current["login"] = login_s[:120]
     if password_s:
@@ -472,15 +545,21 @@ def save_secret(
                 cfg["outbound"] = True
                 did_row.routing_config = cfg
                 db.commit()
-            if probe.get("message_ru"):
+            from app.services.sip_probe import classify_sip_outcome
+
+            outcome = classify_sip_outcome(probe)
+            out["sip_outcome"] = outcome
+            _remember_sip_outcome(db, ctx, outcome)
+            if outcome["code"] in ("format", "rejected"):
+                out["message"] = (out["message"] + " " + outcome["message_ru"]).strip()
+            elif probe.get("message_ru"):
                 out["message"] = (out["message"] + " " + str(probe.get("message_ru"))).strip()
             # Rejected / not Registered → reopen SIP form so owner can fix password without
             # hunting for «пришли форму» (follow-up chat used to block vault reopen).
             if not probe.get("ok") and not probe.get("skipped"):
                 out["pending_credential_form"] = credential_form_spec("mango_sip")
                 out["message"] = (
-                    (out.get("message") or "")
-                    + " Открою форму SIP снова — проверьте логин (аккаунт/сотрудник) и SIP-пароль."
+                    (out.get("message") or "") + " Форма SIP открыта ниже."
                 ).strip()
             elif probe.get("ok") and not did:
                 out["message"] = (
@@ -489,6 +568,8 @@ def save_secret(
                 ).strip()
         except Exception:  # noqa: BLE001
             __import__("logging").getLogger(__name__).exception("sip probe after vault save failed")
+    elif kind in ACCOUNT_FORMS:
+        out.update(_verify_office_account(db, ctx, kind, current))
     elif kind in CLOUD_KINDS:
         try:
             from app.services.files_cloud import after_vault_cloud_save
@@ -504,6 +585,53 @@ def save_secret(
         except Exception:  # noqa: BLE001
             __import__("logging").getLogger(__name__).exception("cloud probe after vault save failed")
     return out
+
+
+def _verify_office_account(
+    db: Session, ctx: TenantContext, kind: str, current: dict[str, Any]
+) -> dict[str, Any]:
+    """Real check of the owner's calendar/mail account. Only a pass marks it verified."""
+    from app.services.office_accounts import verify_account
+
+    try:
+        result = verify_account(kind, str(current.get("login") or ""), str(current.get("password") or ""))
+    except Exception:  # noqa: BLE001
+        result = {"ok": False, "code": "error", "message_ru": "Проверка аккаунта упала, попробуем ещё раз."}
+    tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
+    settings = dict(tenant.settings) if isinstance(tenant.settings, dict) else {}
+    blob = dict(settings.get("secrets") or {})
+    row = dict(blob.get(kind) or {})
+    if result.get("ok"):
+        row["verified_at"] = datetime.now(timezone.utc).isoformat()
+        row["verified_summary"] = str(result.get("message_ru") or "")[:300]
+    else:
+        row.pop("verified_at", None)
+        row.pop("verified_summary", None)
+    blob[kind] = row
+    settings["secrets"] = blob
+    tenant.settings = settings
+    db.commit()
+    public = {k: v for k, v in result.items() if k in ("ok", "code", "message_ru", "calendars", "events_14d")}
+    extra: dict[str, Any] = {"account_probe": public, "message": str(result.get("message_ru") or "")}
+    if not result.get("ok"):
+        extra["pending_credential_form"] = credential_form_spec(kind)
+    return extra
+
+
+def _remember_sip_outcome(db: Session, ctx: TenantContext, outcome: dict[str, str]) -> None:
+    """Keep the last SIP form result as a tenant fact Hermes can read (no secrets)."""
+    try:
+        tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
+        settings = dict(tenant.settings) if isinstance(tenant.settings, dict) else {}
+        settings["telephony_sip_last"] = {
+            "code": str(outcome.get("code") or "")[:32],
+            "message_ru": str(outcome.get("message_ru") or "")[:400],
+            "at": datetime.now(timezone.utc).isoformat(),
+        }
+        tenant.settings = settings
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
 
 
 def _mask(value: str) -> str:

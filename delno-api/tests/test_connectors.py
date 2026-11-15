@@ -126,8 +126,8 @@ def test_list_and_enable_connector_service():
     db.commit.assert_called()
 
 
-def test_tools_first_readiness_usable_when_enabled(monkeypatch):
-    """PRODUCT_LOOP: tools_first + enable = usable without live SMTP/CalDAV."""
+def test_enabled_flag_alone_is_not_connected(monkeypatch):
+    """Honesty rule: tools_first + enable is NOT usable without the owner's verified account."""
     tenant_id = uuid.uuid4()
     ctx = TenantContext(tenant_id=tenant_id, tenant_slug="demo", role="tenant_owner")
     tenant = Tenant(
@@ -161,9 +161,28 @@ def test_tools_first_readiness_usable_when_enabled(monkeypatch):
     rows = list_tenant_connector_readiness(db, ctx)
     mail = next(r for r in rows if r["kind"] == "mail")
     assert mail["enabled"] is True
-    assert mail["usable"] is True
+    assert mail["usable"] is False
     assert mail["creds_policy"] == "tools_first"
-    assert mail["reason"] is None
+    assert mail["reason"] == "owner_account_required"
+
+    # Verified own account + upstream able to act with tenant creds → usable.
+    tenant.settings = {
+        "connectors": {"mail": {"enabled": True, "base_url": "http://mail:8000"}},
+        "secrets": {"mail_yandex": {"login": "x", "password": "y", "verified_at": "2026-11-15T00:00:00Z"}},
+    }
+
+    def _probe_tc(*, tenant_slug, config):
+        return ConnectorResult(
+            ok=True, configured=True, kind="mail", message="ok",
+            data={"health": {"creds_policy": "tools_first", "tenant_creds": True}},
+        )
+
+    monkeypatch.setattr(
+        "app.services.connectors.get_connector",
+        lambda kind: MagicMock(kind=kind, probe=_probe_tc, status=lambda **k: ConnectorResult(ok=True, configured=True, kind=kind)),
+    )
+    mail = next(r for r in list_tenant_connector_readiness(db, ctx) if r["kind"] == "mail")
+    assert mail["usable"] is True
 
 
 def test_tool_registry_includes_office_tools():

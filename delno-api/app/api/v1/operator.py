@@ -2410,6 +2410,7 @@ def operator_chat(
                         "checks_summary": checks_summary,
                         "ava_test_call_allowed": bool((setup_facts.get("ava") or {}).get("test_call_allowed")),
                         "ava_next_ru": (setup_facts.get("ava") or {}).get("message_ru"),
+                        "sip_last": setup_facts.get("sip_last"),
                         "stitches": [
                             s.get("text")
                             for s in ((setup_facts.get("instruments") or {}).get("stitches") or [])
@@ -2907,3 +2908,99 @@ def list_messages(
             for row in rows
         ]
     }
+
+
+def _nous_stream_eligible(db: Session, ctx: TenantContext, body: OperatorChatRequest) -> bool:
+    """True only when /chat would call the Nous runtime. DIY and agent-loop stay on /chat."""
+    message = (body.message or "").strip()
+    if not message or body.attachments:
+        return False
+    from app.services.hermes_nous.flags import is_hermes_nous_enabled
+
+    if not is_hermes_nous_enabled(db, ctx):
+        return False
+    if _wants_agent_orchestration(message) or _wants_kb_agent_work(message) or _wants_confirm_kb_draft(message):
+        return False
+    from app.services import agent_schedule as sched
+
+    if sched.parse_schedule_intent(message) or sched.wants_tasks_list(message):
+        return False
+    if (
+        _wants_media_generation(message)
+        or _wants_calendar_slots(message)
+        or _wants_conference_create(message)
+        or _wants_mail_draft(message)
+        or _wants_office_health(message)
+        or _wants_crm_funnel(message)
+        or _wants_phones_list(message)
+        or _wants_calls_list(message)
+        or _wants_telephony_script(message)
+        or _wants_billing_summary(message)
+        or _wants_get_knowledge(message)
+        or _wants_hermes_capabilities(message)
+        or _wants_files_cloud_status(message)
+        or _wants_channel_connect_flow(message)
+        or _wants_web_research(message)
+    ):
+        return False
+    return True
+
+
+@router.post("/chat/stream")
+def operator_chat_stream(
+    body: OperatorChatRequest,
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+):
+    """Live Hermes actions for the cabinet. Runs the same turn as POST /chat; final event is its payload."""
+    from fastapi.responses import StreamingResponse
+
+    from app.services.hermes_nous.chat_stream import iter_chat_stream
+
+    message = (body.message or "").strip()
+    if not message and not body.attachments:
+        raise HTTPException(status_code=422, detail="message_or_attachment_required")
+    return StreamingResponse(
+        iter_chat_stream(ctx, body),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/chat/runs/{run_id}/events")
+def operator_run_events(
+    run_id: str,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+):
+    """Proxy Hermes SSE for a run this tenant owns. Other companies get 404."""
+    from fastapi.responses import StreamingResponse
+
+    from app.services.hermes_nous.bridge import HermesBridgeError, find_owned_run, iter_hermes_sse, resolve_runtime
+    from app.services.hermes_nous.live_events import format_sse, map_hermes_event
+
+    if find_owned_run(db, ctx, run_id) is None:
+        raise HTTPException(status_code=404, detail="run_not_found")
+    try:
+        runtime = resolve_runtime(db, ctx)
+    except HermesBridgeError as exc:
+        raise HTTPException(status_code=exc.status or 503, detail="run_unavailable") from exc
+
+    def _proxy():
+        try:
+            for name, data in iter_hermes_sse(runtime, run_id):
+                mapped = map_hermes_event(name, data)
+                if mapped:
+                    yield format_sse("action", {k: v for k, v in mapped.items() if v is not None})
+                    if mapped.get("phase") == "terminal":
+                        break
+        except HermesBridgeError:
+            yield format_sse("error", {"message": "Поток действий недоступен."})
+
+    return StreamingResponse(
+        _proxy(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

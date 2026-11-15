@@ -396,6 +396,8 @@ export type CredentialFormSpec = {
     label: string;
     type: "text" | "password";
     autocomplete?: string;
+    placeholder?: string;
+    help?: string;
   }>;
   submit_label?: string;
   prefill?: Record<string, string>;
@@ -404,6 +406,107 @@ export type CredentialFormSpec = {
   require_foreign_consent?: boolean;
   consent_label?: string;
 };
+
+export type OperatorChatResult = {
+  conversation_id: string;
+  reply: string;
+  sources: KnowledgeSource[];
+  tool_calls: unknown[];
+  engine?: string;
+  hermes_run?: unknown;
+  pending_confirmation: PendingConfirmation | null;
+  pending_credential_form?: CredentialFormSpec | null;
+  pending_download?: {
+    filename: string;
+    title: string;
+    body: string;
+    content_type?: string;
+  } | null;
+  suggested_actions?: SuggestedAction[];
+  messages?: OperatorChatMessageStamp[];
+};
+
+export type LiveStreamAction = {
+  phase?: string;
+  tool?: string;
+  preview?: string;
+  tool_call_id?: string;
+};
+
+function parseSsePart(part: string): { event: string; data: Record<string, unknown> } | null {
+  let event = "message";
+  const dataLines: string[] = [];
+  for (const line of part.split("\n")) {
+    if (line.startsWith("event:")) event = line.slice(6).trim();
+    else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+  }
+  if (!dataLines.length) return null;
+  try {
+    const data = JSON.parse(dataLines.join("\n")) as Record<string, unknown>;
+    return { event, data };
+  } catch {
+    return null;
+  }
+}
+
+/** Live Hermes actions. Returns fallback when the server says to use blocking /chat. */
+export async function readOperatorChatStream(
+  token: string,
+  message: string,
+  conversationId: string | undefined,
+  modality: "text" | "voice",
+  channel: string,
+  onAction: (action: LiveStreamAction) => void,
+  attachments?: OperatorChatAttachment[],
+): Promise<{ fallback: boolean; result: OperatorChatResult | null }> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/v1/operator/chat/stream`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "text/event-stream",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message,
+        channel,
+        conversation_id: conversationId || null,
+        modality,
+        attachments: attachments || [],
+      }),
+    });
+  } catch {
+    return { fallback: true, result: null };
+  }
+  if (res.status === 404 || res.status === 501 || !res.ok || !res.body) {
+    return { fallback: true, result: null };
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  let fallback = false;
+  let result: OperatorChatResult | null = null;
+  const take = (block: string) => {
+    const parsed = parseSsePart(block);
+    if (!parsed) return;
+    if (parsed.event === "fallback") fallback = true;
+    if (parsed.event === "action") onAction(parsed.data as LiveStreamAction);
+    if (parsed.event === "done") result = parsed.data as OperatorChatResult;
+  };
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    buf += decoder.decode(chunk.value, { stream: true });
+    const parts = buf.split("\n\n");
+    buf = parts.pop() || "";
+    for (const part of parts) take(part);
+  }
+  if (buf.trim()) take(buf);
+  if (fallback && !result) return { fallback: true, result: null };
+  if (!result) return { fallback: true, result: null };
+  return { fallback: false, result };
+}
 
 export function apiOperatorChat(
   token: string,
@@ -473,6 +576,10 @@ export function apiTenantSecretSave(
       cursor_task?: string;
       next_actions?: { title: string; text: string }[];
     };
+    /** Plain-words result of a SIP form save: registered | format | rejected | not_registered | saved_only. */
+    sip_outcome?: { code: string; message_ru: string };
+    /** Real check of the owner's own calendar / mail account (calendar_* / mail_* kinds). */
+    account_probe?: { ok?: boolean; code?: string; message_ru?: string; calendars?: number; events_14d?: number };
     cloud_probe?: {
       source?: string;
       title?: string;

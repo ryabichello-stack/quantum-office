@@ -423,7 +423,9 @@ def _cta(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> d
                 "title": f"Подключить: {title}",
                 "text": (
                     f"Вызови office.connector_set kind={sid} enabled=true, затем hermes.setup_status. "
-                    f"tools_first: opt-in на общий upstream; vault-секреты — позже при необходимости. "
+                    "Говори «подключено» ТОЛЬКО если setup_status показывает ok для этого шага. "
+                    "Флаг включения — это ещё не подключение: для календаря и почты нужен свой аккаунт "
+                    "владельца (спроси, какой сервис, и открой credentials.open_form). "
                     f"{hint} Не предлагай снова собирать базу знаний."
                 ),
             }
