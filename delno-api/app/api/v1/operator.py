@@ -2497,6 +2497,16 @@ def operator_chat(
             except HermesBridgeError as exc:
                 # Flag on → never silently answer as DIY «Гермес». Be honest.
                 code = str(exc)
+                if code == "model_provider_unavailable":
+                    return _finish_diy(
+                        db,
+                        ctx,
+                        body,
+                        modality=modality,
+                        engine="hermes_unavailable",
+                        reply="Гермес временно не может ответить: сервису недоступна модель ИИ. Мы восстанавливаем подключение. Попробуйте позже.",
+                        tool_calls=[{"tool": "hermes.runtime", "ok": False, "error": code}],
+                    )
                 err_body = exc.body if isinstance(exc.body, dict) else {"raw": exc.body}
                 unavailable = (
                     exc.status in (None, 503, 404, 502)

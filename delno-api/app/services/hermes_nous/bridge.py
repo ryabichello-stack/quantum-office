@@ -409,6 +409,12 @@ def create_run(
         "session_id": payload["session_id"],
     }
     _meter_hermes_turn(db, ctx, final_body, started_at=started, runtime=runtime)
+    if "country, region, or territory not supported" in output.lower():
+        failed_body = dict(final_body) if isinstance(final_body, dict) else {}
+        failed_body["status"] = "failed"
+        failed_body["error_code"] = "model_provider_unavailable"
+        _close_agent_run(db, ctx, delno_run.id, failed_body, polled=True, output="")
+        raise HermesBridgeError("model_provider_unavailable", status=503)
     _close_agent_run(db, ctx, delno_run.id, final_body, polled=polled is not None, output=output)
     return result
 
