@@ -5,7 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY allowlist.py delivery.py main.py models.py sources.py ./
+COPY allowlist.py delivery.py main.py models.py sources.py tenant_scope.py ./
 COPY README.md ./
 
 RUN mkdir -p /data/assets \
