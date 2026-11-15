@@ -56,6 +56,21 @@ class MailSendRequest(BaseModel):
     dry_run: bool = False
 
 
+class MailProbeRequest(BaseModel):
+    tenant_id: str = Field(..., min_length=1)
+    provider: str
+    username: str
+    password: str
+
+
+_SMTP_PROVIDERS = {
+    "yandex": ("smtp.yandex.ru", 465),
+    "mailru": ("smtp.mail.ru", 465),
+    "google": ("smtp.gmail.com", 465),
+    "outlook": ("smtp.office365.com", 587),
+}
+
+
 @app.get("/health")
 def health():
     return {
@@ -66,6 +81,30 @@ def health():
         "creds_policy": "tools_first",
         "capabilities": ["send"],
     }
+
+
+@app.post("/api/mail/probe")
+def mail_probe(req: MailProbeRequest, x_webhook_token: Optional[str] = Header(None)):
+    """Check this company's SMTP login without sending or logging a message."""
+    _check_token(x_webhook_token)
+    provider = req.provider.strip().lower()
+    if provider not in _SMTP_PROVIDERS:
+        raise HTTPException(status_code=400, detail="unsupported_provider")
+    if not req.username.strip() or not req.password:
+        raise HTTPException(status_code=400, detail="credentials_required")
+    host, port = _SMTP_PROVIDERS[provider]
+    try:
+        if port == 587:
+            with smtplib.SMTP(host, port, timeout=8) as smtp:
+                smtp.starttls()
+                smtp.login(req.username.strip(), req.password)
+        else:
+            with smtplib.SMTP_SSL(host, port, timeout=8) as smtp:
+                smtp.login(req.username.strip(), req.password)
+    except (OSError, smtplib.SMTPException):
+        logger.info("mail probe failed tenant=%s provider=%s", req.tenant_id, provider)
+        return {"ok": False, "status": "failed", "message_ru": "Почта не пустила: проверьте логин и пароль приложения."}
+    return {"ok": True, "status": "connected", "tenant_id": req.tenant_id, "provider": provider}
 
 
 @app.post("/api/mail/send")
