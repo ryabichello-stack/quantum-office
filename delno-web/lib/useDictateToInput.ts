@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import {
+  initialDictate,
+  reduceDictate,
+  type DictateEvent,
+  type DictateSnapshot,
+} from "@/lib/hermesUiStates";
+import { isBenignSttError, sttErrorMessage } from "@/lib/sttErrors";
 
 type SpeechRecognitionLike = {
   lang: string;
@@ -20,10 +27,7 @@ type SpeechRecognitionEventLike = {
   results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }>;
 };
 
-const BENIGN_ERRORS = new Set(["aborted", "no-speech", "interrupted"]);
 const API_URL = process.env.NEXT_PUBLIC_DELNO_API_URL || "http://127.0.0.1:18020";
-/** How often to push audio to Whisper for progressive text in the field. */
-const WHISPER_TICK_MS = 1100;
 
 function getSpeechRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
   if (typeof window === "undefined") return null;
@@ -34,88 +38,79 @@ function getSpeechRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
   return w.SpeechRecognition || w.webkitSpeechRecognition || null;
 }
 
-function errorMessage(code?: string): string {
-  switch (code) {
-    case "not-allowed":
-    case "service-not-allowed":
-      return "Нет доступа к микрофону — разрешите его в настройках браузера.";
-    case "audio-capture":
-      return "Микрофон недоступен. Проверьте устройство.";
-    case "network":
-      return "Сеть недоступна для распознавания речи.";
-    default:
-      return "Не удалось распознать речь. Нажмите mic ещё раз.";
-  }
-}
-
 function mergeField(base: string, chunk: string): string {
   return [base, chunk].map((s) => s.trim()).filter(Boolean).join(" ");
 }
 
+function pickMime(): string {
+  if (typeof MediaRecorder === "undefined") return "";
+  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+  for (const candidate of candidates) {
+    try {
+      if (MediaRecorder.isTypeSupported(candidate)) return candidate;
+    } catch {
+      /* ignore */
+    }
+  }
+  return "";
+}
+
+function micFailure(err: unknown): string {
+  const name =
+    err && typeof err === "object" && "name" in err ? String((err as { name?: string }).name || "") : "";
+  return sttErrorMessage(name || "audio-capture");
+}
+
 /**
- * Click-to-toggle dictation into the composer.
- * Live text: browser SpeechRecognition interim (word/phrase) when available;
- * always also runs rolling Whisper ticks so text appears while speaking
- * even when Google STT is blocked / unavailable.
+ * Click once to record, click «Стоп» to transcribe into the composer.
+ * Streaming text is shown only when the browser SpeechRecognition engine
+ * actually emits partials. Server Whisper is one-shot: while it runs the UI
+ * stays on «Распознаю…» and does not invent interim words.
+ * The transcript is written into the field for editing. Nothing is sent.
  */
 export function useDictateToInput(
   onPartialOrFinal: (text: string, isFinal: boolean) => void,
   authToken?: string | null,
 ) {
-  const [dictating, setDictating] = useState(false);
+  const snapRef = useRef<DictateSnapshot>(initialDictate());
+  const [snap, dispatch] = useReducer(reduceDictate, undefined, initialDictate);
+  const send = useCallback((event: DictateEvent) => {
+    snapRef.current = reduceDictate(snapRef.current, event);
+    dispatch(event);
+  }, []);
+
   const [supported, setSupported] = useState(true);
-  const [error, setError] = useState("");
-  /** 0..1 mic energy for live wave animation while dictating. */
-  const [level, setLevel] = useState(0);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
   const mediaRecRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const baseRef = useRef("");
-  /** Live dictated portion (browser finals + interim, or Whisper progressive). */
   const liveRef = useRef("");
   const activeRef = useRef(false);
-  const browserOkRef = useRef(false);
-  const whisperBusyRef = useRef(false);
-  const whisperTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const discardRef = useRef(false);
+  const stoppingRef = useRef(false);
+  const genRef = useRef(0);
   const mimeRef = useRef("audio/webm");
   const audioCtxRef = useRef<AudioContext | null>(null);
   const levelRafRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onPartialRef = useRef(onPartialOrFinal);
   onPartialRef.current = onPartialOrFinal;
   const tokenRef = useRef(authToken);
   tokenRef.current = authToken;
+  const sendRef = useRef(send);
+  sendRef.current = send;
 
   const publish = useCallback((dictated: string, isFinal: boolean) => {
     liveRef.current = dictated;
     onPartialRef.current(mergeField(baseRef.current, dictated), isFinal);
   }, []);
 
-  useEffect(() => {
-    const hasBrowser = Boolean(getSpeechRecognitionCtor());
-    const hasMedia = typeof window !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
-    setSupported(hasBrowser || hasMedia);
-    return () => {
-      activeRef.current = false;
-      if (whisperTimerRef.current) clearInterval(whisperTimerRef.current);
-      if (levelRafRef.current != null) cancelAnimationFrame(levelRafRef.current);
-      try {
-        audioCtxRef.current?.close();
-      } catch {
-        /* ignore */
-      }
-      try {
-        recRef.current?.abort();
-      } catch {
-        /* ignore */
-      }
-      try {
-        mediaRecRef.current?.stop();
-      } catch {
-        /* ignore */
-      }
-      mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
-    };
+  const stopTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
   }, []);
 
   const stopLevelMeter = useCallback(() => {
@@ -123,13 +118,15 @@ export function useDictateToInput(
       cancelAnimationFrame(levelRafRef.current);
       levelRafRef.current = null;
     }
-    setLevel(0);
-    try {
-      void audioCtxRef.current?.close();
-    } catch {
-      /* ignore */
-    }
+    const ctx = audioCtxRef.current;
     audioCtxRef.current = null;
+    if (ctx) {
+      try {
+        void ctx.close();
+      } catch {
+        /* ignore */
+      }
+    }
   }, []);
 
   const startLevelMeter = useCallback(
@@ -144,257 +141,356 @@ export function useDictateToInput(
         audioCtxRef.current = ctx;
         const source = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
-        analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.75;
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.65;
         source.connect(analyser);
-        const data = new Uint8Array(analyser.frequencyBinCount);
+        const data = new Uint8Array(analyser.fftSize);
         const tick = () => {
-          if (!activeRef.current) {
-            setLevel(0);
-            return;
-          }
-          analyser.getByteFrequencyData(data);
+          if (!activeRef.current) return;
+          analyser.getByteTimeDomainData(data);
           let sum = 0;
-          for (let i = 0; i < data.length; i++) sum += data[i];
-          const avg = sum / (data.length * 255);
-          // Soft floor so the mic still "breathes" while listening quietly.
-          setLevel(Math.min(1, 0.12 + avg * 1.6));
+          for (let i = 0; i < data.length; i++) {
+            const v = (data[i] - 128) / 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / data.length);
+          sendRef.current({ type: "level", level: Math.min(1, rms * 3.2) });
           levelRafRef.current = requestAnimationFrame(tick);
         };
         void ctx.resume();
         levelRafRef.current = requestAnimationFrame(tick);
       } catch {
-        /* visualizer optional */
+        /* visualizer is optional; recording still works */
       }
     },
     [stopLevelMeter],
   );
 
-  const stopWhisperLoop = useCallback(() => {
-    if (whisperTimerRef.current) {
-      clearInterval(whisperTimerRef.current);
-      whisperTimerRef.current = null;
-    }
-  }, []);
-
-  const transcribeBlob = useCallback(async (blob: Blob): Promise<string> => {
-    if (!tokenRef.current || !blob.size) return "";
-    const form = new FormData();
-    form.append("file", blob, "dictate.webm");
-    const res = await fetch(`${API_URL}/v1/operator/stt`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${tokenRef.current}` },
-      body: form,
-    });
-    if (!res.ok) return "";
-    const data = (await res.json()) as { text?: string };
-    return (data.text || "").trim();
-  }, []);
-
-  const whisperTick = useCallback(async () => {
-    if (!activeRef.current || whisperBusyRef.current) return;
-    // Prefer browser live text when SpeechRecognition is healthy.
-    if (browserOkRef.current && liveRef.current.trim()) return;
-    const chunks = chunksRef.current;
-    if (!chunks.length) return;
-    const blob = new Blob(chunks, { type: mimeRef.current });
-    if (blob.size < 2500) return;
-    whisperBusyRef.current = true;
-    try {
-      const text = await transcribeBlob(blob);
+  const startTimer = useCallback(() => {
+    stopTimer();
+    const started = Date.now();
+    sendRef.current({ type: "tick", elapsedMs: 0 });
+    timerRef.current = setInterval(() => {
       if (!activeRef.current) return;
-      if (text) publish(text, false);
-    } catch {
-      /* keep listening */
-    } finally {
-      whisperBusyRef.current = false;
-    }
-  }, [publish, transcribeBlob]);
+      sendRef.current({ type: "tick", elapsedMs: Date.now() - started });
+    }, 250);
+  }, [stopTimer]);
 
-  const stopBrowser = useCallback(() => {
+  const transcribeBlob = useCallback(async (blob: Blob): Promise<{ text: string; error: string }> => {
+    if (!tokenRef.current) return { text: "", error: sttErrorMessage("no-session") };
+    if (blob.size < 400) return { text: "", error: sttErrorMessage("STT_EMPTY") };
+    const mime = blob.type || mimeRef.current || "audio/webm";
+    const filename = mime.includes("mp4") ? "dictate.m4a" : "dictate.webm";
+    const form = new FormData();
+    form.append("file", blob, filename);
+    let res: Response;
     try {
-      recRef.current?.stop();
+      res = await fetch(`${API_URL}/v1/operator/stt`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tokenRef.current}` },
+        body: form,
+      });
     } catch {
-      /* ignore */
+      return { text: "", error: sttErrorMessage("network") };
+    }
+    if (!res.ok) {
+      let code = "STT_FAILED";
+      try {
+        const data = (await res.json()) as { detail?: unknown };
+        if (typeof data.detail === "string" && data.detail.trim()) code = data.detail.trim();
+      } catch {
+        code = "STT_FAILED";
+      }
+      return { text: "", error: sttErrorMessage(code) };
+    }
+    try {
+      const data = (await res.json()) as { text?: string };
+      const text = (data.text || "").trim();
+      if (!text) return { text: "", error: sttErrorMessage("STT_EMPTY") };
+      return { text, error: "" };
+    } catch {
+      return { text: "", error: sttErrorMessage("STT_FAILED") };
     }
   }, []);
 
-  const stopMedia = useCallback(() => {
-    stopWhisperLoop();
-    try {
-      if (mediaRecRef.current && mediaRecRef.current.state !== "inactive") {
-        mediaRecRef.current.stop();
+  const stopBrowser = useCallback((): Promise<void> => {
+    return new Promise((resolve) => {
+      const rec = recRef.current;
+      if (!rec) {
+        resolve();
+        return;
       }
-    } catch {
-      /* ignore */
-    }
-  }, [stopWhisperLoop]);
-
-  const stop = useCallback(() => {
-    activeRef.current = false;
-    setDictating(false);
-    stopLevelMeter();
-    stopBrowser();
-    stopMedia();
-  }, [stopBrowser, stopLevelMeter, stopMedia]);
-
-  const startMediaAndWhisper = useCallback(
-    async (currentFieldValue: string) => {
-      if (!tokenRef.current) {
-        setError("Нет сессии для распознавания речи.");
-        return false;
-      }
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setSupported(false);
-        setError("Микрофон недоступен в этом браузере.");
-        return false;
-      }
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      rec.onend = () => finish();
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaStreamRef.current = stream;
-        const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-          ? "audio/webm;codecs=opus"
-          : "audio/webm";
-        mimeRef.current = mime;
-        const recorder = new MediaRecorder(stream, { mimeType: mime });
-        chunksRef.current = [];
-        recorder.ondataavailable = (ev) => {
-          if (ev.data?.size) chunksRef.current.push(ev.data);
-        };
-        recorder.onstop = async () => {
-          stopWhisperLoop();
-          stream.getTracks().forEach((t) => t.stop());
-          mediaStreamRef.current = null;
-          const blob = new Blob(chunksRef.current, { type: mime });
-          chunksRef.current = [];
-          // Final pass only if browser never delivered text.
-          if (!browserOkRef.current || !liveRef.current.trim()) {
-            try {
-              const text = blob.size ? await transcribeBlob(blob) : "";
-              if (text) publish(text, true);
-              else if (!liveRef.current.trim()) {
-                setError("Пустая расшифровка — говорите чуть дольше.");
-                publish("", true);
-              } else {
-                publish(liveRef.current, true);
-              }
-            } catch {
-              setError("Ошибка связи при распознавании.");
-              publish(liveRef.current, true);
-            }
-          } else {
-            publish(liveRef.current, true);
-          }
-          setDictating(false);
-          activeRef.current = false;
-        };
-        mediaRecRef.current = recorder;
-        startLevelMeter(stream);
-        // timeslice → progressive blobs for rolling Whisper
-        recorder.start(700);
-        whisperTimerRef.current = setInterval(() => {
-          void whisperTick();
-        }, WHISPER_TICK_MS);
-        // Kick first tick a bit earlier so text shows within ~1s of speech.
-        window.setTimeout(() => void whisperTick(), 650);
-        return true;
+        rec.stop();
       } catch {
-        setError("Нет доступа к микрофону — разрешите его в браузере.");
-        return false;
+        finish();
       }
-    },
-    [publish, startLevelMeter, stopWhisperLoop, transcribeBlob, whisperTick],
-  );
+      window.setTimeout(finish, 700);
+    });
+  }, []);
 
-  const startBrowser = useCallback((currentFieldValue: string) => {
+  const collectBlob = useCallback((): Promise<Blob> => {
+    return new Promise((resolve) => {
+      const rec = mediaRecRef.current;
+      const stream = mediaStreamRef.current;
+      const mime = mimeRef.current;
+      const finish = () => {
+        stream?.getTracks().forEach((t) => t.stop());
+        mediaStreamRef.current = null;
+        mediaRecRef.current = null;
+        const blob = new Blob(chunksRef.current, { type: mime || "audio/webm" });
+        chunksRef.current = [];
+        resolve(blob);
+      };
+      if (!rec || rec.state === "inactive") {
+        finish();
+        return;
+      }
+      rec.onstop = () => finish();
+      try {
+        rec.stop();
+      } catch {
+        finish();
+      }
+    });
+  }, []);
+
+  const startBrowser = useCallback(() => {
     const Ctor = getSpeechRecognitionCtor();
-    if (!Ctor) return false;
+    if (!Ctor) return;
     try {
       recRef.current?.abort();
     } catch {
       /* ignore */
     }
-    const rec = new Ctor();
-    rec.lang = "ru-RU";
-    rec.continuous = true;
-    rec.interimResults = true;
-    if (typeof rec.maxAlternatives === "number") rec.maxAlternatives = 1;
-    let finals = "";
-    rec.onresult = (ev) => {
-      browserOkRef.current = true;
-      let interim = "";
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        const piece = ev.results[i][0]?.transcript || "";
-        if (ev.results[i].isFinal) finals = mergeField(finals, piece);
-        else interim += piece;
-      }
-      // Word/phrase blocks into the field immediately (finals + live interim).
-      publish(mergeField(finals, interim), Boolean(finals) && !interim);
-    };
-    rec.onerror = (ev) => {
-      const code = ev.error || "";
-      if (BENIGN_ERRORS.has(code)) return;
-      browserOkRef.current = false;
-      if (code === "not-allowed" || code === "service-not-allowed") {
-        setError(errorMessage(code));
-        activeRef.current = false;
-        setDictating(false);
-        stopMedia();
-        return;
-      }
-      // Keep rolling Whisper — do not kill dictation on Google STT network blips.
-    };
-    rec.onend = () => {
-      if (activeRef.current) {
+    try {
+      const rec = new Ctor();
+      rec.lang = "ru-RU";
+      rec.continuous = true;
+      rec.interimResults = true;
+      if (typeof rec.maxAlternatives === "number") rec.maxAlternatives = 1;
+      let finals = "";
+      rec.onresult = (ev) => {
+        const phase = snapRef.current.phase;
+        // Keep the last words that arrive while recognition is shutting down.
+        if (phase !== "recording" && phase !== "transcribing") return;
+        let interim = "";
+        for (let i = ev.resultIndex; i < ev.results.length; i++) {
+          const piece = ev.results[i][0]?.transcript || "";
+          if (ev.results[i].isFinal) finals = mergeField(finals, piece);
+          else interim += piece;
+        }
+        const dictated = mergeField(finals, interim).trim();
+        if (!dictated) return;
+        liveRef.current = dictated;
+        const text = mergeField(baseRef.current, dictated);
+        publish(dictated, false);
+        sendRef.current({ type: "partial", text });
+      };
+      rec.onerror = (ev) => {
+        const code = ev.error || "";
+        if (isBenignSttError(code) || code === "no-speech") return;
+        // Keep recording. Batch recognition still runs after «Стоп».
+      };
+      rec.onend = () => {
+        if (!activeRef.current) return;
         try {
           rec.start();
         } catch {
-          browserOkRef.current = false;
+          /* streaming dropped; the recording continues */
         }
-      }
-    };
-    recRef.current = rec;
-    try {
+      };
+      recRef.current = rec;
       rec.start();
-      return true;
     } catch {
-      return false;
+      recRef.current = null;
     }
-  }, [publish, stopMedia]);
+  }, [publish]);
+
+  useEffect(() => {
+    const hasBrowser = Boolean(getSpeechRecognitionCtor());
+    const hasMedia = typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
+    setSupported(hasBrowser || hasMedia);
+    return () => {
+      activeRef.current = false;
+      genRef.current += 1;
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (levelRafRef.current != null) cancelAnimationFrame(levelRafRef.current);
+      try {
+        void audioCtxRef.current?.close();
+      } catch {
+        /* ignore */
+      }
+      try {
+        recRef.current?.abort();
+      } catch {
+        /* ignore */
+      }
+      try {
+        if (mediaRecRef.current && mediaRecRef.current.state !== "inactive") mediaRecRef.current.stop();
+      } catch {
+        /* ignore */
+      }
+      mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
+
+  const stop = useCallback(
+    async (opts?: { discard?: boolean }) => {
+      if (opts?.discard) discardRef.current = true;
+      if (snapRef.current.phase === "transcribing") return;
+      if (snapRef.current.phase !== "recording" && !activeRef.current) return;
+      if (stoppingRef.current) return;
+      stoppingRef.current = true;
+      const gen = genRef.current;
+      activeRef.current = false;
+      const hadRecorder = Boolean(mediaRecRef.current);
+      stopTimer();
+      stopLevelMeter();
+      if (!hadRecorder) {
+        try {
+          recRef.current?.abort();
+        } catch {
+          /* ignore */
+        }
+        mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+        mediaStreamRef.current = null;
+        send({ type: "cancel" });
+        stoppingRef.current = false;
+        return;
+      }
+      send({ type: "stop" });
+      try {
+        await stopBrowser();
+        const blob = await collectBlob();
+        if (gen !== genRef.current) return;
+        if (discardRef.current) {
+          send({ type: "cancel" });
+          return;
+        }
+        const live = liveRef.current.trim();
+        if (live) {
+          const text = mergeField(baseRef.current, live);
+          publish(live, true);
+          send({ type: "recognized", text });
+          return;
+        }
+        const result = await transcribeBlob(blob);
+        if (gen !== genRef.current || discardRef.current) {
+          send({ type: "cancel" });
+          return;
+        }
+        if (result.text) {
+          const text = mergeField(baseRef.current, result.text);
+          publish(result.text, true);
+          send({ type: "recognized", text });
+        } else {
+          send({ type: "fail", message: result.error || sttErrorMessage("STT_EMPTY") });
+        }
+      } catch {
+        if (gen === genRef.current && !discardRef.current) {
+          send({ type: "fail", message: sttErrorMessage("network") });
+        }
+      } finally {
+        stoppingRef.current = false;
+      }
+    },
+    [collectBlob, publish, send, stopBrowser, stopLevelMeter, stopTimer, transcribeBlob],
+  );
 
   const start = useCallback(
     async (currentFieldValue: string) => {
-      setError("");
+      if (snapRef.current.phase !== "idle") return;
+      const gen = ++genRef.current;
+      discardRef.current = false;
+      stoppingRef.current = false;
       baseRef.current = currentFieldValue.trimEnd();
       liveRef.current = "";
-      browserOkRef.current = false;
       activeRef.current = true;
-      setDictating(true);
-      // Do not put «…» into the field — wait for real words.
-      const mediaOk = await startMediaAndWhisper(currentFieldValue);
-      if (!mediaOk) {
+      send({ type: "start" });
+
+      if (!navigator.mediaDevices?.getUserMedia) {
         activeRef.current = false;
-        setDictating(false);
+        setSupported(false);
+        send({ type: "fail", message: sttErrorMessage("unsupported") });
         return;
       }
-      // Parallel browser STT for true word-by-word when the engine works.
-      startBrowser(currentFieldValue);
+
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (err) {
+        activeRef.current = false;
+        if (gen !== genRef.current) return;
+        send({ type: "fail", message: micFailure(err) });
+        return;
+      }
+      if (!activeRef.current || gen !== genRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+
+      mediaStreamRef.current = stream;
+      startLevelMeter(stream);
+      startTimer();
+      const mime = pickMime();
+      mimeRef.current = mime || "audio/webm";
+      try {
+        const recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+        chunksRef.current = [];
+        recorder.ondataavailable = (ev) => {
+          if (ev.data?.size) chunksRef.current.push(ev.data);
+        };
+        mediaRecRef.current = recorder;
+        recorder.start(500);
+      } catch {
+        activeRef.current = false;
+        stopTimer();
+        stopLevelMeter();
+        stream.getTracks().forEach((t) => t.stop());
+        mediaStreamRef.current = null;
+        if (gen === genRef.current) send({ type: "fail", message: sttErrorMessage("audio-capture") });
+        return;
+      }
+      startBrowser();
     },
-    [startBrowser, startMediaAndWhisper],
+    [send, startBrowser, startLevelMeter, startTimer, stopLevelMeter, stopTimer],
   );
 
   const toggle = useCallback(
     (currentFieldValue: string) => {
-      if (activeRef.current || dictating) {
-        stop();
+      if (snapRef.current.phase === "recording") {
+        void stop();
         return;
       }
+      if (snapRef.current.phase === "transcribing") return;
       void start(currentFieldValue);
     },
-    [dictating, start, stop],
+    [start, stop],
   );
 
-  const clearError = useCallback(() => setError(""), []);
+  const clearError = useCallback(() => send({ type: "dismiss-error" }), [send]);
 
-  return { dictating, supported, error, level, start, stop, toggle, clearError };
+  return {
+    phase: snap.phase,
+    dictating: snap.phase === "recording",
+    transcribing: snap.phase === "transcribing",
+    supported,
+    error: snap.error,
+    level: snap.level,
+    elapsedMs: snap.elapsedMs,
+    /** Real streaming partials only — never a guessed transcript. */
+    streaming: snap.streaming,
+    start,
+    stop,
+    toggle,
+    clearError,
+  };
 }

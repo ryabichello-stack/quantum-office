@@ -127,6 +127,7 @@ def create_run(
     task_id: UUID | None = None,
     mode: str | None = "onboarding",
     office_context: dict[str, Any] | None = None,
+    wait: bool = True,
 ) -> dict[str, Any]:
     """Start a Hermes /v1/runs turn; mint scoped MCP token for this run."""
     runtime = resolve_runtime(db, ctx)
@@ -344,6 +345,25 @@ def create_run(
         raise
 
     hermes_run_id = (body or {}).get("run_id") or issued.run_id
+    _remember_remote_run(db, ctx, run_id_hint, str(hermes_run_id or ""))
+    if not wait:
+        return {
+            "ok": True,
+            "engine": "nous_hermes_agent",
+            "mode": "runs",
+            "pack_mode": mode,
+            "http_status": status,
+            "run_id": hermes_run_id,
+            "delno_run_id": issued.run_id,
+            "delno_agent_run_id": str(delno_run.id),
+            "run_token_expires_at": issued.expires_at,
+            "tool_ids": tools,
+            "output": "",
+            "hermes": body if isinstance(body, dict) else {},
+            "session_id": payload["session_id"],
+            "status": "running",
+            "_started_at": started,
+        }
     # Interactive cabinet expects a completed turn — poll briefly for output.
     polled = _poll_run_output(runtime, hermes_run_id, timeout_s=75.0)
     final_body = polled or body or {}
@@ -436,7 +456,95 @@ def _poll_run_output(runtime: dict[str, Any], run_id: str, *, timeout_s: float =
     return last
 
 
+def _remember_remote_run(db: Session, ctx: TenantContext, hint: str, remote_id: str) -> None:
+    """Keep the Hermes run id on this tenant's row so another company cannot subscribe."""
+    from app.models.agent_task import AgentRun
+
+    if not hint:
+        return
+    row = (
+        db.query(AgentRun)
+        .filter(AgentRun.tenant_id == ctx.tenant_id, AgentRun.hermes_run_id == hint)
+        .one_or_none()
+    )
+    if not row:
+        return
+    checkpoint = dict(row.checkpoint or {})
+    checkpoint["delno_run_hint"] = hint
+    if remote_id:
+        checkpoint["remote_run_id"] = remote_id[:120]
+        row.hermes_run_id = remote_id[:120]
+    row.checkpoint = checkpoint
+    db.add(row)
+    db.commit()
+
+
+def find_owned_run(db: Session, ctx: TenantContext, run_id: str):
+    """Return the AgentRun only when this tenant owns the id. Never a cross-tenant row."""
+    from app.models.agent_task import AgentRun
+
+    wanted = (run_id or "").strip()
+    if not wanted:
+        return None
+    direct = (
+        db.query(AgentRun)
+        .filter(AgentRun.tenant_id == ctx.tenant_id, AgentRun.hermes_run_id == wanted)
+        .one_or_none()
+    )
+    if direct:
+        return direct
+    recent = (
+        db.query(AgentRun)
+        .filter(AgentRun.tenant_id == ctx.tenant_id)
+        .order_by(AgentRun.created_at.desc())
+        .limit(40)
+        .all()
+    )
+    for row in recent:
+        checkpoint = row.checkpoint or {}
+        if checkpoint.get("delno_run_hint") == wanted or checkpoint.get("remote_run_id") == wanted:
+            return row
+    return None
+
+
+def iter_hermes_sse(runtime: dict[str, Any], run_id: str, *, timeout: float = 90.0):
+    """Yield (event_name, data) from GET /v1/runs/{id}/events. Raises HermesBridgeError."""
+    from app.services.hermes_nous.live_events import iter_sse_blocks
+
+    url = f"{runtime['base_url']}/v1/runs/{run_id}/events"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {runtime['api_key']}",
+            "Accept": "text/event-stream",
+        },
+        method="GET",
+    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        resp = opener.open(req, timeout=timeout)
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        raise HermesBridgeError(f"hermes_events_http_{exc.code}", status=exc.code, body={"raw": raw[:300]}) from exc
+    except urllib.error.URLError as exc:
+        raise HermesBridgeError(f"hermes_unreachable: {exc.reason}") from exc
+
+    def _lines():
+        try:
+            while True:
+                raw = resp.readline()
+                if not raw:
+                    break
+                yield raw.decode("utf-8", errors="replace")
+        finally:
+            resp.close()
+
+    yield from iter_sse_blocks(_lines())
+
+
 def get_run(db: Session, ctx: TenantContext, run_id: str) -> dict[str, Any]:
+    if find_owned_run(db, ctx, run_id) is None:
+        raise HermesBridgeError("run_not_found", status=404, body={"error": "run_not_found"})
     runtime = resolve_runtime(db, ctx)
     status, body = _http_json(
         "GET",
