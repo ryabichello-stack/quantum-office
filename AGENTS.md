@@ -37,3 +37,13 @@
 ## Не ломать
 
 Asterisk / AVA docker / Mango / VPN / `/opt/polyhub` / 3x-ui Reality (после ingress на **:8443**).
+
+## DELNO телефония — жёстко multi-tenant (N клиентов)
+
+Кабинет = **любая** компания (не только quantum-labs). Dogfood QL — один из N.
+
+1. **Один Mango-аккаунт → одна PJSIP registration** (`delno-<slug>-reg` в `pjsip.d/`).  
+   Запрещено держать рядом legacy `mango-registration` Registered — двойной INVITE рвёт голос Ava уже на одном клиенте.
+2. Входящий: `trunk_id` → tenant DID → `voice_agent_slug` → Stasis. Без `voice_agent_slug` AGI даёт Busy.
+3. Не чинить «для QL в обход» общим транком/общим SIP/общим voice profile для чужих tenant.
+4. Apply helper: `delno-api/deploy/apply_mango_sip_server.py` (на проде ещё `/opt/delno/scripts/…`) сам гасит legacy shared reg при появлении tenant conf.

@@ -30,8 +30,11 @@ BIND = os.getenv("ASTERISK_SIP_APPLY_BIND", "172.17.0.1")
 PORT = int(os.getenv("ASTERISK_SIP_APPLY_PORT", "18099"))
 MANGO_PROXY = os.getenv("MANGO_SIP_OUTBOUND_PROXY", "sip:81.88.86.37:5060;lr")
 LEGACY_REG_NAME = os.getenv("ASTERISK_SIP_LEGACY_REG", "mango-registration")
-# Only this tenant may inherit the pre-multi-tenant shared registration while migrating.
+# Probe-only fallback while a tenant conf is absent. NEVER keep this registration
+# Registered alongside any delno-<slug>-reg — dual INVITEs shred Ava audio.
 LEGACY_TENANT = os.getenv("ASTERISK_SIP_LEGACY_TENANT", "quantum-labs")
+
+# Hard multi-tenant rule (owner): N cabinets, N registrations, never a shared trunk.
 
 
 def _asterisk(cmd: str) -> str:
@@ -86,6 +89,93 @@ def _ensure_include() -> None:
     with CONF.open("a", encoding="utf-8") as fh:
         fh.write("\n; DELNO multi-tenant SIP registrations\n")
         fh.write(f'{marker}\n')
+
+
+def _set_pjsip_section_enabled(text: str, section: str, enabled: bool) -> tuple[str, bool]:
+    """Insert/update ``enabled=`` in a ``[section]`` block. Returns (text, changed)."""
+    header = f"[{section}]"
+    if header not in text:
+        return text, False
+    before, _, rest = text.partition(header)
+    # Section body until next top-level [section] (not nested comments).
+    body, sep, after = rest.partition("\n[")
+    lines = body.splitlines()
+    # lines[0] is empty or leftover after header on same line — keep structure:
+    # rest starts with "\n..." after partition on header without trailing newline issues.
+    out_lines: list[str] = []
+    saw_enabled = False
+    changed = False
+    want = "yes" if enabled else "no"
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("enabled="):
+            saw_enabled = True
+            new_line = f"enabled={want}"
+            if stripped != new_line and not stripped.startswith(f"enabled={want}"):
+                # preserve indent
+                indent = line[: len(line) - len(line.lstrip())]
+                out_lines.append(f"{indent}enabled={want}")
+                changed = True
+            else:
+                out_lines.append(line)
+        else:
+            out_lines.append(line)
+    if not saw_enabled:
+        # Insert right after the section header line (first element is usually "").
+        insert_at = 1 if out_lines and out_lines[0] == "" else 0
+        out_lines.insert(insert_at, f"enabled={want}")
+        changed = True
+    # Preserve a trailing newline on the section body when the source had one.
+    trailing_nl = body.endswith("\n")
+    new_rest = "\n".join(out_lines)
+    if trailing_nl and not new_rest.endswith("\n"):
+        new_rest += "\n"
+    if sep:
+        new_text = before + header + new_rest + sep + after
+    else:
+        new_text = before + header + new_rest
+    return new_text, changed
+
+
+def _tenant_reg_files_exist() -> bool:
+    if not PJSIP_D.is_dir():
+        return False
+    return any(PJSIP_D.glob("delno-tenant-*.conf"))
+
+
+def disable_legacy_shared_registration(*, force: bool = False) -> dict:
+    """Disable shared ``mango-registration`` when any per-tenant conf exists.
+
+    Dual registration of the same Mango account (legacy + delno-<slug>-reg)
+    causes two Stasis legs per inbound call and destroys Ava audio — even for
+    a single customer. Multi-tenant requires exactly one registration per account.
+    """
+    if not force and not _tenant_reg_files_exist():
+        return {"ok": True, "skipped": True, "reason": "no_tenant_regs"}
+    if not CONF.exists():
+        return {"ok": False, "error": "pjsip_conf_missing"}
+    text = CONF.read_text()
+    new_text, changed = _set_pjsip_section_enabled(text, LEGACY_REG_NAME, False)
+    if changed:
+        bak = CONF.with_suffix(CONF.suffix + ".bak.dualreg-guard")
+        if not bak.exists():
+            bak.write_text(text)
+        CONF.write_text(new_text)
+        try:
+            _asterisk("module reload res_pjsip.so")
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": f"reload_failed:{exc}"[:200], "changed": True}
+        try:
+            _asterisk(f"pjsip send unregister {LEGACY_REG_NAME}")
+        except Exception:
+            pass
+    return {
+        "ok": True,
+        "changed": changed,
+        "legacy_reg": LEGACY_REG_NAME,
+        "enabled": False,
+        "message_ru": "Общая mango-registration отключена — только per-tenant delno-<slug>-reg.",
+    }
 
 
 def _tenant_conf_path(slug: str) -> Path:
@@ -255,6 +345,9 @@ def apply(
             did_digits=did_digits,
         )
     )
+    # After the first (or any) per-tenant reg exists, shared legacy must die —
+    # otherwise Mango forks INVITEs to both and Ava audio shreds (N≥1 clients).
+    legacy_guard = disable_legacy_shared_registration(force=True)
 
     names = _object_names(slug)
     _asterisk("module reload res_pjsip.so")
@@ -272,6 +365,7 @@ def apply(
         "account": account,
         "trunk_id": names["endpoint"],
         "registration": reg,
+        "legacy_shared_disabled": legacy_guard,
         "message_ru": reg.get("message_ru"),
     }
 
@@ -333,8 +427,13 @@ def main() -> None:
     if not TOKEN:
         raise SystemExit("Set ASTERISK_SIP_APPLY_TOKEN or OFFICE_WEBHOOK_TOKEN")
     PJSIP_D.mkdir(parents=True, exist_ok=True)
+    try:
+        guard = disable_legacy_shared_registration()
+        print(f"legacy_shared_registration_guard={guard}", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"legacy_shared_registration_guard_error={exc}", flush=True)
     httpd = ThreadingHTTPServer((BIND, PORT), Handler)
-    print(f"sip-apply listening on {BIND}:{PORT} (multi-tenant)", flush=True)
+    print(f"sip-apply listening on {BIND}:{PORT} (multi-tenant, no shared trunk)", flush=True)
     httpd.serve_forever()
 
 

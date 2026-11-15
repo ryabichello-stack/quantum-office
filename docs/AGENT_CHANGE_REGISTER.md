@@ -100,6 +100,13 @@
 - Clarify email: в legacy только промпт секретаря, отдельного tool `ask_email` не было — оставляем агенту, не phrase-router.
 
 
+## 2026-11-15 ~03:30 МСК — Cursor: dual SIP = shred voice; multi-tenant invariant
+
+- Владелец: всё должно работать на **многих** клиентах; с одним уже ломалось.
+- RCA: `mango-registration` + `delno-quantum-labs-reg` на один Mango → два Stasis на звонок → Low audio energy, drift −80%, `no_input_timeout`. Сервер (CPU/RAM) был здоров.
+- Сделано: legacy `mango-registration` `enabled=no` на C4B; `apply_mango_sip_server.disable_legacy_shared_registration()` на каждый apply + старт сервиса; правило в `AGENTS.md`.
+- Канон: N клиентов = N `delno-<slug>-reg`, **никогда** shared Registered рядом.
+
 ## 2026-11-15 ~03:20 МСК — Cursor: восстановлен voice_agent_slug (Busy «линия не настроена»)
 
 - Симптом: SIP Registered + DID active, но входящий Busy. AGI `/usr/local/bin/delno_route_call.py` требует `voice_agent_slug` в ответе bridge; git/prod `inbound/start` его не отдавал → `DELNO_ROUTE_OK=0`.
