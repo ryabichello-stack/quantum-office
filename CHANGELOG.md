@@ -12,6 +12,7 @@
 
 ### Added
 - Календарь и облака больше не делят один серверный токен: креды берутся из сейфа тенанта, запрос без тенанта или с чужим тенантом отклоняется, env-фолбэк только у явно помеченного служебного тенанта (`settings.service_tenant` или `DELNO_SERVICE_TENANT_SLUG`)
+- Календарь, почта и видеовстречи считаются подключёнными только после успешной пробы с кредами из сейфа (чтение событий, SMTP-вход, проверка токена). Флаг `enabled` больше не означает «подключено». Флоу: выбор провайдера, форма с примером `ivan@example.ru`, статус connected/failed
 
 ### Fixed
 - **Ava without script/tools**: restored `/v1/telephony/calls/tool` + `voice_tools` (was 404 — Ava could not list tools or read KB). Inbound start now returns `secretary` (script/greeting/tools). Calendar check/create tools wired for in-call use

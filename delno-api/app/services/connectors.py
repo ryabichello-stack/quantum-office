@@ -153,12 +153,12 @@ def connector_config_for(db: Session, ctx: TenantContext, kind: str) -> dict[str
 def list_tenant_connector_readiness(db: Session, ctx: TenantContext) -> list[dict[str, Any]]:
     """Operational readiness for this tenant, beyond a reachable shared service.
 
-    Aligns with PRODUCT_LOOP + tools_first: when upstream reports
-    ``creds_policy=tools_first``, owner opt-in (``enabled``) + reachable probe
-    is enough for hermes_ops. Live SMTP/CalDAV/OAuth can arrive later via vault;
-    stub/dry_run still counts as usable for rehearsal. Files still need a cloud
-    vault token. Strict provider checks apply only when creds_policy is not tools_first.
+    Mail, calendar, and conference are usable only after a successful vault probe
+    (events read, SMTP login, or provider check). The enabled flag is not enough.
+    Files still need a cloud vault token. Other tools_first connectors keep the
+    opt-in rehearsal rule.
     """
+    from app.services.connector_connect import HONEST_KINDS, link_status
     from app.services.files_cloud import cloud_status
 
     items = []
@@ -173,6 +173,31 @@ def list_tenant_connector_readiness(db: Session, ctx: TenantContext) -> list[dic
         creds_policy = str(health.get("creds_policy") or "").strip().lower()
         enabled = bool(item.get("enabled"))
         service_ready = bool(enabled and probe and probe.ok and probe.configured)
+
+        if kind in HONEST_KINDS:
+            link = link_status(db, ctx, kind)
+            connected = link.get("status") == "connected"
+            reason = None if connected else (link.get("error") or "not_connected")
+            items.append(
+                {
+                    "kind": kind,
+                    "enabled": enabled,
+                    "service_reachable": bool(probe and probe.ok),
+                    "service_ready": connected,
+                    "tenant_authorized": connected,
+                    "usable": connected,
+                    "creds_policy": "vault_probe",
+                    "providers": [
+                        {"name": p.get("provider") or p.get("source"), "configured": bool(p.get("configured"))}
+                        for p in health.get("providers") or []
+                    ],
+                    "reason": reason,
+                    "connection_status": link.get("status"),
+                    "connection_message": link.get("message_ru"),
+                    "provider": link.get("provider"),
+                }
+            )
+            continue
 
         if kind == "files":
             try:

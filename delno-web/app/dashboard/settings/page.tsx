@@ -18,6 +18,7 @@ import { DashboardFrame } from "@/components/DashboardFrame";
 import { CabinetCard, CabinetPage } from "@/components/CabinetPage";
 import { TelegramConnectWizard } from "@/components/TelegramConnectWizard";
 import { MaxConnectWizard } from "@/components/MaxConnectWizard";
+import { OfficeConnect } from "@/components/OfficeConnect";
 
 export default function SettingsPage() {
   const { token } = useRequireAuth();
@@ -149,6 +150,15 @@ export default function SettingsPage() {
               <TelegramConnectWizard token={token} />
               <MaxConnectWizard token={token} />
             </div>
+          </CabinetCard>
+        ) : null}
+
+        {token ? (
+          <CabinetCard
+            title="Календарь, почта, видео"
+            hint="Подключено только после успешной проверки кредов из сейфа"
+          >
+            <OfficeConnect token={token} />
           </CabinetCard>
         ) : null}
 

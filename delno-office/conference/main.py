@@ -237,3 +237,50 @@ def _yandex_oauth_finish(
         "Теперь <code>POST /api/conferences</code> с <code>provider=yandex</code> "
         "создаёт ссылки Телемост.</p>"
     )
+
+
+class ConferenceProbeRequest(BaseModel):
+    tenant_id: Optional[str] = None
+    provider: str = "yandex"
+    token: Optional[str] = Field(default=None, max_length=4096)
+
+
+_CONF_PROBE_OK: set[str] = set()
+
+
+@app.post("/api/conferences/probe")
+def conference_probe(
+    req: ConferenceProbeRequest,
+    x_webhook_token: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
+):
+    """Accept a tenant token only after the provider (or the memory double) confirms it."""
+    _check_token(x_webhook_token)
+    body = (req.tenant_id or "").strip()
+    header = (x_tenant_id or "").strip()
+    if not body and not header:
+        raise HTTPException(status_code=403, detail={"error": "tenant_required"})
+    if body and header and body != header:
+        raise HTTPException(status_code=403, detail={"error": "tenant_mismatch"})
+    token = (req.token or "").strip()
+    if not token:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "tenant_credentials_required", "message_ru": "Нет токена компании."},
+        )
+    if os.getenv("CONFERENCE_PROBE_MEMORY", "").strip().lower() in {"1", "true", "yes"}:
+        if token not in _CONF_PROBE_OK:
+            return {
+                "ok": False,
+                "status": "failed",
+                "error": "auth_failed",
+                "message_ru": "Провайдер видеовстреч отклонил токен.",
+            }
+        return {"ok": True, "status": "connected", "provider": req.provider, "tenant_id": body or header}
+    logger.info("conference probe has no live check tenant=%s provider=%s", body or header, req.provider)
+    return {
+        "ok": False,
+        "status": "failed",
+        "error": "provider_unverified",
+        "message_ru": "Провайдер не подтвердил токен. Подключение не засчитано.",
+    }

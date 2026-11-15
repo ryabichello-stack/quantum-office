@@ -25,6 +25,14 @@ SUPPORTED_KINDS = frozenset(
         "calendar_mailru",
         "calendar_google",
         "calendar_outlook",
+        "mail_yandex",
+        "mail_mailru",
+        "mail_google",
+        "mail_outlook",
+        "conference_yandex",
+        "conference_google",
+        "conference_zoom",
+        "conference_teams",
     }
 )
 
@@ -37,6 +45,14 @@ CALENDAR_KINDS = frozenset(
     }
 )
 FOREIGN_CALENDAR_KINDS = frozenset({"calendar_google", "calendar_outlook"})
+MAIL_KINDS = frozenset({"mail_yandex", "mail_mailru", "mail_google", "mail_outlook"})
+CONFERENCE_KINDS = frozenset(
+    {"conference_yandex", "conference_google", "conference_zoom", "conference_teams"}
+)
+FOREIGN_MAIL_KINDS = frozenset({"mail_google", "mail_outlook"})
+FOREIGN_CONFERENCE_KINDS = frozenset(
+    {"conference_google", "conference_zoom", "conference_teams"}
+)
 
 CLOUD_KINDS = frozenset(
     {
@@ -47,6 +63,10 @@ CLOUD_KINDS = frozenset(
     }
 )
 FOREIGN_CLOUD_KINDS = frozenset({"files_gdrive", "files_onedrive"})
+_FOREIGN_SECRET_KINDS = FOREIGN_CLOUD_KINDS | FOREIGN_CALENDAR_KINDS | FOREIGN_MAIL_KINDS | FOREIGN_CONFERENCE_KINDS
+_LONG_SECRET_KINDS = CLOUD_KINDS | CALENDAR_KINDS | MAIL_KINDS | CONFERENCE_KINDS | frozenset(
+    {"telegram_bot", "max_bot"}
+)
 
 MANGO_SIP_FORM = {
     "kind": "mango_sip",
@@ -373,6 +393,9 @@ def list_secret_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
     return {"items": items}
 
 
+_EXTRA_SECRET_KEYS = frozenset({"calendar_url", "url", "calendar_id"})
+
+
 def save_secret(
     db: Session,
     ctx: TenantContext,
@@ -381,13 +404,14 @@ def save_secret(
     login: str | None = None,
     password: str | None = None,
     foreign_consent: bool = False,
+    extra: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     kind = (kind or "").strip()
     if kind not in SUPPORTED_KINDS:
         return {"ok": False, "error": "unsupported_kind"}
     login_s = (login or "").strip()
     password_s = (password or "").strip()
-    max_pw = 4096 if kind in CLOUD_KINDS or kind in CALENDAR_KINDS or kind in CHANNEL_FORMS else 200
+    max_pw = 4096 if kind in _LONG_SECRET_KINDS else 200
     if not login_s and not password_s:
         return {"ok": False, "error": "empty"}
     if kind == "files_mailru" and not login_s:
@@ -396,7 +420,7 @@ def save_secret(
         return {"ok": False, "error": "password_required"}
     if password_s and len(password_s) < 4:
         return {"ok": False, "error": "password_too_short"}
-    if kind in FOREIGN_CLOUD_KINDS | FOREIGN_CALENDAR_KINDS and not foreign_consent:
+    if kind in _FOREIGN_SECRET_KINDS and not foreign_consent:
         return {"ok": False, "error": "foreign_consent_required"}
 
     tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
@@ -412,8 +436,11 @@ def save_secret(
         current["login"] = login_s[:120]
     if password_s:
         current["password"] = password_s[:max_pw]
-    if kind in FOREIGN_CLOUD_KINDS | FOREIGN_CALENDAR_KINDS and foreign_consent:
+    if kind in _FOREIGN_SECRET_KINDS and foreign_consent:
         current["foreign_consent_at"] = datetime.now(timezone.utc).isoformat()
+    for key, value in (extra or {}).items():
+        if key in _EXTRA_SECRET_KEYS and str(value or "").strip():
+            current[key] = str(value).strip()[:500]
     current["updated_at"] = datetime.now(timezone.utc).isoformat()
     blob[kind] = current
     settings["secrets"] = blob
@@ -444,7 +471,7 @@ def save_secret(
         msg = "Токен Telegram сохранён. В чат не попал."
     elif kind == "max_bot":
         msg = "Токен MAX сохранён. В чат не попал."
-    elif kind in CLOUD_KINDS or kind in CALENDAR_KINDS:
+    elif kind in CLOUD_KINDS or kind in CALENDAR_KINDS or kind in MAIL_KINDS or kind in CONFERENCE_KINDS:
         msg = "Данные сохранены в сейфе тенанта. В чат не попали."
     else:
         msg = "SIP-данные сохранены в кабинете. В чат не попали."

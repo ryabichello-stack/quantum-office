@@ -286,6 +286,13 @@ class UpdateTenantSettingsTool:
         patch = params.get("patch")
         if not isinstance(patch, dict) or not patch:
             return ToolResult(ok=False, message="patch object is required")
+        # Connection status is the result of a vault probe, not a settings flag.
+        patch = {k: v for k, v in patch.items() if k not in {"connector_links", "secrets"}}
+        if not patch:
+            return ToolResult(
+                ok=False,
+                message="Статус подключения и секреты не ставятся флагом в настройках",
+            )
 
         tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
         old_settings = dict(tenant.settings or {})
