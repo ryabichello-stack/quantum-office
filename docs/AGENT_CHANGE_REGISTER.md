@@ -326,3 +326,10 @@
 - Proof: demo progress 6/6 vs QL 0/6; MCP keys 1:1; beta `resolve` + `/v1/operator/chat` → `hermes_unavailable` (not DIY).
 - Goal criteria (map, no fallback, provision/MCP lock, honest unavailable, worker-visible profiles) verified on C4B. Multiplex >1 profile/worker still unproven (capacity=1).
 
+## 2026-11-15 23:03 МСК — Codex: MCP run-binding auth на C4B
+
+- Файл: `/opt/delno/api/app/api/v1/mcp.py` из merged PR #102. Заголовок `X-Delno-Run-Id` без учётных данных того же тенанта больше не открывает инструменты.
+- Резервная копия: `/opt/delno/backups/mcp-auth-20261115/mcp.py`.
+- Проверено: SHA256 установленного файла `73c3ba42b547de12dba3731e44fb6e2ce94fce47cfb1120f33ce7e49a7981633`, API `/health` = 200 после перезапуска, `app.dlno.ru` = 200, журнал запуска без ошибок. Тесты PR #102 и CI были зелёными.
+- Осталось: сквозная проверка онбординга и отдельный пакет PR #101 с per-tenant календарём/файлами.
+
