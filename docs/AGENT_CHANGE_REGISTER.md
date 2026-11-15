@@ -292,3 +292,14 @@
 - Proof: demo progress 6/6 vs QL 0/6; MCP keys 1:1; beta `resolve` + `/v1/operator/chat` → `hermes_unavailable` (not DIY).
 - Goal criteria (map, no fallback, provision/MCP lock, honest unavailable, worker-visible profiles) verified on C4B. Multiplex >1 profile/worker still unproven (capacity=1).
 
+## 2026-11-15 ~17:40 МСК — Cursor: снапшот dlno.ru и ясный первый экран
+
+- Автор: Cursor. Сервер 161.104.89.123 не менялся. Снапшот взят из готового git bundle (`/cursor/stores/bot/handoff/snapshot-dlno-site-prod-20261115.bundle`), не копированием `/opt/delno/site`. `.env` в коммите нет, `DELNO-site-v23/.env.example` совпадает с репозиторием (пустые значения).
+- Ветка снапшота: `snapshot/dlno-site-prod-20261115` @ `d85b9252c31284e04187183204fa04a7af3556e8` (база `main` @ `dc2f280`). В main не вливалось.
+- Ветка экрана: `cursor/dlno-hero-clarity` → PR в снапшот-ветку, без мержа.
+- Файлы: `DELNO-site-v23/app/page.tsx`, `app/v2/ConvertLanding.tsx`, `app/v2/v17/V17Landing.tsx`, `app/v2/v17/NeuralScene.tsx`, `app/v2/v17-overrides.css`, `CHANGELOG.md`.
+- Изменение: первый экран одинаковый на desktop и mobile. Заголовки `?h=a|b|c` (по умолчанию a). Подзаголовок про каналы и заявки. Ряд иконок: Telegram, MAX, WhatsApp, Сайт, Почта, Звонки. CTA «Оставить заявку» и телефон 8 800 555-94-18. Под hero — «Как это работает» в 3 шага. Убраны «Выбрать свою задачу» и пунктирные Instagram/WhatsApp. Орб схемы обрезается колонкой и не наезжает на MAX. Формы и API-роуты не менялись.
+- Проверка: поиск секретов по дереву снапшота — приватных ключей и подставленных токенов нет. `npm run build:node` (Next.js, так сайт и описан для VPS) проходит. `npm run build` (vinext) не стартует: в снапшоте нет `.openai/hosting.json` и `build/sites-vite-plugin` — их не было и до правок экрана.
+- Статус: git/PR, прод не выкатывался.
+- Следующий шаг: владелец смотрит PR в снапшот-ветку. На сервер ничего не копировать, пока не будет отдельного решения.
+

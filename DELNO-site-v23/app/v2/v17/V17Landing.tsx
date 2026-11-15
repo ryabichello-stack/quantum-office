@@ -24,6 +24,75 @@ import { BlogCardGrid } from "@/components/blog/BlogCardGrid";
 import { blogPosts } from "@/lib/blogPosts";
 import { mainPath } from "@/lib/landingPaths";
 
+const HERO_HEADLINES = {
+  a: "ИИ-сотрудник, который отвечает клиентам 24/7",
+  b: "Ваш ИИ-секретарь во всех каналах связи",
+  c: "Отвечает клиентам за вас — днём и ночью, в любом канале",
+} as const;
+
+const HERO_SUBTITLE =
+  "Отвечает в Telegram, MAX, WhatsApp, на сайте, в почте и на звонки. Консультирует по вашим услугам и ценам, записывает клиентов и передаёт заявки вам.";
+
+export function heroHeadline(value: string | string[] | undefined) {
+  const raw = (Array.isArray(value) ? value[0] : value)?.toLowerCase();
+  if (raw === "b" || raw === "c") return HERO_HEADLINES[raw];
+  return HERO_HEADLINES.a;
+}
+
+function WhatsAppIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M12.04 2C6.58 2 2.15 6.4 2.15 11.83c0 1.74.46 3.44 1.34 4.94L2 22l5.39-1.41a10.1 10.1 0 0 0 4.65 1.12h.01c5.46 0 9.89-4.4 9.89-9.83C21.94 6.4 17.5 2 12.04 2Zm5.76 14.15c-.24.68-1.4 1.3-1.94 1.38-.5.07-1.12.1-1.81-.11-.41-.13-.95-.31-1.63-.61-2.87-1.24-4.74-4.13-4.88-4.32-.14-.19-1.16-1.54-1.16-2.94s.73-2.08 1-2.37c.26-.28.57-.35.76-.35h.55c.17 0 .41-.07.64.49.24.58.81 2 .88 2.14.07.15.12.32.02.51-.09.19-.14.31-.28.48-.14.16-.29.37-.41.49-.14.14-.28.29-.12.56.16.27.71 1.17 1.52 1.9 1.05.93 1.93 1.22 2.2 1.36.28.14.44.12.6-.07.16-.19.69-.8.87-1.08.18-.27.37-.23.62-.14.25.09 1.58.74 1.85.88.27.13.45.2.52.31.07.12.07.67-.17 1.35Z"
+      />
+    </svg>
+  );
+}
+
+function HeroChannels() {
+  return (
+    <ul className="dv17-clarity-channels" aria-label="Каналы: Telegram, MAX, WhatsApp, сайт, почта и звонки">
+      <li>
+        <span className="dv17-clarity-icon dv17-clarity-telegram">
+          <Image src="/channels/telegram.svg" alt="" width={22} height={22} />
+        </span>
+        Telegram
+      </li>
+      <li>
+        <span className="dv17-clarity-icon dv17-clarity-max">
+          <Image src="/channels/max.svg" alt="" width={30} height={30} />
+        </span>
+        MAX
+      </li>
+      <li>
+        <span className="dv17-clarity-icon dv17-clarity-whatsapp">
+          <WhatsAppIcon />
+        </span>
+        WhatsApp
+      </li>
+      <li>
+        <span className="dv17-clarity-icon dv17-clarity-site">
+          <Earth size={20} aria-hidden />
+        </span>
+        Сайт
+      </li>
+      <li>
+        <span className="dv17-clarity-icon dv17-clarity-mail">
+          <Mail size={20} aria-hidden />
+        </span>
+        Почта
+      </li>
+      <li>
+        <span className="dv17-clarity-icon dv17-clarity-phone">
+          <Phone size={20} aria-hidden />
+        </span>
+        Звонки
+      </li>
+    </ul>
+  );
+}
+
 const faqItems: [string, string][] = [
   [
     "Какую работу можно поручить DELNO?",
@@ -51,55 +120,61 @@ const faqItems: [string, string][] = [
   ],
 ];
 
-export default function V17Landing() {
+export default function V17Landing({ headline }: { headline?: string }) {
   return (
     <V17PageShell>
-      <section className="dv17-hero" id="product">
-        <div className="dv17-hero-grid">
-          <div className="dv17-hero-copy">
-            <p className="dv17-eyebrow">
-              <span className="dv17-presence-dot" /> ИИ-сотрудник на связи 24/7
-            </p>
-            <h1>
-              ИИ-сотрудник для бизнеса.
-              <br />
-              <span>
-                Ответ. Заявка.
-                <br />
-                Следующий шаг.
-              </span>
-            </h1>
-            <p className="dv17-hero-description">
-              DELNO принимает звонки и сообщения, консультирует по услугам и ценам из единой базы знаний,
-              собирает заявки и передаёт их вашей команде. Начните с одного канала и одной задачи.
-            </p>
-            <div className="dv17-hero-actions">
-              <a className="dv17-button dv17-primary dv17-try-button" href="#scenarios">
-                Выбрать свою задачу <ArrowRight size={18} aria-hidden />
-              </a>
-              <LeadFormTrigger
-                className="dv17-demo-link dv17-hero-contact"
-                label="Оставить заявку"
-                source="V17 hero contact"
-              />
-            </div>
-            <p className="dv17-try-note">Оставьте заявку: уточним вашу задачу и свяжемся с вами.</p>
-            <div className="dv17-hero-prices">
-              <a href="#prices">
-                Диалоги <strong>2 990 ₽/мес.</strong>
-              </a>
-              <span aria-hidden>·</span>
-              <a href="#prices">
-                Со звонками <strong>5 990 ₽/мес.</strong>
-              </a>
-            </div>
-            <p className="dv17-start-note">Начнём с одной задачи. Поможем с настройкой.</p>
+      <section className="dv17-hero dv17-hero-clarity" id="product">
+        <div className="dv17-hero-copy">
+          <p className="dv17-eyebrow">
+            <span className="dv17-presence-dot" /> Если клиенты пишут и звонят — это вам
+          </p>
+          <h1>{headline ?? HERO_HEADLINES.a}</h1>
+          <p className="dv17-hero-description">{HERO_SUBTITLE}</p>
+          <HeroChannels />
+          <div className="dv17-hero-actions">
+            <LeadFormTrigger
+              className="dv17-button dv17-primary dv17-try-button"
+              label="Оставить заявку"
+              source="V17 hero contact"
+            />
+            <a className="dv17-hero-phone" href="tel:+78005559418">
+              <Phone size={18} aria-hidden />
+              8 800 555-94-18
+            </a>
           </div>
-          <NeuralScene />
         </div>
       </section>
 
-      <section className="dv17-section dv17-work" id="work">
+      <section className="dv17-how" id="work" aria-labelledby="how-title">
+        <div className="dv17-how-inner">
+          <h2 id="how-title">Как это работает</h2>
+          <ol className="dv17-how-steps">
+            <li>
+              <span>1</span>
+              <div>
+                <h3>Клиент обращается</h3>
+                <p>В любом канале, днём или ночью.</p>
+              </div>
+            </li>
+            <li>
+              <span>2</span>
+              <div>
+                <h3>ИИ-сотрудник отвечает</h3>
+                <p>Консультирует, записывает и собирает заявку.</p>
+              </div>
+            </li>
+            <li>
+              <span>3</span>
+              <div>
+                <h3>Заявка приходит вам</h3>
+                <p>С сутью разговора для вашей команды.</p>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section className="dv17-section dv17-work" id="capabilities">
         <div className="dv17-section-intro">
           <p className="dv17-eyebrow">Больше времени на ваше дело</p>
           <h2>
@@ -219,6 +294,10 @@ export default function V17Landing() {
           <Link href="/blog/no-show-cost"><strong>Неявки и пустые слоты</strong><span>Как оценить потери по своему расписанию и выбрать первую меру.</span><span>Разобрать задачу →</span></Link>
         </div>
       </section>
+
+      <div className="dv17-scene-block">
+        <NeuralScene />
+      </div>
 
       <section className="dv17-knowledge dv17-section" id="knowledge">
         <div className="dv17-knowledge-copy">

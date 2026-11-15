@@ -10,6 +10,9 @@
 
 ## [Unreleased]
 
+### Changed
+- Сайт dlno.ru: снапшот живого `/opt/delno/site` (2026-11-15) в `DELNO-site-v23/`. Первый экран один и тот же на компьютере и телефоне: три заголовка через `?h=a|b|c`, подзаголовок, ряд каналов Telegram · MAX · WhatsApp · Сайт · Почта · Звонки, заявка и 8 800 555-94-18, блок «Как это работает». Из hero убраны «Выбрать свою задачу» и пунктирные Instagram/WhatsApp; орб базы знаний больше не перекрывает иконку MAX.
+
 ### Fixed
 - **Ava without script/tools**: restored `/v1/telephony/calls/tool` + `voice_tools` (was 404 — Ava could not list tools or read KB). Inbound start now returns `secretary` (script/greeting/tools). Calendar check/create tools wired for in-call use
 - **Dual Mango SIP registration** shredded Ava audio (two Stasis per call). `apply_mango_sip_server` now disables legacy shared `mango-registration` whenever any `delno-tenant-*.conf` exists (on apply + service start). Multi-tenant canon: one Mango account → one `delno-<slug>-reg` only
