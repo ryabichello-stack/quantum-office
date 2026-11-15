@@ -47,6 +47,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import {
   apiConversations,
   apiConversationMessages,
+  apiTenantVaultForm,
+  apiTenantVaultStatus,
   apiOperatorChat,
   apiOperatorConfirm,
   apiOperatorHelp,
@@ -95,6 +97,8 @@ type PendingDownload = {
 };
 
 type ChatLine = {
+  id?: string;
+  createdAt?: string | null;
   role: "user" | "assistant";
   text: string;
   sources?: KnowledgeSource[];
@@ -109,6 +113,85 @@ type ChatLine = {
   thinkingMs?: number;
   previews?: { url: string; name: string; kind?: "image" | "video" | "file" }[];
 };
+
+function withStamp(
+  line: ChatLine,
+  stamp?: { id?: string; created_at?: string | null },
+): ChatLine {
+  return {
+    ...line,
+    id: stamp?.id || line.id || lineId(),
+    createdAt: stamp?.created_at || line.createdAt || new Date().toISOString(),
+  };
+}
+
+function lineId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `c-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function formatMoscowStamp(iso?: string | null): { label: string; title: string } | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  const tz = "Europe/Moscow";
+  const dateFmt = new Intl.DateTimeFormat("en-GB", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const timeFmt = new Intl.DateTimeFormat("en-GB", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  const pick = (parts: Intl.DateTimeFormatPart[], type: string) =>
+    parts.find((part) => part.type === type)?.value || "";
+  const dateParts = dateFmt.formatToParts(date);
+  const timeParts = timeFmt.formatToParts(date);
+  const dd = pick(dateParts, "day");
+  const mm = pick(dateParts, "month");
+  const yyyy = pick(dateParts, "year");
+  const hh = pick(timeParts, "hour");
+  const min = pick(timeParts, "minute");
+  const title = `${dd}.${mm}.${yyyy}, ${hh}:${min}`;
+  const todayParts = dateFmt.formatToParts(new Date());
+  const today =
+    pick(todayParts, "day") === dd &&
+    pick(todayParts, "month") === mm &&
+    pick(todayParts, "year") === yyyy;
+  return { label: today ? `сегодня, ${hh}:${min}` : title, title };
+}
+
+function HermesStamp({ id, createdAt }: { id?: string; createdAt?: string | null }) {
+  const shown = formatMoscowStamp(createdAt);
+  if (!shown) return null;
+  return (
+    <div className="hx-msg-meta">
+      <time dateTime={createdAt || undefined} title={shown.title}>
+        {shown.label}
+      </time>
+      {id ? (
+        <button
+          type="button"
+          className="hx-msg-link"
+          title={shown.title}
+          onClick={() => {
+            const url = `${window.location.origin}${window.location.pathname}${window.location.search}#msg-${id}`;
+            void navigator.clipboard?.writeText(url).catch(() => undefined);
+            window.history.replaceState(null, "", `#msg-${id}`);
+          }}
+        >
+          #msg-{id.slice(0, 8)}
+        </button>
+      ) : null}
+    </div>
+  );
+}
 
 function triggerMarkdownDownload(file: PendingDownload) {
   const blob = new Blob([file.body], { type: file.content_type || "text/markdown;charset=utf-8" });
@@ -243,7 +326,7 @@ export function HermesStage({ token }: { token: string }) {
       const out = await apiChannelQrStart(token, channelType);
       setLines((prev) => [
         ...prev,
-        { role: "assistant", text: out.message_ru || `QR-сессия ${channelType}: ${out.account_id}` },
+        withStamp({ role: "assistant", text: out.message_ru || `QR-сессия ${channelType}: ${out.account_id}` }),
       ]);
     } catch {
       setError("Не удалось стартовать QR-подключение канала.");
@@ -334,12 +417,17 @@ export function HermesStage({ token }: { token: string }) {
               .join(" ")
           : "");
       const plan = liveThinkingPlan(question || label);
+      const sentAt = new Date().toISOString();
+      const userLineId = lineId();
+      const assistantLineId = lineId();
       // Show user bubble + live thinking placeholder BEFORE any reply text.
       if (modality === "text") {
         setLines((prev) => [
           ...prev,
-          { role: "user", text: label, previews },
+          { id: userLineId, createdAt: sentAt, role: "user", text: label, previews },
           {
+            id: assistantLineId,
+            createdAt: sentAt,
             role: "assistant",
             text: "",
             thinking: plan,
@@ -350,8 +438,10 @@ export function HermesStage({ token }: { token: string }) {
       } else {
         setLines((prev) => [
           ...prev,
-          { role: "user", text: question || label },
+          { id: userLineId, createdAt: sentAt, role: "user", text: question || label },
           {
+            id: assistantLineId,
+            createdAt: sentAt,
             role: "assistant",
             text: "",
             thinking: plan,
@@ -410,21 +500,33 @@ export function HermesStage({ token }: { token: string }) {
 
         // Keep thinking visible a beat with real steps, still without reply —
         // then reveal the answer (thinking collapses via component).
+        const userStamp = (result.messages || []).find((item) => item.role === "user");
+        const assistantStamp = (result.messages || []).find((item) => item.role === "assistant");
         setLines((prev) => {
           let base = prev;
           // Replace trailing live assistant stub; fix redacted user if needed.
           if (base.length && base[base.length - 1]?.role === "assistant") {
             base = base.slice(0, -1);
           }
-          if (redactUser && base.length) {
+          if (base.length) {
             const last = base[base.length - 1];
             if (last?.role === "user") {
-              base = [...base.slice(0, -1), { ...last, text: safeUserLabel }];
+              base = [
+                ...base.slice(0, -1),
+                {
+                  ...last,
+                  text: redactUser ? safeUserLabel : last.text,
+                  id: userStamp?.id || last.id,
+                  createdAt: userStamp?.created_at || last.createdAt,
+                },
+              ];
             }
           }
           return [
             ...base,
             {
+              id: assistantStamp?.id || assistantLineId,
+              createdAt: assistantStamp?.created_at || sentAt,
               role: "assistant" as const,
               text: "",
               thinking: thinking.length ? thinking : plan,
@@ -525,8 +627,26 @@ export function HermesStage({ token }: { token: string }) {
         if (cancelled) return;
         setConversationId(preferred.id);
         localStorage.setItem("hermes_conversation_id", preferred.id);
-        const restored: ChatLine[] = (msgs.items || [])
-          .filter((m) => m.role === "user" || m.role === "assistant")
+        const visible = (msgs.items || []).filter((m) => m.role === "user" || m.role === "assistant");
+        const lastAssistant = [...visible].reverse().find((m) => m.role === "assistant");
+        const pendingForm = (lastAssistant?.meta as { pending_credential_form?: { kind?: string } } | null)
+          ?.pending_credential_form;
+        let restoredForm: ApiCredentialFormSpec | null = null;
+        if (pendingForm?.kind) {
+          try {
+            const status = await apiTenantVaultStatus(token);
+            const saved = (status.items || []).some((item) => item.kind === pendingForm.kind && item.configured);
+            if (!saved) {
+              const spec = await apiTenantVaultForm(token, pendingForm.kind);
+              restoredForm = spec.form || null;
+            }
+          } catch {
+            restoredForm = null;
+          }
+        }
+        if (cancelled) return;
+        if (restoredForm) setActiveSecretForm(restoredForm);
+        const restored: ChatLine[] = visible
           .map((m) => {
             const meta = (m.meta || {}) as {
               sources?: KnowledgeSource[];
@@ -544,6 +664,8 @@ export function HermesStage({ token }: { token: string }) {
                   })
                 : undefined;
             return {
+              id: m.id,
+              createdAt: m.created_at,
               role: m.role as "user" | "assistant",
               text: m.body || "",
               sources:
@@ -553,6 +675,8 @@ export function HermesStage({ token }: { token: string }) {
                   ? meta.suggested_actions
                   : undefined,
               thinking: thinking && thinking.length > 1 ? thinking : undefined,
+              credentialForm:
+                restoredForm && lastAssistant && m.id === lastAssistant.id ? restoredForm : undefined,
             };
           })
           .filter((l) => l.text.trim());
@@ -577,6 +701,13 @@ export function HermesStage({ token }: { token: string }) {
     if (!conversationId) return;
     localStorage.setItem("hermes_conversation_id", conversationId);
   }, [conversationId]);
+
+  useEffect(() => {
+    if (!historyReady || typeof window === "undefined") return;
+    const hash = window.location.hash;
+    if (!hash.startsWith("#msg-")) return;
+    document.getElementById(hash.slice(1))?.scrollIntoView({ block: "center" });
+  }, [historyReady, lines.length]);
 
   useEffect(() => {
     if (bootstrapped || !setup || !historyReady) return;
@@ -704,14 +835,14 @@ export function HermesStage({ token }: { token: string }) {
         );
         return [
           ...cleared,
-          {
+          withStamp({
             role: "assistant" as const,
             text: result.ok
               ? result.message || "Изменения применены."
               : result.message || "Не удалось применить изменения.",
             suggestions: suggestions.length ? suggestions : undefined,
             credentialForm: secretForm || undefined,
-          },
+          }),
         ];
       });
       void refreshPanels();
@@ -737,14 +868,20 @@ export function HermesStage({ token }: { token: string }) {
           const followChips = (follow.suggested_actions || []).filter((a) => a?.title && a?.text);
           setLines((prev) => [
             ...prev,
-            { role: "user", text: "Номер привязан. Что дальше по телефонии?" },
-            {
-              role: "assistant",
-              text: follow.reply || "Проверил сетап телефонии.",
-              suggestions: followChips.length ? followChips : undefined,
-              credentialForm: followForm || undefined,
-              sources: dedupeSources(follow.sources),
-            },
+            withStamp(
+              { role: "user", text: "Номер привязан. Что дальше по телефонии?" },
+              (follow.messages || []).find((item) => item.role === "user"),
+            ),
+            withStamp(
+              {
+                role: "assistant",
+                text: follow.reply || "Проверил сетап телефонии.",
+                suggestions: followChips.length ? followChips : undefined,
+                credentialForm: followForm || undefined,
+                sources: dedupeSources(follow.sources),
+              },
+              (follow.messages || []).find((item) => item.role === "assistant"),
+            ),
           ]);
           void refreshPanels();
         } catch {
@@ -800,11 +937,11 @@ export function HermesStage({ token }: { token: string }) {
       const formForLine = reopenForm || (sipRejected ? activeSecretForm : null);
       setLines((prev) => [
         ...prev,
-        {
+        withStamp({
           role: "assistant",
           text: `${ack}${probeLine}`,
           credentialForm: formForLine || undefined,
-        },
+        }),
       ]);
       void refreshPanels();
 
@@ -850,13 +987,19 @@ export function HermesStage({ token }: { token: string }) {
         if (secretForm) setActiveSecretForm(secretForm);
         setLines((prev) => [
           ...prev,
-          { role: "user", text: followUserLabel },
-          {
-            role: "assistant",
-            text: follow.reply || "Проверил сейф и сетап.",
-            sources: dedupeSources(follow.sources),
-            credentialForm: secretForm || undefined,
-          },
+          withStamp(
+            { role: "user", text: followUserLabel },
+            (follow.messages || []).find((item) => item.role === "user"),
+          ),
+          withStamp(
+            {
+              role: "assistant",
+              text: follow.reply || "Проверил сейф и сетап.",
+              sources: dedupeSources(follow.sources),
+              credentialForm: secretForm || undefined,
+            },
+            (follow.messages || []).find((item) => item.role === "assistant"),
+          ),
         ]);
         void refreshPanels();
       } catch {
@@ -1107,7 +1250,7 @@ export function HermesStage({ token }: { token: string }) {
 
               {lines.map((line, idx) =>
                 line.role === "user" ? (
-                  <article key={idx} className="hx-row hx-row-user">
+                  <article key={line.id || idx} id={line.id ? `msg-${line.id}` : undefined} className="hx-row hx-row-user">
                     <div className="hx-bubble hx-bubble-user">
                       {line.previews && line.previews.length > 0 && (
                         <div className="hx-previews">
@@ -1126,10 +1269,11 @@ export function HermesStage({ token }: { token: string }) {
                         </div>
                       )}
                       <HermesMessageBody text={line.text} className="hx-text" />
+                      <HermesStamp id={line.id} createdAt={line.createdAt} />
                     </div>
                   </article>
                 ) : (
-                  <article key={idx} className="hx-row hx-row-assistant">
+                  <article key={line.id || idx} id={line.id ? `msg-${line.id}` : undefined} className="hx-row hx-row-assistant">
                     {!compact && <HermesAvatar />}
                     <div className="hx-assistant-col">
                       {line.thinking && line.thinking.length > 0 ? (
@@ -1143,6 +1287,7 @@ export function HermesStage({ token }: { token: string }) {
                       {line.text ? (
                         <div className="hx-bubble hx-bubble-assistant">
                           <HermesMessageBody text={line.text} className="hx-text" />
+                          <HermesStamp id={line.id} createdAt={line.createdAt} />
                           {(() => {
                             const sources = dedupeSources(line.sources);
                             if (!sources.length) return null;
@@ -1168,7 +1313,10 @@ export function HermesStage({ token }: { token: string }) {
                               variant="outline"
                               size="sm"
                               disabled={sending}
-                              className="h-auto rounded-full px-3 py-1.5 text-[12px] font-semibold"
+                              className={cn(
+                                "h-auto rounded-full px-3 py-1.5 text-[12px] font-semibold",
+                                a.primary && "hx-chip-primary",
+                              )}
                               onClick={() => void sendText(a.text)}
                             >
                               {a.title}

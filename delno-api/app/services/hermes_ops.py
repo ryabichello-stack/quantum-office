@@ -226,6 +226,9 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
                 )
             )
         ),
+        "telephony_provider": settings.get("telephony_provider")
+        if isinstance(settings.get("telephony_provider"), (dict, str))
+        else None,
     }
 
     telephony = settings.get("telephony") if isinstance(settings.get("telephony"), dict) else {}

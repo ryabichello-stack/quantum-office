@@ -32,6 +32,7 @@ ONBOARDING_KB = META + (
     "office.connector_set",
     "phones.list",
     "phones.provision",
+    "telephony.provider_set",
     "telephony.script_get",
     "telephony.script_propose",
     "telephony.script_save",

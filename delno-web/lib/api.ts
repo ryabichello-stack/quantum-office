@@ -92,6 +92,13 @@ export type PendingConfirmation = {
 export type SuggestedAction = {
   title: string;
   text: string;
+  primary?: boolean;
+};
+
+export type OperatorChatMessageStamp = {
+  id: string;
+  role: "user" | "assistant" | string;
+  created_at: string;
 };
 
 export type OnboardingStatus = {
@@ -422,6 +429,7 @@ export function apiOperatorChat(
       content_type?: string;
     } | null;
     suggested_actions?: SuggestedAction[];
+    messages?: OperatorChatMessageStamp[];
   }>("/v1/operator/chat", token, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -433,6 +441,17 @@ export function apiOperatorChat(
       attachments: attachments || [],
     }),
   });
+}
+
+export function apiTenantVaultStatus(token: string) {
+  return apiFetch<{ items: Array<{ kind: string; configured: boolean }> }>("/v1/tenant/vault", token);
+}
+
+export function apiTenantVaultForm(token: string, kind: string) {
+  return apiFetch<{ ok: boolean; form: CredentialFormSpec }>(
+    `/v1/tenant/vault/forms/${encodeURIComponent(kind)}`,
+    token,
+  );
 }
 
 export function apiTenantSecretSave(

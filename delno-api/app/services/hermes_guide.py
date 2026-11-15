@@ -1197,6 +1197,35 @@ def chip_actions_for_office(
         pass
 
     try:
+        from app.services.hermes_nous.onboarding import get_office_loop
+
+        loop = get_office_loop(db, ctx) or {}
+        sn = loop.get("setup_next") if isinstance(loop, dict) else None
+        if isinstance(sn, dict) and sn.get("id") == "phone":
+            sub = str(sn.get("substep") or "")
+            if sub == "need_operator":
+                return [
+                    {
+                        "title": "Подключить Манго",
+                        "text": "Подключить Манго",
+                        "primary": True,
+                    },
+                    {
+                        "title": "У меня другой оператор",
+                        "text": "У меня другой оператор",
+                    },
+                ]
+            if sub == "need_did":
+                return [
+                    {
+                        "title": "Где взять номер в Манго",
+                        "text": "Где взять номер в Манго",
+                    }
+                ]
+    except Exception:
+        pass
+
+    try:
         from app.services import hermes_ops
 
         status = hermes_ops.office_setup_status(db, ctx) or {}

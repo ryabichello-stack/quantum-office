@@ -121,6 +121,7 @@ def test_office_loop_kb_ok_uses_kb_check_id(monkeypatch):
                             "active_dids": 0,
                             "sip_configured": False,
                             "registration_ok": False,
+                            "telephony_provider": {"provider": "mango"},
                         },
                     },
                 }
@@ -132,9 +133,9 @@ def test_office_loop_kb_ok_uses_kb_check_id(monkeypatch):
     assert loop["kb_ok"] is True
     assert loop["phase"] == "connectors"
     assert loop["setup_next"]["id"] == "phone"
-    # Battle order: DID before SIP for any tenant.
+    # Mango chosen: number before the access form.
     assert loop["setup_next"]["substep"] == "need_did"
-    assert "DID" in (loop["ui"]["headline"] or "") or "Телефония" in (loop["ui"]["headline"] or "")
+    assert "номер" in (loop["ui"]["headline"] or "").lower() or "телефон" in (loop["ui"]["headline"] or "").lower()
     assert "phones.provision" in (loop["ui"]["primary_cta"]["text"] or "")
     assert "импортировать kb" in (loop["ui"]["primary_cta"]["text"] or "").lower()
     company_kb = next(s for s in loop["steps"] if s["id"] == "company_kb")
@@ -178,6 +179,7 @@ def test_office_loop_phone_substep_need_did(monkeypatch):
                             "active_dids": 0,
                             "sip_configured": True,
                             "registration_ok": False,
+                            "telephony_provider": {"provider": "mango"},
                         },
                     },
                 }
@@ -186,9 +188,48 @@ def test_office_loop_phone_substep_need_did(monkeypatch):
     )
     loop = office_onboarding.get_office_loop(db, ctx)
     assert loop["setup_next"]["substep"] == "need_did"
-    assert "DID" in (loop["ui"]["primary_cta"]["title"] or "")
+    assert "номер" in (loop["ui"]["primary_cta"]["title"] or "").lower()
     assert "phones.provision" in (loop["ui"]["primary_cta"]["text"] or "")
     assert "credentials.open_form" not in (loop["ui"]["primary_cta"]["text"] or "")
+    db.close()
+
+
+def test_office_loop_phone_substep_need_operator(monkeypatch):
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    tenant = Tenant(id=uuid.uuid4(), slug="loop-op", name="Loop", settings={}, is_active=True)
+    db.add(tenant)
+    db.commit()
+    ctx = TenantContext(tenant_id=tenant.id, tenant_slug=tenant.slug, role="tenant_owner")
+    monkeypatch.setattr(
+        "app.services.hermes_nous.onboarding.hermes_ops.office_setup_status",
+        lambda *_a, **_k: {
+            "setup_complete": False,
+            "message_ru": "next",
+            "progress": {"required_done": 1, "required_total": 7},
+            "checks": {"kb": {"ok": True}, "phone": {"ok": False}},
+            "next_steps": [
+                {
+                    "id": "phone",
+                    "title": "Телефон",
+                    "hint": "оператор",
+                    "status": "todo",
+                    "check": {
+                        "ok": False,
+                        "detail": {"active_dids": 0, "sip_configured": False, "registration_ok": False},
+                    },
+                }
+            ],
+        },
+    )
+    loop = office_onboarding.get_office_loop(db, ctx)
+    assert loop["setup_next"]["substep"] == "need_operator"
+    assert "Манго" in (loop["setup_next"]["hint"] or "")
     db.close()
 
 
