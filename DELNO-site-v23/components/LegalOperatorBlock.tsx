@@ -3,7 +3,7 @@ import { LEGAL_OPERATOR } from "@/lib/legal-requisites";
 export function LegalOperatorBlock() {
   const o = LEGAL_OPERATOR;
   return (
-    <section className="legal-requisites" aria-label="Реквизиты оператора">
+    <section id="requisites" className="legal-requisites" aria-label="Реквизиты оператора">
       <h2>Оператор / правообладатель</h2>
       <p>
         <strong>{o.shortName}</strong>

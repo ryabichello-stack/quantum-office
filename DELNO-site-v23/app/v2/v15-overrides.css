@@ -1,0 +1,15 @@
+/* Small fixes for ported V15 components */
+
+.dv15-inline-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.delno-v15 .dv15-hero-contact.dv15-demo-link {
+  border: 0;
+  background: none;
+}

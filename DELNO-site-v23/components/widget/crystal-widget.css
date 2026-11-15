@@ -36,7 +36,7 @@
 }
 
 #delno-crystal-voice,
-#delno-crystal-text {
+.widget-text-toggle {
   position: fixed;
   opacity: 0;
   pointer-events: none;
@@ -45,13 +45,21 @@
 .delno-crystal-mount.delno-crystal-floating .widget {
   position: fixed;
   left: 50%;
-  bottom: calc(12px + env(safe-area-inset-bottom));
-  transform: translateX(-50%);
+  top: calc(100dvh - 92px - env(safe-area-inset-bottom));
+  bottom: auto;
+  transform: translate(-50%, -50%);
   width: 150px;
   height: 160px;
   z-index: 10000;
   pointer-events: none;
   overflow: visible;
+  transition: left .55s ease, top .55s ease, transform .55s ease;
+}
+
+.delno-crystal-mount.delno-crystal-floating.is-docked .widget {
+  left: var(--widget-x, 50%);
+  top: calc(var(--widget-y, 50dvh) - 53px);
+  transform: translate(-50%, -50%) scale(1.65);
 }
 
 .delno-crystal-mount .orb-anchor {
@@ -91,7 +99,16 @@
   overflow: hidden;
 }
 
-#delno-crystal-text:checked ~ .panel,
+.delno-crystal-mount.delno-crystal-floating.is-docked .panel {
+  left: var(--widget-x, 50%);
+  top: clamp(88px, calc(var(--widget-y, 50dvh) - 160px), calc(100dvh - 460px));
+  bottom: auto;
+  max-height: min(420px, calc(100dvh - 110px));
+  z-index: 10001;
+  background: #111923;
+}
+
+.widget-text-toggle:checked ~ .panel,
 .delno-crystal-mount .panel.is-open {
   opacity: 1;
   pointer-events: auto;

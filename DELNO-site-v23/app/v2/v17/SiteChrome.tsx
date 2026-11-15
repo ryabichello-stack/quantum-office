@@ -1,0 +1,108 @@
+"use client";
+
+import { ArrowUpRight, Menu } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+
+import { mainPath } from "@/lib/landingPaths";
+import { LEGAL_OPERATOR } from "@/lib/legal-requisites";
+
+const base = mainPath("/");
+
+export function V17SiteHeader() {
+  return (
+    <header className="dc-header">
+      <div className="dc-header-inner">
+        <Link href={base} className="dc-brand" aria-label="DELNO — главная">
+          <Image src="/delno-mark.svg" width={28} height={27} alt="" />
+          DELNO
+        </Link>
+        <nav className="dc-top-nav" aria-label="Основная навигация">
+          <a href={`${base}#work`}>Как работает</a>
+          <Link href={mainPath("/solutions/booking")}>Запись клиентов</Link>
+          <a href={`${base}#prices`}>Стоимость</a>
+          <Link href={mainPath("/blog")}>Блог</Link>
+          <a href={`${base}#contact`}>Контакты</a>
+        </nav>
+        <a href={`${base}#contact`} className="dc-top-action">
+          Оставить заявку
+        </a>
+        <details className="dc-mobile-menu">
+          <summary aria-label="Открыть меню">
+            <Menu size={23} aria-hidden />
+          </summary>
+          <nav aria-label="Мобильная навигация" onClick={(event) => {
+            if ((event.target as HTMLElement).closest("a")) {
+              event.currentTarget.closest("details")?.removeAttribute("open");
+            }
+          }}>
+            <Link href={base}>Главная</Link>
+            <a href={`${base}#work`}>Как работает</a>
+            <Link href={mainPath("/solutions/booking")}>Запись клиентов</Link>
+            <a href={`${base}#prices`}>Стоимость</a>
+            <Link href={mainPath("/blog")}>Блог</Link>
+            <a href={`${base}#contact`}>Контакты</a>
+          </nav>
+        </details>
+      </div>
+    </header>
+  );
+}
+
+export function V17SiteFooter() {
+  return (
+    <footer className="dc-footer">
+      <div className="dc-footer-inner">
+        <div className="dc-footer-grid">
+          <div className="dc-footer-about">
+            <Link href={base} className="dc-brand">
+              <Image src="/delno-mark.svg" width={31} height={30} alt="" />
+              DELNO
+            </Link>
+            <p>Один ИИ-сотрудник для звонков, сообщений и записи клиентов. На связи 24/7.</p>
+            <a href={`${base}#contact`} className="dc-footer-action">
+              Обсудить задачу <ArrowUpRight size={17} aria-hidden />
+            </a>
+          </div>
+          <nav aria-label="Продукт">
+            <strong>Продукт</strong>
+            <a href={`${base}#work`}>Как работает</a>
+            <a href={`${base}#scenarios`}>Сценарии</a>
+            <Link href={mainPath("/solutions/booking")}>Запись клиентов</Link>
+            <a href={`${base}#prices`}>Стоимость</a>
+            <a href={`${base}#contact`}>Оставить заявку</a>
+          </nav>
+          <nav aria-label="Материалы">
+            <strong>Материалы</strong>
+            <Link href={mainPath("/blog")}>Блог</Link>
+            <Link href={mainPath("/help")}>С чего начать</Link>
+            <a href={`${base}#answers`}>Вопросы и ответы</a>
+          </nav>
+          <div className="dc-footer-contact">
+            <strong>Связаться</strong>
+            <a href="tel:+78005559418">8 800 555-94-18</a>
+            <a className="dc-footer-email" href="mailto:office@dlno.ru">
+              office@dlno.ru
+            </a>
+            <div>
+              <a href="https://t.me/Dlno_bot" target="_blank" rel="noreferrer">
+                Telegram <ArrowUpRight size={13} aria-hidden />
+              </a>
+              <a href="https://max.ru/id471405233378_bot" target="_blank" rel="noreferrer">
+                MAX <ArrowUpRight size={13} aria-hidden />
+              </a>
+            </div>
+          </div>
+        </div>
+        <div className="dc-footer-bottom">
+          <span>© 2026 DELNO · {LEGAL_OPERATOR.shortName} · ИНН {LEGAL_OPERATOR.inn} · Санкт-Петербург</span>
+          <div>
+            <Link href="/terms#requisites">Реквизиты</Link>
+            <Link href="/privacy">Конфиденциальность</Link>
+            <Link href="/terms">Пользовательское соглашение</Link>
+          </div>
+        </div>
+      </div>
+    </footer>
+  );
+}

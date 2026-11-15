@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { CrystalOrb } from "./CrystalOrb";
 import {
   handleChatKeyDown,
@@ -19,6 +19,7 @@ const QUICK_PROMPTS = [
 ];
 
 export function CrystalWidget() {
+  const instanceId = useId().replace(/:/g, "");
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
   const apiPath = `${basePath}/api/widget/message`;
 
@@ -27,6 +28,7 @@ export function CrystalWidget() {
   const chatBodyRef = useRef<HTMLDivElement>(null);
 
   const [textOpen, setTextOpen] = useState(false);
+  const [docked, setDocked] = useState(false);
   const [input, setInput] = useState("");
 
   const { messages, busy, sendMessage, sendVoiceQuery, appendExchange } = useCrystalWidgetChat(apiPath);
@@ -37,6 +39,40 @@ export function CrystalWidget() {
   });
   useCrystalContrast(mountRef);
   useAutoResizeTextarea(textareaRef, input);
+
+  useEffect(() => {
+    let frame = 0;
+    const updatePosition = () => {
+      frame = 0;
+      const mount = mountRef.current;
+      const stage = document.getElementById("delno-widget-stage");
+      if (!mount || !stage) {
+        setDocked(false);
+        return;
+      }
+      const rect = stage.getBoundingClientRect();
+      const inView = rect.top < window.innerHeight * 0.72 && rect.bottom > window.innerHeight * 0.22;
+      if (inView) {
+        const visibleTop = Math.max(rect.top, window.innerHeight * 0.15);
+        const visibleBottom = Math.min(rect.bottom, window.innerHeight * 0.85);
+        const center = (visibleTop + visibleBottom) / 2;
+        mount.style.setProperty("--widget-x", `${rect.left + rect.width / 2}px`);
+        mount.style.setProperty("--widget-y", `${center}px`);
+      }
+      setDocked(inView);
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(updatePosition);
+    };
+    updatePosition();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
+  }, []);
 
   const textRef = useRef<HTMLInputElement>(null);
 
@@ -62,8 +98,8 @@ export function CrystalWidget() {
     textOpen && messages.length === 1 && messages[0]?.role === "assistant" && !busy;
 
   return (
-    <div className="delno-crystal-mount delno-crystal-floating" ref={mountRef}>
-      <input type="checkbox" id="delno-crystal-text" ref={textRef} defaultChecked={false} hidden aria-hidden />
+    <div className={`delno-crystal-mount delno-crystal-floating${docked ? " is-docked" : ""}`} ref={mountRef}>
+      <input type="checkbox" className="widget-text-toggle" id={`${instanceId}-text`} ref={textRef} defaultChecked={false} hidden aria-hidden />
 
       <CrystalOrb
         variant="widget"
@@ -74,7 +110,7 @@ export function CrystalWidget() {
         onChatClick={() => setTextOpen(true)}
       />
 
-      <section className={`panel${textOpen ? " is-open" : ""}`} id="chatPanel" aria-live="polite">
+      <section className={`panel${textOpen ? " is-open" : ""}`} id={`${instanceId}-panel`} aria-live="polite">
         <div className="head">
           <strong>DELNO</strong>
           <button type="button" className="close" aria-label="Закрыть чат" onClick={() => setTextOpen(false)}>
@@ -82,7 +118,7 @@ export function CrystalWidget() {
           </button>
         </div>
 
-        <div className="chat-body" id="chatBody" ref={chatBodyRef}>
+        <div className="chat-body" id={`${instanceId}-body`} ref={chatBodyRef}>
           {messages.map((msg, idx) => (
             <div key={idx} className={`message-row ${msg.role}`}>
               <div className={`message${msg.typing ? " typing" : ""}`}>
@@ -116,13 +152,13 @@ export function CrystalWidget() {
 
         <form
           className="chat-form"
-          id="chatForm"
+          id={`${instanceId}-form`}
           onSubmit={(e) => onChatSubmit(e, input, sendMessage, setInput)}
         >
           <textarea
             ref={textareaRef}
             className="chat-input"
-            id="chatInput"
+            id={`${instanceId}-input`}
             rows={1}
             maxLength={1200}
             autoComplete="off"
@@ -136,7 +172,7 @@ export function CrystalWidget() {
           />
           <button
             className="send-btn"
-            id="sendBtn"
+            id={`${instanceId}-send`}
             type="submit"
             aria-label="Отправить"
             disabled={busy || !input.trim()}

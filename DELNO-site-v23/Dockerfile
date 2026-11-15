@@ -1,19 +1,24 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 ARG NEXT_PUBLIC_BASE_PATH=
-ARG NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY=demo_dlno
+ARG NEXT_PUBLIC_YM_COUNTER_ID=
+ARG NEXT_PUBLIC_SITE_URL=https://dlno.ru
+ARG NEXT_PUBLIC_YANDEX_VERIFICATION=
+ARG NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION=
 ENV NEXT_PUBLIC_BASE_PATH=${NEXT_PUBLIC_BASE_PATH}
-ENV NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY=${NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY}
-COPY package.json package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+ENV NEXT_PUBLIC_YM_COUNTER_ID=${NEXT_PUBLIC_YM_COUNTER_ID}
+ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
+ENV NEXT_PUBLIC_YANDEX_VERIFICATION=${NEXT_PUBLIC_YANDEX_VERIFICATION}
+ENV NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION=${NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION}
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
 RUN npm run build:node
 
 FROM node:22-alpine AS production
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=build /app/package.json ./
-COPY --from=build /app/package-lock.json* ./
+COPY --from=build /app/package.json /app/package-lock.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public

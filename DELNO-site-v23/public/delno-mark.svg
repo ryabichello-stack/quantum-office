@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 895 847" role="img" aria-labelledby="title desc">
+  <title id="title">Знак DELNO</title>
+  <desc id="desc">Монограмма D с разрывом и диагональным переходом в левой стойке</desc>
+  <defs>
+    <linearGradient id="delno-ink" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101829"/>
+      <stop offset="1" stop-color="#080d18"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#delno-ink)" d="M0 0h490c266 0 405 184 405 423S756 847 490 847H0V240h101l124 75v357h254c118 0 196-102 196-249 0-123-68-240-208-240H0V0Z"/>
+</svg>
