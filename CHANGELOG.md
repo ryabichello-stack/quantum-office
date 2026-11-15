@@ -10,6 +10,9 @@
 
 ## [Unreleased]
 
+### Security
+- MCP: `X-Delno-Run-Id` больше не является самостоятельным доступом к инструментам. Привязка запуска требует ключ этой же компании; чужой профиль и несовпадающий run token отклоняются.
+
 ### Fixed
 - **Ava without script/tools**: restored `/v1/telephony/calls/tool` + `voice_tools` (was 404 — Ava could not list tools or read KB). Inbound start now returns `secretary` (script/greeting/tools). Calendar check/create tools wired for in-call use
 - **Dual Mango SIP registration** shredded Ava audio (two Stasis per call). `apply_mango_sip_server` now disables legacy shared `mango-registration` whenever any `delno-tenant-*.conf` exists (on apply + service start). Multi-tenant canon: one Mango account → one `delno-<slug>-reg` only

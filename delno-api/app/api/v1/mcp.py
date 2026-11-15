@@ -66,29 +66,11 @@ def get_mcp_tenant_context(
     x_delno_run_id: Optional[str] = Header(default=None, alias="X-Delno-Run-Id"),
     x_delno_profile_id: Optional[str] = Header(default=None, alias="X-Delno-Profile-Id"),
 ) -> McpAuthContext:
-    """Accept JWT, scoped run token, run-binding proxy, or legacy per-tenant mcp_api_key.
+    """Accept JWT, scoped run token, authenticated run binding, or legacy tenant key.
 
     Preferred for Hermes: run token OR X-Delno-Run-Id bound at create_run (server-side).
     Legacy company mcp_api_key must not be the model path for office tools long-term.
     """
-    # Capability bridge: Hermes may only know the run id; DELNO maps it to tenant+tools.
-    if x_delno_run_id and x_delno_run_id.strip():
-        binding = lookup_binding(db, run_id=x_delno_run_id.strip())
-        if binding:
-            tenant = db.query(Tenant).filter(Tenant.id == binding.tenant_id).one_or_none()
-            if tenant and tenant.is_active:
-                return McpAuthContext(
-                    tenant=TenantContext(
-                        tenant_id=tenant.id,
-                        tenant_slug=tenant.slug,
-                        user_id=binding.actor_user_id,
-                        role="tenant_owner",
-                    ),
-                    auth_via="run_binding",
-                    run_token_tool_ids=list(binding.tool_ids or []),
-                    run_id=binding.run_id,
-                )
-
     raw = ""
     if x_delno_run_token:
         raw = x_delno_run_token.strip()
@@ -105,6 +87,8 @@ def get_mcp_tenant_context(
     # Nous scoped run token (preferred for Hermes runtimes)
     run_entry = verify_run_token(db, raw)
     if run_entry:
+        if x_delno_run_id and x_delno_run_id.strip() != str(run_entry.get("run_id") or ""):
+            raise HTTPException(status_code=403, detail="run_id_token_mismatch")
         tenant = run_entry["tenant"]
         actor = run_entry.get("actor_user_id")
         return McpAuthContext(
@@ -117,6 +101,33 @@ def get_mcp_tenant_context(
             auth_via="run_token",
             run_token_tool_ids=list(run_entry.get("tool_ids") or []),
             run_id=str(run_entry.get("run_id") or ""),
+        )
+
+    # A run id is only a lookup key, never a credential. Hermes currently sends
+    # a profile-scoped company MCP key; require that key to own the bound run.
+    if x_delno_run_id and x_delno_run_id.strip():
+        binding = lookup_binding(db, run_id=x_delno_run_id.strip())
+        if not binding:
+            raise HTTPException(status_code=401, detail="run_binding_not_found")
+        key_tenant = find_tenant_by_mcp_key(db, raw)
+        if key_tenant is None:
+            raise HTTPException(status_code=401, detail="run_binding_credential_required")
+        if key_tenant.id != binding.tenant_id:
+            raise HTTPException(status_code=403, detail="run_binding_tenant_mismatch")
+        if x_delno_profile_id and x_delno_profile_id.strip() != binding.profile_id:
+            raise HTTPException(status_code=403, detail="run_binding_profile_mismatch")
+        if not key_tenant.is_active:
+            raise HTTPException(status_code=403, detail="tenant_inactive")
+        return McpAuthContext(
+            tenant=TenantContext(
+                tenant_id=key_tenant.id,
+                tenant_slug=key_tenant.slug,
+                user_id=binding.actor_user_id,
+                role="tenant_owner",
+            ),
+            auth_via="run_binding",
+            run_token_tool_ids=list(binding.tool_ids or []),
+            run_id=binding.run_id,
         )
 
     # Try JWT
