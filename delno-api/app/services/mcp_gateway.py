@@ -145,6 +145,14 @@ def call_mcp_tool(db: Session, ctx: TenantContext, name: str, arguments: dict[st
 
     result = registry.run(db, ctx, name, **args)
     payload = _tool_result_payload(result)
+    # Cabinet cards (credential form, confirm, download) are invisible to Nous
+    # text. Stash them so the operator turn that started this run can return them.
+    try:
+        from app.services.pending_ui import stash_tool_ui
+
+        stash_tool_ui(db, ctx.tenant_id, name, payload)
+    except Exception:
+        pass
     write_audit(
         db,
         ctx,

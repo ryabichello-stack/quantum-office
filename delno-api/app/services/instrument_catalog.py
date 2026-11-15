@@ -46,7 +46,7 @@ _BUILTIN: tuple[Instrument, ...] = (
     Instrument(
         id="phone",
         title="Телефон",
-        hint="Подключим номер, чтобы секретарь отвечал на звонки",
+        hint="Подключим ваш номер в Манго Телеком, чтобы секретарь отвечал на звонки",
         order=20,
         group="channel",
         connect_tool="phones.provision",

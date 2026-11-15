@@ -325,3 +325,74 @@ class OfficeConnectorSetTool:
             },
             message=message,
         )
+
+
+class TelephonyProviderSetTool:
+    name = "telephony.provider_set"
+    description = (
+        "Запомнить оператора связи владельца. "
+        "provider=mango — дальше просим номер Манго Телеком. "
+        "provider=other — заявка со статусом «скоро», шаг телефона откладывается."
+    )
+    critical_write = True
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "provider": {"type": "string", "enum": ["mango", "other"]},
+            "name": {"type": "string", "description": "Название другого оператора, если provider=other"},
+        },
+        "required": ["provider"],
+    }
+
+    def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult:
+        provider = str(params.get("provider") or "").strip().lower()
+        if provider not in ("mango", "other"):
+            return ToolResult(ok=False, data={}, message="provider_must_be_mango_or_other")
+        name = str(params.get("name") or "").strip()[:120]
+        from sqlalchemy.orm.attributes import flag_modified
+
+        from app.models.tenant import Tenant
+        from app.services.events import emit_event
+        from app.services.hermes_ops import mark_setup_progress
+
+        tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
+        settings = dict(tenant.settings) if isinstance(tenant.settings, dict) else {}
+        record = {
+            "provider": provider,
+            "name": name or ("Манго Телеком" if provider == "mango" else ""),
+            "status": "active" if provider == "mango" else "soon",
+            "label": "скоро" if provider == "other" else "Манго Телеком",
+        }
+        settings["telephony_provider"] = record
+        tenant.settings = settings
+        flag_modified(tenant, "settings")
+        db.add(tenant)
+        db.flush()
+        if provider == "other":
+            emit_event(
+                db,
+                event_type="telephony.provider.other",
+                category="operational",
+                tenant_id=ctx.tenant_id,
+                source="telephony.provider_set",
+                payload={"provider": "other", "name": record["name"], "status": "soon"},
+            )
+            mark_setup_progress(
+                db,
+                ctx,
+                defer_instrument="phone",
+                note="telephony_provider=other soon",
+            )
+            message = (
+                "Заявку на другого оператора записал — статус «скоро». "
+                "Телефон можно подключить позже. Сейчас перейдём к следующему шагу."
+            )
+        else:
+            mark_setup_progress(
+                db,
+                ctx,
+                resume_instrument="phone",
+                note="telephony_provider=mango",
+            )
+            message = "Оператор — Манго Телеком. Пришлите номер в формате +7 987 123-45-67."
+        return ToolResult(ok=True, data={"telephony_provider": record}, message=message)

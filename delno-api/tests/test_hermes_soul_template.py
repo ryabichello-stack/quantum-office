@@ -9,6 +9,9 @@ from app.services.hermes_nous.provision import _TEMPLATES
 
 def test_soul_template_documents_phone_micro_steps():
     soul = (_TEMPLATES / "SOUL.md").read_text(encoding="utf-8")
+    assert "need_operator" in soul
+    assert "только с Манго Телеком" in soul
+    assert "+7 987 123-45-67" in soul
     assert "need_sip" in soul
     assert "need_did" in soul
     # Draft First: must show full draft body, not a status stub

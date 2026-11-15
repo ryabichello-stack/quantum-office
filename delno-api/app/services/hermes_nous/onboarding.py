@@ -241,14 +241,23 @@ def confirm_kb_draft(db: Session, ctx: TenantContext) -> dict[str, Any]:
     return {"ok": True, "committed": True, "loop": get_office_loop(db, ctx)}
 
 
+def _provider_code(detail: dict[str, Any]) -> str:
+    raw = detail.get("telephony_provider")
+    if isinstance(raw, dict):
+        return str(raw.get("provider") or "").strip().lower()
+    return str(raw or "").strip().lower()
+
+
 def _setup_substep(step_id: str, detail: dict[str, Any]) -> str | None:
     """Break hermes_ops phone (and similar) into actionable micro-steps.
 
-    Battle order for ANY tenant: DID first (owner's number) → SIP vault → Registered.
-    Never assume a shared dogfood line or a pre-known Mango account.
+    Order: choose operator (Mango) → number → SIP vault → Registered.
+    State for the operator lives in tenant.settings.telephony_provider.
     """
     if step_id != "phone":
         return None
+    if _provider_code(detail) != "mango":
+        return "need_operator"
     if int(detail.get("active_dids") or 0) <= 0:
         return "need_did"
     if not detail.get("sip_configured"):
@@ -259,11 +268,13 @@ def _setup_substep(step_id: str, detail: dict[str, Any]) -> str | None:
 
 
 def _phone_hint(substep: str, detail: dict[str, Any]) -> str:
-    if substep == "need_did":
+    if substep == "need_operator":
         return (
-            "Спросите публичный номер клиента (DID) и привяжите phones.provision — "
-            "только номер ЭТОГО кабинета, без чужих/демо линий"
+            "Сейчас мы работаем **только с Манго Телеком (Mango Office)**. "
+            "Какой у вас оператор?"
         )
+    if substep == "need_did":
+        return "Пришлите номер в формате **+7 987 123-45-67**"
     if substep == "need_sip":
         return (
             "DID есть — открой credentials.open_form mango_sip "
@@ -294,8 +305,10 @@ def _headline(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None)
     if phase == "connectors":
         if setup_next and setup_next.get("title"):
             sub = setup_next.get("substep")
+            if setup_next.get("id") == "phone" and sub == "need_operator":
+                return "Телефон: какой у вас оператор?"
             if setup_next.get("id") == "phone" and sub == "need_did":
-                return "Телефония: какой номер подключаем?"
+                return "Телефон: пришлите номер Манго"
             if setup_next.get("id") == "phone" and sub == "need_sip":
                 return "Телефон: данные для подключения"
             if setup_next.get("id") == "phone" and sub == "need_reg":
@@ -328,14 +341,25 @@ def _cta(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> d
         hint = str((setup_next or {}).get("hint") or "")
         sub = str((setup_next or {}).get("substep") or "")
         if sid == "phone":
+            if sub == "need_operator":
+                return {
+                    "title": "Подключить Манго",
+                    "text": (
+                        "Сейчас мы работаем только с Манго Телеком (Mango Office). "
+                        "Спроси оператора. Манго → telephony.provider_set provider=mango. "
+                        "Другой → telephony.provider_set provider=other "
+                        "(заявка «скоро», шаг телефона можно отложить). Номер пока не проси."
+                    ),
+                }
             if sub == "need_did":
                 return {
-                    "title": "Подключить DID",
+                    "title": "Подключить номер",
                     "text": (
-                        "Спроси у владельца публичный номер ЭТОГО кабинета (DID). "
-                        "Никогда не подставляй чужой/демо/QL номер. "
-                        "phones.list → если пусто и номер назван — phones.provision. "
-                        "Форму SIP пока не открывай. Не предлагай импортировать KB."
+                        "Оператор — Манго. Попроси номер в формате +7 987 123-45-67. "
+                        "Только номер ЭТОГО кабинета, без чужих и демо. "
+                        "phones.list → если номер назван — phones.provision. "
+                        "Сразу после phones.provision открой форму доступа к линии. "
+                        "Не предлагай импортировать KB."
                     ),
                 }
             if sub == "need_reg":

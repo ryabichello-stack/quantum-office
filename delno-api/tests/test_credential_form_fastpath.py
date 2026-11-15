@@ -156,3 +156,61 @@ def test_operator_chat_diy_opens_pending_credential_form():
     assert out["pending_credential_form"]["kind"] == "mango_sip"
     assert out["office_loop"]["setup_next"]["id"] == "phone"
     mock_registry.run.assert_called_once_with(db, ctx, "credentials.open_form", kind="mango_sip")
+
+
+def test_operator_chat_nous_mcp_open_form_returns_pending_credential_form():
+    """Nous called credentials.open_form over MCP — the chat response still carries the card."""
+    ctx = TenantContext(tenant_id=uuid.uuid4(), tenant_slug="delno-demo", role="tenant_owner")
+    db = MagicMock()
+    body = MagicMock()
+    body.message = "Жду карточку доступа к линии"
+    body.attachments = None
+    body.modality = "text"
+    body.channel = "hermes"
+    body.conversation_id = None
+
+    form = {"kind": "mango_sip", "title": "Доступ к линии Манго", "fields": []}
+    loop = {
+        "ok": True,
+        "phase": "connectors",
+        "kb_ok": True,
+        "setup": {"setup_complete": False},
+        "setup_next": {
+            "id": "phone",
+            "title": "Телефон",
+            "hint": "номер",
+            "substep": "need_did",
+        },
+    }
+
+    def fake_create_run(db, ctx, **kwargs):
+        from app.services.mcp_gateway import call_mcp_tool
+
+        call_mcp_tool(db, ctx, "credentials.open_form", {"kind": "mango_sip"})
+        return {"output": "Открыл форму доступа к линии.", "hermes": {}}
+
+    with patch(
+        "app.services.hermes_nous.onboarding.get_office_loop",
+        return_value=loop,
+    ), patch(
+        "app.services.hermes_nous.flags.is_hermes_nous_enabled",
+        return_value=True,
+    ), patch(
+        "app.services.hermes_ops.office_setup_status",
+        return_value={"progress": {}, "checks": {}, "instruments": {}, "ava": {}},
+    ), patch(
+        "app.services.hermes_nous.bridge.create_run",
+        side_effect=fake_create_run,
+    ), patch(
+        "app.services.mcp_gateway.registry"
+    ) as mock_registry:
+        mock_registry.run.return_value = ToolResult(
+            ok=True,
+            data={"pending_credential_form": form, "kind": "mango_sip"},
+            message="Открыл форму.",
+        )
+        out = operator_chat(body, db=db, ctx=ctx)
+
+    assert out["engine"] == "nous_hermes_agent"
+    assert out["pending_credential_form"]["kind"] == "mango_sip"
+    assert out["pending_credential_form"]["title"] == "Доступ к линии Манго"

@@ -214,10 +214,21 @@ def create_run(
         if isinstance(sn, dict) and sn.get("title"):
             sub = sn.get("substep")
             micro = f" micro-step={sub}." if sub else ""
-            if sub == "need_did":
+            if sub == "need_operator":
                 micro += (
-                    " Ask THIS tenant's public DID — never invent/demo/QL number. "
-                    "phones.list → phones.provision. Do NOT open SIP form until DID is attached."
+                    " Say in Russian: «Сейчас мы работаем только с Манго Телеком (Mango Office). "
+                    "Какой у вас оператор?» "
+                    "Mango → telephony.provider_set provider=mango. "
+                    "Other operator → telephony.provider_set provider=other "
+                    "(заявка «скоро», defer the phone step). Do not ask for a number yet. "
+                    "Plain words only — no SIP, DID, or vault."
+                )
+            elif sub == "need_did":
+                micro += (
+                    " Owner chose Mango. Say: «Пришлите номер в формате +7 987 123-45-67». "
+                    "phones.list → phones.provision for THIS cabinet only — never invent/demo/QL number. "
+                    "Immediately after phones.provision you MUST call credentials.open_form mango_sip. "
+                    "Plain words: номер, not SIP/DID/vault."
                 )
             elif sub == "need_sip":
                 micro += (

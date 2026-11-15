@@ -1231,6 +1231,7 @@ def _finish_diy(
             "filename": pending_download.get("filename"),
             "title": pending_download.get("title"),
         }
+    stamps: dict = {}
     conv_id = persist_operator_exchange(
         db,
         ctx,
@@ -1240,6 +1241,7 @@ def _finish_diy(
         conversation_id=body.conversation_id,
         input_modality=modality,
         assistant_meta=meta,
+        stamp_out=stamps,
     )
     out: dict = {
         "ok": True,
@@ -1264,6 +1266,8 @@ def _finish_diy(
         out["hermes_run"] = hermes_run
     if pending_download is not None:
         out["pending_download"] = pending_download
+    if stamps.get("user") and stamps.get("assistant"):
+        out["messages"] = [stamps["user"], stamps["assistant"]]
     if extra:
         out.update(extra)
     return out
@@ -2381,6 +2385,10 @@ def operator_chat(
                     if k in checks
                 }
                 # Always Hermes (Nous) speaks — we only ground him with tenant facts.
+                # Stamp before the run so MCP cards committed during it are included.
+                from datetime import timezone as _tz
+
+                run_started = datetime.now(_tz.utc)
                 nous = create_run(
                     db,
                     ctx,
@@ -2432,6 +2440,45 @@ def operator_chat(
                     )
                 except Exception:
                     pass
+                # MCP tools (credentials.open_form and other UI) run in another
+                # request. Pick up cards stashed after this turn started.
+                from app.services.pending_ui import take_pending_ui
+
+                ui = take_pending_ui(db, ctx.tenant_id, since=run_started)
+                form = ui.get("pending_credential_form") if isinstance(ui.get("pending_credential_form"), dict) else None
+                download = ui.get("pending_download") if isinstance(ui.get("pending_download"), dict) else None
+                confirm = ui.get("pending_confirmation") if isinstance(ui.get("pending_confirmation"), dict) else None
+                loop_after = loop
+                try:
+                    loop_after = get_office_loop(db, ctx) or loop
+                except Exception:
+                    loop_after = loop
+                sub_after = ""
+                sn_after = loop_after.get("setup_next") if isinstance(loop_after, dict) else None
+                if isinstance(sn_after, dict):
+                    sub_after = str(sn_after.get("substep") or "")
+                if not form and sub_after in ("need_sip", "need_reg"):
+                    from app.operator.tools import register_builtin_tools
+                    from app.operator.tools.registry import ToolResult, registry
+
+                    register_builtin_tools()
+                    opened = registry.run(db, ctx, "credentials.open_form", kind="mango_sip")
+                    if isinstance(opened, ToolResult) and opened.ok:
+                        opened_form = (opened.data or {}).get("pending_credential_form")
+                        if isinstance(opened_form, dict):
+                            form = opened_form
+                            nous_tools.append(
+                                {"tool": "credentials.open_form", "ok": True, "kind": "mango_sip"}
+                            )
+                elif form:
+                    nous_tools.append(
+                        {
+                            "tool": "credentials.open_form",
+                            "ok": True,
+                            "kind": str(form.get("kind") or "mango_sip"),
+                        }
+                    )
+                extra_ui = {"pending_confirmation": confirm} if confirm else None
                 return _finish_diy(
                     db,
                     ctx,
@@ -2440,7 +2487,11 @@ def operator_chat(
                     engine="nous_hermes_agent",
                     reply=reply,
                     tool_calls=nous_tools,
+                    pending_credential_form=form,
+                    pending_download=download,
                     hermes_run=nous,
+                    office_loop=loop_after if isinstance(loop_after, dict) else None,
+                    extra=extra_ui,
                 )
             except HermesBridgeError as exc:
                 # Flag on → never silently answer as DIY «Гермес». Be honest.

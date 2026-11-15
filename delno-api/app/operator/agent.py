@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -72,6 +73,7 @@ CABINET_LLM_TOOLS = (
     # Phones + calls
     "phones.list",
     "phones.provision",
+    "telephony.provider_set",
     "calls.list",
     "calls.get",
     "calls.dial",
@@ -328,6 +330,21 @@ def _with_debug_failures(
     return (reply or "") + _format_debug_failures(tools=tools, llm_error=llm_error)
 
 
+def _exchange_messages(user_row: Message | None, assistant_row: Message | None) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for row in (user_row, assistant_row):
+        if row is None or row.created_at is None:
+            continue
+        rows.append(
+            {
+                "id": str(row.id),
+                "role": row.role,
+                "created_at": row.created_at.isoformat(),
+            }
+        )
+    return rows
+
+
 def run_operator_turn(
     db: Session,
     ctx: TenantContext,
@@ -373,6 +390,8 @@ def run_operator_turn(
         if looks_like_credential_paste(display_message or message):
             display_message = "[логин/пароль — через безопасную форму, не в ленте чата]"
 
+        user_row = None
+        stamped = datetime.now(timezone.utc)
         if record_user_message:
             meta_user: dict[str, Any] = {"modality": input_modality}
             if normalized.get("items"):
@@ -387,15 +406,16 @@ def run_operator_turn(
                 ]
             if looks_like_credential_paste(message):
                 meta_user["redacted_secret"] = True
-            db.add(
-                Message(
-                    tenant_id=ctx.tenant_id,
-                    conversation_id=conversation.id,
-                    role="user",
-                    body=display_message or message,
-                    meta=meta_user,
-                )
+            user_row = Message(
+                id=uuid.uuid4(),
+                tenant_id=ctx.tenant_id,
+                conversation_id=conversation.id,
+                role="user",
+                body=display_message or message,
+                meta=meta_user,
+                created_at=stamped,
             )
+            db.add(user_row)
             db.flush()
 
         reply, tool_calls, sources, pending, credential_form = _generate_reply(
@@ -448,15 +468,17 @@ def run_operator_turn(
                 "title": pending_download.get("title"),
             }
 
-        db.add(
-            Message(
-                tenant_id=ctx.tenant_id,
-                conversation_id=conversation.id,
-                role="assistant",
-                body=reply,
-                meta=meta,
-            )
+        assistant_stamped = datetime.now(timezone.utc)
+        assistant_row = Message(
+            id=uuid.uuid4(),
+            tenant_id=ctx.tenant_id,
+            conversation_id=conversation.id,
+            role="assistant",
+            body=reply,
+            meta=meta,
+            created_at=assistant_stamped,
         )
+        db.add(assistant_row)
         write_audit(
             db,
             ctx,
@@ -479,6 +501,7 @@ def run_operator_turn(
             "pending_credential_form": credential_form,
             "pending_download": pending_download,
             "suggested_actions": suggested_actions,
+            "messages": _exchange_messages(user_row, assistant_row),
         }
     except Exception as exc:
         emit_event(
@@ -535,6 +558,7 @@ def persist_operator_exchange(
     input_modality: str = "text",
     assistant_meta: dict[str, Any] | None = None,
     commit: bool = True,
+    stamp_out: dict[str, Any] | None = None,
 ) -> str:
     """Save user+assistant turn for DIY / Nous fast-paths (same transcript as full agent)."""
     from app.services.tenant_vault import looks_like_credential_paste
@@ -543,25 +567,39 @@ def persist_operator_exchange(
     display = (message or "").strip()
     if looks_like_credential_paste(display):
         display = "[логин/пароль — через безопасную форму, не в ленте чата]"
-    db.add(
-        Message(
-            tenant_id=ctx.tenant_id,
-            conversation_id=conversation.id,
-            role="user",
-            body=display or message or "",
-            meta={"modality": input_modality},
-        )
+    stamped = datetime.now(timezone.utc)
+    user_row = Message(
+        id=uuid.uuid4(),
+        tenant_id=ctx.tenant_id,
+        conversation_id=conversation.id,
+        role="user",
+        body=display or message or "",
+        meta={"modality": input_modality},
+        created_at=stamped,
     )
+    db.add(user_row)
     meta = dict(assistant_meta or {})
-    db.add(
-        Message(
-            tenant_id=ctx.tenant_id,
-            conversation_id=conversation.id,
-            role="assistant",
-            body=reply or "",
-            meta=meta,
-        )
+    assistant_row = Message(
+        id=uuid.uuid4(),
+        tenant_id=ctx.tenant_id,
+        conversation_id=conversation.id,
+        role="assistant",
+        body=reply or "",
+        meta=meta,
+        created_at=stamped,
     )
+    db.add(assistant_row)
+    if stamp_out is not None:
+        stamp_out["user"] = {
+            "id": str(user_row.id),
+            "role": "user",
+            "created_at": stamped.isoformat(),
+        }
+        stamp_out["assistant"] = {
+            "id": str(assistant_row.id),
+            "role": "assistant",
+            "created_at": stamped.isoformat(),
+        }
     write_audit(
         db,
         ctx,

@@ -2361,6 +2361,49 @@ p {
   max-width: min(640px, 92%);
 }
 
+.hx-chip-primary {
+  background: #0d0d0d !important;
+  color: #fff !important;
+  border-color: #0d0d0d !important;
+}
+
+.hx-msg-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--hx-muted, #8b97a8);
+}
+
+.hx-row-user .hx-msg-meta {
+  justify-content: flex-end;
+}
+
+.hx-msg-link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .hx-msg-meta {
+    font-size: 10px;
+    gap: 6px;
+  }
+}
+
 .btn-ghost {
   border: 1px solid var(--line);
   background: #fff;
