@@ -59,7 +59,37 @@ def parse_dt(value: str, tz_name: Optional[str] = None) -> datetime:
     return dt.astimezone(zone)
 
 
+def _scoped_mailru() -> tuple[str, str, str, str] | None:
+    """None when no request is bound (legacy env path). Empty strings when bound but unusable."""
+    try:
+        from tenant_scope import allow_env_fallback, request_bound, request_credentials
+    except Exception:
+        return None
+    if not request_bound():
+        return None
+    creds = request_credentials()
+    user = str(creds.get("username") or creds.get("login") or "").strip()
+    password = str(creds.get("password") or "").strip()
+    cal_url = str(creds.get("calendar_url") or "").strip()
+    url = str(creds.get("url") or "").strip() or MAILRU_CALDAV_URL
+    if user and password and cal_url:
+        return url, user, password, cal_url
+    if allow_env_fallback() and credentials_configured():
+        return MAILRU_CALDAV_URL, MAILRU_CALDAV_USERNAME, MAILRU_CALDAV_PASSWORD, MAILRU_CALENDAR_URL
+    return "", "", "", ""
+
+
 def get_calendar():
+    scoped = _scoped_mailru()
+    if scoped is not None:
+        url, user, password, cal_url = scoped
+        if not (user and password and cal_url):
+            raise HTTPException(
+                status_code=403,
+                detail="tenant calendar credentials are not configured",
+            )
+        client = caldav.DAVClient(url=url, username=user, password=password)
+        return caldav.Calendar(client=client, url=cal_url)
     if not credentials_configured():
         raise HTTPException(
             status_code=500,
@@ -79,7 +109,11 @@ def find_conflicts(start_dt: datetime, end_dt: datetime) -> List[Any]:
 
 
 def slot_is_free(start_dt: datetime, end_dt: datetime) -> bool:
-    if not credentials_configured():
+    scoped = _scoped_mailru()
+    if scoped is not None and not all(scoped[1:]):
+        # Bound request without this tenant's creds must not read the server calendar.
+        return True
+    if scoped is None and not credentials_configured():
         # Tools-first: without CalDAV treat requested slot as free.
         return True
     return len(find_conflicts(start_dt, end_dt)) == 0

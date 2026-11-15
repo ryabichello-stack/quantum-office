@@ -1131,6 +1131,83 @@ def health():
     return {"status": "ok"}
 
 
+class MailProbeRequest(BaseModel):
+    tenant_id: Optional[str] = None
+    provider: str = "yandex"
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+
+_MAIL_PROBE_OK: dict[str, str] = {}
+_SMTP_BY_PROVIDER = {
+    "yandex": ("smtp.yandex.ru", 465),
+    "mailru": ("smtp.mail.ru", 465),
+    "google": ("smtp.gmail.com", 465),
+    "outlook": ("smtp.office365.com", 587),
+}
+
+
+def _probe_tenant(body_tenant: Optional[str], header_tenant: Optional[str]) -> str:
+    body = (body_tenant or "").strip()
+    header = (header_tenant or "").strip()
+    if not body and not header:
+        raise HTTPException(status_code=403, detail={"error": "tenant_required"})
+    if body and header and body != header:
+        raise HTTPException(status_code=403, detail={"error": "tenant_mismatch"})
+    return body or header
+
+
+@app.post("/api/mail/probe")
+def mail_probe(
+    req: MailProbeRequest,
+    x_webhook_token: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
+):
+    """SMTP login with this tenant's password. Never log the password."""
+    if WEBHOOK_TOKEN and (x_webhook_token or "").strip() != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    tenant_id = _probe_tenant(req.tenant_id, x_tenant_id)
+    username = (req.username or "").strip()
+    password = (req.password or "").strip()
+    if not username or not password:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "tenant_credentials_required", "message_ru": "В запросе нет логина или пароля компании."},
+        )
+    if os.getenv("MAIL_PROBE_MEMORY", "").strip().lower() in {"1", "true", "yes"}:
+        ok = _MAIL_PROBE_OK.get(username) == password
+        if not ok:
+            return {
+                "ok": False,
+                "status": "failed",
+                "tenant_id": tenant_id,
+                "error": "auth_failed",
+                "message_ru": "Почта не пустила: проверьте логин и пароль приложения.",
+            }
+        return {"ok": True, "status": "connected", "tenant_id": tenant_id, "provider": req.provider}
+    host, port = _SMTP_BY_PROVIDER.get((req.provider or "yandex").strip().lower(), ("smtp.yandex.ru", 465))
+    try:
+        if port == 587:
+            server = smtplib.SMTP(host, port, timeout=SMTP_TIMEOUT_SECONDS)
+            server.starttls()
+        else:
+            server = smtplib.SMTP_SSL(host, port, timeout=SMTP_TIMEOUT_SECONDS)
+        try:
+            server.login(username, password)
+        finally:
+            server.quit()
+    except Exception:
+        logger.info("mail probe failed tenant=%s provider=%s", tenant_id, req.provider)
+        return {
+            "ok": False,
+            "status": "failed",
+            "tenant_id": tenant_id,
+            "error": "auth_failed",
+            "message_ru": "Почта не пустила: проверьте логин и пароль приложения.",
+        }
+    return {"ok": True, "status": "connected", "tenant_id": tenant_id, "provider": req.provider}
+
+
 @app.get("/oauth/yandex/status")
 def yandex_oauth_status(x_webhook_token: str = Header(None)):
     if x_webhook_token != WEBHOOK_TOKEN:

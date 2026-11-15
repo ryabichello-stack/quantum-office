@@ -8,6 +8,9 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://delno:delno@localhost:5433/delno"
     default_tenant_slug: str = "delno-demo"
+    # Slug allowed to use server env calendar/cloud tokens. Empty = nobody.
+    # A tenant may also set settings.service_tenant = true. Never a secret.
+    service_tenant_slug: str = ""
     api_key: str | None = None
 
     jwt_secret: str = "change-me-in-production"

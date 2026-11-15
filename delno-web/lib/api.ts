@@ -789,3 +789,61 @@ export function apiMaxHealth(token: string, accountId: string) {
     account?: ChannelAccountItem;
   }>(`/v1/tenant/channels/max/${accountId}/health`, token);
 }
+
+export type ConnectProvider = {
+  id: string;
+  title: string;
+  auth: string;
+  example_login: string;
+  hint: string;
+  password_label: string;
+  login_optional: boolean;
+  needs_calendar_url: boolean;
+  foreign: boolean;
+};
+
+export type ConnectionStatus = {
+  provider?: string | null;
+  status: "connected" | "failed" | "disconnected" | string;
+  checked_at?: string | null;
+  error?: string | null;
+  message_ru?: string;
+  probe?: string | null;
+};
+
+export function apiConnectCatalog(token: string, kind: "calendar" | "mail" | "conference") {
+  return apiFetch<{ ok: boolean; kind: string; providers: ConnectProvider[]; connection: ConnectionStatus }>(
+    `/v1/tenant/connectors/connect/${kind}`,
+    token,
+  );
+}
+
+export function apiConnectSubmit(
+  token: string,
+  kind: "calendar" | "mail" | "conference",
+  body: {
+    provider: string;
+    login?: string;
+    password?: string;
+    calendar_url?: string;
+    foreign_consent?: boolean;
+  },
+) {
+  return apiFetch<{ ok: boolean; error?: string; message_ru?: string; connection?: ConnectionStatus }>(
+    `/v1/tenant/connectors/connect/${kind}`,
+    token,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export function apiGoogleCalendarStart(token: string) {
+  return apiFetch<{ ok: boolean; authorize_url?: string; error?: string; message_ru?: string }>(
+    "/v1/tenant/connectors/connect/calendar/oauth/google/start",
+    token,
+    { method: "POST" },
+  );
+}

@@ -153,17 +153,13 @@ def connector_config_for(db: Session, ctx: TenantContext, kind: str) -> dict[str
 def list_tenant_connector_readiness(db: Session, ctx: TenantContext) -> list[dict[str, Any]]:
     """Operational readiness for this tenant, beyond a reachable shared service.
 
-    Honesty rule (2026-11-15): an opt-in flag never counts as «подключено».
-    Calendar/mail need the owner's own account verified by a real check
-    (office_accounts) AND an upstream that acts with tenant credentials.
-    Conference needs a really configured provider. Files need a cloud vault token.
-    Stub/dry_run is never usable.
+    Mail, calendar and conference require a successful tenant-scoped provider probe.
+    An enabled flag or a reachable shared service is insufficient.
     """
+    from app.services.connector_connect import HONEST_KINDS, link_status
     from app.services.files_cloud import cloud_status
-    from app.services.office_accounts import verified_accounts
 
     tenant_row = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
-    verified = verified_accounts(tenant_row.settings if isinstance(tenant_row.settings, dict) else {})
     items = []
     for item in list_tenant_connectors(db, ctx).get("items") or []:
         kind = item["kind"]
@@ -177,35 +173,37 @@ def list_tenant_connector_readiness(db: Session, ctx: TenantContext) -> list[dic
         enabled = bool(item.get("enabled"))
         service_ready = bool(enabled and probe and probe.ok and probe.configured)
 
+        if kind in HONEST_KINDS:
+            link = link_status(db, ctx, kind)
+            connected = link.get("status") == "connected"
+            reason = None if connected else (link.get("error") or "not_connected")
+            items.append(
+                {
+                    "kind": kind,
+                    "enabled": enabled,
+                    "service_reachable": bool(probe and probe.ok),
+                    "service_ready": connected,
+                    "tenant_authorized": connected,
+                    "usable": connected,
+                    "creds_policy": "vault_probe",
+                    "providers": [
+                        {"name": p.get("provider") or p.get("source"), "configured": bool(p.get("configured"))}
+                        for p in health.get("providers") or []
+                    ],
+                    "reason": reason,
+                    "connection_status": link.get("status"),
+                    "connection_message": link.get("message_ru"),
+                    "provider": link.get("provider"),
+                }
+            )
+            continue
+
         if kind == "files":
             try:
                 tenant_authorized = int(cloud_status(db, ctx).get("ready_count") or 0) > 0
             except Exception:
                 tenant_authorized = False
-        elif kind in ("calendar", "mail"):
-            # Honesty rule: an opt-in flag is NOT a connected calendar/mail. Only the owner's
-            # own account that passed a real check (CalDAV read / SMTP login) counts, and the
-            # shared upstream must be able to act with tenant credentials (health.tenant_creds).
-            # Until delno-calendar / delno-mail support that, these stay «не подключено».
-            tenant_authorized = kind in verified
-            service_ready = bool(service_ready and health.get("tenant_creds"))
-        elif kind == "conference":
-            # Links must come from a provider that is really configured (e.g. Jitsi).
-            tenant_authorized = enabled
-            service_ready = service_ready and any(
-                p.get("configured") for p in health.get("providers") or []
-            )
         else:
-            if kind == "mail":
-                service_ready = service_ready and bool(health.get("smtp_configured"))
-            elif kind == "calendar":
-                service_ready = service_ready and not bool(health.get("stub_mode"))
-            elif kind == "conference":
-                default = health.get("default_provider")
-                service_ready = service_ready and any(
-                    p.get("provider") == default and p.get("configured")
-                    for p in health.get("providers") or []
-                )
             tenant_authorized = bool((probe.data or {}).get("tenant_account_verified")) if probe else False
 
         usable = bool(service_ready and tenant_authorized)
@@ -217,10 +215,6 @@ def list_tenant_connector_readiness(db: Session, ctx: TenantContext) -> list[dic
                 reason = probe.error
             elif kind == "files":
                 reason = "cloud_vault_required"
-            elif kind in ("calendar", "mail") and kind not in verified:
-                reason = "owner_account_required"
-            elif kind in ("calendar", "mail"):
-                reason = "account_verified_upstream_pending"
             else:
                 reason = "account_or_provider_not_configured"
         items.append({
@@ -236,6 +230,5 @@ def list_tenant_connector_readiness(db: Session, ctx: TenantContext) -> list[dic
                 for p in health.get("providers") or []
             ],
             "reason": reason,
-            "account_verified": verified.get(kind),
         })
     return items

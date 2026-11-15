@@ -6,6 +6,25 @@
 
 **Где лежит:** git `docs/AGENT_CHANGE_REGISTER.md` ↔ прод `/opt/delno/docs/AGENT_CHANGE_REGISTER.md` (держать в синхроне).
 
+## 2026-11-15 — Codex: сведение онбординга и подключений по тенанту
+
+- Ветка: `codex/onboarding-integration-20261115`; объединены подготовленные исправления онбординга с PR #99, без выкладки на сервер.
+- Подключение почты, календаря и конференций получает статус `connected` только после проверки учётных данных конкретного тенанта. Включение сервиса или успешная проверка общего сервера не считаются подключением.
+- Сохранены исправления этапов Hermes, SIP-формы Mango, честного прогресса и повторного открытия формы при ошибке. Форму календаря Mail.ru уточнили для неспециалиста.
+- Проверка: API `418 passed`; брокеры calendar `4 passed`, files `5 passed`; `delno-web` production build успешен. Живые внешние аккаунты и полный пользовательский путь на сервере не проверены.
+- Следующий шаг: review/merge, затем серверный smoke с двумя разными тенантами и проверкой отсутствия доступа к чужим данным. Отдельно закрыть аутентификацию `X-Delno-Run-Id` в MCP, прежде чем расширять пилот.
+
+## 2026-11-15 ~17:45 МСК — Cursor: изоляция календаря и облаков по тенанту
+
+- Автор: Cursor, ветка `cursor/tenant-calendar-files-isolation-a44a`. Не деплоить.
+- Цель: delno-calendar и delno-files не читают общий env-токен для чужой компании. Креды — из сейфа тенанта (как `files_cloud.py`).
+- Файлы: `delno-office/calendar/*`, `delno-office/files/sources.py`, `delno-office/files/main.py`, `delno-api/app/services/calendar_accounts.py`, `tenant_broker_access.py`, `tenant_vault.py`, коннекторы calendar/files, `office.py`, `appointments.py`.
+- Изменение: запрос без tenant_id или с несовпадающим `X-Tenant-Id` → 403. Env только при `allow_env_fallback`, который API ставит служебному тенанту (`settings.service_tenant` или `DELNO_SERVICE_TENANT_SLUG`). Секреты в логи и в ответ не копируются.
+- Проверка: pytest брокеров calendar/files isolation + `tests/test_tenant_calendar_files_isolation.py` + `tests/test_connector_connect.py` + vault/connectors/onboarding paths.
+- Дополнение: флоу подключения календаря (Google OAuth / CalDAV Яндекс и Mail.ru / Outlook / внутренний DELNO), почты и видеовстреч. Статус connected только после пробы чтения, не по флагу enabled. Формы с примером ivan@example.ru. Секреты в ответ и в лог пробы не пишутся.
+- Статус: в git, без выкладки на `/opt/delno`.
+- Ограничение: GitHub-токен файлового брокера и локальный allowlist всё ещё серверные. Живой SMTP/Graph в этой среде не вызывался — проба покрыта подменой и memory-режимом брокера.
+
 
 ## 2026-11-13 ~04:05 МСК — Cursor: fix SIP probe host.docker.internal
 
