@@ -104,7 +104,12 @@ class CalendarConnector:
                     "tenant_slug": tenant_slug,
                 },
             )
-        payload: dict[str, Any] = {"start": start, "duration_min": duration_min, "source": source}
+        payload: dict[str, Any] = {
+            "start": start,
+            "duration_min": duration_min,
+            "source": source,
+            "tenant_slug": tenant_slug,
+        }
         code, resp, err = post_json(
             base,
             "/api/calendar/suggest",
@@ -135,4 +140,97 @@ class CalendarConnector:
                 "count": len(suggestions),
                 "stub": bool(upstream.get("stub")),
             },
+        )
+
+    def check(
+        self,
+        *,
+        tenant_slug: str,
+        config: dict[str, Any],
+        start: str,
+        timezone: str | None = None,
+        source: str | None = None,
+    ) -> ConnectorResult:
+        base = self._base(config)
+        source = (source or str(config.get("default_source") or "mailru")).strip() or "mailru"
+        payload: dict[str, Any] = {
+            "start": start,
+            "source": source,
+            "tenant_slug": tenant_slug,
+        }
+        if timezone:
+            payload["timezone"] = timezone
+        if not base:
+            return ConnectorResult(
+                ok=True,
+                configured=False,
+                kind=self.kind,
+                message="Stub check — wire CALENDAR_BASE_URL for live providers",
+                data={"free": True, "stub": True, "start": start, "source": source},
+            )
+        code, resp, err = post_json(base, "/api/calendar/check", json=payload, token=self._token(config))
+        if err:
+            return ConnectorResult(ok=False, configured=True, kind=self.kind, error="check_failed", message=err)
+        upstream = resp if isinstance(resp, dict) else {}
+        return ConnectorResult(
+            ok=True,
+            configured=True,
+            kind=self.kind,
+            message="Calendar check",
+            data={"upstream": upstream, "status_code": code, "stub": bool(upstream.get("stub")), **upstream},
+        )
+
+    def create_event(
+        self,
+        *,
+        tenant_slug: str,
+        config: dict[str, Any],
+        start: str,
+        summary: str,
+        description: str | None = None,
+        attendee_email: str | None = None,
+        timezone: str | None = None,
+        end: str | None = None,
+        source: str | None = None,
+        create_telemost: bool | None = None,
+        invitees: list[Any] | None = None,
+    ) -> ConnectorResult:
+        base = self._base(config)
+        source = (source or str(config.get("default_source") or "mailru")).strip() or "mailru"
+        payload: dict[str, Any] = {
+            "start": start,
+            "summary": summary,
+            "source": source,
+            "tenant_slug": tenant_slug,
+        }
+        if description:
+            payload["description"] = description
+        if attendee_email:
+            payload["attendee_email"] = attendee_email
+        if timezone:
+            payload["timezone"] = timezone
+        if end:
+            payload["end"] = end
+        if create_telemost is not None:
+            payload["create_telemost"] = bool(create_telemost)
+        if invitees:
+            payload["invitees"] = invitees
+        if not base:
+            return ConnectorResult(
+                ok=True,
+                configured=False,
+                kind=self.kind,
+                message="Stub booking — wire CALENDAR_BASE_URL for live create",
+                data={"created": True, "stub": True, **payload},
+            )
+        code, resp, err = post_json(base, "/api/calendar/create", json=payload, token=self._token(config))
+        if err:
+            return ConnectorResult(ok=False, configured=True, kind=self.kind, error="create_failed", message=err)
+        upstream = resp if isinstance(resp, dict) else {}
+        return ConnectorResult(
+            ok=bool(upstream.get("ok", True)),
+            configured=True,
+            kind=self.kind,
+            message=str(upstream.get("message") or "Calendar create"),
+            data={"upstream": upstream, "status_code": code, "stub": bool(upstream.get("stub")), **upstream},
         )

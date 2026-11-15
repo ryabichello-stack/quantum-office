@@ -197,6 +197,17 @@ def start_inbound_call(
         if existing_rows:
             if len(existing_rows) != 1 or existing_rows[0].tenant_id != tenant.id:
                 return {"ok": False, "error": "external_id_conflict"}
+            from app.core.tenant import TenantContext
+            from app.services.telephony_script import get_telephony_config
+
+            tel_cfg = get_telephony_config(
+                db,
+                TenantContext(
+                    tenant_id=tenant.id,
+                    tenant_slug=tenant.slug,
+                    role=PRINCIPAL_VOICE_PUBLIC,
+                ),
+            )
             return {
                 "ok": True,
                 "resumed": True,
@@ -204,6 +215,12 @@ def start_inbound_call(
                 "tenant_slug": tenant.slug,
                 "session": session_to_dict(existing_rows[0]),
                 "voice_agent_slug": slug,
+                "secretary": {
+                    "configured": bool(tel_cfg.get("configured")),
+                    "greeting": (tel_cfg.get("greeting") or "")[:500],
+                    "script": (tel_cfg.get("script") or "")[:8000],
+                    "tools": list(tel_cfg.get("tools") or []),
+                },
             }
 
     conv = Conversation(
@@ -251,6 +268,27 @@ def start_inbound_call(
             "external_id": external_id,
         },
     )
+    from app.core.tenant import TenantContext
+    from app.services.telephony_script import get_telephony_config
+
+    tel_cfg = get_telephony_config(
+        db,
+        TenantContext(tenant_id=tenant.id, tenant_slug=tenant.slug, role=PRINCIPAL_VOICE_PUBLIC),
+    )
+    secretary = {
+        "configured": bool(tel_cfg.get("configured")),
+        "greeting": (tel_cfg.get("greeting") or "")[:500],
+        "script": (tel_cfg.get("script") or "")[:8000],
+        "tools": list(tel_cfg.get("tools") or []),
+    }
+    meta = dict(session.meta or {})
+    meta["secretary"] = {
+        "configured": secretary["configured"],
+        "greeting": secretary["greeting"],
+        "tools": secretary["tools"],
+        "has_script": bool(secretary["script"]),
+    }
+    session.meta = meta
     db.commit()
     return {
         "ok": True,
@@ -261,6 +299,7 @@ def start_inbound_call(
         "principal_id": PRINCIPAL_VOICE_PUBLIC,
         "routing_source": "sip_trunk",
         "voice_agent_slug": slug,
+        "secretary": secretary,
     }
 
 

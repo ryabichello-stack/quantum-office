@@ -12,7 +12,7 @@ from app.core.auth import get_tenant_context_auth
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.tenant import TenantContext
-from app.services import hermes_ops, telephony
+from app.services import hermes_ops, telephony, voice_tools
 
 router = APIRouter(prefix="/telephony", tags=["telephony"])
 
@@ -115,6 +115,34 @@ def telephony_call_turn(
     if not out.get("ok"):
         raise HTTPException(status_code=400, detail=out.get("error"))
     return out
+
+
+class VoiceToolRequest(BaseModel):
+    call_id: str = Field(min_length=1, max_length=120)
+    action: str = Field(min_length=1, max_length=64)
+    params: dict | str = Field(default_factory=dict)
+
+
+@router.post("/calls/tool")
+def telephony_voice_tool(
+    body: VoiceToolRequest,
+    db: Session = Depends(get_db),
+    _: None = Depends(_require_telephony_token),
+) -> dict:
+    """In-call Ava tool gateway (ai-agent delno_office → tenant tools)."""
+    import json
+
+    params = body.params
+    if isinstance(params, str):
+        try:
+            params = json.loads(params)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="invalid_params")
+    if not isinstance(params, dict):
+        raise HTTPException(status_code=400, detail="invalid_params")
+    return voice_tools.dispatch(
+        db, call_id=body.call_id, action=body.action, params=params
+    )
 
 
 @router.post("/jobs/claim")

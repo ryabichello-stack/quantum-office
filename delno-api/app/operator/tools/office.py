@@ -13,6 +13,90 @@ from app.services.audit import write_audit
 from app.services.connectors import connector_config_for
 
 
+class CheckCalendarTool:
+    name = "check_calendar"
+    description = "Check whether a calendar slot is free (in-call Ava / Hermes)."
+    critical_write = False
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "start": {"type": "string"},
+            "timezone": {"type": "string"},
+            "source": {"type": "string"},
+        },
+        "required": ["start"],
+    }
+
+    def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult:
+        start = str(params.get("start") or "").strip()
+        if not start:
+            return ToolResult(ok=False, message="start is required")
+        connector = get_connector("calendar")
+        assert connector is not None
+        config = connector_config_for(db, ctx, "calendar")
+        result = connector.check(  # type: ignore[attr-defined]
+            tenant_slug=ctx.tenant_slug,
+            config=config,
+            start=start,
+            timezone=str(params.get("timezone") or "") or None,
+            source=str(params.get("source") or "") or None,
+        )
+        return ToolResult(ok=result.ok, data=result.as_dict(), message=result.message or "ok")
+
+
+class CreateCalendarEventTool:
+    name = "create_calendar_event"
+    description = "Create a calendar event (+ optional Telemost) after caller confirmation."
+    critical_write = True
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "start": {"type": "string"},
+            "summary": {"type": "string"},
+            "title": {"type": "string"},
+            "description": {"type": "string"},
+            "attendee_email": {"type": "string"},
+            "email": {"type": "string"},
+            "timezone": {"type": "string"},
+            "end": {"type": "string"},
+            "source": {"type": "string"},
+            "create_telemost": {"type": "boolean"},
+            "invitees": {"type": "array"},
+        },
+        "required": ["start"],
+    }
+
+    def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult:
+        start = str(params.get("start") or "").strip()
+        summary = str(params.get("summary") or params.get("title") or "").strip() or "Встреча"
+        if not start:
+            return ToolResult(ok=False, message="start is required")
+        connector = get_connector("calendar")
+        assert connector is not None
+        config = connector_config_for(db, ctx, "calendar")
+        result = connector.create_event(  # type: ignore[attr-defined]
+            tenant_slug=ctx.tenant_slug,
+            config=config,
+            start=start,
+            summary=summary,
+            description=str(params.get("description") or "") or None,
+            attendee_email=str(params.get("attendee_email") or params.get("email") or "") or None,
+            timezone=str(params.get("timezone") or "") or None,
+            end=str(params.get("end") or "") or None,
+            source=str(params.get("source") or "") or None,
+            create_telemost=params.get("create_telemost"),
+            invitees=list(params.get("invitees") or []) or None,
+        )
+        write_audit(
+            db,
+            ctx,
+            action="tool.create_calendar_event",
+            resource="connector:calendar",
+            new_value={"start": start, "summary": summary, "configured": result.configured},
+        )
+        return ToolResult(ok=result.ok, data=result.as_dict(), message=result.message or "ok")
+
+
 class SuggestCalendarSlotsTool:
     name = "suggest_calendar_slots"
     description = (

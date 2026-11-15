@@ -11,6 +11,7 @@
 ## [Unreleased]
 
 ### Fixed
+- **Ava without script/tools**: restored `/v1/telephony/calls/tool` + `voice_tools` (was 404 — Ava could not list tools or read KB). Inbound start now returns `secretary` (script/greeting/tools). Calendar check/create tools wired for in-call use
 - **Dual Mango SIP registration** shredded Ava audio (two Stasis per call). `apply_mango_sip_server` now disables legacy shared `mango-registration` whenever any `delno-tenant-*.conf` exists (on apply + service start). Multi-tenant canon: one Mango account → one `delno-<slug>-reg` only
 - **Inbound Ava route**: API again returns `voice_agent_slug` + resolves by `trunk_id` (Codex multi-tenant path). Without it Asterisk AGI set `DELNO_ROUTE_OK=0` → Busy («линия не настроена») even when SIP was Registered. Bridge passes trunk/DID candidates; `phones.provision` writes `voice_agent_slug` (`default` for QL, `delno_<uuid>` otherwise) + QL `trunk_aliases: [mango-trunk]`
 - Hermes telephony: after `phones.provision`, do **not** reopen SIP form when THIS tenant is already Registered — go to test call / Ava script instead of the DID↔SIP loop

@@ -100,6 +100,13 @@
 - Clarify email: в legacy только промпт секретаря, отдельного tool `ask_email` не было — оставляем агенту, не phrase-router.
 
 
+## 2026-11-15 ~03:35 МСК — Cursor: Ava без скрипта/тулов (calls/tool 404)
+
+- Симптом: линия отвечает, но секретарь «не знает кто она» и без инструментария.
+- RCA: `telephony_script_ready=false` (скрипт не сохранён в tenant.settings); live Ava бьёт в `POST /v1/telephony/calls/tool` → **404** (voice_tools вырезан при деплое).
+- Сделано: `voice_tools.py` + `/calls/tool`; inbound отдаёт `secretary`; Check/Create calendar tools; на проде сохранить скрипт QL из propose.
+- Канон N клиентов: каждый tenant — свой script/tools в settings; tool gateway резолвит call_id → tenant.
+
 ## 2026-11-15 ~03:30 МСК — Cursor: dual SIP = shred voice; multi-tenant invariant
 
 - Владелец: всё должно работать на **многих** клиентах; с одним уже ломалось.
