@@ -109,8 +109,65 @@ class TelephonyToolsSetTool:
         tools = params.get("tools") or []
         if isinstance(tools, str):
             tools = [t.strip() for t in tools.split(",") if t.strip()]
+        if not tools:
+            tools = list(telephony_script.LINE_TOOLS_BEFORE_TEST)
         out = telephony_script.set_telephony_tools(db, ctx, tools=list(tools))
         return ToolResult(ok=bool(out.get("ok")), data=out, message=out.get("message_ru") or out.get("error") or "")
+
+
+class TelephonyVoiceSetTool:
+    name = "telephony.voice_set"
+    description = (
+        "Set the secretary voice for THIS company. Default and required before a test call: cedar. "
+        "Say to the owner simply «голос Cedar», without model jargon."
+    )
+    critical_write = False
+    parameters_schema = {
+        "type": "object",
+        "properties": {"voice": {"type": "string", "description": "cedar"}},
+    }
+
+    def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult:
+        from app.services.ava_readiness import set_tenant_voice
+
+        voice = str(params.get("voice") or "cedar")
+        out = set_tenant_voice(db, ctx, voice)
+        return ToolResult(ok=bool(out.get("ok")), data=out, message=out.get("message_ru") or "")
+
+
+class MeetingTool:
+    """Shared with the phone line: book / move / confirm / cancel."""
+
+    def __init__(self, name: str, action: str, description: str) -> None:
+        self.name = name
+        self.action = action
+        self.description = description
+        self.critical_write = False
+        self.parameters_schema = {
+            "type": "object",
+            "properties": {
+                "start": {"type": "string"},
+                "title": {"type": "string"},
+                "email": {"type": "string"},
+                "phone": {"type": "string"},
+                "appointment_id": {"type": "string"},
+                "confirmed_by_caller": {"type": "boolean"},
+            },
+        }
+
+    def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult:
+        from app.services.appointments import handle
+
+        if self.action in {"book_meeting", "reschedule_meeting", "confirm_meeting", "cancel_meeting"} and params.get(
+            "confirmed_by_caller"
+        ) is not True:
+            return ToolResult(
+                ok=False,
+                data={"error": "caller_confirmation_required"},
+                message="Сначала спросите человека, точно ли так сделать, и дождитесь «да».",
+            )
+        out = handle(db, ctx, self.action, params, channel=str(params.get("channel") or "") or None)
+        return ToolResult(ok=bool(out.get("ok")), data=out, message=out.get("message_ru") or "")
 
 
 class FilesCloudStatusTool:
@@ -235,7 +292,27 @@ class OfficeConnectorSetTool:
         row = ready_rows.get(kind) or {}
         usable = bool(row.get("usable"))
         state = "включён" if enabled else "выключен"
-        detail = "готов (usable)" if usable else f"не готов: {row.get('reason') or 'check probe'}"
+        detail = "готово" if usable else "пока не готово — не хватает доступа"
+        from app.services.instrument_catalog import stitches_for_new
+
+        try:
+            from app.services.hermes_ops import office_setup_status
+
+            status = office_setup_status(db, ctx)
+            connected = {
+                str(x.get("id"))
+                for x in ((status.get("instruments") or {}).get("connected") or [])
+                if isinstance(x, dict)
+            }
+            stitches = stitches_for_new(connected, kind)
+        except Exception:  # noqa: BLE001
+            stitches = []
+        stitch_text = " ".join(s["text"] for s in stitches[:2])
+        message = f"«{kind}» {state}; {detail}."
+        if stitch_text:
+            message += " " + stitch_text
+        elif enabled:
+            message += " Можно подключить сейчас или позже то, чего ещё нет, и связать с этим."
         return ToolResult(
             ok=True,
             data={
@@ -244,6 +321,7 @@ class OfficeConnectorSetTool:
                 "update": updated,
                 "probe": probed,
                 "readiness": row,
+                "stitches": stitches,
             },
-            message=f"Коннектор «{kind}» {state}; {detail}.",
+            message=message,
         )

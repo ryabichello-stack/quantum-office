@@ -13,7 +13,7 @@ def _uses_max_completion_tokens(model: str | None) -> bool:
     name = (model or "").strip().lower()
     if not name:
         return False
-    return name.startswith(("gpt-5", "o1", "o3", "o4"))
+    return name.startswith(("gpt-5", "gpt-6", "o1", "o3", "o4"))
 
 
 class ModelProvider(ABC):
@@ -43,9 +43,11 @@ class OpenAIProvider(ModelProvider):
         tools: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
         tool_choice: str | dict[str, Any] | None = None,
+        api_key: str | None = None,
     ) -> dict[str, Any]:
         settings = get_settings()
-        if not settings.openai_api_key:
+        token = (api_key or settings.openai_api_key or "").strip()
+        if not token:
             return {"ok": False, "error": "openai_api_key_not_configured"}
         try:
             from app.services.openai_http import openai_client, openai_proxy_url, openai_url
@@ -74,7 +76,7 @@ class OpenAIProvider(ModelProvider):
             with openai_client(timeout=60.0 if has_vision else 30.0) as client:
                 response = client.post(
                     openai_url("/chat/completions"),
-                    headers={"Authorization": f"Bearer {settings.openai_api_key}"},
+                    headers={"Authorization": f"Bearer {token}"},
                     json=payload,
                 )
             if response.status_code == 200:
@@ -109,7 +111,9 @@ class StubProvider(ModelProvider):
         tools: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
         tool_choice: str | dict[str, Any] | None = None,
+        api_key: str | None = None,
     ) -> dict[str, Any]:
+        del api_key  # stub never calls the network
         last = messages[-1]["content"] if messages else ""
         if isinstance(last, list):
             texts = [p.get("text", "") for p in last if isinstance(p, dict) and p.get("type") == "text"]

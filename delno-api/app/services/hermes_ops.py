@@ -94,42 +94,16 @@ def company_knowledge_ready(db: Session, ctx: TenantContext, *, hermes: dict[str
     return {"ok": False, "detail": "need_company_profile", "source": None}
 
 
-SETUP_STEPS: list[dict[str, str]] = [
-    {
-        "id": "kb",
-        "title": "О компании",
-        "hint": "Расскажите о бизнесе, пришлите сайт или заполните MD-шаблон профиля",
-    },
-    {
-        "id": "phone",
-        "title": "Телефония (линия)",
-        "hint": "DID + SIP в сейфе и статус Registered (иначе Mango скажет «операторы заняты»)",
-    },
-    {
-        "id": "telephony_script",
-        "title": "Сценарий секретаря",
-        "hint": "Надиктуйте сценарий, предложите из знаний или заполните шаблон",
-    },
-    {
-        "id": "telegram",
-        "title": "Telegram",
-        "hint": "Спросите: бот (@BotFather) или QR как веб — плюсы/минусы, помогите создать бота",
-    },
-    {
-        "id": "max",
-        "title": "MAX",
-        "hint": "Спросите: бот (access token) или QR — плюсы/минусы, помогите создать бота",
-    },
-    {
-        "id": "files",
-        "title": "Облако файлов",
-        "hint": "Яндекс.Диск / Mail.ru (РФ) или Google/OneDrive с согласием — через Гермеса",
-    },
-    {"id": "calendar", "title": "Календарь", "hint": "Включите connector calendar + креды"},
-    {"id": "mail", "title": "Почта", "hint": "Включите connector mail + SMTP"},
-    {"id": "conference", "title": "ВКС", "hint": "Включите connector conference (Telemost/Meet/Jitsi)"},
-    {"id": "outreach", "title": "Рассылка", "hint": "Опционально: outreach connector"},
-]
+def _setup_steps() -> list[dict[str, str]]:
+    """Live catalog — new channels appear without editing this file's prompt text."""
+    from app.services.instrument_catalog import setup_steps
+
+    return setup_steps()
+
+
+# Importers that bound the name at import time still see the builtin list.
+# office_setup_status() always re-reads the catalog, including extras.
+SETUP_STEPS: list[dict[str, str]] = _setup_steps()
 
 
 def _settings(tenant: Tenant) -> dict[str, Any]:
@@ -309,26 +283,53 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
     except Exception:  # noqa: BLE001
         pass
 
-    required = [s for s in SETUP_STEPS if not checks[s["id"]].get("optional")]
+    steps = _setup_steps()
+    # A step added after process start must still have a check row.
+    for step in steps:
+        checks.setdefault(
+            step["id"],
+            {
+                "ok": False,
+                "detail": "not_checked",
+                "optional": bool(step.get("optional", True)),
+            },
+        )
+    required = [s for s in steps if not checks[s["id"]].get("optional")]
     done_req = sum(1 for s in required if checks[s["id"]]["ok"])
+    deferred_raw = hermes.get("deferred_instruments")
+    deferred = {str(x) for x in deferred_raw} if isinstance(deferred_raw, list) else set()
     next_steps = []
-    for step in SETUP_STEPS:
+    for step in steps:
         c = checks[step["id"]]
         if c["ok"]:
+            continue
+        if step["id"] in deferred:
             continue
         if c.get("optional") and done_req < len(required):
             continue
         next_steps.append({**step, "status": "todo", "check": c})
 
     setup_complete = done_req == len(required)
+    try:
+        from app.services.ava_readiness import line_status
+        from app.services.instrument_catalog import inventory_from_checks
+
+        ava = line_status(db, ctx)
+        instruments = inventory_from_checks(checks, deferred=deferred)
+    except Exception:  # noqa: BLE001
+        ava = {"test_call_allowed": False, "message_ru": ""}
+        instruments = {"platform": [], "connected": [], "missing": [], "stitches": []}
     return {
         "ok": True,
         "tenant_slug": ctx.tenant_slug,
         "setup_complete": setup_complete,
         "progress": {"required_done": done_req, "required_total": len(required)},
         "checks": checks,
-        "steps": SETUP_STEPS,
+        "steps": steps,
         "next_steps": next_steps[:3],
+        "deferred_instruments": sorted(deferred),
+        "instruments": instruments,
+        "ava": ava,
         "hermes": {
             "setup_started_at": hermes.get("setup_started_at"),
             "setup_completed_at": hermes.get("setup_completed_at"),
@@ -354,6 +355,9 @@ def mark_setup_progress(
     *,
     kb_ready: bool | None = None,
     note: str | None = None,
+    defer_instrument: str | None = None,
+    resume_instrument: str | None = None,
+    resume_all: bool = False,
 ) -> dict[str, Any]:
     tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
     settings = _settings(tenant)
@@ -374,6 +378,20 @@ def mark_setup_progress(
             hermes["kb_ready"] = False
             hermes["company_profile_ready"] = False
             hermes.pop("kb_source", None)
+    deferred = [str(x) for x in (hermes.get("deferred_instruments") or []) if str(x).strip()]
+    if resume_all:
+        deferred = []
+    if resume_instrument:
+        deferred = [x for x in deferred if x != resume_instrument.strip()]
+    if defer_instrument:
+        ident = defer_instrument.strip()
+        from app.services.instrument_catalog import get_instrument
+
+        if ident and get_instrument(ident) and ident not in deferred:
+            deferred.append(ident)
+    hermes["deferred_instruments"] = deferred
+    settings["hermes"] = hermes
+    tenant.settings = settings
     status = office_setup_status(db, ctx)
     # re-read after potential concurrent — apply completion on fresh checks
     if status.get("setup_complete"):

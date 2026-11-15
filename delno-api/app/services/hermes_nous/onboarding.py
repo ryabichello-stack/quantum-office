@@ -295,13 +295,13 @@ def _headline(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None)
         if setup_next and setup_next.get("title"):
             sub = setup_next.get("substep")
             if setup_next.get("id") == "phone" and sub == "need_did":
-                return "Телефония: какой номер (DID) подключаем?"
+                return "Телефония: какой номер подключаем?"
             if setup_next.get("id") == "phone" and sub == "need_sip":
-                return "Телефония: SIP Mango этого кабинета"
+                return "Телефон: данные для подключения"
             if setup_next.get("id") == "phone" and sub == "need_reg":
-                return "Телефония: дождитесь Registered"
+                return "Телефон: ждём, пока линия заработает"
             if setup_next.get("id") == "telephony_script":
-                return "Сценарий секретаря Ava"
+                return "Сценарий секретаря"
             return f"Следующий шаг сетапа: {setup_next['title']}"
         return "Подключим инструменты по шагам"
     if phase == "ready":
@@ -360,10 +360,13 @@ def _cta(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> d
             return {
                 "title": "Сценарий секретаря",
                 "text": (
-                    "Телефония по hermes_ops закрыта. Следующий шаг — сценарий Ava: "
-                    "вызови telephony.script_get, предложи черновик из KB или прими текст "
-                    "владельца, сохрани через telephony.script_save / hermes.setup_mark. "
-                    "Не открывай SIP форму и не предлагай импортировать KB."
+                    "Номер уже работает. Пробный звонок рано. "
+                    "Собери сценарий из базы: telephony.script_propose (не ограничивайся telephony.script_get), "
+                    "покажи текст простыми словами, после «да» — telephony.script_save. "
+                    "Затем telephony.voice_set voice=cedar и telephony.tools_set "
+                    "с календарём, письмом и видеовстречей. "
+                    "Пробный звонок только когда ava.test_call_allowed. "
+                    "Не открывай форму телефона заново и не предлагай импортировать KB."
                 ),
             }
         if sid == "telegram":

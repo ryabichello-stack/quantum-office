@@ -36,6 +36,11 @@ ONBOARDING_KB = META + (
     "telephony.script_propose",
     "telephony.script_save",
     "telephony.tools_set",
+    "telephony.voice_set",
+    "meeting.book",
+    "meeting.reschedule",
+    "meeting.confirm",
+    "meeting.cancel",
     # ChatGPT-class media during setup (DIY fast-path preferred; pack is fallback)
     "generate_image",
 )

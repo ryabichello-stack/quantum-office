@@ -19,12 +19,31 @@ _CONNECTOR = {
     "send_email": "mail",
     "send_welcome_email": "mail",
     "create_conference": "conference",
+    "book_meeting": "calendar",
+    "suggest_other_time": "calendar",
+    "reschedule_meeting": "calendar",
+    "confirm_meeting": "calendar",
+    "cancel_meeting": "calendar",
 }
 _WRITES = {
     "create_calendar_event",
     "send_email",
     "send_welcome_email",
     "create_conference",
+    "book_meeting",
+    "reschedule_meeting",
+    "confirm_meeting",
+    "cancel_meeting",
+}
+# Same meeting verbs as messenger tools. Allowed when the line has the pieces.
+_MEETING_NEEDS = {
+    "book_meeting": ("check_calendar", "create_calendar_event", "send_email", "create_conference"),
+    "suggest_other_time": ("check_calendar",),
+    "reschedule_meeting": ("check_calendar",),
+    "confirm_meeting": ("check_calendar",),
+    "cancel_meeting": ("check_calendar",),
+    "send_welcome_email": ("send_email",),
+    "send_email": ("send_email",),
 }
 
 
@@ -57,7 +76,10 @@ def dispatch(
         tenant_slug=tenant.slug,
         role=PRINCIPAL_VOICE_PUBLIC,
     )
-    enabled = get_telephony_config(db, ctx)["tools"]
+    enabled = list(get_telephony_config(db, ctx)["tools"])
+    for name, needs in _MEETING_NEEDS.items():
+        if name not in enabled and all(n in enabled for n in needs):
+            enabled.append(name)
     if action == "list_enabled_tools":
         readiness = {
             x["kind"]: x["usable"] for x in list_tenant_connector_readiness(db, ctx)
@@ -69,11 +91,7 @@ def dispatch(
                 {
                     "id": name,
                     "ready": (
-                        False
-                        if name == "send_welcome_email"
-                        else readiness.get(_CONNECTOR[name], False)
-                        if name in _CONNECTOR
-                        else True
+                        readiness.get(_CONNECTOR[name], False) if name in _CONNECTOR else True
                     ),
                 }
                 for name in enabled
@@ -81,15 +99,24 @@ def dispatch(
         }
     if action not in enabled or action == "hangup_call":
         return {"ok": False, "error": "tool_not_enabled"}
-    if action == "send_welcome_email":
-        return {"ok": False, "error": "welcome_materials_not_configured"}
     if action in _WRITES and params.get("confirmed_by_caller") is not True:
-        return {"ok": False, "error": "caller_confirmation_required"}
+        return {
+            "ok": False,
+            "error": "caller_confirmation_required",
+            "message_ru": "Сначала спросите, точно ли делать это, и дождитесь «да».",
+        }
     kind = _CONNECTOR.get(action)
     if kind:
         readiness = list_tenant_connector_readiness(db, ctx)
         if not any(x["kind"] == kind and x.get("usable") for x in readiness):
-            return {"ok": False, "error": "connector_not_ready", "connector": kind}
+            names = {"calendar": "календарь", "mail": "почта", "conference": "видеовстречи"}
+            label = names.get(kind, kind)
+            return {
+                "ok": False,
+                "error": "connector_not_ready",
+                "connector": kind,
+                "message_ru": f"Сначала подключите {label} — без этого это действие недоступно.",
+            }
     if action == "get_company_knowledge":
         from app.operator.tools.builtin import GetKnowledgeTool
 
@@ -123,16 +150,11 @@ def dispatch(
             create_telemost=params.get("create_telemost"),
             invitees=params.get("invitees") or [],
         )
-    elif action == "send_email":
-        from app.operator.tools.office import SendMailDraftTool
+    elif action in {"send_email", "send_welcome_email", "book_meeting", "suggest_other_time", "reschedule_meeting", "confirm_meeting", "cancel_meeting"}:
+        from app.services.appointments import handle as handle_appointment
 
-        result = SendMailDraftTool().run(
-            db,
-            ctx,
-            to=params.get("email"),
-            subject=params.get("subject"),
-            body=params.get("body"),
-        )
+        out = handle_appointment(db, ctx, action, params, channel="voice")
+        return out
     elif action == "create_conference":
         from app.operator.tools.office import CreateConferenceTool
 

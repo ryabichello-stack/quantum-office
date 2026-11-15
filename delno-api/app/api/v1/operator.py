@@ -2400,6 +2400,18 @@ def operator_chat(
                         "progress": setup_facts.get("progress")
                         or (loop.get("setup") or {}).get("progress"),
                         "checks_summary": checks_summary,
+                        "ava_test_call_allowed": bool((setup_facts.get("ava") or {}).get("test_call_allowed")),
+                        "ava_next_ru": (setup_facts.get("ava") or {}).get("message_ru"),
+                        "stitches": [
+                            s.get("text")
+                            for s in ((setup_facts.get("instruments") or {}).get("stitches") or [])
+                            if isinstance(s, dict)
+                        ],
+                        "missing_offers": [
+                            m.get("offer_ru")
+                            for m in ((setup_facts.get("instruments") or {}).get("missing") or [])
+                            if isinstance(m, dict) and not m.get("deferred")
+                        ][:6],
                     },
                 )
                 reply = (
@@ -2578,16 +2590,14 @@ def operator_confirm(
         except Exception:
             pass
         if sip_registered:
+            from app.services.ava_readiness import followup_after_registered
+
+            follow = followup_after_registered(db, ctx)
             message = (
-                f"Номер {e164 or 'DID'} привязан к кабинету.\n"
-                "SIP уже Registered — форма не нужна. "
-                "Дальше: тестовый звонок или сценарий секретаря Ava."
+                f"Номер {e164 or 'этот'} привязан к кабинету.\n"
+                + str(follow.get("message_ru") or "Дальше соберём сценарий секретаря.")
             )
-            suggested = [
-                {"title": "Тестовый звонок", "text": "Сделай тестовый входящий на наш DID"},
-                {"title": "Сценарий секретаря", "text": "Настрой сценарий секретаря Ava"},
-                {"title": "Статус линии", "text": "Проверь регистрацию SIP и здоровье телефонии"},
-            ]
+            suggested = list(follow.get("suggested_actions") or [])
         elif sip_configured:
             message = (
                 f"Номер {e164 or 'DID'} привязан к кабинету.\n"

@@ -61,6 +61,8 @@ from app.operator.tools.office_setup import (
     TelephonyScriptProposeTool,
     TelephonyScriptSaveTool,
     TelephonyToolsSetTool,
+    TelephonyVoiceSetTool,
+    MeetingTool,
 )
 from app.operator.tools.billing_tools import BillingSummaryTool
 from app.operator.tools.media import GenerateImageTool
@@ -121,6 +123,27 @@ def register_builtin_tools() -> None:
     registry.register(TelephonyScriptProposeTool())
     registry.register(TelephonyScriptSaveTool())
     registry.register(TelephonyToolsSetTool())
+    registry.register(TelephonyVoiceSetTool())
+    registry.register(
+        MeetingTool(
+            "meeting.book",
+            "book_meeting",
+            "Записать встречу: проверить время, если занято — предложить другое, если свободно — записать, ссылка на созвон и письмо.",
+        )
+    )
+    registry.register(
+        MeetingTool(
+            "meeting.reschedule",
+            "reschedule_meeting",
+            "Перенести уже записанную встречу на другое время.",
+        )
+    )
+    registry.register(
+        MeetingTool("meeting.confirm", "confirm_meeting", "Подтвердить записанную встречу.")
+    )
+    registry.register(
+        MeetingTool("meeting.cancel", "cancel_meeting", "Отменить записанную встречу.")
+    )
     registry.register(FilesCloudStatusTool())
     registry.register(FilesCloudListTool())
     registry.register(CredentialsOpenFormTool())

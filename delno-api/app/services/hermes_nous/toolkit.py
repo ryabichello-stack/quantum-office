@@ -24,6 +24,11 @@ AVA_TOOL_IDS = (
     "telephony.script_propose",
     "telephony.script_save",
     "telephony.tools_set",
+    "telephony.voice_set",
+    "meeting.book",
+    "meeting.reschedule",
+    "meeting.confirm",
+    "meeting.cancel",
 )
 
 

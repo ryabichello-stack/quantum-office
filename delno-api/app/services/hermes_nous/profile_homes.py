@@ -78,6 +78,10 @@ def ensure_worker_multiplex_root(worker_id: str, *, api_server_key: str | None =
         (root / sub).mkdir(exist_ok=True)
 
     cfg = root / "config.yaml"
+    if cfg.exists():
+        bumped = _bump_stock_model(cfg.read_text(encoding="utf-8"))
+        if bumped != cfg.read_text(encoding="utf-8"):
+            cfg.write_text(bumped, encoding="utf-8")
     if not cfg.exists():
         src = _ROOT_TEMPLATES / "config.yaml"
         if src.is_file():
@@ -99,12 +103,50 @@ def ensure_worker_multiplex_root(worker_id: str, *, api_server_key: str | None =
     return root
 
 
+_LLM_MARKER = "# delno-llm-key"
+_STOCK_MODEL = "default: gpt-4.1-mini"
+_CURRENT_MODEL = "default: gpt-6-luna"
+
+
+def _bump_stock_model(text: str) -> str:
+    """Move untouched stock configs to the prod Hermes default. Leave custom models."""
+    if _STOCK_MODEL in text and _CURRENT_MODEL not in text:
+        return text.replace(_STOCK_MODEL, _CURRENT_MODEL)
+    return text
+
+
+def _apply_llm_env(lines: list[str], *, openai_api_key: str | None, llm_key_source: str) -> list[str]:
+    """Write BYOK into this profile only. Never copy the shared platform key."""
+    cleaned: list[str] = []
+    skip_key = False
+    for ln in lines:
+        if ln.startswith("DELNO_LLM_KEY_SOURCE="):
+            continue
+        if ln.strip() == _LLM_MARKER:
+            skip_key = True
+            continue
+        if skip_key and ln.startswith("OPENAI_API_KEY="):
+            skip_key = False
+            continue
+        skip_key = False
+        cleaned.append(ln)
+    source = llm_key_source if llm_key_source in {"byok", "platform", "missing"} else "platform"
+    cleaned.append(f"DELNO_LLM_KEY_SOURCE={source}")
+    key = (openai_api_key or "").strip()
+    if source == "byok" and key:
+        cleaned.append(_LLM_MARKER)
+        cleaned.append(f"OPENAI_API_KEY={key}")
+    return cleaned
+
+
 def _seed_profile_files(
     home: Path,
     *,
     mcp_url: str | None,
     api_server_key: str | None,
     delno_mcp_key: str | None = None,
+    openai_api_key: str | None = None,
+    llm_key_source: str = "platform",
 ) -> None:
     for sub in ("memories", "skills", "cron", "sessions"):
         (home / sub).mkdir(exist_ok=True)
@@ -118,7 +160,7 @@ def _seed_profile_files(
 
     config_path = home / "config.yaml"
     if config_path.is_file():
-        text = config_path.read_text(encoding="utf-8")
+        text = _bump_stock_model(config_path.read_text(encoding="utf-8"))
         # Named profiles are served by the worker multiplex root — not standalone daemons.
         if "multiplex_profiles: false" in text:
             text = text.replace("multiplex_profiles: false", "multiplex_profiles: true")
@@ -155,6 +197,7 @@ def _seed_profile_files(
         # Per-tenant legacy MCP key for Hermes MCP client connect at boot.
         # Run tokens / X-Delno-Run-Id still preferred for tool ACL.
         lines.append(f"DELNO_MCP_KEY={mcp_key}")
+    lines = _apply_llm_env(lines, openai_api_key=openai_api_key, llm_key_source=llm_key_source)
     if lines:
         env_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
@@ -180,6 +223,8 @@ def ensure_live_profile_home(
     mcp_url: str | None = None,
     api_server_key: str | None = None,
     delno_mcp_key: str | None = None,
+    openai_api_key: str | None = None,
+    llm_key_source: str = "platform",
 ) -> Path:
     """Create/seed the directory Hermes workers mount. Idempotent."""
     safe = safe_profile_id(profile_id)
@@ -202,6 +247,8 @@ def ensure_live_profile_home(
         mcp_url=mcp_url,
         api_server_key=api_server_key,
         delno_mcp_key=delno_mcp_key,
+        openai_api_key=openai_api_key,
+        llm_key_source=llm_key_source,
     )
     marker = home / ".delno_profile_id"
     marker.write_text(profile_id + "\n", encoding="utf-8")

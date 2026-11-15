@@ -15,6 +15,11 @@ from app.models.usage_record import UsageRecord
 from app.services.usage import record_usage
 
 # Default dogfood tariff (RUB, client-facing). Owner can override in tenant.settings.billing
+# Applied on top of vendor USD for the cabinet report. Client RUB still uses
+# the tariff above so existing companies are billed exactly as before.
+# BYOK (company's own key) is metered but not charged again on the platform wallet.
+DEFAULT_LLM_MARKUP = 3.0
+
 DEFAULT_TARIFF = {
     "currency": "RUB",
     "llm_input_per_1k": 0.50,  # client price, not vendor cost
@@ -38,6 +43,8 @@ VENDOR_USD_PER_1M: dict[str, tuple[float, float]] = {
     "gpt-5-nano": (0.05, 0.40),
     "gpt-5": (1.25, 10.00),
     "gpt-4.1-mini": (0.40, 1.60),
+    # Hermes default on prod (owner, 2026-11). USD / 1M tokens.
+    "gpt-6-luna": (0.10, 0.50),
     "gpt-4.1": (2.00, 8.00),
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4o": (2.50, 10.00),
@@ -161,6 +168,14 @@ def charge(
     }
 
 
+def markup_for(tenant: Tenant) -> float:
+    blob = _billing_blob(tenant)
+    raw = blob.get("markup")
+    if isinstance(raw, (int, float)) and float(raw) > 0:
+        return float(raw)
+    return DEFAULT_LLM_MARKUP
+
+
 def record_llm_usage(
     db: Session,
     ctx: TenantContext,
@@ -169,10 +184,16 @@ def record_llm_usage(
     completion_tokens: int = 0,
     model: str | None = None,
     channel: str | None = None,
+    key_source: str | None = None,
 ) -> dict[str, Any]:
     tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
     tariff = get_tariff(tenant)
+    markup = markup_for(tenant)
+    source = (key_source or "platform").strip().lower()
     cost = estimate_llm_cost(tariff, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+    # Company's own key: count the tokens, do not debit the platform wallet.
+    if source == "byok":
+        cost = 0.0
     cost_usd = estimate_llm_vendor_usd(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
@@ -193,12 +214,57 @@ def record_llm_usage(
             "cost_usd": cost_usd,
             "cost_rub": cost,
             "currency_client": tariff.get("currency") or "RUB",
+            "key_source": source,
+            "markup": markup,
+            "vendor_usd_times_markup": round(cost_usd * markup, 6),
+            "billed": source != "byok",
         },
     )
     out["cost_usd"] = cost_usd
     out["prompt_tokens"] = int(prompt_tokens)
     out["completion_tokens"] = int(completion_tokens)
     return out
+
+
+def record_hermes_turn(
+    db: Session,
+    ctx: TenantContext,
+    *,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    model: str | None = None,
+    duration_seconds: float = 0.0,
+    key_source: str | None = None,
+) -> dict[str, Any]:
+    """Per-tenant Hermes accounting: tokens (billed) and minutes (metered)."""
+    minutes = round(max(float(duration_seconds), 0.0) / 60.0, 4)
+    token_out: dict[str, Any] | None = None
+    if int(prompt_tokens) or int(completion_tokens):
+        token_out = record_llm_usage(
+            db,
+            ctx,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            model=model,
+            channel="hermes",
+            key_source=key_source,
+        )
+    # Minutes are accounted even when the runtime did not return a token usage block.
+    # Cost stays 0 here so we do not charge twice on top of token tariff.
+    minute_out = charge(
+        db,
+        ctx,
+        metric="hermes.minutes",
+        quantity=minutes,
+        cost=0.0,
+        meta={
+            "duration_seconds": round(float(duration_seconds), 3),
+            "key_source": (key_source or "platform"),
+            "model": model,
+            "channel": "hermes",
+        },
+    )
+    return {"ok": True, "tokens": token_out, "minutes": minute_out}
 
 
 def record_web_usage(db: Session, ctx: TenantContext, *, kind: str) -> dict[str, Any]:

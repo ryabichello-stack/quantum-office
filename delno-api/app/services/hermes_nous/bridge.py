@@ -50,6 +50,19 @@ def _office_facts_block(office_context: dict[str, Any] | None) -> str:
         lines.append(
             f"next_step=«{sn.get('title')}» id={sn.get('id')} hint={sn.get('hint') or '—'}"
         )
+    ava_ru = str(office_context.get("ava_next_ru") or "").strip()
+    if ava_ru:
+        lines.append("ava: " + ava_ru)
+    if office_context.get("ava_test_call_allowed") is False and office_context.get("ava_next_ru"):
+        lines.append("Пробный звонок запрещён, пока ava.test_call_allowed не станет true.")
+    stitches = office_context.get("stitches") if isinstance(office_context.get("stitches"), list) else []
+    for text in stitches[:4]:
+        if text:
+            lines.append("стыковка: " + str(text))
+    missing = office_context.get("missing_offers") if isinstance(office_context.get("missing_offers"), list) else []
+    for text in missing[:4]:
+        if text:
+            lines.append("предложить сейчас или позже: " + str(text))
     if int(progress.get("required_done") or 0) == 0:
         lines.append(
             "Кабинет ПУСТОЙ: знания/телефония/секретарь/почта/календарь/ВКС — НЕ готовы."
@@ -126,6 +139,7 @@ def create_run(
         if not sid.startswith(f"{ctx.tenant_slug}:"):
             sid = f"{ctx.tenant_slug}:{sid}"
         session_id = sid
+    started = time.monotonic()
     run_id_hint = f"delno_{uuid4().hex[:12]}"
     tools = tool_ids if tool_ids else pack_for_mode(mode)
     issued = issue_run_token(
@@ -219,8 +233,12 @@ def create_run(
                 )
             elif sn.get("id") == "telephony_script":
                 micro += (
-                    " Use telephony.script_get → draft/save script; "
-                    "do not reopen SIP form or re-import KB."
+                    " Do NOT offer a test call yet. "
+                    "Call telephony.script_propose (from company knowledge), show the text, "
+                    "after yes telephony.script_save, then telephony.voice_set voice=cedar "
+                    "and telephony.tools_set (calendar, mail, conference, knowledge, hangup). "
+                    "telephony.script_get alone is not enough. "
+                    "Test call only when ava.test_call_allowed."
                 )
             elif sn.get("id") == "telegram":
                 micro += " Open credentials.open_form telegram_bot (BotFather token; never in chat)."
@@ -320,7 +338,9 @@ def create_run(
     except HermesBridgeError as exc:
         # Fallback: OpenAI-compat chat completions when Runs API unavailable on pin
         if exc.status in (404, 405, 501) or "unreachable" in str(exc):
-            return _fallback_chat(runtime, message=message, session_id=payload["session_id"], issued=issued)
+            fallback = _fallback_chat(runtime, message=message, session_id=payload["session_id"], issued=issued)
+            _meter_hermes_turn(db, ctx, fallback.get("hermes"), started_at=started, runtime=runtime)
+            return fallback
         raise
 
     hermes_run_id = (body or {}).get("run_id") or issued.run_id
@@ -335,7 +355,7 @@ def create_run(
             choices = final_body.get("choices") or []
             if choices:
                 output = str(((choices[0] or {}).get("message") or {}).get("content") or "")
-    return {
+    result = {
         "ok": True,
         "engine": "nous_hermes_agent",
         "mode": "runs",
@@ -350,6 +370,45 @@ def create_run(
         "hermes": final_body,
         "session_id": payload["session_id"],
     }
+    _meter_hermes_turn(db, ctx, final_body, started_at=started, runtime=runtime)
+    return result
+
+
+def _usage_triplet(body: Any) -> tuple[int, int, str | None]:
+    if not isinstance(body, dict):
+        return 0, 0, None
+    usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
+    prompt = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
+    completion = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
+    model = body.get("model") or usage.get("model")
+    return prompt, completion, str(model) if model else None
+
+
+def _meter_hermes_turn(
+    db: Session,
+    ctx: TenantContext,
+    body: Any,
+    *,
+    started_at: float,
+    runtime: dict[str, Any],
+) -> None:
+    """Token + minute meter for this tenant. Never raises, never logs secrets."""
+    try:
+        from app.services.billing import record_hermes_turn
+
+        prompt, completion, model = _usage_triplet(body)
+        record_hermes_turn(
+            db,
+            ctx,
+            prompt_tokens=prompt,
+            completion_tokens=completion,
+            model=model or "gpt-6-luna",
+            duration_seconds=max(0.0, time.monotonic() - started_at),
+            key_source=str(runtime.get("llm_key_source") or "platform"),
+        )
+        db.commit()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _poll_run_output(runtime: dict[str, Any], run_id: str, *, timeout_s: float = 75.0) -> dict[str, Any] | None:

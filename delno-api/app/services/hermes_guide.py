@@ -166,7 +166,7 @@ def _lost_user_guide(db: Session, ctx: TenantContext) -> dict[str, Any]:
 
     setup = hermes_ops.office_setup_status(db, ctx)
     sip = _sip_status(db, ctx)
-    probe = probe_registration()
+    probe = probe_registration(getattr(ctx, "tenant_slug", None))
     phones = phone_provision.list_phones(db, ctx).get("items") or []
     active = [p for p in phones if p.get("status") == "active"]
     script = get_telephony_config(db, ctx)
@@ -804,7 +804,7 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
     if any(k in lower for k in ("задание cursor", "задачу cursor", "дай задание", "почини через cursor")):
         from app.services.sip_probe import CURSOR_TASK_SIP_REJECTED, probe_registration
 
-        probe = probe_registration()
+        probe = probe_registration(getattr(ctx, "tenant_slug", None))
         return {
             "reply": (
                 "Вот задание для Cursor по SIP/телефонии. Скопируйте в агент:\n\n"
@@ -882,13 +882,21 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
         try:
             from app.services.sip_probe import probe_registration, _next_actions
 
-            probe = probe_registration()
+            probe = probe_registration(getattr(ctx, "tenant_slug", None))
+            follow = None
+            if probe.get("ok"):
+                from app.services.ava_readiness import followup_after_registered
+
+                follow = followup_after_registered(db, ctx)
             out["tool_calls"].append(
                 {
                     "tool": "sip.probe",
                     "ok": bool(probe.get("ok")),
                     "status": probe.get("status"),
-                    "suggested_actions": _next_actions(probe),
+                    "suggested_actions": _next_actions(
+                        probe,
+                        test_call_allowed=bool(follow and follow.get("test_call_allowed")),
+                    ),
                 }
             )
             if not probe.get("ok") and sip.get("configured"):
@@ -907,7 +915,12 @@ def coach_reply(db: Session, ctx: TenantContext, message: str) -> dict[str, Any]
                         "Скажите «открой форму SIP» — поправим логин/пароль."
                     )
             elif probe.get("ok"):
-                out["reply"] += "\n\nАвтопроверка: линия Registered. Следующий шаг — тестовый звонок."
+                text = (follow or {}).get("message_ru") or (
+                    "Номер подключён. Сначала сценарий, голос Cedar и действия секретаря."
+                )
+                out["reply"] += "\n\n" + text
+                if follow and follow.get("suggested_actions"):
+                    out["suggested_actions"] = follow["suggested_actions"]
         except Exception:  # noqa: BLE001
             pass
         return out

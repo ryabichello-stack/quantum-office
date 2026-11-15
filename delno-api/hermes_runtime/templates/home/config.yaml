@@ -3,7 +3,7 @@
 # Agent MUST NOT change mcp_servers URL, vault credentials, or egress.
 
 model:
-  default: gpt-4.1-mini
+  default: gpt-6-luna
 
 # DELNO MCP — business tools only. Use INTERNAL docker URL (not public api.dlno.ru;
 # that hostname is SNI-routed and must not be assumed). Prefer per-run:

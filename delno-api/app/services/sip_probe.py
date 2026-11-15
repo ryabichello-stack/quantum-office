@@ -225,12 +225,18 @@ def after_vault_sip_save(
     )
 
 
-def _next_actions(probe: dict[str, Any]) -> list[dict[str, str]]:
+def _next_actions(probe: dict[str, Any], *, test_call_allowed: bool = False) -> list[dict[str, str]]:
     if probe.get("ok"):
+        # Registered is not a test call. Script, Cedar voice and tools come first.
+        if not test_call_allowed:
+            return [
+                {"title": "Сценарий", "text": "Собери сценарий секретаря из базы знаний"},
+                {"title": "Голос Cedar", "text": "Поставь голос Cedar"},
+                {"title": "Действия", "text": "Подключи к секретарю календарь, почту и видеовстречу"},
+            ]
         return [
-            {"title": "Тестовый звонок", "text": "Сделай тестовый входящий на наш DID"},
-            {"title": "Голос", "text": "Какой голос Realtime сейчас?"},
-            {"title": "Здоровье", "text": "Проверь здоровье офиса"},
+            {"title": "Пробный звонок", "text": "Давай сделаем пробный звонок на наш номер"},
+            {"title": "Что умеет секретарь", "text": "Что секретарь умеет на звонке?"},
         ]
     return [
         {
@@ -244,7 +250,10 @@ def _next_actions(probe: dict[str, Any]) -> list[dict[str, str]]:
 
 def _status_message(status: str) -> str:
     return {
-        "registered": "Линия Mango зарегистрирована (Registered) — можно делать тестовый звонок.",
+        "registered": (
+            "Номер подключён. Сначала сценарий секретаря, голос и действия "
+            "(календарь, письмо, ссылка на созвон). Пробный звонок — после этого."
+        ),
         "rejected": "Mango отклонил регистрацию (Rejected) — логин/SIP-пароль или провижининг.",
         "unregistered": "Линия не зарегистрирована.",
         "unknown": "Статус регистрации SIP неизвестен.",

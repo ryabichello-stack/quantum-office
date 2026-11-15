@@ -40,6 +40,12 @@ class HermesSetupMarkTool:
         "properties": {
             "kb_ready": {"type": "boolean"},
             "note": {"type": "string"},
+            "defer_instrument": {
+                "type": "string",
+                "description": "Instrument id to postpone (owner said later). Does not mark it done.",
+            },
+            "resume_instrument": {"type": "string"},
+            "resume_all": {"type": "boolean"},
         },
     }
 
@@ -50,6 +56,9 @@ class HermesSetupMarkTool:
             ctx,
             kb_ready=bool(kb) if kb is not None else None,
             note=str(params.get("note") or "") or None,
+            defer_instrument=str(params.get("defer_instrument") or "") or None,
+            resume_instrument=str(params.get("resume_instrument") or "") or None,
+            resume_all=bool(params.get("resume_all")),
         )
         return ToolResult(ok=True, data=out, message=out.get("message_ru") or "ok")
 
@@ -126,13 +135,32 @@ class HermesCapabilitiesTool:
                     else "у этого кабинета НЕ подключено"
                 )
             )
+        from app.services.hermes_ops import office_setup_status
+
+        status = office_setup_status(db, ctx)
+        instruments = status.get("instruments") if isinstance(status.get("instruments"), dict) else {}
+        ava = status.get("ava") if isinstance(status.get("ava"), dict) else {}
+        missing_titles = [
+            str(x.get("title") or x.get("id"))
+            for x in (instruments.get("missing") or [])
+            if isinstance(x, dict) and not x.get("deferred")
+        ]
         return ToolResult(
             ok=True,
-            data={"connectors": connectors, "tools": tools, "missing": missing},
+            data={
+                "connectors": connectors,
+                "tools": tools,
+                "missing": missing,
+                "instruments": instruments,
+                "ava": ava,
+            },
             message=(
-                "Готовность ЭТОГО кабинета (не платформы). Требуют настройки: "
-                + (", ".join(missing) if missing else "нет")
-            ),
+                "Что есть на платформе и что уже подключено у этой компании — в instruments. "
+                "Неподключённое предложите сейчас или позже: "
+                + (", ".join(missing_titles) if missing_titles else "всё основное уже есть")
+                + ". "
+                + str(ava.get("message_ru") or "")
+            ).strip(),
         )
 
 

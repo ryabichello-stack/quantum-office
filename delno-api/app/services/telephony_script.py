@@ -58,6 +58,16 @@ _DEFAULT_TOOLS = [
     "hangup_call",
 ]
 
+# Must be on the line before Hermes may offer a test call.
+LINE_TOOLS_BEFORE_TEST = (
+    "get_company_knowledge",
+    "check_calendar",
+    "create_calendar_event",
+    "send_email",
+    "create_conference",
+    "hangup_call",
+)
+
 _TOOL_IDS = {t["id"] for t in AVAILABLE_TOOLS}
 
 
@@ -160,7 +170,10 @@ def save_telephony_script(
         "tools": chosen,
         "script_chars": len(body),
         "knowledge": kb,
-        "message_ru": "Сценарий секретаря сохранён. Можно включать tools и делать тестовый звонок.",
+        "message_ru": (
+            "Сценарий секретаря сохранён. Дальше — голос Cedar и действия: "
+            "календарь, почта, видеовстреча. Пробный звонок только после этого."
+        ),
     }
 
 
@@ -237,8 +250,10 @@ def formalize_rough_script(raw: str, *, company_name: str | None = None) -> str:
 1. Имя (подтвердить)
 2. Email (повторить вслух и подтвердить)
 3. Дата и время
-4. check_calendar → при свободном слоте create_calendar_event
-5. Финальная фраза: «Готово, встреча зафиксирована. Приглашение отправлено на почту.»
+4. Проверить календарь. Если занято — предложить другое время, не записывать.
+5. Если свободно — записать встречу, создать ссылку на видеовстречу, отправить письмо со временем и ссылкой.
+6. Финальная фраза: «Готово, встреча записана. Приглашение отправила на почту.»
+7. Если клиент звонит снова — перенести, подтвердить или отменить эту встречу.
 
 ## Tools
 
@@ -269,7 +284,7 @@ def propose_script_from_knowledge(
     )
     blank = get_template("telephony-script")
     base = (blank or {}).get("body") or ""
-    snippet = (knowledge_snippet or "").strip()
+    snippet = (knowledge_snippet or "").strip() or _knowledge_facts(db, ctx)
     draft = formalize_rough_script(
         snippet
         or (
@@ -296,6 +311,38 @@ def propose_script_from_knowledge(
             "или поправьте голосом/текстом."
         ),
     }
+
+
+def _knowledge_facts(db: Session, ctx: TenantContext) -> str:
+    """Best-effort company facts for the secretary script. Empty if KB is down."""
+    try:
+        from app.adapters.knowledge import KnowledgeAdapter
+        from app.operator.tools.builtin import GetKnowledgeTool
+
+        result = GetKnowledgeTool(KnowledgeAdapter()).run(
+            db,
+            ctx,
+            query="кто мы услуги цены как записаться контакты",
+        )
+        if not getattr(result, "ok", False):
+            return ""
+        data = getattr(result, "data", None) or {}
+        if isinstance(data, str):
+            text = data
+        elif isinstance(data, dict):
+            text = str(
+                data.get("answer")
+                or data.get("text")
+                or data.get("content")
+                or data.get("summary")
+                or ""
+            )
+        else:
+            text = ""
+        text = text.strip()
+        return text[:4000] if len(text) >= 40 else ""
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def inbound_script_for_tenant(db: Session, tenant_id) -> dict[str, Any]:

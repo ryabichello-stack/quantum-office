@@ -3,7 +3,7 @@
 # at /p/<profile_id>/v1/... on this gateway. Do not set gateway.standalone.
 
 model:
-  default: gpt-4.1-mini
+  default: gpt-6-luna
 
 # Root has no business MCP — company profiles carry delno_office.
 mcp_servers: {}

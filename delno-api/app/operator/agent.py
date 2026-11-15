@@ -20,6 +20,7 @@ from app.operator.tools.registry import (
 )
 from app.services.audit import write_audit
 from app.services.billing import record_llm_usage
+from app.services.llm_keys import chat_for_tenant
 from app.services.events import emit_event
 from app.core.config import get_settings
 from app.services.model_provider import get_model_provider
@@ -45,6 +46,7 @@ def _charge_llm_if_any(
                 completion_tokens=completion_tokens,
                 model=str(completion.get("model") or "") or None,
                 channel=channel,
+                key_source=str(completion.get("key_source") or "") or None,
             )
         except Exception:  # noqa: BLE001
             pass
@@ -79,6 +81,11 @@ CABINET_LLM_TOOLS = (
     "telephony.script_propose",
     "telephony.script_save",
     "telephony.tools_set",
+    "telephony.voice_set",
+    "meeting.book",
+    "meeting.reschedule",
+    "meeting.confirm",
+    "meeting.cancel",
     # Cloud disks
     "files.cloud_status",
     "files.cloud_list",
@@ -159,11 +166,42 @@ HERMES_AGENT_SYSTEM = (
     "• generate_image — создай картинку/мокап/обложку по текстовому промпту "
     "(НЕ отказывайся «я не умею рисовать» — сразу вызови tool);\n"
     "• billing.summary — баланс.\n"
+    "• telephony.script_propose / telephony.voice_set / telephony.tools_set — "
+    "сценарий из базы, голос Cedar, действия. Пробный звонок только после них.\n"
+    "• meeting.book / reschedule / confirm / cancel — одна и та же запись встречи "
+    "для звонка и для чата в мессенджере. Если время занято — предложи другое.\n"
+    "Список инструментов компании бери из hermes.capabilities (реестр), не из памяти. "
+    "Неподключённое — «сейчас или позже». После подключения предложи стыковку из stitches.\n"
+    "Владельцу говори простыми словами: номер, почта, календарь, видеовстреча. "
+    "Без жаргона вроде SIP, DID, vault, connector.\n"
     "Правила:\n"
     "• Секреты в чат не проси — только credentials.open_form.\n"
     "• Критичные записи система сама попросит подтвердить.\n"
     "• Ошибки tools не скрывай — говори что упало.\n"
     "• Отвечай по-русски, по делу, со ссылками если брал из сети."
+)
+
+# Customer chats (Telegram, MAX, future messengers) share the meeting tools
+# with the phone secretary. They do not get cabinet setup tools.
+CHANNEL_CONDUCT_TOOLS = (
+    "get_knowledge",
+    "check_calendar",
+    "suggest_calendar_slots",
+    "create_calendar_event",
+    "send_mail_draft",
+    "create_conference",
+    "meeting.book",
+    "meeting.reschedule",
+    "meeting.confirm",
+    "meeting.cancel",
+)
+MESSENGER_CHANNELS = frozenset({"telegram", "max", "messenger"})
+MESSENGER_SYSTEM = (
+    "Ты секретарь компании в переписке. Говори просто, по-русски, коротко. "
+    "Запись встречи — теми же действиями, что и на телефоне: "
+    "проверь время, если занято — предложи другое, если свободно и человек согласен — "
+    "meeting.book (confirmed_by_caller=true), ссылка на видео и письмо. "
+    "Повторно: перенести, подтвердить или отменить. Не проси пароли."
 )
 
 _INTENT_NARRATION_MARKERS = (
@@ -307,8 +345,10 @@ def run_operator_turn(
     Voice output (TTS) is handled by the client or a future /operator/voice route.
     Optional attachments: images (vision) and text/docs.
     """
+    from app.services.appointments import current_channel
     from app.services.operator_attachments import normalize_attachments
 
+    _channel_token = current_channel.set(channel or "web")
     try:
         normalized = normalize_attachments(attachments)
         if not normalized.get("ok"):
@@ -460,6 +500,8 @@ def run_operator_turn(
         else:
             db.flush()
         raise
+    finally:
+        current_channel.reset(_channel_token)
 
 
 def _get_or_create_conversation(
@@ -956,6 +998,11 @@ def _execute_cabinet_tool(
         "telephony.script_propose",
         "telephony.script_save",
         "telephony.tools_set",
+        "telephony.voice_set",
+        "meeting.book",
+        "meeting.reschedule",
+        "meeting.confirm",
+        "meeting.cancel",
         "files.cloud_status",
         "files.cloud_list",
     ):
@@ -1085,6 +1132,9 @@ def _try_cabinet_llm_tools(
     message: str,
     *,
     history: list[dict[str, str]] | None = None,
+    tool_names: list[str] | None = None,
+    channel: str = "hermes",
+    system_extra: str = "",
 ) -> tuple[
     str,
     list[dict[str, Any]],
@@ -1100,7 +1150,10 @@ def _try_cabinet_llm_tools(
       4) max_rounds — hard safety rail only
     """
     provider = get_model_provider()
-    if provider.name == "stub":
+    if getattr(provider, "name", "") == "stub":
+        # Messenger chats fall back to the knowledge answer. Cabinet keeps the error.
+        if tool_names is not None:
+            return None
         err = "model_provider=stub (нет OPENAI_API_KEY / MODEL_PROVIDER)"
         reply = _with_debug_failures(
             "Сейчас LLM недоступен (stub) — не могу сам выбирать tools. "
@@ -1116,7 +1169,8 @@ def _try_cabinet_llm_tools(
 
         register_builtin_tools()
 
-    tools = registry.list_openai_specs(names=list(CABINET_LLM_TOOLS))
+    names = list(tool_names) if tool_names is not None else list(CABINET_LLM_TOOLS)
+    tools = registry.list_openai_specs(names=names)
     if not tools:
         err = "cabinet_tools_empty"
         reply = _with_debug_failures(
@@ -1125,7 +1179,7 @@ def _try_cabinet_llm_tools(
             llm_error=err,
         )
         return reply, [{"tool": "llm", "ok": False, "error": err}], [], None, None
-    system = f"{HERMES_AGENT_SYSTEM} Tenant: {ctx.tenant_slug}."
+    system = f"{system_extra}\n{HERMES_AGENT_SYSTEM} Tenant: {ctx.tenant_slug}.".strip()
     if _hermes_debug_failures():
         system += " Режим отладки: при ok=false у tool назови ошибку владельцу."
     messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
@@ -1162,7 +1216,10 @@ def _try_cabinet_llm_tools(
                 pending_form,
             )
 
-        completion = provider.chat_completion(
+        completion = chat_for_tenant(
+            db,
+            ctx,
+            provider=provider,
             messages=messages,
             tools=tools,
             tool_choice="required" if force_tools else "auto",
@@ -1196,7 +1253,7 @@ def _try_cabinet_llm_tools(
             return reply, collected_tools, sources, None, pending_form
 
         tokens_used += _completion_token_total(completion)
-        _charge_llm_if_any(db, ctx, completion, channel="hermes")
+        _charge_llm_if_any(db, ctx, completion, channel=channel)
 
         tool_calls_raw = choice_msg.get("tool_calls") or []
         if not tool_calls_raw:
@@ -1498,12 +1555,17 @@ def _try_cabinet_llm_tools(
         final_max_tokens = min(24_000, remaining)
     else:
         final_max_tokens = min(4_000, remaining)
-    completion = provider.chat_completion(
-        messages=messages, tools=None, max_tokens=final_max_tokens
+    completion = chat_for_tenant(
+        db,
+        ctx,
+        provider=provider,
+        messages=messages,
+        tools=None,
+        max_tokens=final_max_tokens,
     )
     if completion.get("ok"):
         tokens_used += _completion_token_total(completion)
-        _charge_llm_if_any(db, ctx, completion, channel="hermes")
+        _charge_llm_if_any(db, ctx, completion, channel=channel)
         try:
             content = str(completion["data"]["choices"][0]["message"].get("content") or "").strip()
         except (KeyError, IndexError, TypeError):
@@ -1708,6 +1770,19 @@ def _generate_reply(
         # Hermes office chat: don't RAG-dump vault docs for ordinary dialogue
         skip_kb = True
 
+    if channel in MESSENGER_CHANNELS and not has_attachments and getattr(get_model_provider(), "name", "") != "stub":
+        messenger = _try_cabinet_llm_tools(
+            db,
+            ctx,
+            message,
+            history=history,
+            tool_names=list(CHANNEL_CONDUCT_TOOLS),
+            channel=channel,
+            system_extra=MESSENGER_SYSTEM,
+        )
+        if messenger:
+            return messenger
+
     kb_query = message
     if has_attachments and attachments.get("text_context"):
         kb_query = f"{message}\n{attachments.get('text_context')}"[:500]
@@ -1757,7 +1832,10 @@ def _generate_reply(
     if history and not widget:
         llm_messages.extend(history)
     llm_messages.append({"role": "user", "content": user_content})
-    completion = provider.chat_completion(
+    completion = chat_for_tenant(
+        db,
+        ctx,
+        provider=provider,
         messages=llm_messages,
         model=model_override,
         max_tokens=1200 if vision else (220 if widget else None),

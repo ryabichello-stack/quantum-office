@@ -81,6 +81,17 @@ def profile_id_for_tenant(slug: str, *, agent_id: str = AGENT_COMPANY_MAIN) -> s
     return f"tenant_{safe}__{agent_id}"
 
 
+def _llm_profile_kwargs(db: Session, tenant: Tenant) -> dict[str, Any]:
+    """BYOK goes into that profile only. Platform key stays in the worker env."""
+    from app.services.llm_keys import KEY_BYOK, resolve_openai_key
+
+    key, source = resolve_openai_key(db, tenant)
+    return {
+        "openai_api_key": key if source == KEY_BYOK else None,
+        "llm_key_source": source,
+    }
+
+
 def _worker_api_key(spec_or_row: dict[str, Any] | HermesWorker) -> str:
     if isinstance(spec_or_row, HermesWorker):
         env_name = spec_or_row.api_server_key_env or ""
@@ -330,12 +341,14 @@ def ensure_tenant_placement(
             )
 
     api_key = _worker_api_key(worker) if worker else ""
+    llm_kwargs = _llm_profile_kwargs(db, tenant)
     live_home = ensure_live_profile_home(
         pid,
         worker_id=worker.worker_id if worker else None,
         mcp_url=_internal_mcp_url(),
         api_server_key=api_key or None,
         delno_mcp_key=tenant_mcp_key,
+        **llm_kwargs,
     )
     live_path = str(live_home)
 
@@ -345,6 +358,7 @@ def ensure_tenant_placement(
     meta["live_profile_home"] = live_path
     meta["worker_bind"] = worker_bind_hint(pid, worker_id=worker.worker_id if worker else None)
     meta["isolation"] = "multiplex_profiles"
+    meta["llm_key_source"] = llm_kwargs["llm_key_source"]
     profile.meta = meta
     profile.actor_user_id = profile.actor_user_id or ctx.user_id
     db.add(profile)
@@ -394,6 +408,7 @@ def resolve_placement(db: Session, ctx: TenantContext) -> dict[str, Any]:
 
     tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
     tenant_mcp_key = ensure_mcp_api_key(db, tenant)
+    llm_kwargs = _llm_profile_kwargs(db, tenant)
     # Ensure multiplex home + profile-scoped keys exist before traffic.
     ensure_live_profile_home(
         profile.profile_id,
@@ -401,6 +416,7 @@ def resolve_placement(db: Session, ctx: TenantContext) -> dict[str, Any]:
         mcp_url=_internal_mcp_url(),
         api_server_key=api_key,
         delno_mcp_key=tenant_mcp_key,
+        **llm_kwargs,
     )
 
     prefix = f"/p/{profile.profile_id}"
@@ -408,6 +424,7 @@ def resolve_placement(db: Session, ctx: TenantContext) -> dict[str, Any]:
     return {
         "base_url": base,
         "api_key": api_key,
+        "llm_key_source": llm_kwargs["llm_key_source"],
         "record": {
             "profile_id": profile.profile_id,
             "agent_id": profile.agent_id,
@@ -477,12 +494,14 @@ def admin_assign_worker(
     profile.last_checked_at = datetime.now(timezone.utc)
     api_key = _worker_api_key(worker)
     tenant_mcp_key = ensure_mcp_api_key(db, tenant)
+    llm_kwargs = _llm_profile_kwargs(db, tenant)
     live = ensure_live_profile_home(
         profile.profile_id,
         worker_id=worker.worker_id,
         mcp_url=_internal_mcp_url(),
         api_server_key=api_key or None,
         delno_mcp_key=tenant_mcp_key,
+        **llm_kwargs,
     )
     profile.state_location = str(live)
     db.add(profile)
