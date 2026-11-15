@@ -18,6 +18,17 @@ from app.adapters.connectors import get_connector
 from app.core.tenant import TenantContext
 from app.models.tenant import Tenant
 from app.services.connectors import connector_config_for
+from app.services.tenant_broker_access import apply_access
+
+
+def _calendar_config(db: Session, ctx: TenantContext, source: str | None) -> tuple[dict[str, Any] | None, str | None]:
+    return apply_access(
+        db,
+        ctx,
+        dict(connector_config_for(db, ctx, "calendar")),
+        kind="calendar",
+        source=source,
+    )
 
 _OPEN = {"booked", "confirmed", "rescheduled"}
 current_channel: ContextVar[str] = ContextVar("delno_conduct_channel", default="messenger")
@@ -133,7 +144,9 @@ def _suggest(db: Session, ctx: TenantContext, params: dict[str, Any]) -> dict[st
     calendar = get_connector("calendar")
     if calendar is None:
         return {"ok": False, "error": "no_calendar", "message_ru": "Календарь на платформе недоступен."}
-    config = connector_config_for(db, ctx, "calendar")
+    config, err = _calendar_config(db, ctx, str(params.get("source") or "") or None)
+    if err or config is None:
+        return {"ok": False, "error": err or "tenant_required", "message_ru": "Календарь этой компании не подключён."}
     result = calendar.suggest_slots(  # type: ignore[attr-defined]
         tenant_slug=ctx.tenant_slug,
         config=config,
@@ -172,7 +185,9 @@ def _book(
     calendar = get_connector("calendar")
     if calendar is None:
         return {"ok": False, "error": "no_calendar", "message_ru": "Календарь на платформе недоступен."}
-    config = connector_config_for(db, ctx, "calendar")
+    config, err = _calendar_config(db, ctx, str(params.get("source") or "") or None)
+    if err or config is None:
+        return {"ok": False, "error": err or "tenant_required", "message_ru": "Календарь этой компании не подключён."}
     checked = calendar.check(  # type: ignore[attr-defined]
         tenant_slug=ctx.tenant_slug,
         config=config,
@@ -289,9 +304,12 @@ def _move(
         return {"ok": False, "error": "start_required", "message_ru": "На какое время переносим?"}
     calendar = get_connector("calendar")
     if calendar is not None:
+        config, err = _calendar_config(db, ctx, str(params.get("source") or "") or None)
+        if err or config is None:
+            return {"ok": False, "error": err or "tenant_required", "message_ru": "Календарь этой компании не подключён."}
         checked = calendar.check(  # type: ignore[attr-defined]
             tenant_slug=ctx.tenant_slug,
-            config=connector_config_for(db, ctx, "calendar"),
+            config=config,
             start=start,
             timezone=str(params.get("timezone") or "") or None,
             source=str(params.get("source") or "") or None,

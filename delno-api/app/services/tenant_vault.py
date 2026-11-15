@@ -21,8 +21,22 @@ SUPPORTED_KINDS = frozenset(
         "files_onedrive",
         "telegram_bot",
         "max_bot",
+        "calendar_yandex",
+        "calendar_mailru",
+        "calendar_google",
+        "calendar_outlook",
     }
 )
+
+CALENDAR_KINDS = frozenset(
+    {
+        "calendar_yandex",
+        "calendar_mailru",
+        "calendar_google",
+        "calendar_outlook",
+    }
+)
+FOREIGN_CALENDAR_KINDS = frozenset({"calendar_google", "calendar_outlook"})
 
 CLOUD_KINDS = frozenset(
     {
@@ -180,10 +194,66 @@ CLOUD_FORMS: dict[str, dict[str, Any]] = {
 }
 
 
+CALENDAR_FORMS: dict[str, dict[str, Any]] = {
+    "calendar_yandex": {
+        "kind": "calendar_yandex",
+        "title": "Яндекс.Календарь",
+        "hint": "Логин, пароль приложения и ссылка CalDAV. В чат не попадут.",
+        "fields": [
+            {"name": "login", "label": "Логин", "type": "text", "autocomplete": "username"},
+            {"name": "password", "label": "Пароль приложения", "type": "password", "autocomplete": "off"},
+        ],
+        "submit_label": "Подключить календарь",
+        "password_required": True,
+        "login_optional": False,
+        "require_foreign_consent": False,
+    },
+    "calendar_mailru": {
+        "kind": "calendar_mailru",
+        "title": "Календарь Mail.ru",
+        "hint": "Логин, пароль и ссылка календаря CalDAV. В чат не попадут.",
+        "fields": [
+            {"name": "login", "label": "Логин", "type": "text", "autocomplete": "username"},
+            {"name": "password", "label": "Пароль", "type": "password", "autocomplete": "off"},
+        ],
+        "submit_label": "Подключить календарь",
+        "password_required": True,
+        "login_optional": False,
+        "require_foreign_consent": False,
+    },
+    "calendar_google": {
+        "kind": "calendar_google",
+        "title": "Google Calendar",
+        "hint": "Access token Google. Данные у Google вне РФ — нужно согласие.",
+        "fields": [
+            {"name": "password", "label": "Access token", "type": "password", "autocomplete": "off"},
+        ],
+        "submit_label": "Подключить Google Calendar",
+        "password_required": True,
+        "login_optional": True,
+        "require_foreign_consent": True,
+    },
+    "calendar_outlook": {
+        "kind": "calendar_outlook",
+        "title": "Outlook Calendar",
+        "hint": "Microsoft Graph token. Данные у Microsoft вне РФ — нужно согласие.",
+        "fields": [
+            {"name": "password", "label": "Graph token", "type": "password", "autocomplete": "off"},
+        ],
+        "submit_label": "Подключить Outlook",
+        "password_required": True,
+        "login_optional": True,
+        "require_foreign_consent": True,
+    },
+}
+
+
 def credential_form_spec(kind: str = "mango_sip", *, prefill: dict[str, str] | None = None) -> dict[str, Any]:
     kind = (kind or "mango_sip").strip()
     if kind in CLOUD_FORMS:
         form = dict(CLOUD_FORMS[kind])
+    elif kind in CALENDAR_FORMS:
+        form = dict(CALENDAR_FORMS[kind])
     elif kind in CHANNEL_FORMS:
         form = dict(CHANNEL_FORMS[kind])
     elif kind == "mango_sip":
@@ -317,7 +387,7 @@ def save_secret(
         return {"ok": False, "error": "unsupported_kind"}
     login_s = (login or "").strip()
     password_s = (password or "").strip()
-    max_pw = 4096 if kind in CLOUD_KINDS or kind in CHANNEL_FORMS else 200
+    max_pw = 4096 if kind in CLOUD_KINDS or kind in CALENDAR_KINDS or kind in CHANNEL_FORMS else 200
     if not login_s and not password_s:
         return {"ok": False, "error": "empty"}
     if kind == "files_mailru" and not login_s:
@@ -326,7 +396,7 @@ def save_secret(
         return {"ok": False, "error": "password_required"}
     if password_s and len(password_s) < 4:
         return {"ok": False, "error": "password_too_short"}
-    if kind in FOREIGN_CLOUD_KINDS and not foreign_consent:
+    if kind in FOREIGN_CLOUD_KINDS | FOREIGN_CALENDAR_KINDS and not foreign_consent:
         return {"ok": False, "error": "foreign_consent_required"}
 
     tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
@@ -342,7 +412,7 @@ def save_secret(
         current["login"] = login_s[:120]
     if password_s:
         current["password"] = password_s[:max_pw]
-    if kind in FOREIGN_CLOUD_KINDS and foreign_consent:
+    if kind in FOREIGN_CLOUD_KINDS | FOREIGN_CALENDAR_KINDS and foreign_consent:
         current["foreign_consent_at"] = datetime.now(timezone.utc).isoformat()
     current["updated_at"] = datetime.now(timezone.utc).isoformat()
     blob[kind] = current
@@ -374,7 +444,7 @@ def save_secret(
         msg = "Токен Telegram сохранён. В чат не попал."
     elif kind == "max_bot":
         msg = "Токен MAX сохранён. В чат не попал."
-    elif kind in CLOUD_KINDS:
+    elif kind in CLOUD_KINDS or kind in CALENDAR_KINDS:
         msg = "Данные сохранены в сейфе тенанта. В чат не попали."
     else:
         msg = "SIP-данные сохранены в кабинете. В чат не попали."

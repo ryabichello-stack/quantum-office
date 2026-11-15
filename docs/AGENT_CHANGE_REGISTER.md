@@ -6,6 +6,16 @@
 
 **Где лежит:** git `docs/AGENT_CHANGE_REGISTER.md` ↔ прод `/opt/delno/docs/AGENT_CHANGE_REGISTER.md` (держать в синхроне).
 
+## 2026-11-15 ~17:45 МСК — Cursor: изоляция календаря и облаков по тенанту
+
+- Автор: Cursor, ветка `cursor/tenant-calendar-files-isolation-a44a`. Не деплоить.
+- Цель: delno-calendar и delno-files не читают общий env-токен для чужой компании. Креды — из сейфа тенанта (как `files_cloud.py`).
+- Файлы: `delno-office/calendar/*`, `delno-office/files/sources.py`, `delno-office/files/main.py`, `delno-api/app/services/calendar_accounts.py`, `tenant_broker_access.py`, `tenant_vault.py`, коннекторы calendar/files, `office.py`, `appointments.py`.
+- Изменение: запрос без tenant_id или с несовпадающим `X-Tenant-Id` → 403. Env только при `allow_env_fallback`, который API ставит служебному тенанту (`settings.service_tenant` или `DELNO_SERVICE_TENANT_SLUG`). Секреты в логи и в ответ не копируются.
+- Проверка: pytest брокеров calendar/files isolation + `tests/test_tenant_calendar_files_isolation.py` + vault/connectors/onboarding paths.
+- Статус: в git, без выкладки на `/opt/delno`.
+- Ограничение: почта, ВКС, GitHub-токен файлового брокера и локальный allowlist всё ещё серверные — см. следующий аудит.
+
 
 ## 2026-11-13 ~04:05 МСК — Cursor: fix SIP probe host.docker.internal
 

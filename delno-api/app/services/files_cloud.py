@@ -222,7 +222,9 @@ def probe_cloud_list(
         return {"ok": False, "error": "no_connector"}
     config = dict(connector_config_for(db, ctx, "files"))
     config["enabled"] = True
+    config["_tenant_id"] = str(ctx.tenant_id)
     config["_request_credentials"] = creds
+    config["_allow_env_fallback"] = False
     result = connector.list_entries(  # type: ignore[attr-defined]
         tenant_slug=ctx.tenant_slug,
         config=config,

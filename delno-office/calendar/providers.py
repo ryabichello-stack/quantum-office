@@ -24,6 +24,7 @@ import caldav
 import pytz
 
 import caldav_client as shared
+from tenant_scope import allow_env_fallback, request_bound, request_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,68 @@ OUTLOOK_CALENDAR_TOKEN = (
 )
 OUTLOOK_CALENDAR_ID = os.getenv("OUTLOOK_CALENDAR_ID", "").strip()  # empty = default calendar
 GRAPH_API = "https://graph.microsoft.com/v1.0"
+
+
+def _scoped_secret(request_value: str, env_value: str) -> str:
+    """Bound requests use the tenant vault value. Env only with an explicit flag."""
+    if request_bound():
+        if (request_value or "").strip():
+            return request_value.strip()
+        if allow_env_fallback():
+            return (env_value or "").strip()
+        return ""
+    return (env_value or "").strip()
+
+
+def _env_google_token() -> str:
+    return (
+        os.getenv("GOOGLE_CALENDAR_TOKEN", "").strip()
+        or os.getenv("GOOGLE_CALENDAR_ACCESS_TOKEN", "").strip()
+    )
+
+
+def _env_outlook_token() -> str:
+    return (
+        os.getenv("OUTLOOK_CALENDAR_TOKEN", "").strip()
+        or os.getenv("MICROSOFT_GRAPH_TOKEN", "").strip()
+        or os.getenv("ONEDRIVE_TOKEN", "").strip()
+    )
+
+
+def google_token() -> str:
+    return _scoped_secret(str(request_credentials().get("token") or ""), _env_google_token())
+
+
+def outlook_token() -> str:
+    return _scoped_secret(str(request_credentials().get("token") or ""), _env_outlook_token())
+
+
+def google_calendar_id() -> str:
+    requested = str(request_credentials().get("calendar_id") or "").strip()
+    env_value = os.getenv("GOOGLE_CALENDAR_ID", "primary").strip() or "primary"
+    if request_bound():
+        if requested:
+            return requested
+        if allow_env_fallback():
+            return env_value
+        return "primary"
+    return env_value
+
+
+# Tests: identity → events. Enabled with CALENDAR_MEMORY_BACKEND=1. Tokens are keys, never logs.
+_MEMORY_EVENTS: dict[str, list[dict[str, Any]]] = {}
+
+
+def seed_memory_events(identity: str, events: list[dict[str, Any]]) -> None:
+    _MEMORY_EVENTS[identity] = list(events)
+
+
+def memory_backend() -> bool:
+    return os.getenv("CALENDAR_MEMORY_BACKEND", "").strip().lower() in ("1", "true", "yes")
+
+
+def memory_events(identity: str) -> list[dict[str, Any]]:
+    return [dict(item) for item in _MEMORY_EVENTS.get(identity) or []]
 
 
 class CalendarProvider(Protocol):
@@ -134,13 +197,68 @@ def _stub_create(
     }
 
 
+def _events_overlap(events: list[dict[str, Any]], start_dt: datetime, end_dt: datetime) -> bool:
+    for ev in events:
+        ev_start = _parse_iso(str(ev.get("start") or ""))
+        ev_end = _parse_iso(str(ev.get("end") or ""))
+        if ev_start is None or ev_end is None:
+            continue
+        if ev_start < end_dt and ev_end > start_dt:
+            return True
+    return False
+
+
+def _parse_iso(value: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
 class MailruProvider:
     name = "mailru"
 
+    def _request_identity(self) -> tuple[str, str, str]:
+        c = request_credentials()
+        user = str(c.get("username") or c.get("login") or "").strip()
+        password = str(c.get("password") or "").strip()
+        cal_url = str(c.get("calendar_url") or "").strip()
+        return user, password, cal_url
+
     def configured(self) -> bool:
+        if request_bound():
+            user, password, cal_url = self._request_identity()
+            if user and password and cal_url:
+                return True
+            if allow_env_fallback():
+                return shared.credentials_configured()
+            return False
         return shared.credentials_configured()
 
+    def identity(self) -> str:
+        user, _password, _cal = self._request_identity()
+        if user:
+            return user
+        if allow_env_fallback() or not request_bound():
+            return shared.MAILRU_CALDAV_USERNAME
+        return ""
+
+    def list_events(self) -> list[dict[str, Any]]:
+        if not self.configured():
+            raise RuntimeError("not_configured")
+        if memory_backend():
+            return memory_events(self.identity())
+        cal = shared.get_calendar()
+        found = list(cal.search(event=True) or [])
+        return [{"summary": self.name, "source": self.name, "href": str(getattr(ev, "url", "") or "")} for ev in found]
+
     def slot_is_free(self, start_dt: datetime, end_dt: datetime) -> bool:
+        if not self.configured():
+            return True
+        if memory_backend():
+            return not _events_overlap(memory_events(self.identity()), start_dt, end_dt)
         return shared.slot_is_free(start_dt, end_dt)
 
     def suggest_slots(
@@ -191,12 +309,43 @@ class _CalDavProvider:
     calendar_url_env = ""
     default_url = ""
 
-    def _creds(self) -> tuple[str, str, str, str]:
+    def _env_creds(self) -> tuple[str, str, str, str]:
         url = os.getenv(self.url_env, self.default_url).strip() or self.default_url
         user = os.getenv(self.user_env, "").strip()
         password = os.getenv(self.password_env, "").strip()
         cal_url = os.getenv(self.calendar_url_env, "").strip()
         return url, user, password, cal_url
+
+    def _creds(self) -> tuple[str, str, str, str]:
+        url, user, password, cal_url = self._env_creds()
+        c = request_credentials()
+        req_user = str(c.get("username") or c.get("login") or "").strip()
+        req_password = str(c.get("password") or "").strip()
+        req_cal = str(c.get("calendar_url") or "").strip()
+        req_url = str(c.get("url") or "").strip()
+        if request_bound():
+            if req_user and req_password and req_cal:
+                return req_url or url or self.default_url, req_user, req_password, req_cal
+            if allow_env_fallback():
+                return url, user, password, cal_url
+            return req_url or self.default_url, "", "", ""
+        return url, user, password, cal_url
+
+    def identity(self) -> str:
+        _url, user, _password, _cal = self._creds()
+        return user
+
+    def list_events(self) -> list[dict[str, Any]]:
+        if not self.configured():
+            raise RuntimeError("not_configured")
+        if memory_backend():
+            return memory_events(self.identity())
+        cal = self._calendar()
+        found = list(cal.search(event=True) or [])
+        items: list[dict[str, Any]] = []
+        for ev in found:
+            items.append({"summary": getattr(ev, "url", None) or self.name, "source": self.name})
+        return items
 
     def configured(self) -> bool:
         _url, user, password, cal_url = self._creds()
@@ -290,14 +439,15 @@ class YandexProvider(_CalDavProvider):
     default_url = "https://caldav.yandex.ru"
 
     def configured(self) -> bool:
-        # Allow falling back to shared Mail.ru-style vars only if explicitly yandex user set,
-        # or accept dedicated yandex envs. Also accept YANDEX_* filled.
         url, user, password, cal_url = self._creds()
         if user and password and cal_url:
             return True
-        # Convenience: YANDEX_LOGIN + app password + calendar href
+        # Convenience env only when this call is allowed to read the server account.
+        if request_bound() and not allow_env_fallback():
+            return False
         user = os.getenv("YANDEX_LOGIN", "").strip() or user
         password = os.getenv("YANDEX_APP_PASSWORD", "").strip() or password
+        cal_url = cal_url or os.getenv("YANDEX_CALENDAR_URL", "").strip()
         return bool(user and password and cal_url)
 
 
@@ -323,11 +473,36 @@ class GoogleProvider:
     name = "google"
 
     def configured(self) -> bool:
-        return bool(GOOGLE_CALENDAR_TOKEN)
+        return bool(google_token())
+
+    def identity(self) -> str:
+        return google_token()
+
+    def list_events(self) -> list[dict[str, Any]]:
+        token = google_token()
+        if not token:
+            raise RuntimeError("not_configured")
+        if memory_backend():
+            return memory_events(token)
+        cal_id = urllib.parse.quote(google_calendar_id(), safe="@")
+        url = f"{GOOGLE_CALENDAR_API}/calendars/{cal_id}/events?singleEvents=true&maxResults=50"
+        meta = _http_json(url, headers=self._headers())
+        items = []
+        for ev in meta.get("items") or []:
+            items.append(
+                {
+                    "id": ev.get("id"),
+                    "summary": ev.get("summary") or "",
+                    "start": (ev.get("start") or {}).get("dateTime") or (ev.get("start") or {}).get("date"),
+                    "end": (ev.get("end") or {}).get("dateTime") or (ev.get("end") or {}).get("date"),
+                    "source": self.name,
+                }
+            )
+        return items
 
     def _headers(self) -> dict[str, str]:
         return {
-            "Authorization": f"Bearer {GOOGLE_CALENDAR_TOKEN}",
+            "Authorization": f"Bearer {google_token()}",
             "Accept": "application/json",
             "Content-Type": "application/json",
             "User-Agent": "ava-calendar/google",
@@ -336,17 +511,19 @@ class GoogleProvider:
     def slot_is_free(self, start_dt: datetime, end_dt: datetime) -> bool:
         if not self.configured():
             return True
-        cal_id = urllib.parse.quote(GOOGLE_CALENDAR_ID, safe="@")
+        if memory_backend():
+            return not _events_overlap(memory_events(self.identity()), start_dt, end_dt)
+        cal_id = urllib.parse.quote(google_calendar_id(), safe="@")
         body = json.dumps(
             {
                 "timeMin": start_dt.isoformat(),
                 "timeMax": end_dt.isoformat(),
-                "items": [{"id": GOOGLE_CALENDAR_ID}],
+                "items": [{"id": google_calendar_id()}],
             }
         ).encode("utf-8")
         url = f"{GOOGLE_CALENDAR_API}/freeBusy"
         meta = _http_json(url, headers=self._headers(), method="POST", data=body)
-        busy = ((meta.get("calendars") or {}).get(GOOGLE_CALENDAR_ID) or {}).get("busy") or []
+        busy = ((meta.get("calendars") or {}).get(google_calendar_id()) or {}).get("busy") or []
         return len(busy) == 0
 
     def suggest_slots(
@@ -392,7 +569,7 @@ class GoogleProvider:
                 end_dt=kwargs["end_dt"],
                 summary=kwargs.get("summary") or "",
             )
-        cal_id = urllib.parse.quote(GOOGLE_CALENDAR_ID, safe="@")
+        cal_id = urllib.parse.quote(google_calendar_id(), safe="@")
         payload: dict[str, Any] = {
             "summary": kwargs.get("summary") or "Meeting",
             "description": kwargs.get("description") or "",
@@ -430,11 +607,35 @@ class OutlookProvider:
     name = "outlook"
 
     def configured(self) -> bool:
-        return bool(OUTLOOK_CALENDAR_TOKEN)
+        return bool(outlook_token())
+
+    def identity(self) -> str:
+        return outlook_token()
+
+    def list_events(self) -> list[dict[str, Any]]:
+        token = outlook_token()
+        if not token:
+            raise RuntimeError("not_configured")
+        if memory_backend():
+            return memory_events(token)
+        url = f"{GRAPH_API}{self._calendar_path()}?$top=50&$select=id,subject,start,end"
+        meta = _http_json(url, headers=self._headers())
+        items = []
+        for ev in meta.get("value") or []:
+            items.append(
+                {
+                    "id": ev.get("id"),
+                    "summary": ev.get("subject") or "",
+                    "start": (ev.get("start") or {}).get("dateTime"),
+                    "end": (ev.get("end") or {}).get("dateTime"),
+                    "source": self.name,
+                }
+            )
+        return items
 
     def _headers(self) -> dict[str, str]:
         return {
-            "Authorization": f"Bearer {OUTLOOK_CALENDAR_TOKEN}",
+            "Authorization": f"Bearer {outlook_token()}",
             "Accept": "application/json",
             "Content-Type": "application/json",
             "User-Agent": "ava-calendar/outlook",
@@ -448,6 +649,8 @@ class OutlookProvider:
     def slot_is_free(self, start_dt: datetime, end_dt: datetime) -> bool:
         if not self.configured():
             return True
+        if memory_backend():
+            return not _events_overlap(memory_events(self.identity()), start_dt, end_dt)
         # calendarView getSchedule is heavier; use calendarView overlap query
         params = urllib.parse.urlencode(
             {

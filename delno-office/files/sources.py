@@ -42,24 +42,86 @@ def _ov() -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
+def _allow_env_fallback() -> bool:
+    """Server env tokens only when the caller explicitly opts in (service tenant)."""
+    return bool(_ov().get("allow_env_fallback"))
+
+
+def _prefer_request(request_value: str, env_value: str) -> str:
+    """Request override wins. Env is used only with allow_env_fallback.
+
+    When no request scope is bound (health / internal), env stays available so
+    existing operator probes keep working. A bound request with an empty token
+    must not silently read another company's env credential.
+    """
+    if _CREDS.get() is None:
+        return (env_value or "").strip()
+    if (request_value or "").strip():
+        return request_value.strip()
+    if _allow_env_fallback():
+        return (env_value or "").strip()
+    return ""
+
+
 def _yadisk_token() -> str:
-    return str(_ov().get("token") or YADISK_TOKEN or "").strip()
+    return _prefer_request(str(_ov().get("token") or ""), os.getenv("YADISK_TOKEN", ""))
 
 
 def _mailru_user() -> str:
-    return str(_ov().get("username") or _ov().get("login") or MAILRU_WEBDAV_USER or "").strip()
+    return _prefer_request(
+        str(_ov().get("username") or _ov().get("login") or ""),
+        os.getenv("MAILRU_WEBDAV_USER", "") or os.getenv("MAIL_USERNAME", "") or os.getenv("MAILRU_CALDAV_USERNAME", ""),
+    )
 
 
 def _mailru_password() -> str:
-    return str(_ov().get("password") or MAILRU_WEBDAV_PASSWORD or "").strip()
+    return _prefer_request(
+        str(_ov().get("password") or ""),
+        os.getenv("MAILRU_WEBDAV_PASSWORD", "") or os.getenv("MAIL_PASSWORD", "") or os.getenv("MAILRU_CALDAV_PASSWORD", ""),
+    )
 
 
 def _gdrive_token() -> str:
-    return str(_ov().get("token") or GOOGLE_DRIVE_TOKEN or "").strip()
+    return _prefer_request(
+        str(_ov().get("token") or ""),
+        os.getenv("GOOGLE_DRIVE_TOKEN", "") or os.getenv("GOOGLE_DRIVE_ACCESS_TOKEN", ""),
+    )
 
 
 def _onedrive_token() -> str:
-    return str(_ov().get("token") or ONEDRIVE_TOKEN or "").strip()
+    return _prefer_request(
+        str(_ov().get("token") or ""),
+        os.getenv("ONEDRIVE_TOKEN", "") or os.getenv("MICROSOFT_GRAPH_TOKEN", "") or os.getenv("ONEDRIVE_ACCESS_TOKEN", ""),
+    )
+
+
+# Test double: token → listing. Used when FILES_MEMORY_BACKEND=1. Never logged.
+_MEMORY_LISTINGS: dict[str, list[dict[str, Any]]] = {}
+
+
+def seed_memory_listing(token: str, entries: list[dict[str, Any]]) -> None:
+    _MEMORY_LISTINGS[token] = list(entries)
+
+
+def _memory_backend() -> bool:
+    return os.getenv("FILES_MEMORY_BACKEND", "").strip().lower() in ("1", "true", "yes")
+
+
+def _memory_listing(token: str) -> list[ListedEntry] | None:
+    if not _memory_backend():
+        return None
+    rows = _MEMORY_LISTINGS.get(token) or []
+    out: list[ListedEntry] = []
+    for row in rows:
+        out.append(
+            ListedEntry(
+                name=str(row.get("name") or "file"),
+                path=str(row.get("path") or "/"),
+                type="dir" if row.get("type") == "dir" else "file",
+                bytes=row.get("bytes"),
+            )
+        )
+    return out
 
 GITHUB_REPO = os.getenv("FILES_GITHUB_REPO", "ryabichello-stack/quantum-office").strip()
 GITHUB_REF = os.getenv("FILES_GITHUB_REF", "main").strip()
@@ -149,8 +211,9 @@ def fetch_repo(path: str, *, ref: Optional[str] = None, repo: Optional[str] = No
         "Accept": "application/vnd.github+json",
         "User-Agent": "ava-files",
     }
-    if GITHUB_TOKEN:
-        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+    github_token = _prefer_request("", os.getenv("FILES_GITHUB_TOKEN", ""))
+    if github_token:
+        headers["Authorization"] = f"Bearer {github_token}"
 
     req = urllib.request.Request(api_url, headers=headers)
     try:
@@ -478,7 +541,13 @@ def _fs_mtime(ts: float) -> str:
 def list_yadisk(path: str = "/") -> list[ListedEntry]:
     token = _yadisk_token()
     if not token:
-        raise SourceError("yadisk_not_configured", "Set YADISK_TOKEN in .env or pass credentials.token")
+        raise SourceError(
+            "yadisk_not_configured",
+            "Нужен токен Яндекс.Диска из сейфа тенанта",
+        )
+    remembered = _memory_listing(token)
+    if remembered is not None:
+        return remembered
     disk_path = path if path.startswith("disk:") or path.startswith("/") else f"/{path}"
     if not disk_path.startswith("disk:"):
         disk_path = f"disk:{disk_path}"

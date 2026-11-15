@@ -19,6 +19,7 @@ load_dotenv()
 
 import delivery
 import sources
+import tenant_scope
 from models import SourceError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -84,6 +85,8 @@ class FileFetchRequest(BaseModel):
     path: str = Field(..., min_length=1, max_length=1000)
     ref: Optional[str] = None
     repo: Optional[str] = None
+    tenant_id: Optional[str] = Field(default=None, max_length=80)
+    allow_env_fallback: bool = False
     credentials: Optional[FileCredentials] = None
 
 
@@ -94,6 +97,7 @@ class FileCredentials(BaseModel):
     username: Optional[str] = Field(default=None, max_length=200)
     login: Optional[str] = Field(default=None, max_length=200)
     password: Optional[str] = Field(default=None, max_length=4096)
+    allow_env_fallback: bool = False
 
 
 class FileListRequest(BaseModel):
@@ -102,6 +106,8 @@ class FileListRequest(BaseModel):
         description="Cloud/local source to browse",
     )
     path: str = Field(default="/", max_length=1000, description="Directory path, default root")
+    tenant_id: Optional[str] = Field(default=None, max_length=80)
+    allow_env_fallback: bool = False
     credentials: Optional[FileCredentials] = None
 
 
@@ -110,6 +116,8 @@ class FileSearchRequest(BaseModel):
     query: str = Field(..., min_length=2, max_length=200, description="Substring in name/path")
     path: str = Field(default="/", max_length=1000, description="Start folder for search")
     limit: int = Field(default=40, ge=1, le=100)
+    tenant_id: Optional[str] = Field(default=None, max_length=80)
+    allow_env_fallback: bool = False
     credentials: Optional[FileCredentials] = None
 
 
@@ -130,7 +138,8 @@ def _list_payload(source: str, path: str, entries: list) -> dict:
         "ok": True,
         "source": source,
         "path": path if path.startswith("/") or source == "local" else f"/{path}",
-        "account": (sources.sources_status().get("mailru_user") if source == "mailru" else None),
+        # Do not echo the server-wide mailbox. Per-request login is masked.
+        "account": _masked_account(source),
         "dirs": [sources.entry_to_dict(e) for e in dirs],
         "files": [sources.entry_to_dict(e) for e in files],
         "entries": [sources.entry_to_dict(e) for e in entries],
@@ -145,16 +154,35 @@ def _creds_dict(creds: Optional[FileCredentials]) -> Optional[dict]:
     return data or None
 
 
+def _masked_account(source: str) -> Optional[str]:
+    if source != "mailru":
+        return None
+    user = str(sources._ov().get("username") or sources._ov().get("login") or "")
+    if len(user) < 3:
+        return None
+    return f"{user[:2]}***"
+
+
+def _bound_creds(req) -> dict:
+    """Always a dict so the cloud call is request-scoped (no silent env token)."""
+    data = dict(_creds_dict(getattr(req, "credentials", None)) or {})
+    if getattr(req, "allow_env_fallback", False):
+        data["allow_env_fallback"] = True
+    return data
+
+
 @app.post("/api/files/list")
 def files_list(
     req: FileListRequest,
     x_webhook_token: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
 ):
     """List folders and files in one directory level (browse / drill-down)."""
     _check_token(x_webhook_token)
+    tenant_scope.require_tenant(req.tenant_id, x_tenant_id)
     path = (req.path or "/").strip() or "/"
     try:
-        with sources.credentials_override(_creds_dict(req.credentials)):
+        with sources.credentials_override(_bound_creds(req)):
             entries = sources.list_entries(req.source, path)
     except SourceError as exc:
         raise HTTPException(
@@ -168,12 +196,14 @@ def files_list(
 def files_search(
     req: FileSearchRequest,
     x_webhook_token: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
 ):
     """Search folders/files by name under path (Mail.ru = recursive BFS)."""
     _check_token(x_webhook_token)
+    tenant_scope.require_tenant(req.tenant_id, x_tenant_id)
     path = (req.path or "/").strip() or "/"
     try:
-        with sources.credentials_override(_creds_dict(req.credentials)):
+        with sources.credentials_override(_bound_creds(req)):
             entries = sources.search_entries(
                 req.source,
                 req.query,
@@ -195,11 +225,13 @@ def files_search(
 def files_fetch(
     req: FileFetchRequest,
     x_webhook_token: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
 ):
     """Resolve/fetch metadata (does not deliver). Returns size + filename, not raw bytes."""
     _check_token(x_webhook_token)
+    tenant_scope.require_tenant(req.tenant_id, x_tenant_id)
     try:
-        with sources.credentials_override(_creds_dict(req.credentials)):
+        with sources.credentials_override(_bound_creds(req)):
             f = sources.fetch(req.source, req.path, ref=req.ref, repo=req.repo)
     except SourceError as exc:
         raise HTTPException(status_code=400, detail={"error": exc.code, "message": exc.message}) from exc

@@ -10,6 +10,9 @@
 
 ## [Unreleased]
 
+### Added
+- Календарь и облака больше не делят один серверный токен: креды берутся из сейфа тенанта, запрос без тенанта или с чужим тенантом отклоняется, env-фолбэк только у явно помеченного служебного тенанта (`settings.service_tenant` или `DELNO_SERVICE_TENANT_SLUG`)
+
 ### Fixed
 - **Ava without script/tools**: restored `/v1/telephony/calls/tool` + `voice_tools` (was 404 — Ava could not list tools or read KB). Inbound start now returns `secretary` (script/greeting/tools). Calendar check/create tools wired for in-call use
 - **Dual Mango SIP registration** shredded Ava audio (two Stasis per call). `apply_mango_sip_server` now disables legacy shared `mango-registration` whenever any `delno-tenant-*.conf` exists (on apply + service start). Multi-tenant canon: one Mango account → one `delno-<slug>-reg` only
