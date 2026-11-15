@@ -149,24 +149,6 @@ export default function NeuralScene() {
                 <ArrowRight size={13} className="dv17-channel-chevron" aria-hidden />
               </button>
             ))}
-            <div className="dv17-neural-channel dv17-neural-preview" aria-label="Instagram и WhatsApp — возможные дополнительные каналы">
-              <span className="dv17-neural-preview-icon dv17-neural-preview-instagram" aria-hidden>
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <rect x="3" y="3" width="18" height="18" rx="5" stroke="currentColor" strokeWidth="2" />
-                  <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="2" />
-                  <circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" />
-                </svg>
-              </span>
-              <span className="dv17-neural-preview-icon dv17-neural-preview-whatsapp" aria-hidden>
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.7-1.2A9 9 0 1 0 12 3Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-                  <path d="M8.2 8.4c-.4.5-.5 1.1-.3 1.8.5 2 2.9 4.5 5 5.2.8.3 1.4.2 1.9-.2l1.1-1.1-2.3-1.2-.9 1c-1.3-.6-2.3-1.6-2.9-2.9l1-1-1.3-2.2-1.3.6Z" fill="currentColor" />
-                </svg>
-              </span>
-            </div>
-            <div className="dv17-neural-channel dv17-neural-preview dv17-neural-preview-more" aria-label="Другие мессенджеры по запросу">
-              <span aria-hidden>···</span>
-            </div>
           </div>
         </div>
 
