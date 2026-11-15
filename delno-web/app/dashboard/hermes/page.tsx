@@ -11,7 +11,7 @@ export default function HermesPage() {
 
   return (
     <DashboardFrame>
-      <HermesStage token={token} />
+      <HermesStage key={token} token={token} />
     </DashboardFrame>
   );
 }

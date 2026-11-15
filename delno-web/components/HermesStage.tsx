@@ -14,8 +14,10 @@ import {
   Camera,
   CheckCircle2,
   LifeBuoy,
+  MessageSquareText,
   PanelRight,
   Paperclip,
+  Plus,
   Sparkles,
   X,
 } from "lucide-react";
@@ -56,6 +58,8 @@ import {
   apiTenantSecretSave,
   type CredentialFormSpec as ApiCredentialFormSpec,
   type KnowledgeSource,
+  type ConversationItem,
+  type MessageItem,
   type PendingConfirmation,
   type SuggestedAction,
 } from "@/lib/api";
@@ -117,6 +121,34 @@ type ChatLine = {
   thinkingMs?: number;
   previews?: { url: string; name: string; kind?: "image" | "video" | "file" }[];
 };
+
+function restoreChatLines(messages: MessageItem[], form: ApiCredentialFormSpec | null): ChatLine[] {
+  const visible = messages.filter((m) => m.role === "user" || m.role === "assistant");
+  const lastAssistant = [...visible].reverse().find((m) => m.role === "assistant");
+  return visible.map((m) => {
+    const meta = (m.meta || {}) as {
+      sources?: KnowledgeSource[];
+      suggested_actions?: SuggestedAction[];
+      engine?: string;
+      tool_calls?: unknown[];
+      hermes_run?: unknown;
+    };
+    const thinking = m.role === "assistant"
+      ? buildThinkingChain({ engine: meta.engine, tool_calls: meta.tool_calls, hermes_run: meta.hermes_run })
+      : undefined;
+    return {
+      id: m.id,
+      createdAt: m.created_at,
+      role: m.role as "user" | "assistant",
+      text: m.body || "",
+      sources: m.role === "assistant" && Array.isArray(meta.sources) ? meta.sources : undefined,
+      suggestions: m.role === "assistant" && Array.isArray(meta.suggested_actions)
+        ? meta.suggested_actions : undefined,
+      thinking: thinking && thinking.length > 1 ? thinking : undefined,
+      credentialForm: form && m.id === lastAssistant?.id ? form : undefined,
+    };
+  }).filter((line) => line.text.trim());
+}
 
 function withStamp(
   line: ChatLine,
@@ -258,6 +290,9 @@ export function HermesStage({ token }: { token: string }) {
   const [lines, setLines] = useState<ChatLine[]>([]);
   const [message, setMessage] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<ConversationItem[]>([]);
+  const [chatsOpen, setChatsOpen] = useState(false);
+  const [historyBusy, setHistoryBusy] = useState(false);
   const [sending, setSending] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState("");
@@ -322,6 +357,59 @@ export function HermesStage({ token }: { token: string }) {
       /* panels are best-effort; chat still works */
     }
   }, [token]);
+
+  async function selectConversation(id: string) {
+    if (sending || confirming || secretBusy || historyBusy || id === conversationId) return;
+    setHistoryBusy(true);
+    setError("");
+    try {
+      const response = await apiConversationMessages(token, id);
+      const visible = (response.items || []).filter((m) => m.role === "user" || m.role === "assistant");
+      const lastAssistant = [...visible].reverse().find((m) => m.role === "assistant");
+      const pendingKind = (lastAssistant?.meta as { pending_credential_form?: { kind?: string } } | null)
+        ?.pending_credential_form?.kind;
+      let form: ApiCredentialFormSpec | null = null;
+      if (pendingKind) {
+        try {
+          const status = await apiTenantVaultStatus(token);
+          if (!(status.items || []).some((item) => item.kind === pendingKind && item.configured)) {
+            form = (await apiTenantVaultForm(token, pendingKind)).form || null;
+          }
+        } catch {
+          // Chat history remains available even when vault status is temporarily unavailable.
+        }
+      }
+      clearPending(pendingFiles);
+      setPendingFiles([]);
+      setMessage("");
+      setActivePending(null);
+      setActiveSecretForm(form);
+      setLines(restoreChatLines(response.items || [], form));
+      setConversationId(id);
+      setBootstrapped(true);
+      localStorage.setItem("hermes_conversation_id", id);
+      setChatsOpen(false);
+    } catch {
+      setError("Не удалось открыть диалог. Попробуйте ещё раз.");
+    } finally {
+      setHistoryBusy(false);
+    }
+  }
+
+  function startNewConversation() {
+    if (sending || confirming || secretBusy || historyBusy) return;
+    clearPending(pendingFiles);
+    setPendingFiles([]);
+    setMessage("");
+    setLines([]);
+    setActivePending(null);
+    setActiveSecretForm(null);
+    setConversationId(null);
+    setBootstrapped(true);
+    setError("");
+    localStorage.removeItem("hermes_conversation_id");
+    setChatsOpen(false);
+  }
 
   async function startQr(channelType: string) {
     if (qrBusy) return;
@@ -498,6 +586,9 @@ export function HermesStage({ token }: { token: string }) {
             attachments,
           ));
         setConversationId(result.conversation_id);
+        void apiConversations(token, 100).then((list) => {
+          setConversations(list.items.filter((item) => item.channel === "hermes"));
+        }).catch(() => undefined);
         const pending = result.pending_confirmation || null;
         if (pending) setActivePending(pending);
         const secretForm = (result.pending_credential_form || null) as ApiCredentialFormSpec | null;
@@ -616,7 +707,9 @@ export function HermesStage({ token }: { token: string }) {
     async function restore() {
       try {
         const saved = typeof window !== "undefined" ? localStorage.getItem("hermes_conversation_id") : null;
-        const convs = await apiConversations(token, 30);
+        const convs = await apiConversations(token, 100);
+        if (cancelled) return;
+        setConversations(convs.items.filter((item) => item.channel === "hermes"));
         const preferred =
           (saved && convs.items.find((c) => c.id === saved)) ||
           convs.items.find((c) => c.channel === "hermes") ||
@@ -649,40 +742,7 @@ export function HermesStage({ token }: { token: string }) {
         }
         if (cancelled) return;
         if (restoredForm) setActiveSecretForm(restoredForm);
-        const restored: ChatLine[] = visible
-          .map((m) => {
-            const meta = (m.meta || {}) as {
-              sources?: KnowledgeSource[];
-              suggested_actions?: SuggestedAction[];
-              engine?: string;
-              tool_calls?: unknown[];
-              hermes_run?: unknown;
-            };
-            const thinking =
-              m.role === "assistant"
-                ? buildThinkingChain({
-                    engine: meta.engine,
-                    tool_calls: meta.tool_calls,
-                    hermes_run: meta.hermes_run,
-                  })
-                : undefined;
-            return {
-              id: m.id,
-              createdAt: m.created_at,
-              role: m.role as "user" | "assistant",
-              text: m.body || "",
-              sources:
-                m.role === "assistant" && Array.isArray(meta.sources) ? meta.sources : undefined,
-              suggestions:
-                m.role === "assistant" && Array.isArray(meta.suggested_actions)
-                  ? meta.suggested_actions
-                  : undefined,
-              thinking: thinking && thinking.length > 1 ? thinking : undefined,
-              credentialForm:
-                restoredForm && lastAssistant && m.id === lastAssistant.id ? restoredForm : undefined,
-            };
-          })
-          .filter((l) => l.text.trim());
+        const restored = restoreChatLines(msgs.items || [], restoredForm);
         // Always bind the conversation id so the next message continues the thread.
         setBootstrapped(true);
         if (restored.length) {
@@ -1185,6 +1245,22 @@ export function HermesStage({ token }: { token: string }) {
           <Tooltip>
             <TooltipTrigger
               render={
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="hx-top-btn"
+                  onClick={() => setChatsOpen(true)}
+                  aria-label="Мои диалоги"
+                />
+              }
+            >
+              <MessageSquareText size={compact ? 16 : 18} />
+            </TooltipTrigger>
+            <TooltipContent>Мои диалоги</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
                 <HermesMicButton
                   phase={dictatePhase}
                   level={dictateLevel}
@@ -1599,6 +1675,51 @@ export function HermesStage({ token }: { token: string }) {
           </div>
         </main>
       </div>
+
+      <Sheet open={chatsOpen} onOpenChange={setChatsOpen}>
+        <SheetContent side={compact ? "bottom" : "left"} className="flex max-h-[85dvh] flex-col gap-4">
+          <SheetHeader className="text-left">
+            <SheetTitle>Мои диалоги</SheetTitle>
+            <SheetDescription>Каждая тема хранит свою переписку с Hermes.</SheetDescription>
+          </SheetHeader>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full justify-start gap-2"
+            onClick={startNewConversation}
+            disabled={sending || confirming || secretBusy || historyBusy}
+          >
+            <Plus size={16} /> Новый диалог
+          </Button>
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="flex flex-col gap-2 pb-4">
+              {conversations.length === 0 && (
+                <p className="text-sm text-muted-foreground">Здесь появятся ваши диалоги.</p>
+              )}
+              {conversations.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => void selectConversation(item.id)}
+                  disabled={sending || confirming || secretBusy || historyBusy}
+                  aria-current={item.id === conversationId ? "page" : undefined}
+                  className={cn(
+                    "rounded-xl border p-3 text-left text-sm transition-colors hover:bg-muted/60 disabled:opacity-50",
+                    item.id === conversationId && "border-primary bg-muted/50",
+                  )}
+                >
+                  <span className="block truncate font-medium">
+                    {item.last_message_preview?.trim() || "Диалог с Hermes"}
+                  </span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {formatMoscowStamp(item.updated_at || item.created_at)?.label || ""}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
 
       <Sheet open={helpOpen} onOpenChange={setHelpOpen}>
         <SheetContent
