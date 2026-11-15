@@ -98,8 +98,14 @@ class FilesConnector:
                 },
             )
         payload: dict[str, Any] = {"source": source, "path": path}
-        req_creds = config.get("_request_credentials")
-        if isinstance(req_creds, dict) and req_creds:
+        tenant_id = str(config.get("_tenant_id") or "").strip()
+        if tenant_id:
+            payload["tenant_id"] = tenant_id
+        req_creds = dict(config.get("_request_credentials") or {}) if isinstance(config.get("_request_credentials"), dict) else {}
+        if config.get("_allow_env_fallback"):
+            req_creds["allow_env_fallback"] = True
+            payload["allow_env_fallback"] = True
+        if req_creds:
             payload["credentials"] = req_creds
         code, resp, err = post_json(
             base,

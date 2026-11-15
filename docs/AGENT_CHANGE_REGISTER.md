@@ -6,6 +6,32 @@
 
 **Где лежит:** git `docs/AGENT_CHANGE_REGISTER.md` ↔ прод `/opt/delno/docs/AGENT_CHANGE_REGISTER.md` (держать в синхроне).
 
+## 2026-11-15 — Codex для Cursor: отключение постоянного MCP-ключа отложено
+
+- Исправление доступа по одному `X-Delno-Run-Id` уже в `main` (PR #102): идентификатор запуска больше не является секретом; требуется ключ той же компании. Это не требует изменения текущего подключения Hermes.
+- **Не включать пока** `DELNO_MCP_DENY_LEGACY_KEY=1` или `DELNO_MCP_STRICT=1` на рабочем сервере. Конфигурация профиля Hermes по-прежнему задаёт статический `Authorization: Bearer ${DELNO_MCP_KEY}`; `X-Delno-Run-Id` в ней закомментирован. API передаёт per-run token в заголовках `create_run`, но нет подтверждения, что upstream Hermes переносит его в каждый MCP-вызов. Немедленный запрет ключа может отключить бизнес-инструменты у всех компаний.
+- Техническая задача: обеспечить передачу scoped run token из контекста каждого запуска в каждый MCP-запрос Hermes, с изоляцией одновременных запусков разных компаний на общем воркере. Проверить по живому запросу `auth_via=run_token`, запретить подстановку чужого run/profile/tenant и проверить вызовы инструментов для двух тенантов параллельно.
+- Только после успешного теста убрать статический `DELNO_MCP_KEY` из профилей и включить запрет legacy-ключа. Отдельным PR и с планом отката. Сейчас это улучшение защиты, а не причина ломать рабочий онбординг.
+
+## 2026-11-15 — Codex: сведение онбординга и подключений по тенанту
+
+- Ветка: `codex/onboarding-integration-20261115`; объединены подготовленные исправления онбординга с PR #99, без выкладки на сервер.
+- Подключение почты, календаря и конференций получает статус `connected` только после проверки учётных данных конкретного тенанта. Включение сервиса или успешная проверка общего сервера не считаются подключением.
+- Сохранены исправления этапов Hermes, SIP-формы Mango, честного прогресса и повторного открытия формы при ошибке. Форму календаря Mail.ru уточнили для неспециалиста.
+- Проверка: API `418 passed`; брокеры calendar `4 passed`, files `5 passed`; `delno-web` production build успешен. Живые внешние аккаунты и полный пользовательский путь на сервере не проверены.
+- Следующий шаг: review/merge, затем серверный smoke с двумя разными тенантами и проверкой отсутствия доступа к чужим данным. Отдельно закрыть аутентификацию `X-Delno-Run-Id` в MCP, прежде чем расширять пилот.
+
+## 2026-11-15 ~17:45 МСК — Cursor: изоляция календаря и облаков по тенанту
+
+- Автор: Cursor, ветка `cursor/tenant-calendar-files-isolation-a44a`. Не деплоить.
+- Цель: delno-calendar и delno-files не читают общий env-токен для чужой компании. Креды — из сейфа тенанта (как `files_cloud.py`).
+- Файлы: `delno-office/calendar/*`, `delno-office/files/sources.py`, `delno-office/files/main.py`, `delno-api/app/services/calendar_accounts.py`, `tenant_broker_access.py`, `tenant_vault.py`, коннекторы calendar/files, `office.py`, `appointments.py`.
+- Изменение: запрос без tenant_id или с несовпадающим `X-Tenant-Id` → 403. Env только при `allow_env_fallback`, который API ставит служебному тенанту (`settings.service_tenant` или `DELNO_SERVICE_TENANT_SLUG`). Секреты в логи и в ответ не копируются.
+- Проверка: pytest брокеров calendar/files isolation + `tests/test_tenant_calendar_files_isolation.py` + `tests/test_connector_connect.py` + vault/connectors/onboarding paths.
+- Дополнение: флоу подключения календаря (Google OAuth / CalDAV Яндекс и Mail.ru / Outlook / внутренний DELNO), почты и видеовстреч. Статус connected только после пробы чтения, не по флагу enabled. Формы с примером ivan@example.ru. Секреты в ответ и в лог пробы не пишутся.
+- Статус: в git, без выкладки на `/opt/delno`.
+- Ограничение: GitHub-токен файлового брокера и локальный allowlist всё ещё серверные. Живой SMTP/Graph в этой среде не вызывался — проба покрыта подменой и memory-режимом брокера.
+
 
 ## 2026-11-13 ~04:05 МСК — Cursor: fix SIP probe host.docker.internal
 
@@ -299,4 +325,18 @@
 - Workers recreated: `HERMES_HOME=/data/hermes-profiles/<profile_id>` (shared volume with API); state migrated from old volumes.
 - Proof: demo progress 6/6 vs QL 0/6; MCP keys 1:1; beta `resolve` + `/v1/operator/chat` → `hermes_unavailable` (not DIY).
 - Goal criteria (map, no fallback, provision/MCP lock, honest unavailable, worker-visible profiles) verified on C4B. Multiplex >1 profile/worker still unproven (capacity=1).
+
+## 2026-11-15 23:03 МСК — Codex: MCP run-binding auth на C4B
+
+- Файл: `/opt/delno/api/app/api/v1/mcp.py` из merged PR #102. Заголовок `X-Delno-Run-Id` без учётных данных того же тенанта больше не открывает инструменты.
+- Резервная копия: `/opt/delno/backups/mcp-auth-20261115/mcp.py`.
+- Проверено: SHA256 установленного файла `73c3ba42b547de12dba3731e44fb6e2ce94fce47cfb1120f33ce7e49a7981633`, API `/health` = 200 после перезапуска, `app.dlno.ru` = 200, журнал запуска без ошибок. Тесты PR #102 и CI были зелёными.
+- Осталось: сквозная проверка онбординга и отдельный пакет PR #101 с per-tenant календарём/файлами.
+
+## 2026-11-15 23:08 МСК — Codex: проверка подключения почты в DELNO gateway
+
+- Файлы: `delno-office/mail/office_gateway.py`, `delno-office/mail/tests/test_probe.py`, `delno-api/app/services/connector_connect.py`, `delno-api/app/operator/tools/office.py`, `delno-api/app/adapters/connectors/mail.py`, тесты API.
+- PR #101 вызывал `/api/mail/probe`, но текущий `delno-mail` его не предоставлял: реализация была добавлена в другой сервис `mailer/main.py`. В рабочий gateway добавлена проверка SMTP-входа по данным одного тенанта без отправки письма и без вывода пароля.
+- Отправка теперь берёт только проверенную почту текущей компании; шлюз отклоняет запрос без данных компании и не использует общий SMTP. Тесты: 4 gateway-теста прошли; API 419 passed, 1 unrelated network-dependent `test_suggest_reachable_host_fixes_quantum_typo` failed. На прод пока не выложено.
+- Осталось: проверить живую отправку после выкладки с учётной записью тестовой компании; до этого не считать почту готовым модулем онбординга.
 

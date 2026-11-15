@@ -16,6 +16,20 @@ class CalendarConnector:
     def _token(self, config: dict[str, Any]) -> str | None:
         return (str(config.get("webhook_token") or get_settings().office_webhook_token or "").strip() or None)
 
+    def _with_access(self, config: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+        out = dict(payload)
+        tenant_id = str(config.get("_tenant_id") or "").strip()
+        if tenant_id:
+            out["tenant_id"] = tenant_id
+        creds = config.get("_request_credentials")
+        merged: dict[str, Any] = dict(creds) if isinstance(creds, dict) else {}
+        if config.get("_allow_env_fallback"):
+            merged["allow_env_fallback"] = True
+            out["allow_env_fallback"] = True
+        if merged:
+            out["credentials"] = merged
+        return out
+
     def status(self, *, tenant_slug: str, config: dict[str, Any]) -> ConnectorResult:
         base = self._base(config)
         enabled = bool(config.get("enabled", False))
@@ -104,12 +118,15 @@ class CalendarConnector:
                     "tenant_slug": tenant_slug,
                 },
             )
-        payload: dict[str, Any] = {
-            "start": start,
-            "duration_min": duration_min,
-            "source": source,
-            "tenant_slug": tenant_slug,
-        }
+        payload = self._with_access(
+            config,
+            {
+                "start": start,
+                "duration_min": duration_min,
+                "source": source,
+                "tenant_slug": tenant_slug,
+            },
+        )
         code, resp, err = post_json(
             base,
             "/api/calendar/suggest",
@@ -153,11 +170,14 @@ class CalendarConnector:
     ) -> ConnectorResult:
         base = self._base(config)
         source = (source or str(config.get("default_source") or "mailru")).strip() or "mailru"
-        payload: dict[str, Any] = {
-            "start": start,
-            "source": source,
-            "tenant_slug": tenant_slug,
-        }
+        payload = self._with_access(
+            config,
+            {
+                "start": start,
+                "source": source,
+                "tenant_slug": tenant_slug,
+            },
+        )
         if timezone:
             payload["timezone"] = timezone
         if not base:
@@ -197,12 +217,15 @@ class CalendarConnector:
     ) -> ConnectorResult:
         base = self._base(config)
         source = (source or str(config.get("default_source") or "mailru")).strip() or "mailru"
-        payload: dict[str, Any] = {
-            "start": start,
-            "summary": summary,
-            "source": source,
-            "tenant_slug": tenant_slug,
-        }
+        payload = self._with_access(
+            config,
+            {
+                "start": start,
+                "summary": summary,
+                "source": source,
+                "tenant_slug": tenant_slug,
+            },
+        )
         if description:
             payload["description"] = description
         if attendee_email:

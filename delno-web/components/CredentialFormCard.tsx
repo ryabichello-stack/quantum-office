@@ -9,6 +9,10 @@ export type CredentialFormField = {
   label: string;
   type: "text" | "password";
   autocomplete?: string;
+  /** Anonymized example shown inside the empty input. */
+  placeholder?: string;
+  /** Short help right under the field (where to find it, which format). */
+  help?: string;
 };
 
 export type CredentialFormSpec = {
@@ -87,6 +91,8 @@ export function CredentialFormCard({ form, busy, onSubmit, onCancel, className }
               <input
                 type={field.type === "password" ? "password" : "text"}
                 autoComplete={field.autocomplete || "off"}
+                placeholder={field.placeholder || undefined}
+                aria-describedby={field.help ? `${form.kind}-${field.name}-help` : undefined}
                 value={value}
                 disabled={busy}
                 onChange={(e) => setValue(e.target.value)}
@@ -97,6 +103,11 @@ export function CredentialFormCard({ form, busy, onSubmit, onCancel, className }
                   }
                 }}
               />
+              {field.help ? (
+                <small id={`${form.kind}-${field.name}-help`} className="hx-secret-help">
+                  {field.help}
+                </small>
+              ) : null}
             </label>
           );
         })}

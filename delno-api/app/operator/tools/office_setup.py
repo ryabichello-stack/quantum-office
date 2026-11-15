@@ -211,8 +211,10 @@ class CredentialsOpenFormTool:
     name = "credentials.open_form"
     description = (
         "Open a secure UI credential form (never ask to paste secrets in chat). "
-        "Kinds: mango_sip, telegram_bot, max_bot, files_yadisk, files_mailru, files_gdrive, files_onedrive. "
-        "Use for SIP, Telegram/MAX bot tokens, or cloud disks."
+        "Kinds: mango_sip, telegram_bot, max_bot, files_yadisk, files_mailru, files_gdrive, files_onedrive, "
+        "calendar_yandex, calendar_mailru, mail_yandex, mail_mailru. "
+        "Use for SIP, Telegram/MAX bot tokens, cloud disks, the owner's own calendar or mail "
+        "(app password; the account is checked for real right after saving)."
     )
     critical_write = False
     parameters_schema = {
@@ -220,7 +222,10 @@ class CredentialsOpenFormTool:
         "properties": {
             "kind": {
                 "type": "string",
-                "description": "mango_sip | telegram_bot | max_bot | files_yadisk | files_mailru | files_gdrive | files_onedrive",
+                "description": (
+                    "mango_sip | telegram_bot | max_bot | files_yadisk | files_mailru | files_gdrive | "
+                    "files_onedrive | calendar_yandex | calendar_mailru | mail_yandex | mail_mailru"
+                ),
             }
         },
         "required": ["kind"],
@@ -237,6 +242,10 @@ class CredentialsOpenFormTool:
             "files_mailru": "Облако Mail.ru",
             "files_gdrive": "Google Drive",
             "files_onedrive": "OneDrive",
+            "calendar_yandex": "Яндекс Календарь",
+            "calendar_mailru": "Календарь Mail.ru",
+            "mail_yandex": "Яндекс Почта",
+            "mail_mailru": "Почта Mail.ru",
         }
         title = titles.get(kind, kind)
         return ToolResult(
@@ -259,8 +268,9 @@ class OfficeConnectorSetTool:
     description = (
         "Enable or disable an office connector for this tenant "
         "(mail | calendar | conference | files | outreach). "
-        "tools_first: enabling opts the tenant into the shared upstream; "
-        "then probe readiness. Use on hermes_ops mail/calendar/conference steps."
+        "Enabling is only a flag, NOT a connection: calendar/mail are connected only after the "
+        "owner's own account passes a real check (credentials.open_form calendar_*/mail_*). "
+        "Read the returned message and never claim «подключено» unless readiness.usable is true."
     )
     critical_write = True
     parameters_schema = {
@@ -293,6 +303,32 @@ class OfficeConnectorSetTool:
         usable = bool(row.get("usable"))
         state = "включён" if enabled else "выключен"
         detail = "готово" if usable else "пока не готово — не хватает доступа"
+        if enabled and not usable and kind in ("calendar", "mail"):
+            what = "календарь" if kind == "calendar" else "почту"
+            verified = bool(row.get("account_verified"))
+            choice = (
+                "Google, Яндекс, Mail.ru, Outlook или внутренний календарь DELNO"
+                if kind == "calendar"
+                else "Яндекс, Mail.ru, Google или Outlook"
+            )
+            if verified:
+                note = (
+                    f"Аккаунт проверен, но работать через него ({what}) платформа ещё не умеет — "
+                    "НЕ говори, что подключено."
+                )
+            else:
+                note = (
+                    f"{what.capitalize()} НЕ подключен(а): флаг включён, но своего аккаунта нет. "
+                    f"Спроси владельца, какой у него {what if kind == 'calendar' else 'почтовый сервис'}: {choice}. "
+                    f"Яндекс и Mail.ru — открой credentials.open_form kind={kind}_yandex или {kind}_mailru "
+                    "(пароль приложения, аккаунт проверю по-настоящему). Google и Outlook пока не "
+                    "подключаются (нужен OAuth), внутреннего календаря DELNO пока нет — скажи это прямо."
+                )
+            return ToolResult(
+                ok=True,
+                data={"kind": kind, "enabled": enabled, "usable": False, "readiness": row, "needs": "owner_account"},
+                message=note,
+            )
         from app.services.instrument_catalog import stitches_for_new
 
         try:

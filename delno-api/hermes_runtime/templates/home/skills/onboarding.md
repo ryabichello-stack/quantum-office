@@ -216,8 +216,8 @@
 
 | Шаг | Включение | Confirm? | Потом |
 |-----|-----------|----------|-------|
-| `calendar` | Спросить → `office.connector_set` enabled + calendar | **да** | vault/креды позже при необходимости |
-| `mail` | Спросить → `office.connector_set` mail | **да** | SMTP через форму при нужде |
+| `calendar` | Спросить, какой календарь → `office.connector_set` enabled → `credentials.open_form` calendar_yandex / calendar_mailru | **да** | «подключено» только после реальной проверки (setup_status ok) |
+| `mail` | Спросить, какая почта → `office.connector_set` mail → `credentials.open_form` mail_yandex / mail_mailru | **да** | «подключено» только после реальной проверки (setup_status ok) |
 | `conference` | Спросить → `office.connector_set` conference | **да** | провайдер Telemost/Meet/Jitsi |
 | `outreach` | Опционально; спросить → connector / статус | **да** | `outreach.status` |
 

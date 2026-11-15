@@ -53,7 +53,26 @@ class MailSendRequest(BaseModel):
     subject: str = Field(..., min_length=1, max_length=500)
     body: str = Field(..., min_length=1, max_length=50000)
     tenant_slug: str = Field(default="", max_length=120)
+    tenant_id: str = Field(default="", max_length=120)
+    provider: str = ""
+    username: str = ""
+    password: str = ""
     dry_run: bool = False
+
+
+class MailProbeRequest(BaseModel):
+    tenant_id: str = Field(..., min_length=1)
+    provider: str
+    username: str
+    password: str
+
+
+_SMTP_PROVIDERS = {
+    "yandex": ("smtp.yandex.ru", 465),
+    "mailru": ("smtp.mail.ru", 465),
+    "google": ("smtp.gmail.com", 465),
+    "outlook": ("smtp.office365.com", 587),
+}
 
 
 @app.get("/health")
@@ -68,6 +87,30 @@ def health():
     }
 
 
+@app.post("/api/mail/probe")
+def mail_probe(req: MailProbeRequest, x_webhook_token: Optional[str] = Header(None)):
+    """Check this company's SMTP login without sending or logging a message."""
+    _check_token(x_webhook_token)
+    provider = req.provider.strip().lower()
+    if provider not in _SMTP_PROVIDERS:
+        raise HTTPException(status_code=400, detail="unsupported_provider")
+    if not req.username.strip() or not req.password:
+        raise HTTPException(status_code=400, detail="credentials_required")
+    host, port = _SMTP_PROVIDERS[provider]
+    try:
+        if port == 587:
+            with smtplib.SMTP(host, port, timeout=8) as smtp:
+                smtp.starttls()
+                smtp.login(req.username.strip(), req.password)
+        else:
+            with smtplib.SMTP_SSL(host, port, timeout=8) as smtp:
+                smtp.login(req.username.strip(), req.password)
+    except (OSError, smtplib.SMTPException):
+        logger.info("mail probe failed tenant=%s provider=%s", req.tenant_id, provider)
+        return {"ok": False, "status": "failed", "message_ru": "Почта не пустила: проверьте логин и пароль приложения."}
+    return {"ok": True, "status": "connected", "tenant_id": req.tenant_id, "provider": provider}
+
+
 @app.post("/api/mail/send")
 def mail_send(
     req: MailSendRequest,
@@ -77,7 +120,11 @@ def mail_send(
     to = req.to.strip()
     subject = req.subject.strip()
     body = req.body.strip()
-    dry = bool(req.dry_run or FORCE_DRY_RUN or not smtp_configured())
+    provider = req.provider.strip().lower()
+    if not req.tenant_id.strip() or provider not in _SMTP_PROVIDERS or not req.username.strip() or not req.password:
+        raise HTTPException(status_code=403, detail="tenant_credentials_required")
+    host, port = _SMTP_PROVIDERS[provider]
+    dry = bool(req.dry_run or FORCE_DRY_RUN)
 
     if dry:
         logger.info(
@@ -101,20 +148,26 @@ def mail_send(
 
     msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = subject
-    msg["From"] = f"{MAIL_FROM_NAME} <{MAIL_FROM}>"
+    msg["From"] = f"{MAIL_FROM_NAME} <{req.username.strip()}>"
     msg["To"] = to
     try:
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-            smtp.login(SMTP_USER, SMTP_PASSWORD)
-            smtp.sendmail(MAIL_FROM, [to], msg.as_string())
-    except Exception as exc:
-        logger.exception("[MAIL SEND ERROR] %s", exc)
+        if port == 587:
+            with smtplib.SMTP(host, port, timeout=30) as smtp:
+                smtp.starttls()
+                smtp.login(req.username.strip(), req.password)
+                smtp.sendmail(req.username.strip(), [to], msg.as_string())
+        else:
+            with smtplib.SMTP_SSL(host, port, timeout=30) as smtp:
+                smtp.login(req.username.strip(), req.password)
+                smtp.sendmail(req.username.strip(), [to], msg.as_string())
+    except (OSError, smtplib.SMTPException):
+        logger.warning("mail send failed tenant=%s provider=%s", req.tenant_id, provider)
         return {
             "ok": False,
             "queued": False,
             "sent": False,
             "error": "smtp_error",
-            "message": str(exc)[:300],
+            "message": "Почтовый провайдер не принял письмо",
         }
 
     return {

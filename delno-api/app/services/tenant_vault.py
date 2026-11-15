@@ -21,8 +21,94 @@ SUPPORTED_KINDS = frozenset(
         "files_onedrive",
         "telegram_bot",
         "max_bot",
+        "calendar_yandex",
+        "calendar_mailru",
+
+        "calendar_google",
+        "calendar_outlook",
+        "mail_yandex",
+        "mail_mailru",
+        "mail_google",
+        "mail_outlook",
+        "conference_yandex",
+        "conference_google",
+        "conference_zoom",
+        "conference_teams",
     }
 )
+
+CALENDAR_KINDS = frozenset(
+    {
+        "calendar_yandex",
+        "calendar_mailru",
+        "calendar_google",
+        "calendar_outlook",
+    }
+)
+FOREIGN_CALENDAR_KINDS = frozenset({"calendar_google", "calendar_outlook"})
+MAIL_KINDS = frozenset({"mail_yandex", "mail_mailru", "mail_google", "mail_outlook"})
+CONFERENCE_KINDS = frozenset(
+    {"conference_yandex", "conference_google", "conference_zoom", "conference_teams"}
+)
+FOREIGN_MAIL_KINDS = frozenset({"mail_google", "mail_outlook"})
+FOREIGN_CONFERENCE_KINDS = frozenset(
+    {"conference_google", "conference_zoom", "conference_teams"}
+)
+
+_APP_PASSWORD_HELP = {
+    "yandex": (
+        "Пароль приложения, не обычный пароль: Яндекс ID → Безопасность → "
+        "Пароли приложений → создать (тип «{what}»)."
+    ),
+    "mailru": (
+        "Пароль для внешнего приложения, не обычный пароль: Mail.ru → Настройки → "
+        "Безопасность → Пароли для внешних приложений → добавить."
+    ),
+}
+
+
+def _account_form(kind: str, title: str, provider: str, what: str, example: str) -> dict[str, Any]:
+    return {
+        "kind": kind,
+        "title": title,
+        "hint": (
+            "Подключаю ваш собственный аккаунт. Сразу проверю его по-настоящему; "
+            "в чат данные не попадут."
+        ),
+        "fields": [
+            {
+                "name": "login",
+                "label": "Адрес почты",
+                "type": "text",
+                "autocomplete": "username",
+                "placeholder": example,
+                "help": f"Полный адрес, например {example}.",
+            },
+            {
+                "name": "password",
+                "label": "Пароль приложения",
+                "type": "password",
+                "autocomplete": "off",
+                "help": _APP_PASSWORD_HELP[provider].format(what=what),
+            },
+        ],
+        "submit_label": "Подключить и проверить",
+        "password_required": True,
+        "login_optional": False,
+    }
+
+
+ACCOUNT_FORMS: dict[str, dict[str, Any]] = {
+    "calendar_yandex": _account_form(
+        "calendar_yandex", "Яндекс Календарь", "yandex", "Календарь CalDAV", "ivan@yandex.ru"
+    ),
+    "calendar_mailru": _account_form(
+        "calendar_mailru", "Календарь Mail.ru", "mailru", "Календарь", "ivan@mail.ru"
+    ),
+    "mail_yandex": _account_form("mail_yandex", "Яндекс Почта", "yandex", "Почта", "ivan@yandex.ru"),
+    "mail_mailru": _account_form("mail_mailru", "Почта Mail.ru", "mailru", "Почта", "ivan@mail.ru"),
+}
+
 
 CLOUD_KINDS = frozenset(
     {
@@ -33,28 +119,41 @@ CLOUD_KINDS = frozenset(
     }
 )
 FOREIGN_CLOUD_KINDS = frozenset({"files_gdrive", "files_onedrive"})
+_FOREIGN_SECRET_KINDS = FOREIGN_CLOUD_KINDS | FOREIGN_CALENDAR_KINDS | FOREIGN_MAIL_KINDS | FOREIGN_CONFERENCE_KINDS
+_LONG_SECRET_KINDS = CLOUD_KINDS | CALENDAR_KINDS | MAIL_KINDS | CONFERENCE_KINDS | frozenset(
+    {"telegram_bot", "max_bot"}
+)
 
 MANGO_SIP_FORM = {
     "kind": "mango_sip",
     "title": "SIP Mango — безопасный ввод",
     "hint": (
-        "Логин вида «номер_аккаунта/сотрудник» из карточки SIP Mango "
-        "(не веб-кабинет). Пароль — SIP-пароль сотрудника. "
-        "Не попадёт в ленту чата; сохраняется только в этом кабинете."
+        "Данные SIP-учётной записи сотрудника из личного кабинета Манго: логин вида "
+        "сотрудник@vpbxНОМЕР.mangosip.ru или номер_аккаунта/сотрудник и SIP-пароль. "
+        "В ленту чата они не попадут и сохранятся только в этом кабинете."
     ),
     "fields": [
         {
             "name": "login",
-            "label": "Логин (аккаунт/сотрудник)",
+            "label": "SIP-логин сотрудника",
             "type": "text",
             "autocomplete": "username",
-            "placeholder": "123456789/ivan",
+            "placeholder": "ivan@vpbx123456789.mangosip.ru",
+            "help": (
+                "SIP-адрес целиком, например ivan@vpbx123456789.mangosip.ru "
+                "или 123456789/ivan."
+            ),
         },
         {
             "name": "password",
             "label": "SIP-пароль",
             "type": "password",
             "autocomplete": "current-password",
+            "help": (
+                "СИП-пароль сотрудника: ЛК Манго → Сотрудники → карточка сотрудника → "
+                "Телефония → учётная запись SIP → «Показать». "
+                "Пароль от личного кабинета не подойдёт."
+            ),
         },
     ],
     "submit_label": "Сохранить безопасно",
@@ -180,14 +279,72 @@ CLOUD_FORMS: dict[str, dict[str, Any]] = {
 }
 
 
+CALENDAR_FORMS: dict[str, dict[str, Any]] = {
+    "calendar_yandex": {
+        "kind": "calendar_yandex",
+        "title": "Яндекс.Календарь",
+        "hint": "Логин, пароль приложения и ссылка CalDAV. В чат не попадут.",
+        "fields": [
+            {"name": "login", "label": "Логин", "type": "text", "autocomplete": "username"},
+            {"name": "password", "label": "Пароль приложения", "type": "password", "autocomplete": "off"},
+        ],
+        "submit_label": "Подключить календарь",
+        "password_required": True,
+        "login_optional": False,
+        "require_foreign_consent": False,
+    },
+    "calendar_mailru": {
+        "kind": "calendar_mailru",
+        "title": "Календарь Mail.ru",
+        "hint": "Укажите адрес почты и пароль приложения. Данные останутся в защищённой форме.",
+        "fields": [
+            {"name": "login", "label": "Адрес почты", "type": "text", "autocomplete": "username", "placeholder": "ivan@mail.ru"},
+            {"name": "password", "label": "Пароль приложения", "type": "password", "autocomplete": "off", "help": "Mail.ru → Настройки → Безопасность → Пароли для внешних приложений"},
+        ],
+        "submit_label": "Подключить календарь",
+        "password_required": True,
+        "login_optional": False,
+        "require_foreign_consent": False,
+    },
+    "calendar_google": {
+        "kind": "calendar_google",
+        "title": "Google Calendar",
+        "hint": "Access token Google. Данные у Google вне РФ — нужно согласие.",
+        "fields": [
+            {"name": "password", "label": "Access token", "type": "password", "autocomplete": "off"},
+        ],
+        "submit_label": "Подключить Google Calendar",
+        "password_required": True,
+        "login_optional": True,
+        "require_foreign_consent": True,
+    },
+    "calendar_outlook": {
+        "kind": "calendar_outlook",
+        "title": "Outlook Calendar",
+        "hint": "Microsoft Graph token. Данные у Microsoft вне РФ — нужно согласие.",
+        "fields": [
+            {"name": "password", "label": "Graph token", "type": "password", "autocomplete": "off"},
+        ],
+        "submit_label": "Подключить Outlook",
+        "password_required": True,
+        "login_optional": True,
+        "require_foreign_consent": True,
+    },
+}
+
+
 def credential_form_spec(kind: str = "mango_sip", *, prefill: dict[str, str] | None = None) -> dict[str, Any]:
     kind = (kind or "mango_sip").strip()
     if kind in CLOUD_FORMS:
         form = dict(CLOUD_FORMS[kind])
+    elif kind in CALENDAR_FORMS:
+        form = dict(CALENDAR_FORMS[kind])
     elif kind in CHANNEL_FORMS:
         form = dict(CHANNEL_FORMS[kind])
     elif kind == "mango_sip":
         form = dict(MANGO_SIP_FORM)
+    elif kind in ACCOUNT_FORMS:
+        form = dict(ACCOUNT_FORMS[kind])
     else:
         # Unknown kinds fall back to SIP form shape but keep requested kind label only
         # when supported; otherwise mango_sip (legacy callers).
@@ -303,6 +460,9 @@ def list_secret_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
     return {"items": items}
 
 
+_EXTRA_SECRET_KEYS = frozenset({"calendar_url", "url", "calendar_id"})
+
+
 def save_secret(
     db: Session,
     ctx: TenantContext,
@@ -311,13 +471,14 @@ def save_secret(
     login: str | None = None,
     password: str | None = None,
     foreign_consent: bool = False,
+    extra: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     kind = (kind or "").strip()
     if kind not in SUPPORTED_KINDS:
         return {"ok": False, "error": "unsupported_kind"}
     login_s = (login or "").strip()
     password_s = (password or "").strip()
-    max_pw = 4096 if kind in CLOUD_KINDS or kind in CHANNEL_FORMS else 200
+    max_pw = 4096 if kind in _LONG_SECRET_KINDS else 200
     if not login_s and not password_s:
         return {"ok": False, "error": "empty"}
     if kind == "files_mailru" and not login_s:
@@ -326,7 +487,7 @@ def save_secret(
         return {"ok": False, "error": "password_required"}
     if password_s and len(password_s) < 4:
         return {"ok": False, "error": "password_too_short"}
-    if kind in FOREIGN_CLOUD_KINDS and not foreign_consent:
+    if kind in _FOREIGN_SECRET_KINDS and not foreign_consent:
         return {"ok": False, "error": "foreign_consent_required"}
 
     tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
@@ -338,12 +499,19 @@ def save_secret(
         "has_password": bool(current.get("password")),
         "foreign_consent": bool(current.get("foreign_consent_at")),
     }
+    if login_s and kind == "mango_sip":
+        from app.services.sip_probe import normalize_mango_login
+
+        login_s = normalize_mango_login(login_s)
     if login_s:
         current["login"] = login_s[:120]
     if password_s:
         current["password"] = password_s[:max_pw]
-    if kind in FOREIGN_CLOUD_KINDS and foreign_consent:
+    if kind in _FOREIGN_SECRET_KINDS and foreign_consent:
         current["foreign_consent_at"] = datetime.now(timezone.utc).isoformat()
+    for key, value in (extra or {}).items():
+        if key in _EXTRA_SECRET_KEYS and str(value or "").strip():
+            current[key] = str(value).strip()[:500]
     current["updated_at"] = datetime.now(timezone.utc).isoformat()
     blob[kind] = current
     settings["secrets"] = blob
@@ -374,7 +542,7 @@ def save_secret(
         msg = "Токен Telegram сохранён. В чат не попал."
     elif kind == "max_bot":
         msg = "Токен MAX сохранён. В чат не попал."
-    elif kind in CLOUD_KINDS:
+    elif kind in CLOUD_KINDS or kind in CALENDAR_KINDS or kind in MAIL_KINDS or kind in CONFERENCE_KINDS:
         msg = "Данные сохранены в сейфе тенанта. В чат не попали."
     else:
         msg = "SIP-данные сохранены в кабинете. В чат не попали."
@@ -472,15 +640,21 @@ def save_secret(
                 cfg["outbound"] = True
                 did_row.routing_config = cfg
                 db.commit()
-            if probe.get("message_ru"):
+            from app.services.sip_probe import classify_sip_outcome
+
+            outcome = classify_sip_outcome(probe)
+            out["sip_outcome"] = outcome
+            _remember_sip_outcome(db, ctx, outcome)
+            if outcome["code"] in ("format", "rejected"):
+                out["message"] = (out["message"] + " " + outcome["message_ru"]).strip()
+            elif probe.get("message_ru"):
                 out["message"] = (out["message"] + " " + str(probe.get("message_ru"))).strip()
             # Rejected / not Registered → reopen SIP form so owner can fix password without
             # hunting for «пришли форму» (follow-up chat used to block vault reopen).
             if not probe.get("ok") and not probe.get("skipped"):
                 out["pending_credential_form"] = credential_form_spec("mango_sip")
                 out["message"] = (
-                    (out.get("message") or "")
-                    + " Открою форму SIP снова — проверьте логин (аккаунт/сотрудник) и SIP-пароль."
+                    (out.get("message") or "") + " Форма SIP открыта ниже."
                 ).strip()
             elif probe.get("ok") and not did:
                 out["message"] = (
@@ -489,6 +663,8 @@ def save_secret(
                 ).strip()
         except Exception:  # noqa: BLE001
             __import__("logging").getLogger(__name__).exception("sip probe after vault save failed")
+    elif kind in ACCOUNT_FORMS:
+        out.update(_verify_office_account(db, ctx, kind, current))
     elif kind in CLOUD_KINDS:
         try:
             from app.services.files_cloud import after_vault_cloud_save
@@ -504,6 +680,53 @@ def save_secret(
         except Exception:  # noqa: BLE001
             __import__("logging").getLogger(__name__).exception("cloud probe after vault save failed")
     return out
+
+
+def _verify_office_account(
+    db: Session, ctx: TenantContext, kind: str, current: dict[str, Any]
+) -> dict[str, Any]:
+    """Real check of the owner's calendar/mail account. Only a pass marks it verified."""
+    from app.services.office_accounts import verify_account
+
+    try:
+        result = verify_account(kind, str(current.get("login") or ""), str(current.get("password") or ""))
+    except Exception:  # noqa: BLE001
+        result = {"ok": False, "code": "error", "message_ru": "Проверка аккаунта упала, попробуем ещё раз."}
+    tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
+    settings = dict(tenant.settings) if isinstance(tenant.settings, dict) else {}
+    blob = dict(settings.get("secrets") or {})
+    row = dict(blob.get(kind) or {})
+    if result.get("ok"):
+        row["verified_at"] = datetime.now(timezone.utc).isoformat()
+        row["verified_summary"] = str(result.get("message_ru") or "")[:300]
+    else:
+        row.pop("verified_at", None)
+        row.pop("verified_summary", None)
+    blob[kind] = row
+    settings["secrets"] = blob
+    tenant.settings = settings
+    db.commit()
+    public = {k: v for k, v in result.items() if k in ("ok", "code", "message_ru", "calendars", "events_14d")}
+    extra: dict[str, Any] = {"account_probe": public, "message": str(result.get("message_ru") or "")}
+    if not result.get("ok"):
+        extra["pending_credential_form"] = credential_form_spec(kind)
+    return extra
+
+
+def _remember_sip_outcome(db: Session, ctx: TenantContext, outcome: dict[str, str]) -> None:
+    """Keep the last SIP form result as a tenant fact Hermes can read (no secrets)."""
+    try:
+        tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
+        settings = dict(tenant.settings) if isinstance(tenant.settings, dict) else {}
+        settings["telephony_sip_last"] = {
+            "code": str(outcome.get("code") or "")[:32],
+            "message_ru": str(outcome.get("message_ru") or "")[:400],
+            "at": datetime.now(timezone.utc).isoformat(),
+        }
+        tenant.settings = settings
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
 
 
 def _mask(value: str) -> str:

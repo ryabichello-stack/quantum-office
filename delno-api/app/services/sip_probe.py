@@ -37,9 +37,28 @@ Tenant-specific registration is Registered and inbound on that DID routes to the
 """
 
 
+_MANGO_AT_RE = re.compile(
+    r"^(?:sips?:)?(?P<employee>[A-Za-z0-9._-]+)@vpbx(?P<account>\d{5,})\.mangosip\.ru(?::\d+)?$",
+    re.I,
+)
+
+
+def normalize_mango_login(login: str | None) -> str:
+    """Accept what Mango shows in the SIP card and return ``account/employee``.
+
+    Forms: ``400123456/ivan``, ``ivan@vpbx400123456.mangosip.ru``,
+    ``sip:ivan@vpbx400123456.mangosip.ru``. Anything else is returned as is.
+    """
+    raw = (login or "").strip().replace(" ", "")
+    m = _MANGO_AT_RE.match(raw)
+    if m:
+        return f"{m.group('account')}/{m.group('employee')}"
+    return raw
+
+
 def parse_mango_login(login: str) -> dict[str, str | None]:
     """Split ``account/employee``; account digits-only, employee SIP user."""
-    raw = (login or "").strip()
+    raw = normalize_mango_login(login)
     if not raw:
         return {"account": None, "employee": None, "error": "missing_login"}
     if "/" not in raw:
@@ -58,6 +77,48 @@ def parse_mango_login(login: str) -> dict[str, str | None]:
             "error": "login_must_be_account_slash_employee",
         }
     return {"account": account_n, "employee": employee_n, "error": None}
+
+
+MANGO_LOGIN_EXAMPLE = "ivan@vpbx123456789.mangosip.ru или 123456789/ivan"
+MANGO_SIP_PASSWORD_WHERE = (
+    "ЛК Манго → Сотрудники → карточка сотрудника → Телефония → "
+    "учётная запись SIP → «Показать»"
+)
+
+
+def classify_sip_outcome(probe: dict[str, Any] | None) -> dict[str, str]:
+    """Plain-words outcome of a SIP form save. No secrets, no real names or numbers."""
+    probe = probe if isinstance(probe, dict) else {}
+    error = str(probe.get("error") or "")
+    reg = probe.get("registration") if isinstance(probe.get("registration"), dict) else {}
+    status = str(reg.get("status") or probe.get("status") or "").lower()
+    if error in ("login_must_be_account_slash_employee", "missing_login"):
+        return {
+            "code": "format",
+            "message_ru": (
+                "Логин не в том виде. Нужен SIP-адрес сотрудника целиком, например "
+                f"{MANGO_LOGIN_EXAMPLE}. Одного имени сотрудника мало."
+            ),
+        }
+    if probe.get("skipped"):
+        return {"code": "saved_only", "message_ru": "Данные сохранены, линию автоматически не подключал."}
+    if probe.get("ok"):
+        return {"code": "registered", "message_ru": "Линия Манго подключена (Registered)."}
+    if status == "rejected" or "rejected" in error.lower():
+        return {
+            "code": "rejected",
+            "message_ru": (
+                "Манго не пустил линию: логин или пароль не подошли. Почти всегда это не тот "
+                f"пароль. Нужен SIP-пароль сотрудника: {MANGO_SIP_PASSWORD_WHERE}. "
+                "Пароль от личного кабинета не подойдёт."
+            ),
+        }
+    if error in ("missing_credentials", "password_required_for_apply"):
+        return {"code": "format", "message_ru": "Не хватает SIP-пароля сотрудника."}
+    return {
+        "code": "not_registered",
+        "message_ru": "Линия пока не зарегистрировалась. Проверим ещё раз через минуту.",
+    }
 
 
 def trunk_id_for_tenant(tenant_slug: str) -> str:
@@ -143,12 +204,15 @@ def apply_mango_sip(
             "ok": False,
             "error": parsed["error"],
             "message_ru": (
-                "Нужен логин Mango вида «номер_аккаунта/сотрудник» "
-                "(из карточки SIP сотрудника), не пароль веб-кабинета."
+                "Нужен SIP-логин Mango целиком, как в карточке сотрудника: "
+                "«сотрудник@vpbxНОМЕР.mangosip.ru» или «НОМЕР/сотрудник». "
+                "Одного имени сотрудника мало."
             ),
         }
     if not password:
         return {"ok": False, "error": "missing_credentials"}
+    # Host helper only understands account/employee — send the normalized form.
+    login = f"{parsed['account']}/{parsed['employee']}"
 
     apply_url = (os.getenv("ASTERISK_SIP_APPLY_URL") or "").strip()
     if apply_url:

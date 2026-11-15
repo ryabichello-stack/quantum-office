@@ -126,7 +126,13 @@ class ToolRegistry:
         tool = self.get(resolved)
         if not tool:
             return ToolResult(ok=False, message=f"Unknown tool: {name}")
-        return tool.run(db, ctx, **params)
+        from app.services.hermes_nous.progress import report_tool
+
+        report_tool(tool.name, "tool", params)
+        try:
+            return tool.run(db, ctx, **params)
+        finally:
+            report_tool(tool.name, "between")
 
 
 registry = ToolRegistry()
