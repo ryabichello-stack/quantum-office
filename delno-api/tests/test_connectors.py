@@ -126,8 +126,8 @@ def test_list_and_enable_connector_service():
     db.commit.assert_called()
 
 
-def test_tools_first_readiness_usable_when_enabled(monkeypatch):
-    """PRODUCT_LOOP: tools_first + enable = usable without live SMTP/CalDAV."""
+def test_mail_not_usable_until_vault_probe(monkeypatch):
+    """Enabled + tools_first health is not a connection. Mail needs a vault probe."""
     tenant_id = uuid.uuid4()
     ctx = TenantContext(tenant_id=tenant_id, tenant_slug="demo", role="tenant_owner")
     tenant = Tenant(
@@ -161,9 +161,10 @@ def test_tools_first_readiness_usable_when_enabled(monkeypatch):
     rows = list_tenant_connector_readiness(db, ctx)
     mail = next(r for r in rows if r["kind"] == "mail")
     assert mail["enabled"] is True
-    assert mail["usable"] is True
-    assert mail["creds_policy"] == "tools_first"
-    assert mail["reason"] is None
+    assert mail["usable"] is False
+    assert mail["connection_status"] == "disconnected"
+    assert mail["creds_policy"] == "vault_probe"
+    assert mail["reason"] == "not_connected"
 
 
 def test_tool_registry_includes_office_tools():

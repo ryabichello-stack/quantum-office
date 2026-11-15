@@ -17,7 +17,7 @@ import json
 import logging
 import os
 from datetime import timedelta
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -31,6 +31,7 @@ import caldav_client as cal
 import conference_client
 import mailer_client
 import providers
+from tenant_scope import bind_request
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("ava-calendar")
@@ -58,14 +59,41 @@ def _safe_json_loads(raw: bytes) -> dict:
         return json.loads(text, strict=False)
 
 
+_SECRET_KEYS = frozenset(
+    {"password", "token", "secret", "authorization", "access_token", "refresh_token", "credentials"}
+)
+
+
+def _redact(value: Any) -> Any:
+    if isinstance(value, dict):
+        out = {}
+        for key, item in value.items():
+            if str(key).lower() in _SECRET_KEYS and not isinstance(item, (dict, list)):
+                out[key] = "***"
+            else:
+                out[key] = _redact(item)
+        return out
+    if isinstance(value, list):
+        return [_redact(item) for item in value]
+    return value
+
+
+def _redact_raw(raw: bytes) -> str:
+    text = raw.decode("utf-8", errors="replace")
+    try:
+        return json.dumps(_redact(json.loads(text)), ensure_ascii=False)[:500]
+    except Exception:
+        return "[unparsed body omitted]"
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     body = await request.body()
     logger.error(
         "[VALIDATION] %s BODY=%s ERRORS=%s",
         request.url.path,
-        body.decode("utf-8", errors="replace"),
-        exc.errors(),
+        _redact_raw(body),
+        [{k: v for k, v in err.items() if k != "input"} for err in exc.errors()],
     )
     return JSONResponse(
         status_code=422,
@@ -73,9 +101,25 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
+class CalendarCredentials(BaseModel):
+    """Tenant vault material. Never log this model."""
+
+    token: Optional[str] = Field(default=None, max_length=4096)
+    username: Optional[str] = Field(default=None, max_length=200)
+    login: Optional[str] = Field(default=None, max_length=200)
+    password: Optional[str] = Field(default=None, max_length=4096)
+    calendar_url: Optional[str] = Field(default=None, max_length=500)
+    url: Optional[str] = Field(default=None, max_length=500)
+    calendar_id: Optional[str] = Field(default=None, max_length=200)
+    allow_env_fallback: bool = False
+
+
 class CalendarCheckRequest(BaseModel):
     start: str
     timezone: Optional[str] = None
+    tenant_id: Optional[str] = Field(default=None, max_length=80)
+    allow_env_fallback: bool = False
+    credentials: Optional[CalendarCredentials] = None
     source: Optional[str] = Field(
         default=None,
         description="mailru | yandex | google | outlook",
@@ -88,6 +132,9 @@ class CalendarSuggestRequest(BaseModel):
     suggestions_count: int = 3
     search_hours_ahead: int = 72
     timezone: Optional[str] = None
+    tenant_id: Optional[str] = Field(default=None, max_length=80)
+    allow_env_fallback: bool = False
+    credentials: Optional[CalendarCredentials] = None
     source: Optional[str] = Field(
         default=None,
         description="mailru | yandex | google | outlook",
@@ -102,6 +149,9 @@ class CalendarCreateRequest(BaseModel):
     attendee_email: Optional[str] = None
     timezone: Optional[str] = None
     end: Optional[str] = None
+    tenant_id: Optional[str] = Field(default=None, max_length=80)
+    allow_env_fallback: bool = False
+    credentials: Optional[CalendarCredentials] = None
     source: Optional[str] = Field(
         default=None,
         description="mailru | yandex | google | outlook",
@@ -116,6 +166,29 @@ def _resolve_provider(source: Optional[str]):
         return providers.get_provider(source)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _require_tenant(body_tenant: Optional[str], header_tenant: Optional[str]) -> str:
+    body = (body_tenant or "").strip()
+    header = (header_tenant or "").strip()
+    if not body and not header:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "tenant_required", "message": "Запрос без тенанта отклонён"},
+        )
+    if body and header and body != header:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "tenant_mismatch", "message": "Чужой тенант отклонён"},
+        )
+    return body or header
+
+
+def _cred_dict(creds: Optional[CalendarCredentials], allow_flag: bool) -> dict:
+    data = creds.model_dump(exclude_none=True) if creds else {}
+    if allow_flag:
+        data["allow_env_fallback"] = True
+    return data
 
 
 @app.get("/health")
@@ -145,16 +218,25 @@ def calendar_providers(x_webhook_token: Optional[str] = Header(None)):
 def calendar_check(
     req: CalendarCheckRequest,
     x_webhook_token: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
 ):
     _check_token(x_webhook_token)
+    tenant_id = _require_tenant(req.tenant_id, x_tenant_id)
     provider = _resolve_provider(req.source)
     start_dt = cal.parse_dt(req.start, req.timezone)
     end_dt = start_dt + timedelta(minutes=cal.CALENDAR_DEFAULT_DURATION_MIN)
-    free = provider.slot_is_free(start_dt, end_dt)
+    with bind_request(
+        tenant_id=tenant_id,
+        credentials=_cred_dict(req.credentials, req.allow_env_fallback),
+        allow_env_fallback=req.allow_env_fallback,
+    ):
+        free = provider.slot_is_free(start_dt, end_dt)
+        configured = provider.configured()
     return {
         "ok": True,
         "source": provider.name,
-        "configured": provider.configured(),
+        "configured": configured,
+        "tenant_id": tenant_id,
         "free": free,
         "start": start_dt.isoformat(),
         "end": end_dt.isoformat(),
@@ -167,22 +249,83 @@ def calendar_check(
 def calendar_suggest(
     req: CalendarSuggestRequest,
     x_webhook_token: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
 ):
     _check_token(x_webhook_token)
+    tenant_id = _require_tenant(req.tenant_id, x_tenant_id)
     provider = _resolve_provider(req.source)
     start_dt = cal.parse_dt(req.start, req.timezone)
-    suggestions = provider.suggest_slots(
-        start_dt,
-        duration_min=req.duration_min or cal.CALENDAR_DEFAULT_DURATION_MIN,
-        suggestions_count=req.suggestions_count,
-        search_hours_ahead=req.search_hours_ahead,
-    )
+    with bind_request(
+        tenant_id=tenant_id,
+        credentials=_cred_dict(req.credentials, req.allow_env_fallback),
+        allow_env_fallback=req.allow_env_fallback,
+    ):
+        suggestions = provider.suggest_slots(
+            start_dt,
+            duration_min=req.duration_min or cal.CALENDAR_DEFAULT_DURATION_MIN,
+            suggestions_count=req.suggestions_count,
+            search_hours_ahead=req.search_hours_ahead,
+        )
+        configured = provider.configured()
     return {
         "ok": True,
         "source": provider.name,
-        "configured": provider.configured(),
+        "configured": configured,
+        "tenant_id": tenant_id,
         "suggestions": suggestions,
         "count": len(suggestions),
+    }
+
+
+class CalendarEventsRequest(BaseModel):
+    source: Optional[str] = None
+    tenant_id: Optional[str] = Field(default=None, max_length=80)
+    allow_env_fallback: bool = False
+    credentials: Optional[CalendarCredentials] = None
+
+
+@app.post("/api/calendar/events")
+def calendar_events(
+    req: CalendarEventsRequest,
+    x_webhook_token: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
+):
+    """List events with this tenant's credentials only."""
+    _check_token(x_webhook_token)
+    tenant_id = _require_tenant(req.tenant_id, x_tenant_id)
+    provider = _resolve_provider(req.source)
+    with bind_request(
+        tenant_id=tenant_id,
+        credentials=_cred_dict(req.credentials, req.allow_env_fallback),
+        allow_env_fallback=req.allow_env_fallback,
+    ):
+        if not provider.configured():
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "tenant_credentials_required",
+                    "message": "Нет кредов календаря в сейфе этого тенанта",
+                },
+            )
+        try:
+            events = provider.list_events()
+        except RuntimeError as exc:
+            if str(exc) == "not_configured":
+                raise HTTPException(
+                    status_code=403,
+                    detail={"error": "tenant_credentials_required"},
+                ) from exc
+            raise
+    safe = []
+    for ev in events:
+        if isinstance(ev, dict):
+            safe.append({k: v for k, v in ev.items() if k not in _SECRET_KEYS})
+    return {
+        "ok": True,
+        "source": provider.name,
+        "tenant_id": tenant_id,
+        "events": safe,
+        "count": len(safe),
     }
 
 
@@ -190,6 +333,7 @@ def calendar_suggest(
 async def calendar_create(
     request: Request,
     x_webhook_token: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
 ):
     _check_token(x_webhook_token)
     raw = await request.body()
@@ -197,7 +341,7 @@ async def calendar_create(
         payload = _safe_json_loads(raw)
         req = CalendarCreateRequest.model_validate(payload)
     except Exception as exc:
-        logger.error("[CREATE BAD REQUEST] BODY=%s err=%s", raw[:500], exc)
+        logger.error("[CREATE BAD REQUEST] type=%s body=%s", type(exc).__name__, _redact_raw(raw))
         return JSONResponse(
             status_code=400,
             content={
@@ -205,11 +349,20 @@ async def calendar_create(
                 "created": False,
                 "reason": "bad_request",
                 "message": "Не удалось разобрать данные для создания встречи",
-                "error": str(exc),
+                "error": "bad_request",
             },
         )
 
+    tenant_id = _require_tenant(req.tenant_id, x_tenant_id)
+    _scope = bind_request(
+        tenant_id=tenant_id,
+        credentials=_cred_dict(req.credentials, req.allow_env_fallback),
+        allow_env_fallback=req.allow_env_fallback,
+    )
+    _scope.__enter__()
+
     if request.headers.get("x-ava-e2e-dry-run", "").strip().lower() in ("1", "true", "yes"):
+        _scope.__exit__(None, None, None)
         return {
             "ok": True,
             "created": True,
@@ -341,8 +494,8 @@ async def calendar_create(
         }
     except HTTPException:
         raise
-    except Exception as exc:
-        logger.exception("[CREATE ERROR] %s", exc)
+    except Exception:
+        logger.error("[CREATE ERROR] calendar_create_failed")
         return JSONResponse(
             status_code=500,
             content={
@@ -350,6 +503,8 @@ async def calendar_create(
                 "created": False,
                 "reason": "calendar_create_failed",
                 "message": "Не удалось создать событие в календаре",
-                "error": str(exc),
+                "error": "calendar_create_failed",
             },
         )
+    finally:
+        _scope.__exit__(None, None, None)

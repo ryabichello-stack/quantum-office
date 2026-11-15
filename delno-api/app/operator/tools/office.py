@@ -11,6 +11,7 @@ from app.core.tenant import TenantContext
 from app.operator.tools.registry import ToolResult
 from app.services.audit import write_audit
 from app.services.connectors import connector_config_for
+from app.services.tenant_broker_access import apply_access as _access_config
 
 
 class CheckCalendarTool:
@@ -33,7 +34,15 @@ class CheckCalendarTool:
             return ToolResult(ok=False, message="start is required")
         connector = get_connector("calendar")
         assert connector is not None
-        config = connector_config_for(db, ctx, "calendar")
+        config, err = _access_config(
+            db,
+            ctx,
+            dict(connector_config_for(db, ctx, "calendar")),
+            kind="calendar",
+            source=str(params.get("source") or "") or None,
+        )
+        if err or config is None:
+            return ToolResult(ok=False, data={"error": err or "tenant_required"}, message=err or "tenant_required")
         result = connector.check(  # type: ignore[attr-defined]
             tenant_slug=ctx.tenant_slug,
             config=config,
@@ -73,7 +82,15 @@ class CreateCalendarEventTool:
             return ToolResult(ok=False, message="start is required")
         connector = get_connector("calendar")
         assert connector is not None
-        config = connector_config_for(db, ctx, "calendar")
+        config, err = _access_config(
+            db,
+            ctx,
+            dict(connector_config_for(db, ctx, "calendar")),
+            kind="calendar",
+            source=str(params.get("source") or "") or None,
+        )
+        if err or config is None:
+            return ToolResult(ok=False, data={"error": err or "tenant_required"}, message=err or "tenant_required")
         result = connector.create_event(  # type: ignore[attr-defined]
             tenant_slug=ctx.tenant_slug,
             config=config,
@@ -126,7 +143,15 @@ class SuggestCalendarSlotsTool:
         source = str(params.get("source") or "mailru").strip() or "mailru"
         connector = get_connector("calendar")
         assert connector is not None
-        config = connector_config_for(db, ctx, "calendar")
+        config, err = _access_config(
+            db,
+            ctx,
+            dict(connector_config_for(db, ctx, "calendar")),
+            kind="calendar",
+            source=source,
+        )
+        if err or config is None:
+            return ToolResult(ok=False, data={"error": err or "tenant_required"}, message=err or "tenant_required")
         result = connector.suggest_slots(  # type: ignore[attr-defined]
             tenant_slug=ctx.tenant_slug,
             config=config,
@@ -215,16 +240,15 @@ class ListFilesTool:
         path = str(params.get("path") or "/").strip() or "/"
         connector = get_connector("files")
         assert connector is not None
-        config = dict(connector_config_for(db, ctx, "files"))
-        try:
-            from app.services.files_cloud import credentials_for_source, normalize_source
-
-            src = normalize_source(source) or source
-            creds = credentials_for_source(db, ctx, src)
-            if creds:
-                config["_request_credentials"] = creds
-        except Exception:  # noqa: BLE001
-            pass
+        config, err = _access_config(
+            db,
+            ctx,
+            dict(connector_config_for(db, ctx, "files")),
+            kind="files",
+            source=source,
+        )
+        if err or config is None:
+            return ToolResult(ok=False, data={"error": err or "tenant_required"}, message=err or "tenant_required")
         result = connector.list_entries(  # type: ignore[attr-defined]
             tenant_slug=ctx.tenant_slug,
             config=config,
