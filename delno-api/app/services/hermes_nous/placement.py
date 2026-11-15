@@ -82,12 +82,18 @@ def profile_id_for_tenant(slug: str, *, agent_id: str = AGENT_COMPANY_MAIN) -> s
 
 
 def _llm_profile_kwargs(db: Session, tenant: Tenant) -> dict[str, Any]:
-    """BYOK goes into that profile only. Platform key stays in the worker env."""
-    from app.services.llm_keys import KEY_BYOK, resolve_openai_key
+    """Each profile gets exactly one key: its own BYOK, or the platform key.
+
+    Hermes multiplex reads provider keys only from the profile's own .env
+    (secret scope fails closed, never falls back to the worker env), so a
+    platform-key company needs the platform key in its profile. A BYOK company
+    gets only its own key — the platform key is never written there.
+    """
+    from app.services.llm_keys import KEY_BYOK, KEY_PLATFORM, resolve_openai_key
 
     key, source = resolve_openai_key(db, tenant)
     return {
-        "openai_api_key": key if source == KEY_BYOK else None,
+        "openai_api_key": key if source in (KEY_BYOK, KEY_PLATFORM) else None,
         "llm_key_source": source,
     }
 

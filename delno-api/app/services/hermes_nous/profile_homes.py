@@ -116,7 +116,7 @@ def _bump_stock_model(text: str) -> str:
 
 
 def _apply_llm_env(lines: list[str], *, openai_api_key: str | None, llm_key_source: str) -> list[str]:
-    """Write BYOK into this profile only. Never copy the shared platform key."""
+    """One managed key per profile: its BYOK, or the platform key for platform companies."""
     cleaned: list[str] = []
     skip_key = False
     for ln in lines:
@@ -133,7 +133,7 @@ def _apply_llm_env(lines: list[str], *, openai_api_key: str | None, llm_key_sour
     source = llm_key_source if llm_key_source in {"byok", "platform", "missing"} else "platform"
     cleaned.append(f"DELNO_LLM_KEY_SOURCE={source}")
     key = (openai_api_key or "").strip()
-    if source == "byok" and key:
+    if source in ("byok", "platform") and key:
         cleaned.append(_LLM_MARKER)
         cleaned.append(f"OPENAI_API_KEY={key}")
     return cleaned

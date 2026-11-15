@@ -1,9 +1,9 @@
 """Per-company LLM key: bring-your-own or the platform key.
 
 The raw key is never written to logs, events, or profile metadata.
-BYOK is stored only in that tenant's settings and, when placed, in that
-profile's .env so the Hermes process can prefer it over the shared worker env.
-Platform-key companies do not get a copy of the platform key in their profile.
+Hermes reads the provider key only from that profile's .env. A BYOK company
+gets only its own key. A platform-key company gets the platform key in its
+own profile, and never another company's key.
 """
 
 from __future__ import annotations

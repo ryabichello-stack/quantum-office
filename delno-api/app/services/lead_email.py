@@ -47,7 +47,7 @@ def _send_lead_email(lead: dict[str, str]) -> None:
     message["To"] = settings.lead_notify_to
     message["Subject"] = "Заявка с Дельно (dlno.ru): новая заявка"
     lines = [
-        "Заявка с Дельно (dlno.ru): новая заявка",
+        "Заявка с Дельно (dlno.ru)",
         "",
         f"Источник: {lead['source']}",
         f"Имя: {lead['name']}",

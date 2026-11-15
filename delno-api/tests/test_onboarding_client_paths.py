@@ -223,33 +223,46 @@ def test_two_companies_do_not_share_meetings_or_keys(db, tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_PROFILES_ROOT", str(tmp_path / "profiles"))
     monkeypatch.setenv("OPENAI_API_KEY", "platform-secret-should-not-leak")
     get_settings.cache_clear()
+    from app.services.hermes_nous.placement import _llm_profile_kwargs
     from app.services.hermes_nous.profile_homes import ensure_live_profile_home
-    from app.services.llm_keys import resolve_openai_key
 
-    key_a, src_a = resolve_openai_key(db, a)
-    key_b, src_b = resolve_openai_key(db, b)
-    assert src_a == "byok" and key_a == "byok-alpha-secret"
-    assert src_b == "platform" and key_b == "platform-secret-should-not-leak"
+    kw_a = _llm_profile_kwargs(db, a)
+    kw_b = _llm_profile_kwargs(db, b)
+    assert kw_a["llm_key_source"] == "byok"
+    assert kw_a["openai_api_key"] == "byok-alpha-secret"
+    assert "platform-secret-should-not-leak" not in (kw_a["openai_api_key"] or "")
+    assert kw_b["llm_key_source"] == "platform"
+    assert kw_b["openai_api_key"] == "platform-secret-should-not-leak"
     home_a = ensure_live_profile_home(
         "tenant_alpha__company_main",
         worker_id="pool",
         api_server_key="a" * 16,
-        openai_api_key=key_a if src_a == "byok" else None,
-        llm_key_source=src_a,
+        openai_api_key=kw_a["openai_api_key"],
+        llm_key_source=kw_a["llm_key_source"],
     )
     home_b = ensure_live_profile_home(
         "tenant_beta__company_main",
         worker_id="pool",
         api_server_key="b" * 16,
-        openai_api_key=key_b if src_b == "byok" else None,
-        llm_key_source=src_b,
+        openai_api_key=kw_b["openai_api_key"],
+        llm_key_source=kw_b["llm_key_source"],
+    )
+    # Second ensure must not duplicate the managed key line.
+    ensure_live_profile_home(
+        "tenant_beta__company_main",
+        worker_id="pool",
+        api_server_key="b" * 16,
+        openai_api_key=kw_b["openai_api_key"],
+        llm_key_source=kw_b["llm_key_source"],
     )
     env_a = (home_a / ".env").read_text(encoding="utf-8")
     env_b = (home_b / ".env").read_text(encoding="utf-8")
-    assert "byok-alpha-secret" in env_a
-    assert "byok-alpha-secret" not in env_b
+    assert env_a.count("OPENAI_API_KEY=") == 1
+    assert "OPENAI_API_KEY=byok-alpha-secret" in env_a
     assert "platform-secret-should-not-leak" not in env_a
-    assert "platform-secret-should-not-leak" not in env_b
+    assert env_b.count("OPENAI_API_KEY=") == 1
+    assert "OPENAI_API_KEY=platform-secret-should-not-leak" in env_b
+    assert "byok-alpha-secret" not in env_b
     assert "DELNO_LLM_KEY_SOURCE=platform" in env_b
     assert "workers/pool/profiles/tenant_alpha__company_main" in str(home_a)
     assert home_a != home_b
@@ -531,7 +544,7 @@ def test_gpt6_luna_price_and_lead_subject(monkeypatch):
         }
     )
     assert sent["subject"] == "Заявка с Дельно (dlno.ru): новая заявка"
-    assert sent["body"].startswith("Заявка с Дельно (dlno.ru): новая заявка")
+    assert sent["body"].splitlines()[0] == "Заявка с Дельно (dlno.ru)"
     get_settings.cache_clear()
 
 
