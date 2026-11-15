@@ -195,3 +195,8 @@
 - Hermes onboarding canon: `docs/hermes-nous/ONBOARDING_FULL_SCRIPT.md` — goal/tariff/skip/Draft First сценарий (Codex review)
 
 - Первичный импорт `outreach/`, `mailer/`, `text-bot/`, `docs/`
+
+# 2026-11-16
+
+- Restored DELNO Hermes OpenAI egress: re-added the missing `inbound-grok-minsk → up-vpn1` routing rule for the existing 10808 proxy. Verified OpenAI 200 and live Hermes/MCP setup-status calls for two separate audit tenants; details and rollback in `docs/AGENT_CHANGE_REGISTER.md`.
+
