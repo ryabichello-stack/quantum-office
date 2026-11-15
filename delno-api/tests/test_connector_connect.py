@@ -17,6 +17,7 @@ from app.services.connector_connect import (
     connect_provider,
     google_oauth_start,
     link_status,
+    mail_delivery_access,
 )
 from app.services.connectors import list_tenant_connector_readiness
 
@@ -166,6 +167,22 @@ def test_mail_and_conference_need_a_probe(monkeypatch):
     assert video["ok"] is True
     assert video["connection"]["status"] == "connected"
     assert "telemost-token-value" not in str(video)
+
+
+def test_outbound_mail_account_is_scoped_to_verified_tenant(monkeypatch):
+    db = _db()
+    alpha = _ctx(db, "alpha")
+    beta = _ctx(db, "beta")
+    monkeypatch.setattr("app.services.connector_connect.probe_mail_login", lambda *_a, **_k: {"ok": True})
+    assert connect_provider(
+        db, alpha, kind="mail", provider="yandex", login="alpha@example.ru", password="alpha-secret"
+    )["ok"]
+    assert mail_delivery_access(db, beta) is None
+    assert connect_provider(
+        db, beta, kind="mail", provider="mailru", login="beta@example.ru", password="beta-secret"
+    )["ok"]
+    assert mail_delivery_access(db, alpha)["username"] == "alpha@example.ru"
+    assert mail_delivery_access(db, beta)["username"] == "beta@example.ru"
 
 
 def test_google_oauth_without_server_env(monkeypatch):

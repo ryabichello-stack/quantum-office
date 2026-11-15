@@ -514,6 +514,25 @@ def link_status(db: Session, ctx: TenantContext, kind: str) -> dict[str, Any]:
     return published
 
 
+def mail_delivery_access(db: Session, ctx: TenantContext) -> dict[str, Any] | None:
+    """Return only this tenant's verified mail account for an outbound call."""
+    current = link_status(db, ctx, "mail")
+    if current["status"] != "connected":
+        return None
+    spec = _provider("mail", str(current.get("provider") or ""))
+    if spec is None:
+        return None
+    creds = _vault_creds(db, ctx, spec)
+    if not creds:
+        return None
+    return {
+        "tenant_id": str(ctx.tenant_id),
+        "provider": spec["id"],
+        "username": creds["username"],
+        "password": creds["password"],
+    }
+
+
 def connect_provider(
     db: Session,
     ctx: TenantContext,

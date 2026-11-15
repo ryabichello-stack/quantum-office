@@ -83,14 +83,28 @@ class MailConnector:
                     "tenant_slug": tenant_slug,
                 },
             )
+        access = config.get("_mail_delivery_access")
+        if not isinstance(access, dict) or not all(access.get(key) for key in ("tenant_id", "provider", "username", "password")):
+            return ConnectorResult(
+                ok=False,
+                configured=True,
+                kind=self.kind,
+                error="mail_not_connected",
+                message="Почта этой компании не подключена",
+            )
         code, resp, err = post_json(
             base,
             "/api/mail/send",
-            json={"to": to, "subject": subject, "body": body, "tenant_slug": tenant_slug},
+            json={
+                "to": to, "subject": subject, "body": body,
+                "tenant_slug": tenant_slug, "tenant_id": access["tenant_id"],
+                "provider": access["provider"], "username": access["username"],
+                "password": access["password"],
+            },
             token=self._token(config),
         )
-        if err:
-            return ConnectorResult(ok=False, configured=True, kind=self.kind, error="send_failed", message=err)
+        if err or not isinstance(resp, dict) or not resp.get("sent"):
+            return ConnectorResult(ok=False, configured=True, kind=self.kind, error="send_failed", message=err or "Письмо не отправлено")
         return ConnectorResult(
             ok=True,
             configured=True,

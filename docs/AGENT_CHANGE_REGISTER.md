@@ -335,8 +335,8 @@
 
 ## 2026-11-15 23:08 МСК — Codex: проверка подключения почты в DELNO gateway
 
-- Файлы: `delno-office/mail/office_gateway.py`, `delno-office/mail/tests/test_probe.py`.
+- Файлы: `delno-office/mail/office_gateway.py`, `delno-office/mail/tests/test_probe.py`, `delno-api/app/services/connector_connect.py`, `delno-api/app/operator/tools/office.py`, `delno-api/app/adapters/connectors/mail.py`, тесты API.
 - PR #101 вызывал `/api/mail/probe`, но текущий `delno-mail` его не предоставлял: реализация была добавлена в другой сервис `mailer/main.py`. В рабочий gateway добавлена проверка SMTP-входа по данным одного тенанта без отправки письма и без вывода пароля.
-- Проверка: 2 теста gateway прошли. На прод пока не выложено.
-- Осталось: проверить путь отправки писем через подключённый почтовый аккаунт. Сейчас `send_mail_draft` использует общие серверные SMTP-настройки, поэтому результат проверки подключения ещё не означает, что письмо уйдёт от имени этого тенанта. До исправления не считать почту готовым модулем онбординга.
+- Отправка теперь берёт только проверенную почту текущей компании; шлюз отклоняет запрос без данных компании и не использует общий SMTP. Тесты: 4 gateway-теста прошли; API 419 passed, 1 unrelated network-dependent `test_suggest_reachable_host_fixes_quantum_typo` failed. На прод пока не выложено.
+- Осталось: проверить живую отправку после выкладки с учётной записью тестовой компании; до этого не считать почту готовым модулем онбординга.
 

@@ -95,8 +95,8 @@ def test_office_tools_run_stub(monkeypatch):
     assert cal.data["stub"] is True
 
     mail = SendMailDraftTool().run(db, ctx, to="x@y.z", subject="S", body="B")
-    assert mail.ok is True
-    assert mail.data["stub"] is True
+    assert mail.ok is False
+    assert mail.data["error"] == "mail_not_connected"
 
     files = ListFilesTool().run(db, ctx, path="/")
     assert files.ok is True

@@ -198,7 +198,17 @@ class SendMailDraftTool:
             return ToolResult(ok=False, message="to, subject and body are required")
         connector = get_connector("mail")
         assert connector is not None
-        config = connector_config_for(db, ctx, "mail")
+        from app.services.connector_connect import mail_delivery_access
+
+        access = mail_delivery_access(db, ctx)
+        if access is None:
+            return ToolResult(
+                ok=False,
+                data={"error": "mail_not_connected"},
+                message="Сначала подключите и проверьте почту этой компании.",
+            )
+        config = dict(connector_config_for(db, ctx, "mail"))
+        config["_mail_delivery_access"] = access
         result = connector.send_draft(  # type: ignore[attr-defined]
             tenant_slug=ctx.tenant_slug,
             config=config,

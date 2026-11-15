@@ -53,6 +53,10 @@ class MailSendRequest(BaseModel):
     subject: str = Field(..., min_length=1, max_length=500)
     body: str = Field(..., min_length=1, max_length=50000)
     tenant_slug: str = Field(default="", max_length=120)
+    tenant_id: str = Field(default="", max_length=120)
+    provider: str = ""
+    username: str = ""
+    password: str = ""
     dry_run: bool = False
 
 
@@ -116,7 +120,11 @@ def mail_send(
     to = req.to.strip()
     subject = req.subject.strip()
     body = req.body.strip()
-    dry = bool(req.dry_run or FORCE_DRY_RUN or not smtp_configured())
+    provider = req.provider.strip().lower()
+    if not req.tenant_id.strip() or provider not in _SMTP_PROVIDERS or not req.username.strip() or not req.password:
+        raise HTTPException(status_code=403, detail="tenant_credentials_required")
+    host, port = _SMTP_PROVIDERS[provider]
+    dry = bool(req.dry_run or FORCE_DRY_RUN)
 
     if dry:
         logger.info(
@@ -140,20 +148,26 @@ def mail_send(
 
     msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = subject
-    msg["From"] = f"{MAIL_FROM_NAME} <{MAIL_FROM}>"
+    msg["From"] = f"{MAIL_FROM_NAME} <{req.username.strip()}>"
     msg["To"] = to
     try:
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
-            smtp.login(SMTP_USER, SMTP_PASSWORD)
-            smtp.sendmail(MAIL_FROM, [to], msg.as_string())
-    except Exception as exc:
-        logger.exception("[MAIL SEND ERROR] %s", exc)
+        if port == 587:
+            with smtplib.SMTP(host, port, timeout=30) as smtp:
+                smtp.starttls()
+                smtp.login(req.username.strip(), req.password)
+                smtp.sendmail(req.username.strip(), [to], msg.as_string())
+        else:
+            with smtplib.SMTP_SSL(host, port, timeout=30) as smtp:
+                smtp.login(req.username.strip(), req.password)
+                smtp.sendmail(req.username.strip(), [to], msg.as_string())
+    except (OSError, smtplib.SMTPException):
+        logger.warning("mail send failed tenant=%s provider=%s", req.tenant_id, provider)
         return {
             "ok": False,
             "queued": False,
             "sent": False,
             "error": "smtp_error",
-            "message": str(exc)[:300],
+            "message": "Почтовый провайдер не принял письмо",
         }
 
     return {
