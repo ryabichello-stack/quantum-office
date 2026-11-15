@@ -7,8 +7,10 @@ import {
   reduceDictate,
   doneActionsLabel,
   humanAction,
+  reduceLiveTrace,
   ruActions,
   thinkingView,
+  type LiveTrace,
   waveHeights,
   type DictateSnapshot,
 } from "./hermesUiStates";
@@ -142,6 +144,23 @@ describe("Hermes thinking block", () => {
     const unknown = humanAction("mystery.tool_x");
     assert.equal(unknown, "Выполняю действие…");
     assert.equal(unknown.includes("mystery"), false);
+  });
+
+  it("follows live Hermes tool events and thinks between them", () => {
+    let trace: LiveTrace = { steps: [], awaiting: true, seen: [] };
+    assert.equal(thinkingView(trace.steps, { live: true, awaiting: trace.awaiting }).line, "Думаю над ответом…");
+    trace = reduceLiveTrace(trace, { phase: "tool", tool: "web.research", tool_call_id: "c1" });
+    assert.equal(trace.awaiting, false);
+    assert.equal(thinkingView(trace.steps, { live: true, awaiting: false }).line, "Ищу на сайте компании…");
+    trace = reduceLiveTrace(trace, { phase: "tool", tool: "web.research", tool_call_id: "c1" });
+    assert.equal(trace.steps.length, 1);
+    trace = reduceLiveTrace(trace, { phase: "between" });
+    assert.equal(thinkingView(trace.steps, { live: true, awaiting: true }).line, "Думаю над ответом…");
+    assert.equal(thinkingView(trace.steps, { live: true, awaiting: true }).steps.length, 1);
+    trace = reduceLiveTrace(trace, { phase: "tool", tool: "phones.provision", tool_call_id: "c2" });
+    const done = thinkingView(trace.steps, { live: false });
+    assert.equal(done.line, "Сделал 2 действия");
+    assert.equal(done.steps.map((s) => s.label).join("|").includes("phones"), false);
   });
 
   it("pluralizes the finished summary", () => {

@@ -285,21 +285,55 @@ export function doneActionsLabel(count: number): string {
   return `Сделал ${ruActions(count)}`;
 }
 
+const THINKING_LINE = "Думаю над ответом…";
+
+export type LiveTrace = {
+  steps: ThoughtStep[];
+  awaiting: boolean;
+  seen: string[];
+};
+
+export function reduceLiveTrace(
+  state: LiveTrace,
+  event: { phase?: string; tool?: string; preview?: string; tool_call_id?: string },
+): LiveTrace {
+  const phase = event.phase || "";
+  if (phase === "thinking" || phase === "between") {
+    return { ...state, awaiting: true };
+  }
+  if (phase === "tool") {
+    const id = (event.tool_call_id || "").trim();
+    if (id && state.seen.includes(id)) return { ...state, awaiting: false };
+    const label = humanAction(event.tool || "");
+    const detail = event.preview ? humanDetail(event.preview) : undefined;
+    return {
+      awaiting: false,
+      seen: id ? [...state.seen, id] : state.seen,
+      steps: [...state.steps, { label, detail }],
+    };
+  }
+  return state;
+}
+
 export function thinkingView(
   steps: ThoughtStep[],
-  opts: { live?: boolean; liveIndex?: number },
+  opts: { live?: boolean; liveIndex?: number; awaiting?: boolean },
 ): ThinkingView {
   const live = Boolean(opts.live);
-  if (!steps.length) return { live, line: "", steps: [] };
+  const readyAll = steps.map(presentStep);
   if (!live) {
-    const ready = steps.map(presentStep);
-    return { live: false, line: doneActionsLabel(ready.length), steps: ready };
+    if (!readyAll.length) return { live: false, line: "", steps: [] };
+    return { live: false, line: doneActionsLabel(readyAll.length), steps: readyAll };
   }
-  const visible = steps.slice(0, Math.max(1, opts.liveIndex || 1)).map(presentStep);
+  if (!readyAll.length || opts.awaiting) {
+    const visible = opts.liveIndex ? readyAll.slice(0, Math.max(0, opts.liveIndex)) : readyAll;
+    return { live: true, line: THINKING_LINE, steps: visible.length ? visible : readyAll };
+  }
+  const visible = readyAll.slice(0, Math.max(1, opts.liveIndex || readyAll.length));
   const current = visible[visible.length - 1];
   return {
     live: true,
-    line: current?.label || FALLBACK_ACTION,
+    line: current?.label || THINKING_LINE,
     steps: visible,
   };
 }

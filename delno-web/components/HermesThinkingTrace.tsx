@@ -15,16 +15,19 @@ export function HermesThinkingTrace({
   steps,
   live = false,
   liveIndex,
+  awaiting = false,
 }: {
   steps: ThinkingStep[];
   /** Request still in flight — the line is the current action. */
   live?: boolean;
   /** How many steps of the plan are active so far (1-based). */
   liveIndex?: number;
+  /** Between tools, or before the first one: «Думаю над ответом…». */
+  awaiting?: boolean;
   /** Kept so existing callers can pass the measured duration. */
   durationMs?: number;
 }) {
-  const view = thinkingView(steps, { live, liveIndex });
+  const view = thinkingView(steps, { live, liveIndex, awaiting });
   const [open, setOpen] = useState(false);
   const listId = useId();
 

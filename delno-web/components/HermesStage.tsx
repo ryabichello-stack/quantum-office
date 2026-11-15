@@ -27,9 +27,9 @@ import { ConfirmCard } from "@/components/ConfirmCard";
 import { CredentialFormCard, type CredentialFormSpec } from "@/components/CredentialFormCard";
 import {
   buildThinkingChain,
-  liveThinkingPlan,
   type ThinkingStep,
 } from "@/lib/hermesThinking";
+import { reduceLiveTrace, type LiveTrace } from "@/lib/hermesUiStates";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,7 @@ import {
   apiConversations,
   apiConversationMessages,
   apiOperatorChat,
+  readOperatorChatStream,
   apiOperatorConfirm,
   apiOperatorHelp,
   apiTenantSecretSave,
@@ -105,6 +106,9 @@ type ChatLine = {
   thinking?: ThinkingStep[];
   /** Thinking is still in progress — show before the reply body. */
   thinkingLive?: boolean;
+  /** No tool is running right now — the line says «Думаю над ответом…». */
+  thinkingAwaiting?: boolean;
+  thinkingSeen?: string[];
   thinkingLiveIndex?: number;
   thinkingMs?: number;
   previews?: { url: string; name: string; kind?: "image" | "video" | "file" }[];
@@ -333,8 +337,23 @@ export function HermesStage({ token }: { token: string }) {
               )
               .join(" ")
           : "");
-      const plan = liveThinkingPlan(question || label);
-      // Show user bubble + live thinking placeholder BEFORE any reply text.
+      const emptyTrace = (): LiveTrace => ({ steps: [], awaiting: true, seen: [] });
+      const applyLive = (event: { phase?: string; tool?: string; preview?: string; tool_call_id?: string }) => {
+        setLines((prev) => {
+          if (!prev.length) return prev;
+          const last = prev[prev.length - 1];
+          if (last?.role !== "assistant" || !last.thinkingLive) return prev;
+          const next = reduceLiveTrace(
+            { steps: last.thinking || [], awaiting: last.thinkingAwaiting !== false, seen: last.thinkingSeen || [] },
+            event,
+          );
+          return [
+            ...prev.slice(0, -1),
+            { ...last, thinking: next.steps, thinkingAwaiting: next.awaiting, thinkingSeen: next.seen },
+          ];
+        });
+      };
+      // Real Hermes events fill the line. Until the first tool, the owner sees «Думаю над ответом…».
       if (modality === "text") {
         setLines((prev) => [
           ...prev,
@@ -342,9 +361,10 @@ export function HermesStage({ token }: { token: string }) {
           {
             role: "assistant",
             text: "",
-            thinking: plan,
+            thinking: emptyTrace().steps,
             thinkingLive: true,
-            thinkingLiveIndex: 1,
+            thinkingAwaiting: true,
+            thinkingSeen: [],
           },
         ]);
       } else {
@@ -354,24 +374,13 @@ export function HermesStage({ token }: { token: string }) {
           {
             role: "assistant",
             text: "",
-            thinking: plan,
+            thinking: [],
             thinkingLive: true,
-            thinkingLiveIndex: 1,
+            thinkingAwaiting: true,
+            thinkingSeen: [],
           },
         ]);
       }
-
-      let liveIdx = 1;
-      const tick = window.setInterval(() => {
-        liveIdx = Math.min(plan.length, liveIdx + 1);
-        const idx = liveIdx;
-        setLines((prev) => {
-          if (!prev.length) return prev;
-          const last = prev[prev.length - 1];
-          if (last?.role !== "assistant" || !last.thinkingLive) return prev;
-          return [...prev.slice(0, -1), { ...last, thinkingLiveIndex: idx }];
-        });
-      }, 700);
 
       try {
         const attachments = await Promise.all(attachSource.map((a) => fileToOperatorAttachment(a.file)));
@@ -379,15 +388,25 @@ export function HermesStage({ token }: { token: string }) {
           clearPending(attachSource);
           setPendingFiles([]);
         }
-        const result = await apiOperatorChat(
+        const streamed = await readOperatorChatStream(
           token,
           question,
           conversationId || undefined,
           modality,
           "hermes",
+          applyLive,
           attachments,
         );
-        window.clearInterval(tick);
+        const result =
+          streamed.result ||
+          (await apiOperatorChat(
+            token,
+            question,
+            conversationId || undefined,
+            modality,
+            "hermes",
+            attachments,
+          ));
         setConversationId(result.conversation_id);
         const pending = result.pending_confirmation || null;
         if (pending) setActivePending(pending);
@@ -397,7 +416,7 @@ export function HermesStage({ token }: { token: string }) {
         const suggestions = (result.suggested_actions || []).filter(
           (a) => a?.title && a?.text,
         );
-        const thinking = buildThinkingChain({
+        const fromChat = buildThinkingChain({
           engine: result.engine,
           tool_calls: result.tool_calls,
           hermes_run: result.hermes_run,
@@ -408,11 +427,10 @@ export function HermesStage({ token }: { token: string }) {
           ? "[логин/пароль — через безопасную форму]"
           : question || label;
 
-        // Keep thinking visible a beat with real steps, still without reply —
-        // then reveal the answer (thinking collapses via component).
         setLines((prev) => {
           let base = prev;
-          // Replace trailing live assistant stub; fix redacted user if needed.
+          const live = base.length && base[base.length - 1]?.role === "assistant" ? base[base.length - 1] : undefined;
+          const liveSteps = live?.thinking?.length ? live.thinking : fromChat;
           if (base.length && base[base.length - 1]?.role === "assistant") {
             base = base.slice(0, -1);
           }
@@ -426,10 +444,10 @@ export function HermesStage({ token }: { token: string }) {
             ...base,
             {
               role: "assistant" as const,
-              text: "",
-              thinking: thinking.length ? thinking : plan,
-              thinkingLive: true,
-              thinkingLiveIndex: (thinking.length ? thinking : plan).length,
+              text: result.reply,
+              thinking: liveSteps.length ? liveSteps : undefined,
+              thinkingLive: false,
+              thinkingAwaiting: false,
               thinkingMs: elapsed,
               pending,
               credentialForm: secretForm,
@@ -439,27 +457,9 @@ export function HermesStage({ token }: { token: string }) {
             },
           ];
         });
-
-        await new Promise((r) => window.setTimeout(r, Math.min(900, Math.max(350, thinking.length * 120))));
-
-        setLines((prev) => {
-          if (!prev.length) return prev;
-          const last = prev[prev.length - 1];
-          if (last?.role !== "assistant") return prev;
-          return [
-            ...prev.slice(0, -1),
-            {
-              ...last,
-              text: result.reply,
-              thinkingLive: false,
-              thinkingMs: Date.now() - startedAt,
-            },
-          ];
-        });
         void refreshPanels();
         return result.reply;
       } catch {
-        window.clearInterval(tick);
         setLines((prev) => {
           if (!prev.length) return prev;
           const last = prev[prev.length - 1];
@@ -1140,11 +1140,12 @@ export function HermesStage({ token }: { token: string }) {
                   <article key={idx} className="hx-row hx-row-assistant">
                     {!compact && <HermesAvatar />}
                     <div className="hx-assistant-col">
-                      {line.thinking && line.thinking.length > 0 ? (
+                      {line.thinkingLive || (line.thinking && line.thinking.length > 0) ? (
                         <HermesThinkingTrace
-                          steps={line.thinking}
+                          steps={line.thinking || []}
                           live={Boolean(line.thinkingLive)}
                           liveIndex={line.thinkingLiveIndex}
+                          awaiting={Boolean(line.thinkingAwaiting)}
                           durationMs={line.thinkingMs}
                         />
                       ) : null}
