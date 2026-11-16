@@ -55,15 +55,13 @@ def get_office_loop(db: Session, ctx: TenantContext) -> dict[str, Any]:
     connector_ready = sum(
         1 for k, v in checks.items() if k not in _not_connector and isinstance(v, dict) and v.get("ok")
     )
-    # Auto-advance forward from facts; never clobber an explicit later phase
-    # (set_phase / tests / owner skipping a step).
+    goal = str(setup.get("goal") or "").strip()
+    # The owner's goal drives the flow. Knowledge and channels never gate it.
     phase = str(loop.get("phase") or "welcome")
-    if kb_ok and phase in ("welcome", "company_kb"):
-        phase = "connectors"
-    if setup.get("setup_complete") and phase not in ("ready", "conduct"):
+    if phase == "welcome" and goal:
+        phase = "ready" if setup.get("setup_complete") else "connectors"
+    elif phase in ("company_kb", "connectors") and goal and setup.get("setup_complete"):
         phase = "ready"
-    if setup.get("setup_complete") and loop.get("phase") == "conduct":
-        phase = "conduct"
 
     kb_draft = loop.get("kb_draft") if isinstance(loop.get("kb_draft"), dict) else None
     # Concrete next item from hermes_ops checklist (source of truth for "что дальше").
@@ -83,42 +81,19 @@ def get_office_loop(db: Session, ctx: TenantContext) -> dict[str, Any]:
         if setup_next["substep"] and setup_next["id"] == "phone":
             setup_next["hint"] = _phone_hint(setup_next["substep"], detail) or setup_next["hint"]
     steps = [
-        {
-            "id": "welcome",
-            "title": "Старт",
-            "done": phase != "welcome",
-            "hint": "Гермес знакомится и предлагает собрать знания о компании",
-        },
-        {
-            "id": "company_kb",
-            "title": "База знаний",
-            "done": kb_ok,
-            "hint": "Сайт + TG/IG/VK + веб → черновик → уточнения с владельцем → подтверждение",
-        },
-        {
-            "id": "connectors",
-            "title": "Инструменты",
-            "done": bool(setup.get("setup_complete")) or connector_ready >= 1,
-            "hint": (
-                f"Сейчас по сетапу: {setup_next['title']}. {setup_next.get('hint') or ''}".strip()
-                if setup_next and kb_ok and not setup.get("setup_complete")
-                else "Почта / Telegram / календарь / телефон — по шагам с формами"
-            ),
-        },
-        {
-            "id": "ready",
-            "title": "Офис готов",
-            "done": bool(setup.get("setup_complete")) or phase in ("ready", "conduct"),
-            "hint": "Health зелёный, можно давать поручения",
-        },
-        {
-            "id": "conduct",
-            "title": "Дирижирование",
-            "done": phase == "conduct",
-            "hint": "Поручения, субагенты, cron — на живых тулах",
-        },
+        {"id": "welcome", "title": "Ваша задача", "done": bool(goal),
+         "hint": "Расскажите, что поручить агенту"},
+        {"id": "company_kb", "title": "Знания (при необходимости)",
+         "done": kb_ok, "optional": True,
+         "hint": "Добавьте сведения о компании, если агент должен отвечать на вопросы о ней"},
+        {"id": "connectors", "title": "Нужные инструменты",
+         "done": not bool(setup_next),
+         "hint": "Подключайте только то, что помогает вашей задаче"},
+        {"id": "conduct", "title": "Работа",
+         "done": bool(goal),
+         "hint": "Агент уже может работать с доступными инструментами"},
     ]
-    next_step = next((s for s in steps if not s["done"]), steps[-1])
+    next_step = next((s for s in steps if not s["done"] and not s.get("optional")), steps[-1])
     return {
         "ok": True,
         "engine": "nous_hermes_agent",
@@ -128,6 +103,7 @@ def get_office_loop(db: Session, ctx: TenantContext) -> dict[str, Any]:
         "next_step": next_step,
         "setup_next": setup_next,
         "kb_ok": kb_ok,
+        "goal": goal,
         "kb_draft": kb_draft,
         "connectors_ready_count": connector_ready,
         "setup": {
@@ -299,9 +275,9 @@ def _phone_hint(substep: str, detail: dict[str, Any]) -> str:
 
 def _headline(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> str:
     if phase == "welcome":
-        return "Давайте настроим ваш офис"
-    if phase == "company_kb" or not kb_ok:
-        return "Соберём базу знаний компании"
+        return "Что поручить вашему агенту?"
+    if phase == "company_kb":
+        return "Добавим знания, если они нужны задаче"
     if phase == "connectors":
         if setup_next and setup_next.get("title"):
             sub = setup_next.get("substep")
@@ -315,8 +291,8 @@ def _headline(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None)
                 return "Телефон: ждём, пока линия заработает"
             if setup_next.get("id") == "telephony_script":
                 return "Сценарий секретаря"
-            return f"Следующий шаг сетапа: {setup_next['title']}"
-        return "Подключим инструменты по шагам"
+            return f"Для вашей задачи: {setup_next['title']}"
+        return "Подключайте инструменты по мере необходимости"
     if phase == "ready":
         return "Офис готов — можно давать поручения"
     return "Гермес дирижирует вашими инструментами"
@@ -325,15 +301,8 @@ def _headline(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None)
 def _cta(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> dict[str, str]:
     if phase == "welcome" or (phase == "company_kb" and not kb_ok):
         return {
-            "title": "Сайт → знания",
-            # Owner must supply a real URL in chat; do not pretend one was given.
-            "text": (
-                "Соберём коммерческую KB: сайт / соцссылка / текст / картинка КП "
-                "или PDF → office.build_kb_draft → "
-                "покажи черновик (услуги, для кого, цены/условия, процесс, FAQ, пробелы) → "
-                "доспроси TG/IG/VK и цены → правки → подтверждение. "
-                "Не подменяй цепочкой research→import→confirm без черновика"
-            ),
+            "title": "Расскажите о задаче",
+            "text": "Что вы хотите поручить агенту? Я предложу подходящие инструменты.",
         }
     if phase == "connectors":
         sid = str((setup_next or {}).get("id") or "")
@@ -431,16 +400,12 @@ def _cta(phase: str, kb_ok: bool, setup_next: dict[str, Any] | None = None) -> d
             }
         return {
             "title": "Подключить инструмент",
-            "text": (
-                "KB готова. Вызови hermes.setup_status и проведи к следующему незакрытому шагу "
-                "(форма секрета при необходимости). Не предлагай импорт KB заново."
-            ),
+            "text": "Подключи выбранный инструмент, если владелец согласен; остальные доступны позже.",
         }
     if phase == "ready":
-        # Optional messengers may still sit in setup_next — prefer first поручение.
         return {
-            "title": "Первое поручение",
-            "text": "Ответь по базе знаний: кто мы и что предлагаем клиентам",
+            "title": "Дать поручение",
+            "text": "Расскажите, что сделать сейчас. Новые подключения можно добавить по ходу работы.",
         }
     return {
         "title": "Задача",

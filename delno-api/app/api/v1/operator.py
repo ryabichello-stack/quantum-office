@@ -2359,12 +2359,12 @@ def operator_chat(
                 from app.services.hermes_nous.onboarding import get_office_loop
                 from app.services.hermes_nous.tool_packs import pack_for_mode
 
-                # Product loop: until office is ready, Nous runs with onboarding pack
-                # (KB + setup + credentials), not full conduct.
+                # The owner can ask for real work immediately. Missing optional
+                # connectors must not restrict Hermes to an onboarding-only pack.
                 loop = get_office_loop(db, ctx)
                 setup_done = bool((loop.get("setup") or {}).get("setup_complete"))
                 phase = str(loop.get("phase") or "welcome")
-                pack_mode = "conduct" if setup_done or phase in ("ready", "conduct") else "onboarding"
+                pack_mode = "conduct"
                 from app.services import hermes_ops as _hermes_ops_facts
 
                 setup_facts = _hermes_ops_facts.office_setup_status(db, ctx)
@@ -2405,12 +2405,21 @@ def operator_chat(
                         "kb_ok": bool(loop.get("kb_ok")),
                         "setup_next": loop.get("setup_next"),
                         "setup_complete": setup_done,
+                        "goal": setup_facts.get("goal"),
+                        "requested_instruments": setup_facts.get("requested_instruments") or [],
+                        "new_instruments": setup_facts.get("new_instruments") or [],
                         "progress": setup_facts.get("progress")
                         or (loop.get("setup") or {}).get("progress"),
                         "checks_summary": checks_summary,
                         "ava_test_call_allowed": bool((setup_facts.get("ava") or {}).get("test_call_allowed")),
-                        "ava_next_ru": (setup_facts.get("ava") or {}).get("message_ru"),
-                        "sip_last": setup_facts.get("sip_last"),
+                        "ava_next_ru": (
+                            (setup_facts.get("ava") or {}).get("message_ru")
+                            if "phone" in (setup_facts.get("requested_instruments") or []) else None
+                        ),
+                        "sip_last": (
+                            setup_facts.get("sip_last")
+                            if "phone" in (setup_facts.get("requested_instruments") or []) else None
+                        ),
                         "stitches": [
                             s.get("text")
                             for s in ((setup_facts.get("instruments") or {}).get("stitches") or [])

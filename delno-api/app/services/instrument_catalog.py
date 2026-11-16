@@ -16,7 +16,7 @@ class Instrument:
     id: str
     title: str
     hint: str
-    optional: bool = False
+    optional: bool = True
     order: int = 0
     group: str = "office"  # knowledge | channel | office
     connect_tool: str = ""

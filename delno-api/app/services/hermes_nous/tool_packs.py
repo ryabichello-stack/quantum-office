@@ -5,12 +5,12 @@ from __future__ import annotations
 # Always safe meta
 META = ("office.health", "office.connectors", "hermes.profile")
 
-# P1 — онбординг + KB + connectors needed to close hermes_ops checklist
-# (PRODUCT_LOOP: after KB → phone/DID/SIP → other tools). phones.* must be
-# here — otherwise Nous cannot leave need_sip / need_did while still in
-# onboarding mode.
+# Setup tools are available on demand. No connector is a prerequisite for
+# another one; the owner chooses what the agent should use.
 ONBOARDING_KB = META + (
     "hermes.setup_status",
+    "hermes.goal_set",
+    "hermes.catalog_ack",
     "hermes.setup_mark",
     "hermes.capabilities",
     "hermes.health",

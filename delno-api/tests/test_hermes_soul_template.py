@@ -7,23 +7,17 @@ from pathlib import Path
 from app.services.hermes_nous.provision import _TEMPLATES
 
 
-def test_soul_template_documents_phone_micro_steps():
+def test_soul_template_starts_from_owner_goal_without_mandatory_tools():
     soul = (_TEMPLATES / "SOUL.md").read_text(encoding="utf-8")
-    assert "need_operator" in soul
-    assert "только с Манго Телеком" in soul
-    assert "+7 987 123-45-67" in soul
-    assert "need_sip" in soul
-    assert "need_did" in soul
-    # Draft First: must show full draft body, not a status stub
-    assert "ЖЁСТКОЕ ПРАВИЛО" in soul or "полный текст черновика" in soul
-    assert "Запрещено вместо полного черновика" in soul or "без секций" in soul
+    skill = (_TEMPLATES / "skills/onboarding.md").read_text(encoding="utf-8")
+    assert "hermes.goal_set" in soul and "hermes.goal_set" in skill
+    assert "Нет обязательного списка" in soul
+    assert "только если владелец её выбрал" in soul
+    assert "hermes.catalog_ack" in skill
+    assert "полный черновик" in soul
     assert "##" in soul
-    assert "need_reg" in soul
     assert "credentials.open_form" in soul
-    assert "telegram_bot" in soul
-    assert "max_bot" in soul
-    assert "files_yadisk" in soul
-    assert "hermes_ops" in soul or "hermes.setup_status" in soul
+    assert "hermes.setup_status" in soul
 
 
 def test_templates_dir_layout():

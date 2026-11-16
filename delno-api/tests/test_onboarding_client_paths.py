@@ -190,6 +190,11 @@ def test_defer_calendar_then_come_back(db):
         patch("app.services.hermes_ops.list_secret_status", return_value={"items": [{"kind": "mango_sip", "configured": True}]}),
         patch("app.services.sip_probe.probe_registration", return_value={"ok": True, "status": "registered"}),
     ):
+        hermes_ops.set_owner_goal(
+            db, ctx,
+            goal="Подключить календарь и почту для записи клиентов",
+            requested_instruments=["calendar", "mail"],
+        )
         first = hermes_ops.office_setup_status(db, ctx)
         assert first["checks"]["kb"]["ok"] is True
         assert first["checks"]["phone"]["ok"] is True

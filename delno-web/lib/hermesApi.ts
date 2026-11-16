@@ -10,7 +10,9 @@ export type HermesSetupStatus = {
   ok: boolean;
   tenant_slug: string;
   setup_complete: boolean;
-  progress: { required_done: number; required_total: number };
+  progress: { required_done: number; required_total: number; connected_total?: number; available_total?: number };
+  goal?: string;
+  requested_instruments?: string[];
   checks: Record<string, { ok: boolean; detail?: unknown; optional?: boolean }>;
   steps: HermesSetupStep[];
   next_steps: Array<HermesSetupStep & { status?: string }>;

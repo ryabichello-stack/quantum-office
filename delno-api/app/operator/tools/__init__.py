@@ -45,6 +45,8 @@ from app.operator.tools.hermes import (
     HermesAlertsTool,
     HermesCapabilitiesTool,
     HermesHealthTool,
+    HermesGoalSetTool,
+    HermesCatalogAckTool,
     HermesSetupMarkTool,
     HermesSetupStatusTool,
     HermesTasksCreateTool,
@@ -111,6 +113,8 @@ def register_builtin_tools() -> None:
     registry.register(PhonesListTool())
     registry.register(PhonesProvisionTool())
     registry.register(HermesSetupStatusTool())
+    registry.register(HermesGoalSetTool())
+    registry.register(HermesCatalogAckTool())
     registry.register(HermesSetupMarkTool())
     registry.register(HermesHealthTool())
     registry.register(HermesAlertsTool())
