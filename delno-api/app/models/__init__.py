@@ -1,5 +1,6 @@
 from app.models.cms import CmsPage, CmsRevision
 from app.models.agent_task import AgentRun, AgentStep, AgentTask
+from app.models.appointment import Appointment
 from app.models.audit import AuditLog
 from app.models.call_job import CallJob
 from app.models.call_session import CallSession
@@ -21,6 +22,7 @@ __all__ = [
     "CmsPage",
     "CmsRevision",
     "AgentTask",
+    "Appointment",
     "AgentRun",
     "AgentStep",
     "AuditLog",

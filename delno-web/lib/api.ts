@@ -23,6 +23,28 @@ export type LeadItem = {
   created_at: string | null;
 };
 
+export type AppointmentItem = {
+  id: string; start: string; end: string; title: string;
+  phone: string; email: string; status: string; channel: string;
+  conference_url: string; sync_status: string;
+};
+
+export function apiAppointmentsList(token: string) {
+  return apiFetch<{ items: AppointmentItem[] }>("/v1/calendar/appointments", token);
+}
+
+export function apiAppointmentCreate(token: string, data: {start: string; title: string; phone?: string; email?: string}) {
+  return apiFetch<{ok: boolean; appointment: AppointmentItem}>("/v1/calendar/appointments", token, {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data),
+  });
+}
+
+export function apiAppointmentChange(token: string, id: string, data: {action: "confirm" | "cancel" | "reschedule"; start?: string}) {
+  return apiFetch<{ok: boolean; appointment: AppointmentItem}>(`/v1/calendar/appointments/${id}`, token, {
+    method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data),
+  });
+}
+
 export type ConversationItem = {
   id: string;
   channel: string;

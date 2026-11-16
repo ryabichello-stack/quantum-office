@@ -203,5 +203,7 @@
 
 # 2026-11-16
 
+- 2026-11-17: started DELNO-owned calendar and shared appointment flow for voice, Telegram/MAX and cabinet; audit of office tools restored from the Beget backup in `docs/DELNO_OFFICE_TOOL_INVENTORY_2026-11-17.md`.
+
 - Restored DELNO Hermes OpenAI egress: re-added the missing `inbound-grok-minsk → up-vpn1` routing rule for the existing 10808 proxy. Verified OpenAI 200 and live Hermes/MCP setup-status calls for two separate audit tenants; details and rollback in `docs/AGENT_CHANGE_REGISTER.md`.
 

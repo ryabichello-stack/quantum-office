@@ -35,6 +35,9 @@ def _operator_reply(
     inbound: InboundMessage,
     conversation_id,
 ) -> dict[str, Any]:
+    from app.services.appointments import current_external_user_id
+
+    identity_token = current_external_user_id.set(inbound.external_user_id)
     try:
         return run_operator_turn(
             db,
@@ -57,6 +60,8 @@ def _operator_reply(
         db.add(assistant)
         db.flush()
         return {"reply": _FALLBACK_REPLY, "conversation_id": str(conversation_id)}
+    finally:
+        current_external_user_id.reset(identity_token)
 
 
 def process_inbound_auto_reply(

@@ -5,6 +5,7 @@ from app.api.v1 import (
     admin_cms,
     auth,
     billing,
+    calendar,
     channels,
     connectors,
     health,
@@ -30,6 +31,7 @@ router.include_router(admin_cms.router)
 router.include_router(tenant.router)
 router.include_router(channels.router)
 router.include_router(billing.router)
+router.include_router(calendar.router)
 router.include_router(phones.router)
 router.include_router(vault.router)
 router.include_router(telephony.router)
