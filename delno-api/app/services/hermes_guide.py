@@ -1229,6 +1229,11 @@ def chip_actions_for_office(
         from app.services import hermes_ops
 
         status = hermes_ops.office_setup_status(db, ctx) or {}
+        if not status.get("goal"):
+            return [
+                {"title": "Поставить задачу", "text": "Хочу рассказать, что тебе поручить"},
+                {"title": "Что ты умеешь?", "text": "Покажи доступные инструменты и объясни, как ими пользоваться"},
+            ]
         next_steps = status.get("next_steps") or []
         actions: list[dict[str, str]] = []
         for step in next_steps[:4]:
@@ -1278,10 +1283,8 @@ def chip_actions_for_office(
                 )
         if status.get("setup_complete") or not actions:
             actions = [
-                {"title": "Статус", "text": "Статус сетапа"},
-                {"title": "Здоровье", "text": "Проверь здоровье офиса"},
-                {"title": "Каналы", "text": "Что ещё настроить в каналах?"},
-                {"title": "База знаний", "text": "Покажи, что сейчас в базе знаний"},
+                {"title": "Поручение", "text": "Продолжи выполнять мою задачу"},
+                {"title": "Возможности", "text": "Какие ещё инструменты помогут моей задаче?"},
             ]
         # de-dupe by title
         seen: set[str] = set()

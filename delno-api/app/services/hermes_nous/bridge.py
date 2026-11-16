@@ -42,7 +42,7 @@ def _office_facts_block(office_context: dict[str, Any] | None) -> str:
     ]
     if progress:
         lines.append(
-            f"required_done={progress.get('required_done')}/{progress.get('required_total')}"
+            f"chosen_tools_ready={progress.get('required_done')}/{progress.get('required_total')}"
         )
     if checks:
         bits = [f"{k}={'ok' if v else 'нет'}" for k, v in checks.items()]
@@ -50,6 +50,12 @@ def _office_facts_block(office_context: dict[str, Any] | None) -> str:
     if sn.get("title"):
         lines.append(
             f"next_step=«{sn.get('title')}» id={sn.get('id')} hint={sn.get('hint') or '—'}"
+        )
+    newly_available = office_context.get("new_instruments") or []
+    if newly_available:
+        lines.append(
+            "Новые доступные инструменты: "
+            + ", ".join(str(item.get("title")) for item in newly_available if isinstance(item, dict))
         )
     ava_ru = str(office_context.get("ava_next_ru") or "").strip()
     if ava_ru:
@@ -70,10 +76,8 @@ def _office_facts_block(office_context: dict[str, Any] | None) -> str:
     for text in missing[:4]:
         if text:
             lines.append("предложить сейчас или позже: " + str(text))
-    if int(progress.get("required_done") or 0) == 0:
-        lines.append(
-            "Кабинет ПУСТОЙ: знания/телефония/секретарь/почта/календарь/ВКС — НЕ готовы."
-        )
+    if not office_context.get("goal"):
+        lines.append("Цель владельца ещё не записана. Спроси, какую задачу он хочет поручить агенту.")
     return "\n".join(lines)
 
 
@@ -204,14 +208,9 @@ def create_run(
         req_done = progress.get("required_done")
         req_total = progress.get("required_total")
         if req_done is not None and req_total is not None:
-            ctx_bits.append(
-                f"FACT progress required_done={req_done}/{req_total} for THIS tenant only."
-            )
-            if int(req_done or 0) == 0:
-                ctx_bits.append(
-                    "FACT: cabinet is EMPTY — KB/phone/script/mail/calendar/conference are NOT done. "
-                    "Never say «уже готова/готовы». Start at «О компании»."
-                )
+            ctx_bits.append(f"FACT chosen tools ready={req_done}/{req_total} for THIS tenant only.")
+        if not office_context.get("goal"):
+            ctx_bits.append("Ask the owner what task to do. No channel or KB is mandatory.")
         if office_context.get("kb_ok"):
             ctx_bits.append("KB step is DONE — do not ask to import/rebuild company knowledge.")
         else:
@@ -282,8 +281,10 @@ def create_run(
             "ONLY treat checks.*.ok / tenant_usable / setup_complete as truth for THIS tenant. "
             "Platform upstream / Docker / detail.platform_upstream / service_reachable NEVER means "
             "the owner configured mail/calendar/files/conference/phone. "
-            "If required_done is 0, say the office is empty and start with «О компании» — "
-            "never claim connectors are activated, never invent demo DIDs like +79991234567. "
+            "No universal setup checklist exists. Ask for the owner's task, then call "
+            "hermes.goal_set with their goal and only tools they chose to connect. "
+            "Offer missing tools when the task needs them; accept 'later' and continue "
+            "with usable tools. Never claim connectors are activated, never invent demo DIDs. "
             "When owner sends a company URL, social link, free-text, or attachment "
             "(image of КП/presentation/price list, or PDF/DOCX) — or asks to enrich KB: "
             "HARD Draft First rule: after office.build_kb_draft, THIS SAME reply MUST paste the "
@@ -296,8 +297,8 @@ def create_run(
             "in the same turn. "
             "«обогати / найди ещё» = rebuild with also_search, NOT office.confirm_kb_draft — "
             "then paste the UPDATED full draft again. "
-            "Only after owner says yes/save/положи в кб: office.confirm_kb_draft, then "
-            "hermes.setup_status and propose the next connector with a question. "
+            "Only after owner says yes/save/положи в кб: office.confirm_kb_draft. "
+            "Then return to the owner's goal; propose a connector only if useful. "
             "If gaps are obvious, recommend enrich and say what you can find — do not "
             "auto-run expensive research without ask. "
             "Never claim saved/enriched until the tool actually ran. "
@@ -305,7 +306,17 @@ def create_run(
         )
     else:
         mission = (
-            "Office is being conducted: plan → DELNO MCP tools → report. "
+            "Ask what task the owner wants, then plan → DELNO MCP tools → report. "
+            "Call hermes.goal_set when the owner states a goal; include only tools "
+            "the owner chose. No KB, phone, mail, or channel is mandatory. "
+            "Read hermes.capabilities before recommending connections. For a "
+            "message secretary, explain that answers about the company benefit "
+            "from its knowledge and that a chosen messenger must be connected. "
+            "For other tasks, do not demand company knowledge. "
+            "If FACTS list newly available instruments, mention a relevant one "
+            "once, ask whether to connect it, then call hermes.catalog_ack. "
+            "If a task needs an unconnected tool, explain the benefit and offer "
+            "to connect it now or later. Continue useful work with available tools. "
             "ONLY use MCP server delno_office. Do NOT use greptile_mcp, hosted connectors, "
             "portal.nousresearch.com, or manage_connections. "
             "If owner asks to enrich KB / deepen company description: act as commercial director — "

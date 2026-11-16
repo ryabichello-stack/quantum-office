@@ -63,7 +63,12 @@ def main() -> None:
     args = parser.parse_args()
     root = Path(args.root)
     baseline_root = Path(args.baseline) if args.baseline else None
-    homes = sorted(p for p in root.glob("*/hermes") if p.is_dir())
+    homes = sorted({
+        *[p for p in root.glob("workers/*/profiles/*") if p.is_dir()],
+        *[p for p in root.glob("unassigned/profiles/*") if p.is_dir()],
+        *[p for p in root.glob("*/hermes") if p.is_dir()],
+        *[p for p in root.glob("tenant_*") if p.is_dir() and (p / "SOUL.md").is_file()],
+    })
     if not homes and (root / "SOUL.md").is_file():
         homes = [root]
     print(f"profiles={len(homes)} apply={args.apply}")

@@ -53,6 +53,14 @@ def test_virtual_onboarding_path_kb_to_sip():
     register_builtin_tools()
 
     st0 = hermes_ops.office_setup_status(db, ctx)
+    assert st0["next_steps"] == []
+    assert st0["progress"]["required_total"] == 0
+    hermes_ops.set_owner_goal(
+        db, ctx,
+        goal="Отвечать клиентам и позже принимать звонки",
+        requested_instruments=["kb", "phone"],
+    )
+    st0 = hermes_ops.office_setup_status(db, ctx)
     assert (st0.get("next_steps") or [{}])[0].get("id") == "kb"
 
     dossier = "E2E Co выплаты. Комиссия 0.4%. office@e2e.ru https://t.me/e2e"

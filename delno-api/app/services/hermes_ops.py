@@ -14,6 +14,7 @@ from app.models.channel_account import ChannelAccount
 from app.models.phone_number import PhoneNumber
 from app.models.platform_event import PlatformEvent
 from app.models.tenant import Tenant
+from app.services.audit import write_audit
 from app.services.connectors import list_tenant_connectors, list_tenant_connector_readiness
 from app.services.events import emit_event
 from app.services.tenant_vault import list_secret_status
@@ -115,7 +116,7 @@ def _now_iso() -> str:
 
 
 def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
-    """Checklist for first-time Hermes onboarding of the office."""
+    """Describe available tools and progress toward this owner's chosen goal."""
     tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
     settings = _settings(tenant)
     hermes = settings.get("hermes") if isinstance(settings.get("hermes"), dict) else {}
@@ -301,22 +302,36 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
                 "optional": bool(step.get("optional", True)),
             },
         )
-    required = [s for s in steps if not checks[s["id"]].get("optional")]
-    done_req = sum(1 for s in required if checks[s["id"]]["ok"])
+        checks[step["id"]]["optional"] = True
+    goal = str(hermes.get("goal") or "").strip()
+    known_ids = {s["id"] for s in steps}
+    requested_raw = hermes.get("requested_instruments")
+    requested = [
+        str(ident) for ident in (requested_raw if isinstance(requested_raw, list) else [])
+        if str(ident) in known_ids
+    ]
     deferred_raw = hermes.get("deferred_instruments")
     deferred = {str(x) for x in deferred_raw} if isinstance(deferred_raw, list) else set()
+    known_raw = hermes.get("known_instruments")
+    new_instruments = (
+        [step for step in steps if step["id"] not in set(known_raw)]
+        if isinstance(known_raw, list) else []
+    )
     next_steps = []
-    for step in steps:
+    steps_by_id = {step["id"]: step for step in steps}
+    for ident in requested:
+        step = steps_by_id[ident]
         c = checks[step["id"]]
         if c["ok"]:
             continue
         if step["id"] in deferred:
             continue
-        if c.get("optional") and done_req < len(required):
-            continue
         next_steps.append({**step, "status": "todo", "check": c})
 
-    setup_complete = done_req == len(required)
+    done_req = sum(1 for ident in requested if checks[ident]["ok"])
+    # A goal can need no external connector. Missing tools are actionable
+    # suggestions, never a platform-wide gate on using the agent.
+    setup_complete = bool(goal) and not next_steps
     try:
         from app.services.ava_readiness import line_status
         from app.services.instrument_catalog import inventory_from_checks
@@ -330,7 +345,15 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
         "ok": True,
         "tenant_slug": ctx.tenant_slug,
         "setup_complete": setup_complete,
-        "progress": {"required_done": done_req, "required_total": len(required)},
+        "progress": {
+            "required_done": done_req,
+            "required_total": len(requested),
+            "connected_total": sum(1 for step in steps if checks[step["id"]]["ok"]),
+            "available_total": len(steps),
+        },
+        "goal": goal,
+        "requested_instruments": requested,
+        "new_instruments": new_instruments,
         "checks": checks,
         "steps": steps,
         "next_steps": next_steps[:3],
@@ -347,16 +370,75 @@ def office_setup_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
             "open_alerts": hermes.get("open_alerts") or [],
         },
         "message_ru": (
-            "Офис готов к работе."
-            if setup_complete
+            "Расскажите, какую задачу поручить агенту. Он предложит только нужные подключения."
+            if not goal
             else (
-                "Давайте настроим офис. Следующий шаг: "
-                + (next_steps[0]["title"] if next_steps else "проверить компоненты")
-                + ". "
-                + (next_steps[0]["hint"] if next_steps else "")
+                "Для выбранной задачи можно подключить: "
+                + ", ".join(step["title"] for step in next_steps[:3])
+                + ". Остальные инструменты доступны позже."
+                if next_steps
+                else "Агент готов выполнять выбранную задачу. Новые инструменты можно подключить позже."
             )
         ),
     }
+
+
+def set_owner_goal(
+    db: Session,
+    ctx: TenantContext,
+    *,
+    goal: str,
+    requested_instruments: list[str] | None = None,
+) -> dict[str, Any]:
+    """Save an owner's task and the tools they agreed to connect for it."""
+    from app.services.instrument_catalog import get_instrument
+
+    goal = goal.strip()
+    if not goal or len(goal) > 1000:
+        return {"ok": False, "error": "invalid_goal"}
+    tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
+    settings = _settings(tenant)
+    hermes = dict(settings.get("hermes") or {})
+    source = requested_instruments if requested_instruments is not None else hermes.get("requested_instruments") or []
+    requested = list(dict.fromkeys(str(x).strip() for x in source))
+    unknown = [ident for ident in requested if not get_instrument(ident)]
+    if unknown:
+        return {"ok": False, "error": "unknown_instrument", "ids": unknown}
+    hermes["goal"] = goal
+    hermes["requested_instruments"] = requested
+    if not isinstance(hermes.get("known_instruments"), list):
+        from app.services.instrument_catalog import all_instruments
+
+        hermes["known_instruments"] = [item.id for item in all_instruments()]
+    settings["hermes"] = hermes
+    tenant.settings = settings
+    db.add(tenant)
+    write_audit(
+        db, ctx,
+        action="hermes.goal_set",
+        resource="tenant:hermes_goal",
+        new_value={"goal": goal, "requested_instruments": requested},
+    )
+    db.commit()
+    return office_setup_status(db, ctx)
+
+
+def acknowledge_new_instruments(db: Session, ctx: TenantContext, ids: list[str]) -> dict[str, Any]:
+    """Remember that the owner has been told about newly available tools."""
+    from app.services.instrument_catalog import all_instruments
+
+    current = {item.id for item in all_instruments()}
+    tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
+    settings = _settings(tenant)
+    hermes = dict(settings.get("hermes") or {})
+    known = set(hermes.get("known_instruments") or current)
+    known.update(ident for ident in ids if ident in current)
+    hermes["known_instruments"] = sorted(known)
+    settings["hermes"] = hermes
+    tenant.settings = settings
+    db.add(tenant)
+    db.commit()
+    return office_setup_status(db, ctx)
 
 
 def mark_setup_progress(
@@ -459,7 +541,10 @@ def office_health_report(db: Session, ctx: TenantContext) -> dict[str, Any]:
     sip_items = list_secret_status(db, ctx).get("items") or []
     sip_row = next((i for i in sip_items if i.get("kind") == "mango_sip"), None) or {}
     sip_ok = bool(sip_row.get("configured"))
-    if not active_dids:
+    hermes_settings = _settings(tenant).get("hermes") or {}
+    requested_phone = "phone" in (hermes_settings.get("requested_instruments") or [])
+    phone_in_use = requested_phone or bool(active_dids) or sip_ok
+    if phone_in_use and not active_dids:
         alerts.append(
             {
                 "code": "phone.no_active_did",
@@ -468,7 +553,7 @@ def office_health_report(db: Session, ctx: TenantContext) -> dict[str, Any]:
                 "fix": "Привяжите DID через phones.provision или скажите Hermes номер.",
             }
         )
-    if not sip_ok:
+    if phone_in_use and not sip_ok:
         alerts.append(
             {
                 "code": "phone.sip_missing",
@@ -477,7 +562,7 @@ def office_health_report(db: Session, ctx: TenantContext) -> dict[str, Any]:
                 "fix": "Скажите «настрой телефон» и заполните безопасную форму (SIP-логин вида ivan@vpbx123456789.mangosip.ru).",
             }
         )
-    else:
+    elif phone_in_use:
         # Always probe live registration. A missing "/" in the masked login is only a
         # heuristic for incomplete vault saves — if Mango already shows Registered,
         # do not mark the office unhealthy on that heuristic alone.

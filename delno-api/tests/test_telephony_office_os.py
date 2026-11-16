@@ -208,7 +208,7 @@ def test_hermes_setup_and_health(db):
     status = hermes_ops.office_setup_status(db, ctx)
     assert status["ok"] is True
     assert status["setup_complete"] is False
-    assert status["next_steps"]
+    assert status["next_steps"] == []
 
     phone_provision.provision_phone(db, ctx, e164="+79699665899")
     hermes_ops.mark_setup_progress(db, ctx, kb_ready=True, note="vault imported")

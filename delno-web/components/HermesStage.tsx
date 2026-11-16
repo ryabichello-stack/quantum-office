@@ -209,16 +209,16 @@ function triggerMarkdownDownload(file: PendingDownload) {
 
 const QUICK_PROMPTS = [
   {
-    title: "Настроить офис",
-    text: "Давайте настроим мой офис: покажи путь (знания → инструменты → ready) и следующий шаг.",
+    title: "Поставить задачу",
+    text: "Я расскажу, что хочу поручить. Предложи только полезные для этого инструменты.",
   },
   {
-    title: "Сайт → знания",
-    text: "Вот ссылка на наш сайт — собери базу знаний и покажи черновик перед сохранением",
+    title: "Отвечать клиентам",
+    text: "Хочу, чтобы ты отвечал клиентам в сообщениях. Что тебе для этого нужно?",
   },
   {
     title: "Подключить инструмент",
-    text: "Что подключить следующим: почту, Telegram или календарь? Проведи меня по шагам с формой секрета",
+    text: "Покажи доступные инструменты и помоги подключить тот, который я выберу",
   },
   {
     title: "Ava · телефон",
@@ -227,7 +227,7 @@ const QUICK_PROMPTS = [
   { title: "Здоровье офиса", text: "Проверь здоровье офиса и скажи, что улучшить" },
   {
     title: "Поручение",
-    text: "Когда офис ready — ответь по базе знаний: кто мы и что предлагаем клиентам",
+    text: "Проверь, что ты уже умеешь, и помоги выполнить мою задачу с доступными инструментами",
   },
 ];
 
@@ -721,16 +721,10 @@ export function HermesStage({ token }: { token: string }) {
     const savedId =
       typeof window !== "undefined" ? localStorage.getItem("hermes_conversation_id") : null;
     if (savedId || conversationId || lines.length > 0) return;
-    if (!setup.setup_complete) {
-      // Never auto-send primary_cta text — it may pretend the owner already
-      // gave a website URL. Ask Hermes for the real next step instead.
-      const nextTitle = officeLoop?.next_step?.title;
-      const welcome =
-        nextTitle && nextTitle !== "Старт"
-          ? `Я владелец. Офис ещё не ready. Следующий шаг по чеклисту: «${nextTitle}». Покажи статус и что нужно от меня (без выдуманных ссылок/секретов).`
-          : "Я владелец. Давайте настроим офис по пути знания → инструменты → ready. Покажи статус и первый реальный шаг.";
-      void sendText(welcome, "text");
-    }
+    void sendText(
+      "Я владелец. Спроси, какую задачу я хочу тебе поручить. Предлагай подключения только по необходимости; любой инструмент можно добавить позже.",
+      "text",
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot welcome
   }, [setup, bootstrapped, historyReady, officeLoop, nousStatus?.enabled, conversationId]);
 
@@ -1116,13 +1110,6 @@ export function HermesStage({ token }: { token: string }) {
     }
     return out;
   }
-
-  const progressPct = setup
-    ? Math.round(
-        (100 * (setup.progress?.required_done || 0)) /
-          Math.max(1, setup.progress?.required_total || 1),
-      )
-    : 0;
 
   function formatCheckDetail(detail: unknown): string {
     if (detail == null) return "готово";
@@ -1810,18 +1797,11 @@ export function HermesStage({ token }: { token: string }) {
 
               <section className="hx-card">
                 <header>
-                  <span>Сетап</span>
-                  {setup?.setup_complete ? (
-                    <CheckCircle2 size={15} className="hermes-ok" />
-                  ) : (
-                    <Badge variant="secondary">{progressPct}%</Badge>
-                  )}
+                  <span>Инструменты</span>
+                  <Badge variant="secondary">{setup?.progress?.connected_total || 0} подключено</Badge>
                 </header>
                 {setup ? (
                   <>
-                    <div className="hermes-progress-bar" aria-hidden>
-                      <i style={{ width: `${progressPct}%` }} />
-                    </div>
                     <p>{setup.message_ru}</p>
                     <ul className="hermes-checklist">
                       {(setup.steps || []).map((step) => {
@@ -1834,7 +1814,7 @@ export function HermesStage({ token }: { token: string }) {
                             <div>
                               <strong>
                                 {step.title}
-                                {optional ? " · опц." : ""}
+                                {setup.requested_instruments?.includes(step.id) ? " · выбрано" : ""}
                               </strong>
                               <small>
                                 {done ? formatCheckDetail(check?.detail) : step.hint || "нужно сделать"}

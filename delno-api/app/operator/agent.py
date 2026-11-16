@@ -63,6 +63,8 @@ CABINET_LLM_TOOLS = (
     # Hermes setup / health
     "hermes.capabilities",
     "hermes.setup_status",
+    "hermes.goal_set",
+    "hermes.catalog_ack",
     "hermes.setup_mark",
     "hermes.health",
     "hermes.alerts",
@@ -125,24 +127,23 @@ HERMES_AGENT_SYSTEM = (
     "Не своди сложную задачу к одному shortcut-ответу.\n"
     "Не жди волшебных фраз и не подменяй задачу шаблонным статусом SIP/сетапа.\n"
     "\n"
-    "Онбординг — playbook skill onboarding.md. Кратко:\n"
-    "Знания (Draft First): build_kb_draft → СРАЗУ покажи весь профиль в ответе "
+    "Онбординг — от задачи владельца, все подключения необязательны. "
+    "Спроси цель, проверь возможности, предложи полезное и продолжай работу. "
+    "Если владелец попросил собрать знания (Draft First): build_kb_draft → СРАЗУ покажи весь профиль в ответе "
     "(секции, не статус «черновик есть») → предложи РОВНО три действия: "
     "1) Сохранить в KB  2) Обогатить через поиск  3) Доработать. "
     "Стоп (без setup_mark/upload/phones/form в том же ходе). "
-    "«да / положи в кб / подтверди» → office.confirm_kb_draft → setup_status → "
-    "следующий шаг вопросом. "
+    "«да / положи в кб / подтверди» → office.confirm_kb_draft → вернись к задаче владельца. "
     "«обогати / обогатить / найди ещё / дособери» → снова office.build_kb_draft "
     "(also_search=true) → покажи ОБНОВЛЁННЫЙ черновик + те же три действия. "
     "НИКОГДА не вызывай office.confirm_kb_draft на «обогати» — это не сохранение.\n"
     "Инструменты (phone/script/tg/max/files/mail/cal/conf): опиши → спроси → "
     "после «да» tool. Секреты только credentials.open_form.\n"
-    "«делай / сделай / продолжай / давай / поехали / действуй» = СРАЗУ выполни "
-    "текущий setup_next (need_sip→credentials.open_form mango_sip; need_did→phones.* "
-    "затем open_form SIP; need_reg/Rejected→снова credentials.open_form mango_sip). "
-    "Не пересказывай путь. Не отвечай «проверьте пароль» без open_form.\n"
+    "«делай / сделай / продолжай / давай / поехали / действуй» = продолжай "
+    "выбранную владельцем задачу с доступными инструментами. "
+    "Если нужен неподключённый инструмент, предложи подключить сейчас или позже.\n"
     "«покажи базу/черновик» → get_knowledge (боевая+draft). "
-    "Запрещено: setup_mark вместо показа профиля; прыжок на телефонию до commit KB; "
+    "Запрещено: setup_mark вместо показа профиля; навязывать телефон или KB; "
     "утверждать «сохранил/обогатил», пока tool реально не выполнен.\n"
     "\n"
     "Каталог tools (выбираешь сам по смыслу задачи):\n"
@@ -159,6 +160,8 @@ HERMES_AGENT_SYSTEM = (
     "или commit после согласованного черновика, не вместо build_kb_draft;\n"
     "• hermes.capabilities — проверь реальные возможности перед онбордингом и задачами;\n"
     "• hermes.setup_status / health / alerts — состояние офиса;\n"
+    "• hermes.goal_set — сохрани задачу владельца и только выбранные им инструменты; "
+    "любой канал и база знаний необязательны;\n"
     "• hermes.tasks_create / tasks_list / tasks_pause / tasks_resume — "
     "периодические поручения (каждый N мин/час/день): проверки заявок, почты, сайта, health;\n"
     "• phones.* / calls.* / telephony.script_* / telephony.tools_set — телефония Ava;\n"
@@ -786,8 +789,7 @@ def _format_hermes_setup(data: dict[str, Any]) -> str:
     total = progress.get("required_total", 0)
     lines = [
         data.get("message_ru") or "Статус сетапа офиса.",
-        f"Прогресс по ЭТОМУ кабинету: {done}/{total}"
-        + (" — кабинет пустой, ничего не подключено." if done == 0 else "."),
+        f"Из выбранных инструментов подключено: {done}/{total}.",
     ]
     checks = data.get("checks") or {}
     steps = data.get("steps") or []
@@ -810,8 +812,8 @@ def _format_hermes_setup(data: dict[str, Any]) -> str:
     if next_steps:
         nxt = next_steps[0]
         lines.append(f"Следующий шаг: {nxt.get('title')} — {nxt.get('hint')}")
-    if done == 0:
-        lines.append("Не путайте доступность платформы с настройкой кабинета — у владельца пока пусто.")
+    if not data.get("goal"):
+        lines.append("Назовите задачу агенту; он предложит нужные инструменты без обязательного списка.")
     else:
         lines.append("Скажите голосом или текстом, что подключить дальше (Telegram, номер, почта…).")
     return "\n".join(lines)

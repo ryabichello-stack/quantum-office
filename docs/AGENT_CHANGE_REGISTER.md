@@ -361,3 +361,10 @@
 - Живые запросы двух audit-тенантов к Hermes вернули `nous_hermes_agent` и правильный статус 0/6. SSE обоих запусков подтвердил `mcp__delno_office__hermes_setup_status` → `tool.completed`, `error=false`.
 - Уточнение к записи 23:48: пустой `DELNO_MCP_KEY` **общего процесса** не означает отсутствия MCP. У каждого профиля есть отдельный `.env` с `DELNO_MCP_KEY`; проверено без раскрытия значений, что ключи audit A, audit B, QL и demo принадлежат только соответствующим тенантам. Per-run token в MCP всё ещё не доказан и остаётся отдельной задачей по ужесточению прав, но текущая проверка не выявила смешения этих профилей.
 
+
+## 2026-11-16 — Codex: онбординг от задачи, без обязательных инструментов
+
+- Ветка `codex/goal-led-onboarding`: `delno-api/app/services/hermes_ops.py`, `instrument_catalog.py`, `hermes_nous/{onboarding,bridge,tool_packs}.py`, `operator/{agent,tools}.py`, API `/operator`, шаблоны SOUL/skill и `delno-web/components/HermesStage.tsx`.
+- Добавлены `hermes.goal_set` и `hermes.catalog_ack`, выбранные инструменты и уведомление о новых возможностях; телефон больше не обязателен и не вызывает health warning, когда не выбран. Доступ к рабочим инструментам не зависит от статуса онбординга.
+- Rollout-скрипт расширен на multiplex worker profiles; изменённые владельцем файлы сохраняются и получают `.update-candidate`. Тесты и сборка: см. PR.
+- Прод и существующие профили на момент записи не менялись. При выкладке проверить подмену шаблонов в `/opt/delno/lab/hermes_runtime/templates/home` и отдельно согласовать применённые кандидаты профилей. Секреты и телефония не затронуты.

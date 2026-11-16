@@ -14,8 +14,8 @@ from app.services import hermes_ops
 class HermesSetupStatusTool:
     name = "hermes.setup_status"
     description = (
-        "First-time office setup checklist for this tenant: KB, phone, Telegram/MAX, "
-        "calendar, mail, conference. Hermes uses this to guide the owner."
+        "This tenant's chosen goal, connected instruments and optional catalog. "
+        "No channel or company knowledge is mandatory."
     )
     critical_write = False
     parameters_schema = {"type": "object", "properties": {}}
@@ -25,6 +25,52 @@ class HermesSetupStatusTool:
         return ToolResult(ok=True, data=out, message=out.get("message_ru") or "ok")
 
 
+class HermesGoalSetTool:
+    name = "hermes.goal_set"
+    description = (
+        "Remember the owner's stated goal and only the instruments the owner chose "
+        "to connect for it. No instrument is mandatory; an empty list is valid."
+    )
+    critical_write = False
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "goal": {"type": "string"},
+            "requested_instruments": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["goal"],
+    }
+
+    def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult:
+        requested = params.get("requested_instruments")
+        if requested is not None and not isinstance(requested, list):
+            return ToolResult(ok=False, message="requested_instruments must be a list")
+        out = hermes_ops.set_owner_goal(
+            db, ctx,
+            goal=str(params.get("goal") or ""),
+            requested_instruments=requested,
+        )
+        return ToolResult(ok=bool(out.get("ok")), data=out, message=out.get("message_ru") or out.get("error") or "ok")
+
+
+class HermesCatalogAckTool:
+    name = "hermes.catalog_ack"
+    description = "Mark newly available instruments as already offered to this owner."
+    critical_write = False
+    parameters_schema = {
+        "type": "object",
+        "properties": {"ids": {"type": "array", "items": {"type": "string"}}},
+        "required": ["ids"],
+    }
+
+    def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult:
+        ids = params.get("ids")
+        if not isinstance(ids, list):
+            return ToolResult(ok=False, message="ids must be a list")
+        out = hermes_ops.acknowledge_new_instruments(db, ctx, [str(x) for x in ids])
+        return ToolResult(ok=True, data=out, message="Отмечено как предложенное владельцу")
+
+
 class HermesSetupMarkTool:
     name = "hermes.setup_mark"
     description = (
@@ -32,7 +78,7 @@ class HermesSetupMarkTool:
         "(e.g. telephony script saved). "
         "Do NOT use after office.build_kb_draft — show the profile and use "
         "office.confirm_kb_draft when the owner agrees. "
-        "Do NOT use to skip phone/SIP/Telegram steps."
+        "A deferred instrument stays available to connect later."
     )
     critical_write = True
     parameters_schema = {

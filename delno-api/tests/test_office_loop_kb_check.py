@@ -101,6 +101,7 @@ def test_office_loop_kb_ok_uses_kb_check_id(monkeypatch):
         "app.services.hermes_nous.onboarding.hermes_ops.office_setup_status",
         lambda *_a, **_k: {
             "setup_complete": False,
+            "goal": "Подключить телефон",
             "message_ru": "Давайте настроим офис. Следующий шаг: Телефония",
             "progress": {"required_done": 1, "required_total": 7},
             "checks": {
@@ -164,6 +165,7 @@ def test_office_loop_phone_substep_need_did(monkeypatch):
         "app.services.hermes_nous.onboarding.hermes_ops.office_setup_status",
         lambda *_a, **_k: {
             "setup_complete": False,
+            "goal": "Подключить телефон",
             "message_ru": "next",
             "progress": {"required_done": 1, "required_total": 7},
             "checks": {"kb": {"ok": True}, "phone": {"ok": False}},
@@ -210,6 +212,7 @@ def test_office_loop_phone_substep_need_operator(monkeypatch):
         "app.services.hermes_nous.onboarding.hermes_ops.office_setup_status",
         lambda *_a, **_k: {
             "setup_complete": False,
+            "goal": "Настроить сценарий секретаря",
             "message_ru": "next",
             "progress": {"required_done": 1, "required_total": 7},
             "checks": {"kb": {"ok": True}, "phone": {"ok": False}},
@@ -250,6 +253,7 @@ def test_office_loop_telephony_script_cta(monkeypatch):
         "app.services.hermes_nous.onboarding.hermes_ops.office_setup_status",
         lambda *_a, **_k: {
             "setup_complete": False,
+            "goal": "Настроить сценарий секретаря",
             "message_ru": "next",
             "progress": {"required_done": 2, "required_total": 7},
             "checks": {
@@ -292,6 +296,7 @@ def test_office_loop_files_cta_opens_yadisk_form(monkeypatch):
         "app.services.hermes_nous.onboarding.hermes_ops.office_setup_status",
         lambda *_a, **_k: {
             "setup_complete": False,
+            "goal": "Подключить файлы",
             "message_ru": "next",
             "progress": {},
             "checks": {"kb": {"ok": True}, "phone": {"ok": True}, "files": {"ok": False, "optional": True}},
