@@ -1,5 +1,6 @@
 import { LEGAL_OPERATOR } from "@/lib/legal-requisites";
 
+/** Compact operator block for /privacy and /terms only — not for the marketing homepage. */
 export function LegalOperatorBlock() {
   const o = LEGAL_OPERATOR;
   return (
@@ -8,15 +9,11 @@ export function LegalOperatorBlock() {
       <p>
         <strong>{o.shortName}</strong>
         <br />
-        {o.fullName}
-        <br />
         ИНН: {o.inn}
         <br />
         ОГРНИП: {o.ogrnip}
         <br />
         Адрес: {o.address}
-        <br />
-        ОКВЭД: {o.okved}
         <br />
         E-mail:{" "}
         <a href={`mailto:${o.email}`}>{o.email}</a>
