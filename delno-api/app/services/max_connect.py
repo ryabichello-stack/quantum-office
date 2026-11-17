@@ -17,6 +17,7 @@ from app.models.channel_account import ChannelAccount
 from app.services.audit import write_audit
 from app.services.channel_webhooks import webhook_url_for_account
 from app.services.channel_crypto import bot_token, encrypt
+from app.services.max_tls import max_tls_context
 from app.services.events import emit_event
 
 ACCESS_TOKEN_RE = re.compile(r"^[A-Za-z0-9._-]{16,256}$")
@@ -54,7 +55,7 @@ def _max_request(
     if json is not None:
         headers["Content-Type"] = "application/json"
     try:
-        with httpx.Client(timeout=20.0) as client:
+        with httpx.Client(timeout=20.0, verify=max_tls_context()) as client:
             response = client.request(http_method, url, headers=headers, params=params, json=json)
             data = response.json() if response.content else {}
             if response.status_code != 200:

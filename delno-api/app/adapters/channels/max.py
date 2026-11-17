@@ -9,6 +9,7 @@ import httpx
 
 from app.adapters.channels.base import InboundMessage, OutboundMessage
 from app.core.config import get_settings
+from app.services.max_tls import max_tls_context
 
 
 class MaxAdapter:
@@ -104,7 +105,7 @@ class MaxAdapter:
         url = f"{self._api_base()}/messages"
         body = {"chat_id": chat_id, "text": message.text[:4000]}
         try:
-            with httpx.Client(timeout=20.0) as client:
+            with httpx.Client(timeout=20.0, verify=max_tls_context()) as client:
                 response = client.post(
                     url,
                     headers={"Authorization": token, "Content-Type": "application/json"},
