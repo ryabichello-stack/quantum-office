@@ -4,6 +4,13 @@
 
 Формат записи: дата (МСК), автор, цель, файлы, изменение, проверка, статус, следующий шаг/ограничение.
 
+## 2026-11-17 — Codex: security review PR #121, backup restore
+
+- Ветка `codex/delno-mcp-gate1`, PR #121; production, Hermes Pool, каналы и телефония не изменялись.
+- Review нашёл обход grants через JWT, diagnostic mint, replay завершённого run, неполную проверку legacy binding и owner-role у фонового задания без пользователя. Исправления внесены в `delno-api/app/api/v1/mcp.py`, `hermes_nous.py`, `services/hermes_nous/{bridge,run_bindings,run_tokens,tool_packs}.py`, `agent_schedule.py`; тесты дополнены.
+- На C4B существующий и свежий DB dumps реально восстановлены в изолированном PostgreSQL; свежая копия совпала с источником по counts `6/6/6/15`. Шесть profile dirs и 18 файлов volume восстановлены и побайтно сравнены. Временный контейнер, сеть и копии удалены; production `/health=200`.
+- API: 446 passed, 1 deselected (внешний DNS). Подробный протокол и rollout: `docs/DELNO_MCP_GATE1_2026-11-17.md`. Gate 1 открыт: повторить CI и проверку реального Hermes после review, затем отдельно согласовать production. Merge/deploy/боевые флаги запрещены до решения владельца.
+
 ## 2026-11-17 ~10:20 МСК — Cursor: #113 merged + prod e2e
 
 - GitHub: PR #113 влит в `main` (`4fed2eb`).

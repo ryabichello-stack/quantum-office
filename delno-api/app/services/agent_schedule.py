@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.tenant import TenantContext
 from app.models.agent_task import AgentTask
 from app.models.tenant import Tenant
+from app.models.user import User
 from app.services.hermes_nous.tasks import add_step, create_task, list_tasks, record_run, task_to_dict
 
 logger = logging.getLogger(__name__)
@@ -209,11 +210,19 @@ def execute_scheduled_task(db: Session, task: AgentTask) -> dict[str, Any]:
     if not tenant:
         return {"ok": False, "error": "tenant_missing", "task_id": str(task.id)}
 
+    owner = None
+    if task.owner_user_id is not None:
+        owner = db.query(User).filter(
+            User.id == task.owner_user_id, User.tenant_id == task.tenant_id,
+        ).one_or_none()
+        if owner is None:
+            return {"ok": False, "error": "task_owner_revoked", "task_id": str(task.id)}
+
     ctx = TenantContext(
         tenant_id=task.tenant_id,
         tenant_slug=tenant.slug,
-        role="tenant_owner",
-        user_id=task.owner_user_id,
+        role=owner.role if owner else "system",
+        user_id=owner.id if owner else None,
     )
     prompt = (
         "Это периодическое поручение владельца офиса. Выполни цель через tools, "
@@ -233,7 +242,7 @@ def execute_scheduled_task(db: Session, task: AgentTask) -> dict[str, Any]:
                 message=prompt,
                 session_id=f"{tenant.slug}:schedule:{task.id}",
                 task_id=task.id,
-                mode="tasks",
+                mode="tasks" if owner else "system_event",
             )
             summary = str(nous.get("output") or "")[:4000]
             return {
@@ -271,6 +280,9 @@ def execute_scheduled_task(db: Session, task: AgentTask) -> dict[str, Any]:
                 "run_id": str(run.id),
                 "error": str(exc)[:300],
             }
+
+    if owner is None:
+        return {"ok": False, "error": "system_task_requires_scoped_runtime", "task_id": str(task.id)}
 
     run = record_run(
         db,

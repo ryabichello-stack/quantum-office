@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import hashlib
+import time
 from dataclasses import dataclass
 from typing import Any, Optional
 from uuid import UUID
@@ -31,7 +32,7 @@ from app.services.mcp_gateway import (
 )
 from app.services.hermes_nous.mcp_scope import META_ALWAYS, filter_tools_catalog, tool_allowed
 from app.services.hermes_nous.run_bindings import lookup_binding
-from app.services.hermes_nous.run_tokens import TOKEN_PREFIX, verify_run_token
+from app.services.hermes_nous.run_tokens import TOKEN_PREFIX, verify_run_token, lookup_run_token_entry
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 hermes_router = APIRouter(prefix="/hermes", tags=["hermes"])
@@ -180,8 +181,18 @@ def get_mcp_tenant_context(
             raise HTTPException(status_code=401, detail="run_binding_credential_required")
         if key_tenant.id != binding.tenant_id:
             raise HTTPException(status_code=403, detail="run_binding_tenant_mismatch")
-        if x_delno_profile_id and x_delno_profile_id.strip() != binding.profile_id:
+        if not x_delno_profile_id:
+            raise HTTPException(status_code=401, detail="run_binding_profile_required")
+        if x_delno_profile_id.strip() != binding.profile_id:
             raise HTTPException(status_code=403, detail="run_binding_profile_mismatch")
+        entry = lookup_run_token_entry(key_tenant, binding.token_hash)
+        if not entry or entry.get("revoked") or int(entry.get("expires_at") or 0) <= time.time():
+            raise HTTPException(status_code=401, detail="run_binding_token_inactive")
+        if (entry.get("run_id") != binding.run_id or
+                str(entry.get("tenant_id")) != str(key_tenant.id) or
+                str(entry.get("actor_user_id") or "") != str(binding.actor_user_id or "") or
+                set(entry.get("tool_ids") or []) != set(binding.tool_ids or [])):
+            raise HTTPException(status_code=403, detail="run_binding_scope_mismatch")
         if not key_tenant.is_active:
             raise HTTPException(status_code=403, detail="tenant_inactive")
         if binding.actor_user_id:
@@ -190,12 +201,14 @@ def get_mcp_tenant_context(
             ).one_or_none()
             if user is None:
                 raise HTTPException(status_code=403, detail="run_actor_not_in_tenant")
+            if user.role != entry.get("role"):
+                raise HTTPException(status_code=403, detail="run_actor_role_changed")
         return McpAuthContext(
             tenant=TenantContext(
                 tenant_id=key_tenant.id,
                 tenant_slug=key_tenant.slug,
                 user_id=binding.actor_user_id,
-                role=user.role if binding.actor_user_id else "tenant_owner",
+                role=user.role if binding.actor_user_id else "system",
             ),
             auth_via="run_binding",
             run_token_tool_ids=list(binding.tool_ids or []),
@@ -216,6 +229,8 @@ def get_mcp_tenant_context(
                 )
                 if not tenant:
                     raise HTTPException(status_code=404, detail="Tenant not found")
+                strict_jwt = any((os.environ.get(name) or "").strip().lower() in ("1", "true", "yes")
+                                 for name in ("DELNO_MCP_REQUIRE_RUN_BINDING", "DELNO_MCP_LEGACY_CATALOG_ONLY", "DELNO_MCP_DENY_LEGACY_KEY", "DELNO_MCP_STRICT"))
                 return McpAuthContext(
                     tenant=TenantContext(
                         tenant_id=tenant.id,
@@ -223,7 +238,8 @@ def get_mcp_tenant_context(
                         user_id=user.id,
                         role=user.role,
                     ),
-                    auth_via="jwt",
+                    auth_via="jwt_meta" if strict_jwt else "jwt",
+                    run_token_tool_ids=sorted(META_ALWAYS) if strict_jwt else None,
                 )
     except ValueError:
         pass
@@ -426,7 +442,7 @@ def hermes_profile(
 
     With run_token auth: never return long-lived mcp_api_key; catalog is scoped.
     """
-    include_key = ctx.auth_via not in ("run_token", "run_binding", "legacy_catalog")
+    include_key = ctx.auth_via not in ("run_token", "run_binding", "legacy_catalog", "jwt_meta")
     profile = build_hermes_profile(db, ctx.tenant, include_mcp_key=include_key)
     if _grant_enforced(ctx):
         profile["toolset"] = {

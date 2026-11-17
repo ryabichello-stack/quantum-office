@@ -81,6 +81,14 @@ def lookup_binding(db: Session, *, run_id: str) -> HermesRunBinding | None:
         exp = exp.replace(tzinfo=timezone.utc)
     if exp <= now:
         return None
+    from app.models.agent_task import AgentRun
+
+    run = db.query(AgentRun).filter(
+        AgentRun.tenant_id == row.tenant_id,
+        AgentRun.hermes_run_id == run_id,
+    ).one_or_none()
+    if run is not None and run.status in ("completed", "failed", "cancelled", "canceled", "stopped"):
+        return None
     return row
 
 

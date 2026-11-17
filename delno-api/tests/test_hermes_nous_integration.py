@@ -74,6 +74,10 @@ def _seed(db, *, flag_on: bool = True):
 def test_a_b_run_token_isolation(db):
     a, ctx_a = _seed(db)
     b, ctx_b = _seed(db)
+    owner_b = User(tenant_id=b.id, email="owner-b@example.test", role="tenant_owner")
+    db.add(owner_b)
+    db.commit()
+    ctx_b = TenantContext(tenant_id=b.id, tenant_slug=b.slug, user_id=owner_b.id, role=owner_b.role)
     tok_a = issue_run_token(db, ctx_a, tool_ids=["get_knowledge"])
     tok_b = issue_run_token(db, ctx_b, tool_ids=["get_knowledge", "send_mail_draft"])
     va = verify_run_token(db, tok_a.token)

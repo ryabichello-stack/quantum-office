@@ -23,7 +23,9 @@ from app.models.platform_event import PlatformEvent
 from app.operator.tools import register_builtin_tools
 from app.services.hermes_nous.run_bindings import bind_run_token, revoke_binding
 from app.models.hermes_runtime import HermesRunBinding
-from app.services.hermes_nous.run_tokens import issue_run_token
+from app.models.agent_task import AgentRun
+from app.core.security import create_access_token
+from app.services.hermes_nous.run_tokens import issue_run_token, revoke_run_token
 from app.services.mcp_gateway import ensure_mcp_api_key
 
 
@@ -275,3 +277,41 @@ def test_flag_rollback_restores_legacy_call_without_restarting_database(gateway,
         assert events
         assert all(e.payload["auth_via"] == "mcp_api_key" for e in events)
         assert all("token" not in e.payload for e in events)
+
+
+def test_jwt_cannot_call_business_tools_after_strict_flag(gateway, monkeypatch):
+    client, _, (a, _) = gateway
+    jwt = create_access_token(subject=str(a["user_id"]), tenant_id=a["id"], role="tenant_owner")
+    headers = {"Authorization": f"Bearer {jwt}"}
+    monkeypatch.setenv("DELNO_MCP_REQUIRE_RUN_BINDING", "1")
+    assert client.post("/v1/mcp/tools/call", headers=headers,
+                       json={"name": "get_tenant_summary", "arguments": {}}).status_code == 403
+    assert "mcp_api_key" not in client.get("/v1/hermes/profile", headers=headers).json()
+
+
+def test_legacy_binding_requires_profile_and_current_role(gateway):
+    client, sessions, (a, _) = gateway
+    base = {"Authorization": f"Bearer {a['key']}", "X-Delno-Run-Id": a["run_id"]}
+    assert client.get("/v1/mcp/tools", headers=base).status_code == 401
+    with sessions() as db:
+        user = db.query(User).filter(User.id == a["user_id"]).one()
+        user.role = "tenant_admin"
+        db.commit()
+    response = client.get("/v1/mcp/tools", headers={**base, "X-Delno-Profile-Id": a["profile"]})
+    assert response.status_code == 403
+    assert response.json()["detail"] == "run_actor_role_changed"
+
+
+def test_terminal_run_and_revoked_grant_cannot_be_replayed(gateway, monkeypatch):
+    client, sessions, (a, _) = gateway
+    monkeypatch.setenv("DELNO_MCP_REQUIRE_RUN_BINDING", "1")
+    with sessions() as db:
+        db.add(AgentRun(tenant_id=a["id"], hermes_run_id=a["run_id"], status="completed"))
+        db.commit()
+    assert client.get("/v1/mcp/tools", headers=_headers(a)).status_code == 401
+    with sessions() as db:
+        ctx = TenantContext(tenant_id=a["id"], tenant_slug=a["slug"], user_id=a["user_id"], role="tenant_owner")
+        assert revoke_run_token(db, ctx, run_id=a["run_id"])
+    assert client.get("/v1/mcp/tools", headers=_headers(a)).status_code == 401
+    assert client.get("/v1/mcp/tools", headers={"Authorization": f"Bearer {a['key']}",
+                       "X-Delno-Run-Id": a["run_id"], "X-Delno-Profile-Id": a["profile"]}).status_code == 401

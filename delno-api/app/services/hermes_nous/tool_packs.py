@@ -92,9 +92,19 @@ TASKS_AND_OUTREACH = OFFICE_CONDUCT + (
     "telephony.script_save",
 )
 
+# Runs created by platform events have no human owner. They may inspect context
+# but cannot send mail, dial, edit files, or mutate company settings.
+SYSTEM_EVENT = META + (
+    "hermes.capabilities", "get_knowledge", "get_tenant_summary",
+    "hermes.tasks_list", "calls.list", "crm.funnel", "list_files", "files.read_text",
+    "web.search", "web.fetch",
+)
+
 
 def pack_for_mode(mode: str | None) -> list[str]:
     m = (mode or "onboarding").strip().lower()
+    if m == "system_event":
+        return list(SYSTEM_EVENT)
     if m in ("conduct", "office", "p2"):
         return list(OFFICE_CONDUCT)
     if m in ("tasks", "p3", "full"):

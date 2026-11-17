@@ -12,6 +12,7 @@
 
 ### Added (2026-11-17, Gate 1 candidate)
 - MCP-проверки scoped run token, binding, tenant, actor, роли, профиля и grants; переключаемый режим schema-only для legacy. Патч Hermes v0.23.2 переносит контекст одного запуска в MCP-вызов под отдельным флагом. Добавлены проверки двух компаний и процедура отката; production не менялся.
+- Review PR #121: JWT в строгом режиме ограничен служебными tools, diagnostic mint закрыт, терминальные run tokens отзываются, legacy binding сверяет профиль и текущую роль, системные задания без пользователя получают только read-only grants. Проверено восстановление DB и profile volume в изолированной среде; production не менялся.
 
 ### Deployed (2026-11-17)
 - PR #113 влит в `main` и выкачен на C4B: публичные боты, календарь, файлы; prod e2e (лид + IDOR файлов + запись встречи + webhook TG) пройден.
