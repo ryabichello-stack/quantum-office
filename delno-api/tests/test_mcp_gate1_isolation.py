@@ -126,6 +126,11 @@ def test_token_run_profile_swap_and_revocation_are_denied(gateway, monkeypatch):
         "X-Delno-Run-Token": a["token"],
         "X-Delno-Run-Id": a["run_id"],
     }).status_code == 403
+    assert client.get("/v1/mcp/tools", headers={
+        "X-Delno-Mcp-Key": b["key"],
+        "X-Delno-Run-Token": a["token"],
+        "X-Delno-Run-Id": a["run_id"],
+    }).status_code == 403
     with sessions() as db:
         assert revoke_binding(db, run_id=a["run_id"])
     assert client.get("/v1/mcp/tools", headers=_headers(a)).status_code == 401

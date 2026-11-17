@@ -97,6 +97,12 @@ def get_mcp_tenant_context(
             raise HTTPException(status_code=403, detail="run_id_token_mismatch")
         tenant = run_entry["tenant"]
         actor = run_entry.get("actor_user_id")
+        for header_key in (x_delno_mcp_key, x_api_key):
+            extra = (header_key or "").strip()
+            if extra and extra != raw:
+                extra_tenant = find_tenant_by_mcp_key(db, extra)
+                if extra_tenant is None or extra_tenant.id != tenant.id:
+                    raise HTTPException(status_code=403, detail="credential_tenant_mismatch")
         # A profile can have an old Authorization header while a new runtime
         # supplies X-Delno-Run-Token. Never let a token for company A override
         # company B's credential in that mixed migration state.
