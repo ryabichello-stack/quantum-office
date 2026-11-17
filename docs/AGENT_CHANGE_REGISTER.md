@@ -4,6 +4,20 @@
 
 Формат записи: дата (МСК), автор, цель, файлы, изменение, проверка, статус, следующий шаг/ограничение.
 
+## 2026-11-17 — Codex: финальный isolated Hermes smoke для PR #121
+
+- На C4B собраны отдельные образы из PR, production-контейнеры и флаги не менялись. Внутренняя сеть, одноразовая SQLite; два tenant × Owner/background. Установленный Hermes `_RunLaunch → MCP handler → HTTP` выполнил 24 параллельных вызова. Серверные события после отрицательных проверок: `26/26 auth_via=run_token`, четыре run, два tenant, unscoped=0.
+- Legacy key → 403, истёкший token → 401, завершённый run → 401, чужой profile → 403. Фоновое задание без владельца получает `system_event`; роль обычного владельца перечитывается планировщиком.
+- Дополнительная находка: `get_tenant_summary` в текущем production выдаёт полный `tenant.settings` (включая MCP key), `update_tenant_settings` возвращает и аудирует его, может заменить служебные поля. В PR оба инструмента ограничены публичными бизнес-полями; проверены отсутствие ключа/грантов в ответе и запрет изменения. Production пока не исправлен до отдельного rollout.
+- API tests: 449 passed, 1 deselected (внешний DNS). Полный разговор с внешней LLM не тестировался: использован контролируемый Agent поверх реальных установленных Hermes run/handler и HTTP API. Последний коммит PR должен пройти CI. Merge/deploy/боевые флаги не разрешены; Gate 1 открыт до production proof.
+
+## 2026-11-17 — Codex: security review PR #121, backup restore
+
+- Ветка `codex/delno-mcp-gate1`, PR #121; production, Hermes Pool, каналы и телефония не изменялись.
+- Review нашёл обход grants через JWT, diagnostic mint, replay завершённого run, неполную проверку legacy binding и owner-role у фонового задания без пользователя. Исправления внесены в `delno-api/app/api/v1/mcp.py`, `hermes_nous.py`, `services/hermes_nous/{bridge,run_bindings,run_tokens,tool_packs}.py`, `agent_schedule.py`; тесты дополнены.
+- На C4B существующий и свежий DB dumps реально восстановлены в изолированном PostgreSQL; свежая копия совпала с источником по counts `6/6/6/15`. Шесть profile dirs и 18 файлов volume восстановлены и побайтно сравнены. Временный контейнер, сеть и копии удалены; production `/health=200`.
+- API: 446 passed, 1 deselected (внешний DNS). Подробный протокол и rollout: `docs/DELNO_MCP_GATE1_2026-11-17.md`. Gate 1 открыт: повторить CI и проверку реального Hermes после review, затем отдельно согласовать production. Merge/deploy/боевые флаги запрещены до решения владельца.
+
 ## 2026-11-17 ~10:20 МСК — Cursor: #113 merged + prod e2e
 
 - GitHub: PR #113 влит в `main` (`4fed2eb`).
@@ -52,6 +66,12 @@
 - Статус: ветка `codex/tenant-calendar-origin`, PR #111; **прод не обновлён** на момент этой записи. Следом нужны review, сквозная проверка A/B на проде, проверка внешнего update/delete на реальных провайдерах, письмо с выбранным файлом на реальном SMTP и привязка контакта между каналами.
 
 **Где лежит:** git `docs/AGENT_CHANGE_REGISTER.md` ↔ прод `/opt/delno/docs/AGENT_CHANGE_REGISTER.md` (держать в синхроне).
+
+## 2026-11-17 — Codex: Gate 1 MCP isolation candidate, без production
+
+- Ветка `codex/delno-mcp-gate1`; файлы `delno-api/app/api/v1/mcp.py`, `hermes_nous.py`, `services/mcp_gateway.py`, `hermes_runtime/*`, compose, tests и `docs/DELNO_MCP_GATE1_2026-11-17.md`.
+- Проверены два тенанта, параллельные HTTP/MCP-вызовы, подмены, отзыв binding, права actor и обратное переключение флагов. Локальный тест patch against upstream v0.23.2 прошёл. Production не трогали.
+- Флаги по умолчанию выключены. Не менять prod, не включать `DELNO_MCP_DENY_LEGACY_KEY` до зелёного CI, живого Hermes E2E с двумя профилями и отдельного согласования владельца. Rollback и ограничения описаны в документе Gate 1.
 
 ## 2026-11-17 — Codex: публичные боты DELNO отдельно от кабинетов клиентов
 
@@ -434,3 +454,10 @@
 - Ветка `codex/tenant-calendar-origin`: отдельные tenant-scoped встречи, экран и API календаря, общие действия для голоса и мессенджеров. Голосовой номер берётся из `CallSession`, ID отправителя Telegram/MAX — из webhook; чужая запись и неоднозначный номер не выбираются автоматически.
 - Сверены старые `ava-calendar`, `ava-conference`, `ava-files`, `ava-mailer` и `quantum-console` с текущими DELNO; результат в `docs/DELNO_OFFICE_TOOL_INVENTORY_2026-11-17.md`. Бэкап содержал PDF-письмо, но не содержал перенос/отмену CalDAV-событий.
 - Ветка ещё не выложена на прод. Внешняя двусторонняя синхронизация, привязка контактов между каналами и реальное вложение презентации — отдельные недоделанные части, их нельзя заявлять готовыми.
+
+## 2026-11-17 — Codex: Gate 1, реальный путь Session Authority
+
+- В Hermes v0.23.2 реальный `/v1/runs` исполняется через `Session Authority`; прежняя привязка scoped-токена только в `_run_agent_sync` не охватывала этот путь. Это было причиной `delno_run_scope_missing` при первом rollout.
+- Патч регистрирует токен по upstream admission/request ID в памяти процесса, привязывает его к ContextVar только на время допущенного хода с совпадающим профилем и удаляет после завершения запуска. Токен не пишется в session SQLite и не становится общим для воркера. Регрессионный smoke проверяет параллельные ходы двух профилей, чужой профиль и удаление привязки.
+- Production: API `delno-api:gate1-5053e3ef`; Hermes Pool `delno-hermes-runtime:gate1-hotfix-20261117`. Перед переключением сделан `/opt/delno/backups/gate1-fix-20261117/`; прежние образы сохранены. Флаги включены последовательно: `DELNO_MCP_RUN_SCOPE_ENABLED=1`, `DELNO_MCP_REQUIRE_RUN_BINDING=1`, `DELNO_MCP_LEGACY_CATALOG_ONLY=1`, `DELNO_MCP_DENY_LEGACY_KEY=1`. Живой Owner и фоновая задача проходят; Telegram/MAX health OK; legacy business call получает 403. Параллельные реальные диалоги двух audit-компаний вызвали `get_tenant_summary` с `auth_via=run_token` и своими `run_id`.
+- Итог Gate 1: после ограничений 13 production бизнес-вызовов MCP, все `auth_via=run_token` с `run_id`, две audit-компании; legacy бизнес-вызов получает 403. Фоновая задача сопоставлена по `HermesRunBinding.session_id` со своим scoped событием. На API прошли 14 тестов изоляции; на каналах — 15 тестов; регрессия установленного Hermes прошла; CI PR #121 зелёный. Gate 1 закрыт по проверенному контуру. Один из первых параллельных прогонов вернул пустой текст для одного диалога, повторный прогон обеих компаний прошёл; это отдельный риск качества ответа, не обход авторизации. Ротация шести постоянных ключей не производилась по указанию Дениса; они больше не дают бизнес-доступ через MCP.

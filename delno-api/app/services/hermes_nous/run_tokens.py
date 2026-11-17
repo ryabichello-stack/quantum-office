@@ -59,6 +59,10 @@ def issue_run_token(
     tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
     rid = (run_id or f"run_{secrets.token_hex(8)}").strip()
     tools = [t.strip() for t in (tool_ids or []) if str(t).strip()][:MAX_TOOL_IDS]
+    if ctx.user_id is None:
+        from app.services.hermes_nous.tool_packs import SYSTEM_EVENT
+
+        tools = [tool for tool in tools if tool in SYSTEM_EVENT]
     scopes = [s.strip() for s in (knowledge_scopes or ["default"]) if str(s).strip()][:32]
     expires_at = int(time.time()) + max(60, int(ttl_sec))
     raw = f"{TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
@@ -124,6 +128,14 @@ def verify_run_token(db: Session, raw: str) -> dict[str, Any] | None:
         out = dict(entry)
         out["tenant"] = tenant
         return out
+    return None
+
+
+def lookup_run_token_entry(tenant: Tenant, token_hash: str) -> dict[str, Any] | None:
+    """Read the original grant snapshot for a legacy bound run."""
+    entry = (_nous_blob(tenant).get("run_tokens") or {}).get(token_hash[:16])
+    if isinstance(entry, dict) and entry.get("hash") == token_hash:
+        return entry
     return None
 
 

@@ -154,6 +154,10 @@ def create_run(
     started = time.monotonic()
     run_id_hint = f"delno_{uuid4().hex[:12]}"
     tools = tool_ids if tool_ids else pack_for_mode(mode)
+    if ctx.user_id is None or ctx.role == "system":
+        from app.services.hermes_nous.tool_packs import SYSTEM_EVENT
+
+        tools = sorted(set(tools) & set(SYSTEM_EVENT))
     issued = issue_run_token(
         db,
         ctx,
@@ -368,9 +372,13 @@ def create_run(
     except HermesBridgeError as exc:
         # Fallback: OpenAI-compat chat completions when Runs API unavailable on pin
         if exc.status in (404, 405, 501) or "unreachable" in str(exc):
-            fallback = _fallback_chat(runtime, message=message, session_id=payload["session_id"], issued=issued)
-            _meter_hermes_turn(db, ctx, fallback.get("hermes"), started_at=started, runtime=runtime)
-            return fallback
+            try:
+                fallback = _fallback_chat(runtime, message=message, session_id=payload["session_id"], issued=issued)
+                _meter_hermes_turn(db, ctx, fallback.get("hermes"), started_at=started, runtime=runtime)
+                return fallback
+            finally:
+                _revoke_run_scope(db, ctx, run_id_hint)
+        _revoke_run_scope(db, ctx, run_id_hint)
         raise
 
     hermes_run_id = (body or {}).get("run_id") or issued.run_id
@@ -425,9 +433,20 @@ def create_run(
         failed_body["status"] = "failed"
         failed_body["error_code"] = "model_provider_unavailable"
         _close_agent_run(db, ctx, delno_run.id, failed_body, polled=True, output="")
+        _revoke_run_scope(db, ctx, run_id_hint)
         raise HermesBridgeError("model_provider_unavailable", status=503)
     _close_agent_run(db, ctx, delno_run.id, final_body, polled=polled is not None, output=output)
+    if str(final_body.get("status") or "").lower() in _TERMINAL_OK | _TERMINAL_FAIL:
+        _revoke_run_scope(db, ctx, run_id_hint)
     return result
+
+
+def _revoke_run_scope(db: Session, ctx: TenantContext, run_id: str) -> None:
+    from app.services.hermes_nous.run_bindings import revoke_binding
+    from app.services.hermes_nous.run_tokens import revoke_run_token
+
+    revoke_run_token(db, ctx, run_id=run_id)
+    revoke_binding(db, run_id=run_id)
 
 
 def _usage_triplet(body: Any) -> tuple[int, int, str | None]:
@@ -628,7 +647,8 @@ def iter_hermes_sse(runtime: dict[str, Any], run_id: str, *, timeout: float = 90
 
 
 def get_run(db: Session, ctx: TenantContext, run_id: str) -> dict[str, Any]:
-    if find_owned_run(db, ctx, run_id) is None:
+    owned = find_owned_run(db, ctx, run_id)
+    if owned is None:
         raise HermesBridgeError("run_not_found", status=404, body={"error": "run_not_found"})
     runtime = resolve_runtime(db, ctx)
     status, body = _http_json(
@@ -636,10 +656,16 @@ def get_run(db: Session, ctx: TenantContext, run_id: str) -> dict[str, Any]:
         f"{runtime['base_url']}/v1/runs/{run_id}",
         api_key=runtime["api_key"],
     )
+    if isinstance(body, dict) and str(body.get("status") or "").lower() in _TERMINAL_OK | _TERMINAL_FAIL:
+        hint = (owned.checkpoint or {}).get("delno_run_hint") or owned.hermes_run_id
+        _revoke_run_scope(db, ctx, str(hint))
     return {"ok": True, "http_status": status, "hermes": body}
 
 
 def stop_run(db: Session, ctx: TenantContext, run_id: str) -> dict[str, Any]:
+    owned = find_owned_run(db, ctx, run_id)
+    if owned is None:
+        raise HermesBridgeError("run_not_found", status=404, body={"error": "run_not_found"})
     runtime = resolve_runtime(db, ctx)
     status, body = _http_json(
         "POST",
@@ -647,6 +673,8 @@ def stop_run(db: Session, ctx: TenantContext, run_id: str) -> dict[str, Any]:
         api_key=runtime["api_key"],
         payload={},
     )
+    hint = (owned.checkpoint or {}).get("delno_run_hint") or owned.hermes_run_id
+    _revoke_run_scope(db, ctx, str(hint))
     return {"ok": True, "http_status": status, "hermes": body}
 
 

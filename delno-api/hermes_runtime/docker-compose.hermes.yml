@@ -12,8 +12,8 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        HERMES_AGENT_GIT_REF: v0.23.1
-    image: delno-hermes-runtime:v0.23.1
+        HERMES_AGENT_GIT_REF: v0.23.2
+    image: delno-hermes-runtime:v0.23.2-gate1
     container_name: delno-hermes-pool
     environment:
       HERMES_PROFILES_ROOT: /data/hermes-profiles
@@ -25,6 +25,8 @@ services:
       API_SERVER_KEY: ${API_SERVER_KEY:-dev-hermes-key-aaaaaaaa}
       # Worker process: empty. Per-company keys live in profiles/<id>/.env
       DELNO_MCP_KEY: ""
+      # Opt-in after two-tenant staging verification; default preserves live behaviour.
+      DELNO_MCP_RUN_SCOPE_ENABLED: ${DELNO_MCP_RUN_SCOPE_ENABLED:-0}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       HTTPS_PROXY: ${OPENAI_HTTP_PROXY:-}

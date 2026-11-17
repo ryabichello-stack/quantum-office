@@ -12,10 +12,12 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.db import Base
+from app.core.tenant import TenantContext
 from app.models.hermes_runtime import HermesRunBinding
 from app.models.tenant import Tenant
 from app.api.v1.mcp import get_mcp_tenant_context
 from app.services.hermes_nous.run_bindings import bind_run_token, lookup_binding
+from app.services.hermes_nous.run_tokens import issue_run_token
 from app.services.mcp_gateway import ensure_mcp_api_key
 
 
@@ -67,10 +69,13 @@ def test_run_id_requires_credential_from_bound_tenant(db):
     db.commit()
     owner_key = ensure_mcp_api_key(db, owner)
     other_key = ensure_mcp_api_key(db, other)
+    issued = issue_run_token(db, TenantContext(
+        tenant_id=owner.id, tenant_slug=owner.slug, user_id=None, role="system",
+    ), run_id="delno_owner_run", tool_ids=["get_knowledge"])
     bind_run_token(
         db, tenant_id=owner.id, profile_id="tenant_owner-co__company_main",
         worker_id="pool", run_id="delno_owner_run", session_id="owner-co:conv1",
-        actor_user_id=None, agent_id="company_main", raw_token="dnrt_owner_secret",
+        actor_user_id=None, agent_id="company_main", raw_token=issued.token,
         tool_ids=["get_knowledge"],
         expires_at_unix=int((datetime.now(timezone.utc) + timedelta(hours=1)).timestamp()),
     )

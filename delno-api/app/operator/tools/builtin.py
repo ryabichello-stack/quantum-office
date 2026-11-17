@@ -238,13 +238,16 @@ class CreateLeadTool:
 
 class GetTenantSummaryTool:
     name = "get_tenant_summary"
-    description = "Read tenant settings, legal profile and feature flags (read-only)."
+    description = "Read public business settings, legal profile and feature flags (read-only)."
     critical_write = False
     parameters_schema = {"type": "object", "properties": {}}
 
     def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult:
         tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
-        settings = tenant.settings if isinstance(tenant.settings, dict) else {}
+        raw_settings = tenant.settings if isinstance(tenant.settings, dict) else {}
+        settings = {key: raw_settings[key] for key in (
+            "assistant_name", "greeting", "business_note", "legal",
+        ) if key in raw_settings}
         flags = (
             db.query(FeatureFlag)
             .filter(FeatureFlag.tenant_id == ctx.tenant_id)
@@ -286,8 +289,9 @@ class UpdateTenantSettingsTool:
         patch = params.get("patch")
         if not isinstance(patch, dict) or not patch:
             return ToolResult(ok=False, message="patch object is required")
-        # Connection status is the result of a vault probe, not a settings flag.
-        patch = {k: v for k, v in patch.items() if k not in {"connector_links", "secrets"}}
+        # Never let an agent read or replace auth, connector, or run-token state.
+        allowed = {"assistant_name", "greeting", "business_note", "legal"}
+        patch = {k: v for k, v in patch.items() if k in allowed}
         if not patch:
             return ToolResult(
                 ok=False,
@@ -298,6 +302,8 @@ class UpdateTenantSettingsTool:
         old_settings = dict(tenant.settings or {})
         merged = {**old_settings, **patch}
         tenant.settings = merged
+        public_before = {key: old_settings[key] for key in allowed if key in old_settings}
+        public_after = {key: merged[key] for key in allowed if key in merged}
 
         sync = sync_tenant_settings_for_ctx(db, ctx, source="operator.update_settings")
         write_audit(
@@ -305,8 +311,8 @@ class UpdateTenantSettingsTool:
             ctx,
             action="tool.update_tenant_settings",
             resource=f"tenant:{tenant.id}",
-            old_value={"settings": old_settings},
-            new_value={"settings": merged, "knowledge_sync": sync},
+            old_value={"settings": public_before},
+            new_value={"settings": public_after, "knowledge_sync": sync},
         )
         emit_event(
             db,
@@ -320,7 +326,7 @@ class UpdateTenantSettingsTool:
         keys = ", ".join(str(k) for k in patch.keys())
         return ToolResult(
             ok=True,
-            data={"settings": merged, "knowledge_sync": sync},
+            data={"settings": public_after, "knowledge_sync": sync},
             message=f"Настройки обновлены ({keys})." if keys else "Настройки обновлены.",
         )
 

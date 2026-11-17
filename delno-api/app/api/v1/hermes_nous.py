@@ -8,6 +8,7 @@ Security (2026-11-13):
 
 from __future__ import annotations
 
+import os
 from typing import Any
 from uuid import UUID
 
@@ -297,6 +298,9 @@ def nous_stop_run(
     try:
         out = stop_run(db, ctx, run_id)
         revoke_run_token(db, ctx, run_id=run_id)
+        from app.services.hermes_nous.run_bindings import revoke_binding
+
+        revoke_binding(db, run_id=run_id)
         return out
     except HermesBridgeError as exc:
         raise HTTPException(
@@ -412,13 +416,34 @@ def nous_mint_token(
     ctx: TenantContext = Depends(get_tenant_context_auth),
 ) -> dict[str, Any]:
     """Diagnostic mint — tools clamped to pack. Prefer create_run bindings in production."""
+    if (os.environ.get("DELNO_MCP_DIAGNOSTIC_MINT") or "").strip().lower() not in ("1", "true", "yes") or ctx.role != "platform_admin":
+        raise HTTPException(status_code=403, detail="diagnostic_mint_disabled")
     _require_flag(db, ctx)
     tools = _clamp_tools(body.tool_ids, body.mode)
     issued = issue_run_token(db, ctx, tool_ids=tools)
+    # Diagnostics use the same server-side binding contract as actual Hermes
+    # runs, so enabling DELNO_MCP_REQUIRE_RUN_BINDING does not break this API.
+    from app.services.hermes_nous.placement import profile_id_for_tenant
+    from app.services.hermes_nous.run_bindings import bind_run_token
+
+    bind_run_token(
+        db,
+        tenant_id=ctx.tenant_id,
+        profile_id=profile_id_for_tenant(ctx.tenant_slug),
+        worker_id=None,
+        run_id=issued.run_id,
+        session_id=None,
+        actor_user_id=ctx.user_id,
+        agent_id="company_main",
+        raw_token=issued.token,
+        tool_ids=issued.tool_ids,
+        expires_at_unix=issued.expires_at,
+    )
     return {
         "ok": True,
         "token": issued.token,
         "run_id": issued.run_id,
+        "profile_id": profile_id_for_tenant(ctx.tenant_slug),
         "expires_at": issued.expires_at,
         "tool_ids": issued.tool_ids,
         "mode": body.mode,

@@ -10,6 +10,11 @@
 
 ## [Unreleased]
 
+### Added (2026-11-17, Gate 1 candidate)
+- MCP-проверки scoped run token, binding, tenant, actor, роли, профиля и grants; переключаемый режим schema-only для legacy. Патч Hermes v0.23.2 переносит контекст одного запуска в MCP-вызов под отдельным флагом. Добавлены проверки двух компаний и процедура отката; production не менялся.
+- Review PR #121: JWT в строгом режиме ограничен служебными tools, diagnostic mint закрыт, терминальные run tokens отзываются, legacy binding сверяет профиль и текущую роль, системные задания без пользователя получают только read-only grants. Проверено восстановление DB и profile volume в изолированной среде; production не менялся.
+- Финальный isolated Hermes/DELNO API smoke: два tenant, Owner и background runs, 26/26 бизнес-вызовов через run token. Устранена выдача MCP-ключа и run state через `get_tenant_summary`/`update_tenant_settings`; production не менялся.
+
 ### Deployed (2026-11-17)
 - PR #113 влит в `main` и выкачен на C4B: публичные боты, календарь, файлы; prod e2e (лид + IDOR файлов + запись встречи + webhook TG) пройден.
 
@@ -216,6 +221,8 @@
 - Первичный импорт `outreach/`, `mailer/`, `text-bot/`, `docs/`
 
 # 2026-11-16
+
+- 2026-11-17: fixed Gate 1 scoped MCP identity propagation through Hermes Session Authority admissions; added regression coverage for concurrent admitted turns and profile isolation. Production validation details are in `docs/AGENT_CHANGE_REGISTER.md`.
 
 - 2026-11-17: started DELNO-owned calendar and shared appointment flow for voice, Telegram/MAX and cabinet; audit of office tools restored from the Beget backup in `docs/DELNO_OFFICE_TOOL_INVENTORY_2026-11-17.md`.
 
