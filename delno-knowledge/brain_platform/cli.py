@@ -35,6 +35,15 @@ def main(argv: list[str] | None = None) -> int:
     p_seed.add_argument("--no-vault-files", action="store_true")
     p_seed.add_argument("--verify", action="store_true", help="Run ACL smoke after seed")
 
+    p_seed_public = sub.add_parser(
+        "seed-public", help="Seed delno-public marketing KB vault (idempotent)"
+    )
+    p_seed_public.add_argument(
+        "--tenant", default=os.getenv("BRAIN_PUBLIC_TENANT", "delno-public")
+    )
+    p_seed_public.add_argument("--force", action="store_true")
+    p_seed_public.add_argument("--no-vault-files", action="store_true")
+
     p_init_pg = sub.add_parser("init-pg", help="Apply Postgres+pgvector schema")
     p_migrate = sub.add_parser("sync-pg", help="Copy SQLite corpus → Postgres (full refresh)")
     p_migrate.add_argument("--sqlite", default=None)
@@ -141,6 +150,18 @@ def main(argv: list[str] | None = None) -> int:
         )
         if args.verify:
             out["verify"] = verify_demo_search(repo, tenant_id=args.tenant)
+        print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
+        return 0 if out.get("ok") else 1
+
+    if args.cmd == "seed-public":
+        from brain_platform.seed.public_tenant import seed_public_tenant
+
+        out = seed_public_tenant(
+            repo,
+            tenant_id=args.tenant,
+            force=args.force,
+            ingest_vault_files=not args.no_vault_files,
+        )
         print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
         return 0 if out.get("ok") else 1
 
