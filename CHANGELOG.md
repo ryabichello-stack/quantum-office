@@ -10,6 +10,9 @@
 
 ## [Unreleased]
 
+### Changed (2026-11-17) — Hermes Agent v0.23.2
+- Пин runtime `delno-hermes-runtime`: **v0.23.1 → v0.23.2** (Nous stable). Образ `v0.23.1` оставляем на C4B для отката.
+
 ### Added
 
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
