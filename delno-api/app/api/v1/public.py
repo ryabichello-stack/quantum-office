@@ -192,6 +192,9 @@ def _resolve_widget_context(db: Session, site_key: str):
         return ctx
     if site_key in ("demo_dlno", "demo"):
         return resolve_public_lead(db, get_settings().default_tenant_slug)
+    # Marketing site / orb aliases → боевой публичный тенант DELNO.
+    if site_key in ("delno_public", "delno-public"):
+        return resolve_public_lead(db, "delno-public")
     return None
 
 

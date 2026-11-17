@@ -10,6 +10,12 @@
 
 ## [Unreleased]
 
+### Ops (2026-11-17) — delno-public боевой контур
+- Hermes multiplex pool: профиль `tenant_delno-public__company_main` + goal-led задача владельца (сайт/мессенджеры/демо/лиды).
+- Почта Reg.ru (`regru`/`mail_regru`): на C4B SMTP-login и vault `connected` после обновления пароля ящика.
+- Сайт/орб: `NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY` = `public_key` тенанта `delno-public` (раньше был ключ quantum-labs); alias `delno_public` → `delno-public`; `DEFAULT_TENANT_SLUG=delno-public`. Лиды сайта/виджета/ботов → одна CRM + письмо на `LEAD_NOTIFY_TO`.
+- `delno-site-restore-smoke` удалён; закрыты мёртвые PR restore/scaffold (#53–#55, #57–#58, #60, #62, #69).
+
 ### Deployed (2026-11-17)
 - PR #113 влит в `main` и выкачен на C4B: публичные боты, календарь, файлы; prod e2e (лид + IDOR файлов + запись встречи + webhook TG) пройден.
 

@@ -79,6 +79,8 @@ _SMTP_PROVIDERS = {
     "mailru": ("smtp.mail.ru", 465),
     "google": ("smtp.gmail.com", 465),
     "outlook": ("smtp.office365.com", 587),
+    # Hosting mailbox (Reg.ru / Beget-style SMTP) — used by office@dlno.ru.
+    "regru": ("mail.hosting.reg.ru", 465),
 }
 
 
