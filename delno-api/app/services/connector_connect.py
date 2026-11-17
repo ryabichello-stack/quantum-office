@@ -135,6 +135,21 @@ PROVIDERS: dict[str, list[dict[str, Any]]] = {
             "login_optional": False,
         },
         {
+            "id": "regru",
+            "title": "Почта Reg.ru / хостинг",
+            "auth": "app_password",
+            "vault_kind": "mail_regru",
+            "foreign": False,
+            "example_login": _EXAMPLE,
+            "hint": (
+                f"Ящик на хостинге (SMTP mail.hosting.reg.ru), логин как {_EXAMPLE}. "
+                "Пароль ящика или SMTP-пароль из панели хостинга. "
+                "Подключено только после успешного входа на SMTP."
+            ),
+            "password_label": "Пароль ящика / SMTP",
+            "login_optional": False,
+        },
+        {
             "id": "google",
             "title": "Почта Google",
             "auth": "app_password",

@@ -1144,6 +1144,7 @@ _SMTP_BY_PROVIDER = {
     "mailru": ("smtp.mail.ru", 465),
     "google": ("smtp.gmail.com", 465),
     "outlook": ("smtp.office365.com", 587),
+    "regru": ("mail.hosting.reg.ru", 465),
 }
 
 

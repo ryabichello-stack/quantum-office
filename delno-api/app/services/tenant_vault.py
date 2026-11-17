@@ -28,6 +28,7 @@ SUPPORTED_KINDS = frozenset(
         "calendar_outlook",
         "mail_yandex",
         "mail_mailru",
+        "mail_regru",
         "mail_google",
         "mail_outlook",
         "conference_yandex",
@@ -46,7 +47,7 @@ CALENDAR_KINDS = frozenset(
     }
 )
 FOREIGN_CALENDAR_KINDS = frozenset({"calendar_google", "calendar_outlook"})
-MAIL_KINDS = frozenset({"mail_yandex", "mail_mailru", "mail_google", "mail_outlook"})
+MAIL_KINDS = frozenset({"mail_yandex", "mail_mailru", "mail_regru", "mail_google", "mail_outlook"})
 CONFERENCE_KINDS = frozenset(
     {"conference_yandex", "conference_google", "conference_zoom", "conference_teams"}
 )
@@ -107,6 +108,34 @@ ACCOUNT_FORMS: dict[str, dict[str, Any]] = {
     ),
     "mail_yandex": _account_form("mail_yandex", "Яндекс Почта", "yandex", "Почта", "ivan@yandex.ru"),
     "mail_mailru": _account_form("mail_mailru", "Почта Mail.ru", "mailru", "Почта", "ivan@mail.ru"),
+    "mail_regru": {
+        "kind": "mail_regru",
+        "title": "Почта Reg.ru / хостинг",
+        "hint": (
+            "Подключаю ящик на хостинге (например office@ваш-домен.ru через mail.hosting.reg.ru). "
+            "Нужен пароль ящика или SMTP-пароль из панели хостинга; в чат данные не попадут."
+        ),
+        "fields": [
+            {
+                "name": "login",
+                "label": "Адрес почты",
+                "type": "text",
+                "autocomplete": "username",
+                "placeholder": "office@example.ru",
+                "help": "Полный адрес ящика на хостинге, например office@dlno.ru.",
+            },
+            {
+                "name": "password",
+                "label": "Пароль ящика / SMTP",
+                "type": "password",
+                "autocomplete": "off",
+                "help": "Пароль почтового ящика из панели Reg.ru (или отдельный SMTP-пароль, если задан).",
+            },
+        ],
+        "submit_label": "Подключить и проверить",
+        "password_required": True,
+        "login_optional": False,
+    },
 }
 
 

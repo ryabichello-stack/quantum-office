@@ -10,6 +10,12 @@
 
 ## [Unreleased]
 
+### Ops (2026-11-17) — delno-public боевой контур
+- Hermes multiplex pool: профиль `tenant_delno-public__company_main` + goal-led задача владельца (сайт/мессенджеры/демо/лиды на office@dlno.ru).
+- Почта хостинга Reg.ru: провайдер `regru` / `mail_regru` (SMTP `mail.hosting.reg.ru:465`) в delno-mail, vault и каталоге подключений — для ящика компании, не через чужой env.
+- На C4B пароль SMTP восстановлен из Beget-бэкапа в `.env` (раньше был пустой); `delno-mail` видит `smtp_configured=true`. Прямой SMTP-login с VPS к `mail.hosting.reg.ru` пока рвёт соединение — подключение vault для `delno-public` останется `failed`, пока не откроют egress/SMTP или не обновят пароль в кабинете.
+- Сайт: дефолт тенанта `delno-public`, контакты `@Dlno_bot` / office@dlno.ru; контейнер `delno-site-restore-smoke` остановлен и удалён; закрыты мёртвые PR стека restore/scaffold (#53–#55, #57–#58, #60, #62).
+
 ### Deployed (2026-11-17)
 - PR #113 влит в `main` и выкачен на C4B: публичные боты, календарь, файлы; prod e2e (лид + IDOR файлов + запись встречи + webhook TG) пройден.
 

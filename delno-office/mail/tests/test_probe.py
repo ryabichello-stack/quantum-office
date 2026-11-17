@@ -49,6 +49,39 @@ def test_probe_rejects_unknown_provider():
     assert response.status_code == 400
 
 
+def test_probe_regru_uses_hosting_smtp(monkeypatch):
+    seen = {}
+
+    class SMTP:
+        def __init__(self, host, port, timeout):
+            seen.update(host=host, port=port)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def login(self, username, password):
+            seen.update(username=username, password=password)
+
+    monkeypatch.setattr(gateway.smtplib, "SMTP_SSL", SMTP)
+    response = client.post(
+        "/api/mail/probe",
+        json={"tenant_id": "tenant-a", "provider": "regru", "username": "office@example.ru", "password": "host-secret"},
+        headers={"X-Tenant-Id": "tenant-a"},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "connected"
+    assert seen == {
+        "host": "mail.hosting.reg.ru",
+        "port": 465,
+        "username": "office@example.ru",
+        "password": "host-secret",
+    }
+    assert "host-secret" not in response.text
+
+
 def test_send_requires_tenant_credentials():
     response = client.post(
         "/api/mail/send",
