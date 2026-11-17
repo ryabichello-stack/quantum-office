@@ -454,3 +454,10 @@
 - Ветка `codex/tenant-calendar-origin`: отдельные tenant-scoped встречи, экран и API календаря, общие действия для голоса и мессенджеров. Голосовой номер берётся из `CallSession`, ID отправителя Telegram/MAX — из webhook; чужая запись и неоднозначный номер не выбираются автоматически.
 - Сверены старые `ava-calendar`, `ava-conference`, `ava-files`, `ava-mailer` и `quantum-console` с текущими DELNO; результат в `docs/DELNO_OFFICE_TOOL_INVENTORY_2026-11-17.md`. Бэкап содержал PDF-письмо, но не содержал перенос/отмену CalDAV-событий.
 - Ветка ещё не выложена на прод. Внешняя двусторонняя синхронизация, привязка контактов между каналами и реальное вложение презентации — отдельные недоделанные части, их нельзя заявлять готовыми.
+
+## 2026-11-17 — Codex: Gate 1, реальный путь Session Authority
+
+- В Hermes v0.23.2 реальный `/v1/runs` исполняется через `Session Authority`; прежняя привязка scoped-токена только в `_run_agent_sync` не охватывала этот путь. Это было причиной `delno_run_scope_missing` при первом rollout.
+- Патч регистрирует токен по upstream admission/request ID в памяти процесса, привязывает его к ContextVar только на время допущенного хода с совпадающим профилем и удаляет после завершения запуска. Токен не пишется в session SQLite и не становится общим для воркера. Регрессионный smoke проверяет параллельные ходы двух профилей, чужой профиль и удаление привязки.
+- Production: API `delno-api:gate1-5053e3ef`; Hermes Pool `delno-hermes-runtime:gate1-hotfix-20261117`. Перед переключением сделан `/opt/delno/backups/gate1-fix-20261117/`; прежние образы сохранены. Флаги включены последовательно: `DELNO_MCP_RUN_SCOPE_ENABLED=1`, `DELNO_MCP_REQUIRE_RUN_BINDING=1`, `DELNO_MCP_LEGACY_CATALOG_ONLY=1`, `DELNO_MCP_DENY_LEGACY_KEY=1`. Живой Owner и фоновая задача проходят; Telegram/MAX health OK; legacy business call получает 403. Параллельные реальные диалоги двух audit-компаний вызвали `get_tenant_summary` с `auth_via=run_token` и своими `run_id`.
+- Gate 1 ещё требует завершения итоговой проверки журналов, CI и фиксации кода в PR. Ротация шести постоянных ключей не производилась.

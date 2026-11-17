@@ -8,11 +8,13 @@ from __future__ import annotations
 import json
 import os
 import sys
+import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager, nullcontext
 from types import SimpleNamespace
 
 from gateway.platforms.api_server_runs import _RunLaunch, _run_agent_sync
+from gateway import session_ingress
 from tools import delno_run_scope, mcp_tool_handlers
 
 
@@ -155,6 +157,55 @@ def main() -> None:
             assert [r["profile"] for r in results] == [
                 f"tenant_gate-{i % 2}__company_main" for i in range(24)
             ]
+
+        # The real /v1/runs path uses Session Authority. Its drain enters
+        # _admission_scope, not _run_agent_sync. Exercise that exact boundary.
+        import agent.runtime_scope as runtime_scope
+        original_producer = session_ingress.producer_turn
+        original_execution = session_ingress._execution_scope
+        original_bind = runtime_scope.bind_turn
+        original_fence = runtime_scope.claim_fence
+
+        @asynccontextmanager
+        async def fake_producer(*_args):
+            yield
+
+        async def fake_execution(*_args):
+            return nullcontext()
+
+        session_ingress.producer_turn = fake_producer
+        session_ingress._execution_scope = fake_execution
+        runtime_scope.bind_turn = lambda *_args: nullcontext()
+        runtime_scope.claim_fence = lambda *_args: None
+        try:
+            async def admitted_turn(i, profile=None):
+                own = f"tenant_gate-{i % 2}__company_main"
+                authority = SimpleNamespace(profile_id=profile or own)
+                row = {"request_id": f"upstream-{i}", "admission_id": f"admission-{i}"}
+                ref = SimpleNamespace(session_id=f"session-{i}")
+                async with session_ingress._admission_scope(authority, ref, None, row, None, {}):
+                    scope = delno_run_scope.current_run_scope()
+                    return (scope.run_id, scope.profile_id) if scope else None
+
+            for i in range(24):
+                delno_run_scope.register_admitted_run(
+                    request_id=f"upstream-{i}", token=f"token-{i}",
+                    run_id=f"run-{i}", profile_id=f"tenant_gate-{i % 2}__company_main")
+            async def all_admitted():
+                return await asyncio.gather(*(admitted_turn(i) for i in range(24)))
+
+            actual = asyncio.run(all_admitted())
+            assert actual == [(f"run-{i}", f"tenant_gate-{i % 2}__company_main")
+                              for i in range(24)]
+            assert asyncio.run(admitted_turn(0, "tenant_gate-1__company_main")) is None
+            for i in range(24):
+                delno_run_scope.forget_admitted_run(f"upstream-{i}")
+            assert asyncio.run(admitted_turn(0)) is None
+        finally:
+            session_ingress.producer_turn = original_producer
+            session_ingress._execution_scope = original_execution
+            runtime_scope.bind_turn = original_bind
+            runtime_scope.claim_fence = original_fence
     finally:
         mcp_tool_handlers._trust_gate_check = original_gate
         if not live_http and not live_api:

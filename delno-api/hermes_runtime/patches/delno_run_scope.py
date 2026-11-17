@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+import time
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import httpx
 
@@ -23,6 +26,42 @@ class DelnoRunScope:
 
 
 _scope: ContextVar[DelnoRunScope | None] = ContextVar("delno_mcp_run_scope", default=None)
+_admitted: dict[str, tuple[DelnoRunScope, float]] = {}
+_admitted_lock = threading.Lock()
+_ADMISSION_TTL = 3600
+
+
+def register_admitted_run(*, request_id: str, token: str, run_id: str, profile_id: str) -> None:
+    """Bind a durable admission ID to an ephemeral credential without writing it to SQLite."""
+    if not request_id or not run_id or not token or not profile_id:
+        return
+    with _admitted_lock:
+        now = time.monotonic()
+        for key, (_, expires) in list(_admitted.items()):
+            if expires <= now:
+                _admitted.pop(key, None)
+        _admitted[request_id] = (DelnoRunScope(token, run_id, str(profile_id)), now + _ADMISSION_TTL)
+
+
+def admitted_run_scope(request_id: str, profile_id: str) -> DelnoRunScope | None:
+    if not request_id or not profile_id:
+        return None
+    with _admitted_lock:
+        record = _admitted.get(request_id)
+        if record is None:
+            return None
+        scope, expires = record
+        if expires <= time.monotonic():
+            _admitted.pop(request_id, None)
+            return None
+        if Path(scope.profile_id).name != Path(str(profile_id)).name:
+            return None
+        return scope
+
+
+def forget_admitted_run(request_id: str) -> None:
+    with _admitted_lock:
+        _admitted.pop(request_id, None)
 
 
 def scoped_mode_enabled() -> bool:
