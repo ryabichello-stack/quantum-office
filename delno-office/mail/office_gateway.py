@@ -12,6 +12,10 @@ from __future__ import annotations
 import logging
 import os
 import smtplib
+import base64
+import binascii
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
 
@@ -57,6 +61,9 @@ class MailSendRequest(BaseModel):
     provider: str = ""
     username: str = ""
     password: str = ""
+    sender_name: str = Field(default="", max_length=200)
+    attachment_name: str = Field(default="", max_length=200)
+    attachment_base64: str = Field(default="", max_length=16000000)
     dry_run: bool = False
 
 
@@ -88,9 +95,11 @@ def health():
 
 
 @app.post("/api/mail/probe")
-def mail_probe(req: MailProbeRequest, x_webhook_token: Optional[str] = Header(None)):
+def mail_probe(req: MailProbeRequest, x_webhook_token: Optional[str] = Header(None), x_tenant_id: Optional[str] = Header(None)):
     """Check this company's SMTP login without sending or logging a message."""
     _check_token(x_webhook_token)
+    if not x_tenant_id or x_tenant_id.strip() != req.tenant_id.strip():
+        raise HTTPException(status_code=403, detail="tenant_mismatch")
     provider = req.provider.strip().lower()
     if provider not in _SMTP_PROVIDERS:
         raise HTTPException(status_code=400, detail="unsupported_provider")
@@ -115,8 +124,11 @@ def mail_probe(req: MailProbeRequest, x_webhook_token: Optional[str] = Header(No
 def mail_send(
     req: MailSendRequest,
     x_webhook_token: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
 ):
     _check_token(x_webhook_token)
+    if not x_tenant_id or x_tenant_id.strip() != req.tenant_id.strip():
+        raise HTTPException(status_code=403, detail="tenant_mismatch")
     to = req.to.strip()
     subject = req.subject.strip()
     body = req.body.strip()
@@ -125,6 +137,16 @@ def mail_send(
         raise HTTPException(status_code=403, detail="tenant_credentials_required")
     host, port = _SMTP_PROVIDERS[provider]
     dry = bool(req.dry_run or FORCE_DRY_RUN)
+    attachment = b""
+    if req.attachment_base64:
+        if not req.attachment_name or "/" in req.attachment_name or "\\" in req.attachment_name:
+            raise HTTPException(status_code=400, detail="invalid_attachment_name")
+        try:
+            attachment = base64.b64decode(req.attachment_base64, validate=True)
+        except binascii.Error as exc:
+            raise HTTPException(status_code=400, detail="invalid_attachment") from exc
+        if len(attachment) > 10_000_000:
+            raise HTTPException(status_code=413, detail="attachment_too_large")
 
     if dry:
         logger.info(
@@ -143,12 +165,18 @@ def mail_send(
             "subject": subject[:200],
             "body_preview": body[:240],
             "tenant_slug": req.tenant_slug,
+            "attached": False,
             "message": "Draft staged locally; SMTP not wired (tools-first)",
         }
 
-    msg = MIMEText(body, "plain", "utf-8")
+    msg = MIMEMultipart() if attachment else MIMEText(body, "plain", "utf-8")
+    if attachment:
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        part = MIMEApplication(attachment)
+        part.add_header("Content-Disposition", "attachment", filename=req.attachment_name)
+        msg.attach(part)
     msg["Subject"] = subject
-    msg["From"] = f"{MAIL_FROM_NAME} <{req.username.strip()}>"
+    msg["From"] = f"{(req.sender_name or req.username).strip()} <{req.username.strip()}>"
     msg["To"] = to
     try:
         if port == 587:
@@ -174,6 +202,7 @@ def mail_send(
         "ok": True,
         "queued": True,
         "sent": True,
+        "attached": bool(attachment),
         "stub": False,
         "to": to,
         "subject": subject[:200],

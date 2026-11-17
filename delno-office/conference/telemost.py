@@ -33,6 +33,7 @@ def create_conference(
     *,
     title: str = "",
     waiting_room_level: Optional[str] = None,
+    access_token_override: Optional[str] = None,
 ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """
     Create a Yandex Telemost conference.
@@ -43,7 +44,7 @@ def create_conference(
     if not TELEMOST_ENABLED:
         return None, None, "telemost_disabled"
 
-    access_token = yandex_oauth.get_access_token()
+    access_token = access_token_override if access_token_override is not None else yandex_oauth.get_access_token()
     if not access_token:
         logger.warning(
             "[TELEMOST] no OAuth access token — authorize via /oauth/yandex/start"

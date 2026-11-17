@@ -127,10 +127,11 @@ class YandexProvider:
         status = yandex_oauth.oauth_status()
         return bool(status.get("has_access_token") or status.get("static_token_set"))
 
-    def create(self, *, title: str, waiting_room_level: Optional[str] = None) -> dict[str, Any]:
+    def create(self, *, title: str, waiting_room_level: Optional[str] = None, access_token: Optional[str] = None) -> dict[str, Any]:
         conf_id, join_url, err = telemost_mod.create_conference(
             title=title,
             waiting_room_level=waiting_room_level,
+            access_token_override=access_token,
         )
         if not join_url:
             if STUB_WHEN_UNAUTH:
@@ -164,8 +165,8 @@ class GoogleMeetProvider:
     def configured(self) -> bool:
         return bool(GOOGLE_MEET_TOKEN)
 
-    def create(self, *, title: str, waiting_room_level: Optional[str] = None) -> dict[str, Any]:
-        if not self.configured():
+    def create(self, *, title: str, waiting_room_level: Optional[str] = None, access_token: Optional[str] = None) -> dict[str, Any]:
+        if not access_token:
             return _stub(self.name, title) if STUB_WHEN_UNAUTH else {
                 "ok": False,
                 "provider": self.name,
@@ -190,7 +191,7 @@ class GoogleMeetProvider:
             f"?conferenceDataVersion=1"
         )
         headers = {
-            "Authorization": f"Bearer {GOOGLE_MEET_TOKEN}",
+            "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
@@ -265,8 +266,8 @@ class ZoomProvider:
     def configured(self) -> bool:
         return bool(ZOOM_ACCESS_TOKEN or (ZOOM_ACCOUNT_ID and ZOOM_CLIENT_ID and ZOOM_CLIENT_SECRET))
 
-    def create(self, *, title: str, waiting_room_level: Optional[str] = None) -> dict[str, Any]:
-        if not self.configured():
+    def create(self, *, title: str, waiting_room_level: Optional[str] = None, access_token: Optional[str] = None) -> dict[str, Any]:
+        if not access_token:
             return _stub(self.name, title) if STUB_WHEN_UNAUTH else {
                 "ok": False,
                 "provider": self.name,
@@ -275,7 +276,7 @@ class ZoomProvider:
                 "conference_id": "",
                 "message": "Set ZOOM_ACCESS_TOKEN or ZOOM_ACCOUNT_ID/CLIENT_ID/SECRET",
             }
-        token = _zoom_token()
+        token = access_token
         if not token:
             return {
                 "ok": False,
@@ -330,8 +331,8 @@ class TeamsProvider:
     def configured(self) -> bool:
         return bool(TEAMS_TOKEN)
 
-    def create(self, *, title: str, waiting_room_level: Optional[str] = None) -> dict[str, Any]:
-        if not self.configured():
+    def create(self, *, title: str, waiting_room_level: Optional[str] = None, access_token: Optional[str] = None) -> dict[str, Any]:
+        if not access_token:
             return _stub(self.name, title) if STUB_WHEN_UNAUTH else {
                 "ok": False,
                 "provider": self.name,
@@ -345,7 +346,7 @@ class TeamsProvider:
             meta = _http_json(
                 f"{GRAPH_API}/me/onlineMeetings",
                 headers={
-                    "Authorization": f"Bearer {TEAMS_TOKEN}",
+                    "Authorization": f"Bearer {access_token}",
                     "Content-Type": "application/json",
                     "Accept": "application/json",
                 },
@@ -380,7 +381,7 @@ class JitsiProvider:
     def configured(self) -> bool:
         return JITSI_ENABLED and bool(JITSI_BASE_URL)
 
-    def create(self, *, title: str, waiting_room_level: Optional[str] = None) -> dict[str, Any]:
+    def create(self, *, title: str, waiting_room_level: Optional[str] = None, access_token: Optional[str] = None) -> dict[str, Any]:
         if not self.configured():
             return _stub(self.name, title)
         room = f"{_slug(title)}-{secrets.token_hex(3)}"

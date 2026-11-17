@@ -18,6 +18,7 @@ from app.adapters.connectors import get_connector
 from app.core.tenant import TenantContext
 from app.models.tenant import Tenant
 from app.services.connectors import connector_config_for
+from app.services.connector_connect import mail_delivery_access, conference_delivery_access
 from app.services.tenant_broker_access import apply_access
 
 
@@ -32,6 +33,8 @@ def _calendar_config(db: Session, ctx: TenantContext, source: str | None) -> tup
 
 _OPEN = {"booked", "confirmed", "rescheduled"}
 current_channel: ContextVar[str] = ContextVar("delno_conduct_channel", default="messenger")
+current_external_user_id: ContextVar[str | None] = ContextVar("delno_channel_user_id", default=None)
+current_verified_phone: ContextVar[str | None] = ContextVar("delno_verified_caller_phone", default=None)
 
 
 def _settings(tenant: Tenant) -> dict[str, Any]:
@@ -52,10 +55,12 @@ def _items(settings: dict[str, Any]) -> list[dict[str, Any]]:
     return [dict(x) for x in raw if isinstance(x, dict)]
 
 
-def _find(items: list[dict[str, Any]], *, appointment_id: str | None, email: str | None, phone: str | None) -> dict[str, Any] | None:
+def _find(items: list[dict[str, Any]], *, appointment_id: str | None, email: str | None, phone: str | None, verified_phone: str | None = None) -> dict[str, Any] | None:
+    if verified_phone is not None and not verified_phone:
+        return None
     if appointment_id:
         for item in items:
-            if str(item.get("id")) == appointment_id:
+            if str(item.get("id")) == appointment_id and (verified_phone is None or item.get("phone") == verified_phone):
                 return item
         return None
     email_l = (email or "").strip().lower()
@@ -63,12 +68,9 @@ def _find(items: list[dict[str, Any]], *, appointment_id: str | None, email: str
     for item in reversed(items):
         if item.get("status") not in _OPEN:
             continue
-        if email_l and str(item.get("email") or "").lower() == email_l:
+        if email_l and verified_phone is None and str(item.get("email") or "").lower() == email_l:
             return item
         if phone_s and str(item.get("phone") or "") == phone_s:
-            return item
-    for item in reversed(items):
-        if item.get("status") in _OPEN:
             return item
     return None
 
@@ -91,7 +93,7 @@ def _invite_text(*, title: str, start: str, conference_url: str, company: str) -
 def _free(result: Any) -> bool:
     data = getattr(result, "data", None) or {}
     if not isinstance(data, dict):
-        return True
+        return False
     if "free" in data:
         return bool(data["free"])
     upstream = data.get("upstream")
@@ -99,7 +101,7 @@ def _free(result: Any) -> bool:
         return bool(upstream["free"])
     if data.get("busy") is True:
         return False
-    return True
+    return False
 
 
 def _slots(result: Any) -> list[dict[str, Any]]:
@@ -120,18 +122,17 @@ def handle(
 ) -> dict[str, Any]:
     params = dict(params or {})
     channel = (channel or str(params.get("channel") or "") or current_channel.get() or "messenger").strip()
+    params.pop("_verified_phone", None)
+    if channel == "voice":
+        params["_verified_phone"] = current_verified_phone.get()
+    if channel in {"telegram", "max"}:
+        params["_channel_user_id"] = current_external_user_id.get()
     tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
     action = (action or "").strip()
-    if action in {"book_meeting", "meeting.book"}:
-        return _book(db, ctx, tenant, params, channel=channel)
-    if action in {"suggest_other_time", "meeting.suggest_time"}:
-        return _suggest(db, ctx, params)
-    if action in {"reschedule_meeting", "meeting.reschedule"}:
-        return _move(db, ctx, tenant, params, channel=channel)
-    if action in {"confirm_meeting", "meeting.confirm"}:
-        return _set_status(db, tenant, params, status="confirmed", verb="подтверждена")
-    if action in {"cancel_meeting", "meeting.cancel"}:
-        return _set_status(db, tenant, params, status="cancelled", verb="отменена")
+    if action in {"book_meeting", "meeting.book", "suggest_other_time", "meeting.suggest_time", "reschedule_meeting", "meeting.reschedule", "confirm_meeting", "meeting.confirm", "cancel_meeting", "meeting.cancel"}:
+        from app.services.meeting_flow import handle as handle_meeting
+
+        return handle_meeting(db, ctx, action, params, channel)
     if action in {"send_welcome_email", "send_email"}:
         return _send(db, ctx, tenant, params)
     return {"ok": False, "error": "unknown_action", "message_ru": "Такое действие пока не умеем."}
@@ -219,7 +220,7 @@ def _book(
         timezone=str(params.get("timezone") or "") or None,
         end=str(params.get("end") or "") or None,
         source=str(params.get("source") or "") or None,
-        create_telemost=True,
+        create_telemost=False,
         invitees=[email] if email else None,
     )
     conference_url = ""
@@ -227,7 +228,7 @@ def _book(
     if conf is not None:
         conf_res = conf.create(  # type: ignore[attr-defined]
             tenant_slug=ctx.tenant_slug,
-            config=connector_config_for(db, ctx, "conference"),
+            config={**connector_config_for(db, ctx, "conference"), "_conference_delivery_access": conference_delivery_access(db, ctx, str(params.get("provider") or "yandex"))},
             title=title,
             provider=str(params.get("provider") or "yandex"),
             invitees=[email] if email else [],
@@ -253,7 +254,7 @@ def _book(
                     conference_url=conference_url,
                     company=tenant.name or "",
                 ),
-                "include_presentation": bool(params.get("include_presentation", True)),
+                "attachment_id": params.get("attachment_id"),
             },
             commit=False,
         )
@@ -325,6 +326,7 @@ def _move(
         appointment_id=str(params.get("appointment_id") or "") or None,
         email=str(params.get("email") or "") or None,
         phone=str(params.get("phone") or "") or None,
+        verified_phone=params.get("_verified_phone"),
     )
     if row is None:
         return {"ok": False, "error": "not_found", "message_ru": "Не нашёл встречу, которую можно перенести."}
@@ -373,6 +375,7 @@ def _set_status(
         appointment_id=str(params.get("appointment_id") or "") or None,
         email=str(params.get("email") or "") or None,
         phone=str(params.get("phone") or "") or None,
+        verified_phone=params.get("_verified_phone"),
     )
     if row is None:
         return {"ok": False, "error": "not_found", "message_ru": "Не нашёл такую встречу."}
@@ -407,17 +410,23 @@ def _send(
             conference_url=str(params.get("conference_url") or ""),
             company=tenant.name or "",
         )
-    if params.get("include_presentation"):
-        body += "\n\nК письму можно приложить презентацию — она в материалах компании."
+    attachment = None
+    if params.get("attachment_id"):
+        from app.services.tenant_attachments import attachment_for
+        try:
+            attachment = attachment_for(db, ctx, str(params["attachment_id"]))
+        except (ValueError, OSError):
+            return {"ok": False, "error": "attachment_unavailable", "message_ru": "Выбранный файл этой компании не найден; письмо не отправлено."}
     mail = get_connector("mail")
     if mail is None:
         return {"ok": False, "error": "no_mail", "message_ru": "Почта на платформе недоступна."}
     result = mail.send_draft(  # type: ignore[attr-defined]
         tenant_slug=ctx.tenant_slug,
-        config=connector_config_for(db, ctx, "mail"),
+        config={**connector_config_for(db, ctx, "mail"), "_mail_delivery_access": mail_delivery_access(db, ctx)},
         to=email,
         subject=subject,
         body=body,
+        attachment=attachment,
     )
     ok = bool(getattr(result, "ok", False))
     if commit:
@@ -427,7 +436,7 @@ def _send(
         "to": email,
         "subject": subject,
         "message_ru": (
-            f"Письмо для {email} подготовлено."
+            f"Письмо для {email} отправлено."
             if ok
             else "Письмо не отправилось. Проверим почту и попробуем ещё раз."
         ),

@@ -98,6 +98,13 @@ CABINET_LLM_TOOLS = (
     "suggest_calendar_slots",
     "send_mail_draft",
     "list_files",
+    "files.folders",
+    "files.folder_create",
+    "files.create_text",
+    "files.read_text",
+    "files.move",
+    "files.delete",
+    "files.folder_delete",
     "create_conference",
     # Media
     "generate_image",
@@ -167,7 +174,9 @@ HERMES_AGENT_SYSTEM = (
     "• phones.* / calls.* / telephony.script_* / telephony.tools_set — телефония Ava;\n"
     "• files.cloud_* / credentials.open_form — облака и секреты "
     "(SIP: mango_sip; диски: files_yadisk|mailru|gdrive|onedrive; Google/OneDrive с согласием);\n"
-    "• suggest_calendar_slots / send_mail_draft / create_conference / list_files — офис;\n"
+    "• suggest_calendar_slots / send_mail_draft / create_conference / list_files — офис; "
+    "list_files(source=tenant) показывает файлы этой компании, а send_mail_draft "
+    "прикладывает выбранный файл только по attachment_id. По умолчанию вложения нет;\n"
     "• generate_image — создай картинку/мокап/обложку по текстовому промпту "
     "(НЕ отказывайся «я не умею рисовать» — сразу вызови tool);\n"
     "• billing.summary — баланс.\n"

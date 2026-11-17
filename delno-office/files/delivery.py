@@ -37,15 +37,20 @@ def telegram_configured() -> bool:
     return bool(TELEGRAM_BOT_TOKEN)
 
 
-def send_email(to: str, file: FetchedFile, *, subject: str = "", caption: str = "") -> Tuple[bool, str]:
-    if not email_configured():
+def send_email(to: str, file: FetchedFile, *, subject: str = "", caption: str = "", credentials: dict[str, str] | None = None) -> Tuple[bool, str]:
+    creds = credentials or {}
+    host = creds.get("host", "")
+    port = int(creds.get("port") or 465)
+    username = creds.get("username", "")
+    password = creds.get("password", "")
+    if not (host and username and password):
         return False, "smtp_not_configured"
     to = (to or "").strip()
     if not to or "@" not in to:
         return False, "invalid_email"
 
     msg = MIMEMultipart()
-    msg["From"] = f"{MAIL_FROM_NAME} <{SMTP_USER}>"
+    msg["From"] = f"{creds.get('sender_name') or username} <{username}>"
     msg["To"] = to
     msg["Subject"] = subject or f"Файл: {file.filename}"
     body = caption or f"Во вложении: {file.filename}"
@@ -56,9 +61,15 @@ def send_email(to: str, file: FetchedFile, *, subject: str = "", caption: str = 
     msg.attach(part)
 
     try:
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=SMTP_TIMEOUT) as server:
-            server.login(SMTP_USER, SMTP_PASS)
-            server.send_message(msg)
+        if port == 587:
+            with smtplib.SMTP(host, port, timeout=SMTP_TIMEOUT) as server:
+                server.starttls()
+                server.login(username, password)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP_SSL(host, port, timeout=SMTP_TIMEOUT) as server:
+                server.login(username, password)
+                server.send_message(msg)
         return True, ""
     except Exception as exc:
         logger.exception("email send failed")
@@ -70,8 +81,10 @@ def send_telegram(
     file: FetchedFile,
     *,
     caption: str = "",
+    credentials: dict[str, str] | None = None,
 ) -> Tuple[bool, str]:
-    if not telegram_configured():
+    bot_token = (credentials or {}).get("bot_token", "")
+    if not bot_token:
         return False, "telegram_not_configured"
     chat_id = (chat_id or "").strip()
     if not chat_id:
@@ -79,7 +92,7 @@ def send_telegram(
 
     # Telegram Bot API multipart/form-data via stdlib is awkward; use curl-like boundary.
     boundary = "----avafilesboundary7MA4YWxkTrZu0gW"
-    url = f"{TELEGRAM_API}/bot{TELEGRAM_BOT_TOKEN}/sendDocument"
+    url = f"{TELEGRAM_API}/bot{bot_token}/sendDocument"
 
     def _field(name: str, value: str) -> bytes:
         return (
@@ -121,12 +134,12 @@ def send_telegram(
         return False, str(exc)
 
 
-def deliver(via: str, to: str, file: FetchedFile, *, caption: str = "", subject: str = "") -> Tuple[bool, str]:
+def deliver(via: str, to: str, file: FetchedFile, *, caption: str = "", subject: str = "", credentials: dict[str, str] | None = None) -> Tuple[bool, str]:
     via = (via or "").strip().lower()
     if via in ("email", "mail", "smtp"):
-        return send_email(to, file, subject=subject, caption=caption)
+        return send_email(to, file, subject=subject, caption=caption, credentials=credentials)
     if via in ("telegram", "tg"):
-        return send_telegram(to, file, caption=caption)
+        return send_telegram(to, file, caption=caption, credentials=credentials)
     return False, f"unknown_via:{via}"
 
 

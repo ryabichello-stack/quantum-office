@@ -17,7 +17,7 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, Protocol
 
 import caldav
@@ -287,16 +287,56 @@ class MailruProvider:
                 end_dt=kwargs["end_dt"],
                 summary=kwargs.get("summary") or "",
             )
-        shared.create_event(**kwargs)
+        saved = shared.create_event(**kwargs)
         return {
             "ok": True,
             "created": True,
             "stub": False,
             "source": self.name,
+            "event_id": str(getattr(saved, "url", "") or ""),
             "summary": kwargs.get("summary") or "",
             "start": kwargs["start_dt"].isoformat(),
             "end": kwargs["end_dt"].isoformat(),
         }
+
+    def update_event(self, event_id: str, **kwargs: Any) -> dict[str, Any]:
+        return _caldav_update(shared.get_calendar(), event_id, **kwargs)
+
+    def delete_event(self, event_id: str) -> dict[str, Any]:
+        return _caldav_delete(shared.get_calendar(), event_id)
+
+
+def _caldav_event(calendar: Any, event_id: str) -> Any:
+    # Never accept a URL outside the authenticated company's calendar.
+    base = str(calendar.url).rstrip("/") + "/"
+    if not event_id.startswith(base):
+        raise ValueError("foreign_event_url")
+    return calendar.event_by_url(event_id)
+
+
+def _caldav_update(calendar: Any, event_id: str, **kwargs: Any) -> dict[str, Any]:
+    from icalendar import Calendar as ICalendar
+
+    event = _caldav_event(calendar, event_id)
+    event.load()
+    ical = ICalendar.from_ical(event.data)
+    changed = False
+    for component in ical.walk("VEVENT"):
+        component["DTSTART"] = kwargs["start_dt"]
+        component["DTEND"] = kwargs["end_dt"]
+        component["SUMMARY"] = kwargs.get("summary") or "Встреча"
+        changed = True
+    if not changed:
+        raise ValueError("event_not_found")
+    event.data = ical.to_ical().decode("utf-8")
+    event.save(no_create=True)
+    return {"ok": True, "updated": True, "event_id": event_id}
+
+
+def _caldav_delete(calendar: Any, event_id: str) -> dict[str, Any]:
+    event = _caldav_event(calendar, event_id)
+    event.delete()
+    return {"ok": True, "deleted": True, "event_id": event_id}
 
 
 class _CalDavProvider:
@@ -418,16 +458,23 @@ class _CalDavProvider:
             attendee_email=kwargs.get("attendee_email") or "",
             event_url=kwargs.get("event_url") or "",
         )
-        cal.save_event(ics)
+        saved = cal.save_event(ics)
         return {
             "ok": True,
             "created": True,
             "stub": False,
             "source": self.name,
+            "event_id": str(getattr(saved, "url", "") or ""),
             "summary": kwargs.get("summary") or "",
             "start": kwargs["start_dt"].isoformat(),
             "end": kwargs["end_dt"].isoformat(),
         }
+
+    def update_event(self, event_id: str, **kwargs: Any) -> dict[str, Any]:
+        return _caldav_update(self._calendar(), event_id, **kwargs)
+
+    def delete_event(self, event_id: str) -> dict[str, Any]:
+        return _caldav_delete(self._calendar(), event_id)
 
 
 class YandexProvider(_CalDavProvider):
@@ -602,6 +649,23 @@ class GoogleProvider:
             "end": kwargs["end_dt"].isoformat(),
         }
 
+    def update_event(self, event_id: str, **kwargs: Any) -> dict[str, Any]:
+        cal_id = urllib.parse.quote(google_calendar_id(), safe="@")
+        path = urllib.parse.quote(event_id, safe="")
+        payload = {
+            "summary": kwargs.get("summary") or "Встреча",
+            "start": {"dateTime": kwargs["start_dt"].isoformat()},
+            "end": {"dateTime": kwargs["end_dt"].isoformat()},
+        }
+        _http_json(f"{GOOGLE_CALENDAR_API}/calendars/{cal_id}/events/{path}", headers=self._headers(), method="PATCH", data=json.dumps(payload).encode())
+        return {"ok": True, "updated": True, "event_id": event_id}
+
+    def delete_event(self, event_id: str) -> dict[str, Any]:
+        cal_id = urllib.parse.quote(google_calendar_id(), safe="@")
+        path = urllib.parse.quote(event_id, safe="")
+        _http_json(f"{GOOGLE_CALENDAR_API}/calendars/{cal_id}/events/{path}", headers=self._headers(), method="DELETE")
+        return {"ok": True, "deleted": True, "event_id": event_id}
+
 
 class OutlookProvider:
     name = "outlook"
@@ -749,6 +813,21 @@ class OutlookProvider:
             "start": kwargs["start_dt"].isoformat(),
             "end": kwargs["end_dt"].isoformat(),
         }
+
+    def update_event(self, event_id: str, **kwargs: Any) -> dict[str, Any]:
+        path = urllib.parse.quote(event_id, safe="")
+        payload = {
+            "subject": kwargs.get("summary") or "Встреча",
+            "start": {"dateTime": kwargs["start_dt"].astimezone(timezone.utc).replace(tzinfo=None).isoformat(), "timeZone": "UTC"},
+            "end": {"dateTime": kwargs["end_dt"].astimezone(timezone.utc).replace(tzinfo=None).isoformat(), "timeZone": "UTC"},
+        }
+        _http_json(f"{GRAPH_API}{self._calendar_path()}/{path}", headers=self._headers(), method="PATCH", data=json.dumps(payload).encode())
+        return {"ok": True, "updated": True, "event_id": event_id}
+
+    def delete_event(self, event_id: str) -> dict[str, Any]:
+        path = urllib.parse.quote(event_id, safe="")
+        _http_json(f"{GRAPH_API}{self._calendar_path()}/{path}", headers=self._headers(), method="DELETE")
+        return {"ok": True, "deleted": True, "event_id": event_id}
 
 
 _REGISTRY: dict[str, CalendarProvider] = {

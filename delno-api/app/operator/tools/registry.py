@@ -46,6 +46,8 @@ _HIGH_IMPACT_TOOLS = frozenset(
         "outreach.stage_send",
         "calls.dial",
         "phones.provision",
+        "files.delete",
+        "files.folder_delete",
     }
 )
 

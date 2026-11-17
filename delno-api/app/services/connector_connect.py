@@ -320,6 +320,7 @@ def read_calendar_events(
             "credentials": creds or {},
         },
         token=(get_settings().office_webhook_token or None),
+        headers={"X-Tenant-Id": str(ctx.tenant_id)},
     )
     if err or not isinstance(body, dict) or not body.get("ok"):
         raise ProbeError("read_failed", _read_failure_message(code, err))
@@ -349,6 +350,7 @@ def probe_mail_login(
             "password": creds.get("password") or "",
         },
         token=(get_settings().office_webhook_token or None),
+        headers={"X-Tenant-Id": str(ctx.tenant_id)},
     )
     if err or not isinstance(body, dict) or not body.get("ok"):
         message = ""
@@ -531,6 +533,20 @@ def mail_delivery_access(db: Session, ctx: TenantContext) -> dict[str, Any] | No
         "username": creds["username"],
         "password": creds["password"],
     }
+
+
+def conference_delivery_access(db: Session, ctx: TenantContext, provider: str) -> dict[str, Any] | None:
+    """Return only a verified provider token belonging to this tenant."""
+    if provider == "jitsi":
+        return {"tenant_id": str(ctx.tenant_id), "provider": provider, "token": ""}
+    current = link_status(db, ctx, "conference")
+    if current["status"] != "connected" or current.get("provider") != provider:
+        return None
+    spec = _provider("conference", provider)
+    creds = _vault_creds(db, ctx, spec) if spec else None
+    if not creds or not creds.get("token"):
+        return None
+    return {"tenant_id": str(ctx.tenant_id), "provider": provider, "token": creds["token"]}
 
 
 def connect_provider(

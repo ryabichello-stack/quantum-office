@@ -14,14 +14,15 @@ def post_json(
     json: dict[str, Any] | None = None,
     token: str | None = None,
     timeout: float = 15.0,
+    headers: dict[str, str] | None = None,
 ) -> tuple[int, dict[str, Any] | None, str | None]:
     url = f"{base_url.rstrip('/')}/{path.lstrip('/')}"
-    headers: dict[str, str] = {"Content-Type": "application/json"}
+    request_headers: dict[str, str] = {"Content-Type": "application/json", **(headers or {})}
     if token:
-        headers["X-Webhook-Token"] = token
+        request_headers["X-Webhook-Token"] = token
     try:
         with httpx.Client(timeout=timeout) as client:
-            response = client.post(url, json=json or {}, headers=headers)
+            response = client.post(url, json=json or {}, headers=request_headers)
             try:
                 body = response.json()
             except Exception:
