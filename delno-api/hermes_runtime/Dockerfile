@@ -1,11 +1,11 @@
 # DELNO tenant Hermes runtime — pinned NousResearch/hermes-agent
-# Build: docker build -t delno-hermes-runtime:v0.23.1 -f Dockerfile .
+# Build: docker build -t delno-hermes-runtime:v0.23.2-gate1 -f Dockerfile .
 #
 # Nous hermes-agent pins core deps with `python_version >= '3.14'` markers and
 # requires `uv` overrides (Pillow/cryptography) — plain pip fails on conflicts.
 FROM python:3.14-slim-bookworm
 
-ARG HERMES_AGENT_GIT_REF=v0.23.1
+ARG HERMES_AGENT_GIT_REF=v0.23.2
 ARG HERMES_AGENT_GIT_URL=https://github.com/NousResearch/hermes-agent.git
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,6 +17,9 @@ RUN git clone --depth 1 --branch "${HERMES_AGENT_GIT_REF}" "${HERMES_AGENT_GIT_U
  && pip install --no-cache-dir -U pip uv \
  && uv sync --frozen --no-dev --extra messaging --extra mcp \
  && /opt/hermes-agent/.venv/bin/python -c "import hermes_cli.main; import ruamel.yaml; import aiohttp; print('hermes_import_ok')"
+
+COPY patches/ /opt/delno-gate1-patches/
+RUN python /opt/delno-gate1-patches/apply_gate1.py /opt/hermes-agent
 
 # Prefer venv binaries (uv sync installs hermes here)
 ENV PATH="/opt/hermes-agent/.venv/bin:${PATH}" \

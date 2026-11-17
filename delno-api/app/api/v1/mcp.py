@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import hashlib
 from dataclasses import dataclass
 from typing import Any, Optional
 from uuid import UUID
@@ -30,7 +31,7 @@ from app.services.mcp_gateway import (
 )
 from app.services.hermes_nous.mcp_scope import META_ALWAYS, filter_tools_catalog, tool_allowed
 from app.services.hermes_nous.run_bindings import lookup_binding
-from app.services.hermes_nous.run_tokens import verify_run_token
+from app.services.hermes_nous.run_tokens import TOKEN_PREFIX, verify_run_token
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 hermes_router = APIRouter(prefix="/hermes", tags=["hermes"])
@@ -84,13 +85,68 @@ def get_mcp_tenant_context(
     if not raw:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    # Nous scoped run token (preferred for Hermes runtimes)
+    # A malformed/revoked/expired capability must never fall through to another
+    # credential type. In particular, do not treat a dnrt_ value as a legacy key.
     run_entry = verify_run_token(db, raw)
+    if raw.startswith(TOKEN_PREFIX) and run_entry is None:
+        raise HTTPException(status_code=401, detail="invalid_run_token")
+
+    # Nous scoped run token (preferred for Hermes runtimes)
     if run_entry:
         if x_delno_run_id and x_delno_run_id.strip() != str(run_entry.get("run_id") or ""):
             raise HTTPException(status_code=403, detail="run_id_token_mismatch")
         tenant = run_entry["tenant"]
         actor = run_entry.get("actor_user_id")
+        # A profile can have an old Authorization header while a new runtime
+        # supplies X-Delno-Run-Token. Never let a token for company A override
+        # company B's credential in that mixed migration state.
+        if x_delno_run_token and credentials and credentials.scheme.lower() == "bearer":
+            bearer = credentials.credentials.strip()
+            if bearer != raw:
+                bearer_tenant = find_tenant_by_mcp_key(db, bearer)
+                if bearer_tenant is None:
+                    try:
+                        bearer_subject = decode_access_token(bearer).get("sub")
+                        bearer_user = db.query(User).filter(User.id == UUID(str(bearer_subject))).one_or_none()
+                    except (ValueError, TypeError, AttributeError):
+                        bearer_user = None
+                    if bearer_user is None or bearer_user.tenant_id != tenant.id or (
+                        actor and bearer_user.id != UUID(str(actor))
+                    ):
+                        raise HTTPException(status_code=403, detail="credential_tenant_mismatch")
+                elif bearer_tenant.id != tenant.id:
+                    raise HTTPException(status_code=403, detail="credential_tenant_mismatch")
+        run_id = str(run_entry.get("run_id") or "")
+        if not run_id:
+            raise HTTPException(status_code=401, detail="run_id_required")
+        binding = lookup_binding(db, run_id=run_id)
+        require_binding = (os.environ.get("DELNO_MCP_REQUIRE_RUN_BINDING") or "").strip().lower() in (
+            "1", "true", "yes",
+        )
+        if require_binding and (not x_delno_run_id or not x_delno_profile_id):
+            raise HTTPException(status_code=401, detail="run_identity_headers_required")
+        if require_binding and binding is None:
+            raise HTTPException(status_code=401, detail="run_binding_required")
+        if binding is not None:
+            digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+            if (
+                binding.token_hash != digest
+                or binding.tenant_id != tenant.id
+                or binding.actor_user_id != (UUID(str(actor)) if actor else None)
+                or binding.agent_id != str(run_entry.get("agent_id") or "company_main")
+                or set(binding.tool_ids or []) != set(run_entry.get("tool_ids") or [])
+            ):
+                raise HTTPException(status_code=403, detail="run_binding_mismatch")
+            if x_delno_profile_id and x_delno_profile_id.strip() != binding.profile_id:
+                raise HTTPException(status_code=403, detail="run_binding_profile_mismatch")
+        elif x_delno_profile_id:
+            raise HTTPException(status_code=403, detail="unbound_run_profile")
+        if actor:
+            user = db.query(User).filter(User.id == UUID(str(actor)), User.tenant_id == tenant.id).one_or_none()
+            if user is None:
+                raise HTTPException(status_code=403, detail="run_actor_not_in_tenant")
+            if user.role != str(run_entry.get("role") or ""):
+                raise HTTPException(status_code=403, detail="run_actor_role_changed")
         return McpAuthContext(
             tenant=TenantContext(
                 tenant_id=tenant.id,
@@ -100,12 +156,16 @@ def get_mcp_tenant_context(
             ),
             auth_via="run_token",
             run_token_tool_ids=list(run_entry.get("tool_ids") or []),
-            run_id=str(run_entry.get("run_id") or ""),
+            run_id=run_id,
         )
 
     # A run id is only a lookup key, never a credential. Hermes currently sends
     # a profile-scoped company MCP key; require that key to own the bound run.
     if x_delno_run_id and x_delno_run_id.strip():
+        if (os.environ.get("DELNO_MCP_DENY_LEGACY_KEY") or "").strip().lower() in (
+            "1", "true", "yes",
+        ):
+            raise HTTPException(status_code=401, detail="legacy_run_binding_denied")
         binding = lookup_binding(db, run_id=x_delno_run_id.strip())
         if not binding:
             raise HTTPException(status_code=401, detail="run_binding_not_found")
@@ -118,12 +178,18 @@ def get_mcp_tenant_context(
             raise HTTPException(status_code=403, detail="run_binding_profile_mismatch")
         if not key_tenant.is_active:
             raise HTTPException(status_code=403, detail="tenant_inactive")
+        if binding.actor_user_id:
+            user = db.query(User).filter(
+                User.id == binding.actor_user_id, User.tenant_id == key_tenant.id,
+            ).one_or_none()
+            if user is None:
+                raise HTTPException(status_code=403, detail="run_actor_not_in_tenant")
         return McpAuthContext(
             tenant=TenantContext(
                 tenant_id=key_tenant.id,
                 tenant_slug=key_tenant.slug,
                 user_id=binding.actor_user_id,
-                role="tenant_owner",
+                role=user.role if binding.actor_user_id else "tenant_owner",
             ),
             auth_via="run_binding",
             run_token_tool_ids=list(binding.tool_ids or []),
@@ -156,19 +222,21 @@ def get_mcp_tenant_context(
     except ValueError:
         pass
 
-    if (os.environ.get("DELNO_MCP_DENY_LEGACY_KEY") or "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-    ):
+    tenant = find_tenant_by_mcp_key(db, raw)
+    if not tenant:
+        raise HTTPException(status_code=401, detail="Invalid token or mcp key")
+
+    deny_legacy = (os.environ.get("DELNO_MCP_DENY_LEGACY_KEY") or "").strip().lower() in (
+        "1", "true", "yes",
+    )
+    catalog_only = (os.environ.get("DELNO_MCP_LEGACY_CATALOG_ONLY") or "").strip().lower() in (
+        "1", "true", "yes",
+    )
+    if deny_legacy and not catalog_only:
         raise HTTPException(
             status_code=401,
             detail="legacy_mcp_api_key_denied — use run token or X-Delno-Run-Id binding",
         )
-
-    tenant = find_tenant_by_mcp_key(db, raw)
-    if not tenant:
-        raise HTTPException(status_code=401, detail="Invalid token or mcp key")
 
     # If Hermes also sends profile id, it must belong to this tenant (no cross-tenant key reuse).
     if x_delno_profile_id and x_delno_profile_id.strip():
@@ -192,9 +260,11 @@ def get_mcp_tenant_context(
     # Default ON when DELNO_MCP_STRICT=1 (recommended for Hermes workers).
     strict = (os.environ.get("DELNO_MCP_STRICT") or "").strip().lower() in ("1", "true", "yes")
     meta_env = (os.environ.get("DELNO_MCP_LEGACY_KEY_META_ONLY") or "").strip().lower()
-    if meta_env in ("0", "false", "no"):
+    if strict or catalog_only:
+        meta_only = True
+    elif meta_env in ("0", "false", "no"):
         meta_only = False
-    elif meta_env in ("1", "true", "yes") or strict:
+    elif meta_env in ("1", "true", "yes"):
         meta_only = True
     else:
         meta_only = False
@@ -205,13 +275,17 @@ def get_mcp_tenant_context(
             user_id=None,
             role="tenant_owner",
         ),
-        auth_via="mcp_api_key",
+        auth_via="legacy_catalog" if catalog_only else "mcp_api_key",
         run_token_tool_ids=sorted(META_ALWAYS) if meta_only else None,
     )
 
 
 def _scoped_catalog(ctx: McpAuthContext) -> list[dict[str, Any]]:
     catalog = mcp_tools_catalog()
+    if ctx.auth_via == "legacy_catalog":
+        # Hermes discovers schemas before a turn exists. Listing a schema grants
+        # no ability to execute it; all business calls require a run capability.
+        return catalog
     if ctx.auth_via in ("run_token", "run_binding") or ctx.run_token_tool_ids is not None:
         return filter_tools_catalog(catalog, ctx.run_token_tool_ids)
     return catalog
@@ -276,7 +350,8 @@ def mcp_tools_call(
 ) -> dict[str, Any]:
     if _grant_enforced(ctx) and not tool_allowed(body.name, ctx.run_token_tool_ids):
         raise HTTPException(status_code=403, detail={"error": "tool_not_granted", "tool": body.name})
-    payload = call_mcp_tool(db, ctx.tenant, body.name, body.arguments or {})
+    payload = call_mcp_tool(db, ctx.tenant, body.name, body.arguments or {},
+                            auth_via=ctx.auth_via, run_id=ctx.run_id)
     return unwrap_for_http(body.name, payload)
 
 
@@ -318,7 +393,8 @@ async def mcp_jsonrpc(
                     "error": {"code": -32003, "message": f"tool_not_granted: {name}"},
                 }
             )
-        payload = call_mcp_tool(db, ctx.tenant, name, arguments)
+        payload = call_mcp_tool(db, ctx.tenant, name, arguments,
+                                auth_via=ctx.auth_via, run_id=ctx.run_id)
         is_error = not bool(payload.get("ok", True)) or bool(payload.get("needs_confirmation"))
         result = mcp_content_result(payload, is_error=is_error)
     elif method == "notifications/initialized":
@@ -344,7 +420,7 @@ def hermes_profile(
 
     With run_token auth: never return long-lived mcp_api_key; catalog is scoped.
     """
-    include_key = ctx.auth_via not in ("run_token", "run_binding")
+    include_key = ctx.auth_via not in ("run_token", "run_binding", "legacy_catalog")
     profile = build_hermes_profile(db, ctx.tenant, include_mcp_key=include_key)
     if _grant_enforced(ctx):
         profile["toolset"] = {

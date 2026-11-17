@@ -53,6 +53,12 @@
 
 **Где лежит:** git `docs/AGENT_CHANGE_REGISTER.md` ↔ прод `/opt/delno/docs/AGENT_CHANGE_REGISTER.md` (держать в синхроне).
 
+## 2026-11-17 — Codex: Gate 1 MCP isolation candidate, без production
+
+- Ветка `codex/delno-mcp-gate1`; файлы `delno-api/app/api/v1/mcp.py`, `hermes_nous.py`, `services/mcp_gateway.py`, `hermes_runtime/*`, compose, tests и `docs/DELNO_MCP_GATE1_2026-11-17.md`.
+- Проверены два тенанта, параллельные HTTP/MCP-вызовы, подмены, отзыв binding, права actor и обратное переключение флагов. Локальный тест patch against upstream v0.23.2 прошёл. Production не трогали.
+- Флаги по умолчанию выключены. Не менять prod, не включать `DELNO_MCP_DENY_LEGACY_KEY` до зелёного CI, живого Hermes E2E с двумя профилями и отдельного согласования владельца. Rollback и ограничения описаны в документе Gate 1.
+
 ## 2026-11-17 — Codex: публичные боты DELNO отдельно от кабинетов клиентов
 
 - Ветка `codex/delno-public-bots`: отдельный ответчик для tenant `delno-public` без вызова бизнес-инструментов; явное подтверждение перед созданием лида. Сайт направляет лиды/виджет в этот tenant и ссылается на ботов DELNO.

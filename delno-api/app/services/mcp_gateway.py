@@ -120,7 +120,15 @@ def _tool_result_payload(result: ToolResult | PendingConfirmation | dict[str, An
     return {"ok": False, "error": "unknown_result"}
 
 
-def call_mcp_tool(db: Session, ctx: TenantContext, name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
+def call_mcp_tool(
+    db: Session,
+    ctx: TenantContext,
+    name: str,
+    arguments: dict[str, Any] | None,
+    *,
+    auth_via: str | None = None,
+    run_id: str | None = None,
+) -> dict[str, Any]:
     args = arguments or {}
     name = (name or "").strip()
 
@@ -166,7 +174,8 @@ def call_mcp_tool(db: Session, ctx: TenantContext, name: str, arguments: dict[st
         event_type="mcp.tool_called",
         category="operational",
         source="mcp.gateway",
-        payload={"tool": name, "ok": bool(payload.get("ok"))},
+        payload={"tool": name, "ok": bool(payload.get("ok")),
+                 "auth_via": auth_via or "internal", "run_id": run_id},
     )
     db.commit()
     return payload
