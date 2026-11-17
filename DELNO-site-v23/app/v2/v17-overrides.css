@@ -1,0 +1,303 @@
+/* Layout fixes for ported V17 (reference: header + footer inside `.delno-v17`) */
+
+.delno-v17 {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  min-height: 100dvh;
+  margin: 0;
+}
+
+.delno-v17 > .dc-header,
+.delno-v17 > .dc-footer {
+  flex-shrink: 0;
+}
+
+.dv17-inline-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+/* Additional messenger possibilities on the hero are visual previews, not active scenarios. */
+.delno-v17 .dv17-neural-preview {
+  cursor: default;
+  justify-content: center;
+  gap: 8px;
+  border-style: dashed;
+  background: #fbfcff;
+}
+
+.delno-v17 .dv17-neural-preview:hover {
+  border-color: #e3e6ed;
+  box-shadow: 0 2px 5px #1c2a4310;
+}
+
+.dv17-neural-preview-icon {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: #fff;
+}
+
+.dv17-neural-preview-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.dv17-neural-preview-instagram {
+  background: radial-gradient(circle at 15% 100%, #ffc451, #e85290 56%, #7f51b8);
+}
+
+.dv17-neural-preview-whatsapp {
+  background: #24bd62;
+}
+
+.dv17-neural-preview-more > span {
+  color: #8794a9;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 0.5;
+  letter-spacing: 3px;
+  transform: translateY(-4px);
+}
+
+@media (max-width: 600px) {
+  .delno-v17 .dv17-neural-preview:not(.dv17-neural-preview-more) {
+    flex-direction: row;
+    gap: 4px;
+  }
+
+  .dv17-neural-preview-icon {
+    width: 26px;
+    height: 26px;
+  }
+}
+
+.delno-v17 .dv17-hero-contact.dv17-demo-link {
+  border: 0;
+  background: none;
+}
+
+/* Footer was visually shifted: asymmetric padding on `<footer>` + centered grid tracks */
+.dc-footer {
+  width: 100%;
+  max-width: 100%;
+  margin-inline: 0;
+  padding: 64px clamp(22px, 5vw, 40px) 28px;
+  box-sizing: border-box;
+}
+
+.dc-footer-inner {
+  width: 100%;
+  max-width: 1200px;
+  margin-inline: auto;
+}
+
+.dc-footer-grid {
+  width: 100%;
+  justify-content: stretch;
+  justify-items: start;
+  margin-inline: auto;
+}
+
+.dc-footer-bottom {
+  width: 100%;
+}
+
+.dc-footer-bottom--minimal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.dc-footer-bottom--minimal .dc-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: inherit;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.dc-footer-bottom--minimal span {
+  opacity: 0.72;
+}
+
+/* Keep the footer's four-column content centered across wide viewports. */
+.delno-v17 > .dc-footer {
+  display: block;
+  padding-inline: clamp(22px, 5vw, 64px);
+}
+
+.delno-v17 > .dc-footer > .dc-footer-inner {
+  width: min(100%, 1200px);
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+
+.dc-header-inner {
+  max-width: 1200px;
+}
+
+/* Content subpages */
+.dc-content-page {
+  flex: 1;
+  padding: 120px clamp(24px, 5vw, 40px) 80px;
+  background: var(--dv17-soft, #f5f5f7);
+  min-height: 0;
+}
+
+.dc-content-wrap {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.dc-content-wrap h1 {
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  letter-spacing: -0.04em;
+  margin: 20px 0 16px;
+}
+
+.dc-content-wrap p,
+.dc-content-wrap li {
+  line-height: 1.65;
+  color: #424245;
+}
+
+.dc-link-list {
+  margin: 16px 0;
+  padding-left: 1.2rem;
+}
+
+.dc-link-list a {
+  font-weight: 600;
+}
+
+/* Blog index — tile grid (same cards as landing preview) */
+.dc-blog-index-inner {
+  max-width: 960px;
+}
+
+.dc-blog-eyebrow {
+  margin-top: 20px;
+}
+
+.dc-blog-lead {
+  font-size: 1.05rem;
+  line-height: 1.65;
+  color: #424245;
+  margin: 12px 0 0;
+}
+
+.dc-blog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 10px;
+  margin-top: 32px;
+}
+
+.dc-blog-grid a {
+  min-height: 150px;
+}
+
+.dc-blog-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 8px;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #697e9c;
+}
+
+.dc-blog-excerpt {
+  font-size: 1.125rem;
+  line-height: 1.55;
+  color: #515154;
+  margin: 0 0 28px;
+}
+
+.dc-blog-body p {
+  margin: 0 0 1.15em;
+}
+
+.dc-blog-body p:last-child {
+  margin-bottom: 0;
+}
+
+.dc-article-section{margin:36px 0}.dc-article-section h2,.dc-article-next h2{font-size:1.55rem;letter-spacing:-.025em;line-height:1.2}.dc-article-section li{margin:8px 0}.dc-article-table-scroll{overflow-x:auto;margin:22px 0;border:1px solid #dce2ea;border-radius:14px;background:#fff}.dc-article-table-scroll table{width:100%;border-collapse:collapse;min-width:520px;text-align:left}.dc-article-table-scroll th,.dc-article-table-scroll td{padding:14px 16px;border-bottom:1px solid #e5e9f0;vertical-align:top;line-height:1.45}.dc-article-table-scroll th{background:#edf2f8;color:#243b5a}.dc-article-table-scroll tr:last-child td{border-bottom:0}.dc-article-next{margin-top:54px;padding:26px;border-radius:20px;background:#e9f0fa}.dc-article-next a{font-weight:700;text-decoration:underline}
+.dc-article-related{margin:42px 0}.dc-article-related h2{font-size:1.45rem}.dc-article-related ul{padding-left:22px}.dc-article-related li{margin:9px 0}.dc-article-related a{text-decoration:underline;font-weight:650}
+.dc-blog-topics{display:flex;flex-wrap:wrap;gap:9px;margin:28px 0 48px}.dc-blog-topics a{padding:9px 14px;border:1px solid #d8e3ef;border-radius:999px;color:#24517d;background:#fff;text-decoration:none;font-size:.9rem;font-weight:650}.dc-blog-topics a:hover,.dc-blog-topics a:focus-visible{border-color:#679ad2;background:#edf5ff}.dc-blog-topic{margin:56px 0;scroll-margin-top:100px}.dc-blog-topic h2{margin:0 0 24px;font-size:clamp(1.55rem,3vw,2.2rem);letter-spacing:-.03em}
+.dc-article-faq{margin:48px 0}.dc-article-faq h2{font-size:1.55rem}.dc-article-faq h3{margin:26px 0 8px;font-size:1.15rem}.dc-article-faq p{line-height:1.65}
+
+/* Prevent horizontal scroll from wide sections (neural scene, voice demo) */
+.delno-v17 section {
+  max-width: 100%;
+}
+
+.delno-v17 .dv17-neural-scene,
+.delno-v17 .voice-demo-section {
+  overflow-x: clip;
+}
+
+@media (width <= 680px) {
+  .dc-footer {
+    padding: 49px 19px 28px;
+  }
+
+  .dc-footer-bottom {
+    align-items: flex-start;
+  }
+}
+
+.dv17-market-scenarios {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  max-width: 1180px;
+  margin: 42px auto 0;
+}
+
+.dv17-market-scenarios a {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 235px;
+  padding: 30px;
+  border: 1px solid #dce6f1;
+  border-radius: 22px;
+  background: #fff;
+  color: #17304d;
+  text-decoration: none;
+  box-shadow: 0 14px 40px rgb(28 59 94 / 6%);
+}
+
+.dv17-market-scenarios a:hover,
+.dv17-market-scenarios a:focus-visible {
+  border-color: #8db7e8;
+  box-shadow: 0 18px 46px rgb(28 59 94 / 12%);
+}
+
+.dv17-market-scenarios strong { font-size: 1.35rem; line-height: 1.2; }
+.dv17-market-scenarios span { line-height: 1.5; }
+.dv17-market-scenarios span:last-child { margin-top: auto; color: #2164b3; font-weight: 700; }
+
+@media (width <= 780px) {
+  .dv17-market-scenarios { grid-template-columns: 1fr; }
+  .dv17-market-scenarios a { min-height: 0; }
+}

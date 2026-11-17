@@ -10,6 +10,10 @@
 
 ## [Unreleased]
 
+### Changed (2026-11-17) — legal / футер сайта
+- Главная (V17): футер только логотип DELNO + `© 2026 DELNO` (без ИП, ИНН, ссылок на политику/оферту).
+- `/privacy` и `/terms`: оператор как **ИП Рябов Д.В.** (без полного ФИО в блоке реквизитов).
+
 ### Ops (2026-11-17) — delno-public боевой контур
 - Hermes multiplex pool: профиль `tenant_delno-public__company_main` + goal-led задача владельца (сайт/мессенджеры/демо/лиды).
 - Почта Reg.ru (`regru`/`mail_regru`): на C4B SMTP-login и vault `connected` после обновления пароля ящика.
