@@ -8,6 +8,7 @@ from app.models.channel_account import ChannelAccount
 from app.models.conversation import Conversation, Message
 from app.models.feature_flag import FeatureFlag
 from app.models.hermes_runtime import HermesProfile, HermesRunBinding, HermesWorker
+from app.models.hermes_owner_turn import HermesOwnerTurn
 from app.models.lead import Lead
 from app.models.onboarding_upload import OnboardingUpload
 from app.models.party_cache import PartyCache
@@ -35,6 +36,7 @@ __all__ = [
     "HermesWorker",
     "HermesProfile",
     "HermesRunBinding",
+    "HermesOwnerTurn",
     "Lead",
     "OnboardingUpload",
     "PartyCache",

@@ -222,6 +222,8 @@
 
 # 2026-11-16
 
+- 2026-11-17: started Gate 2 with bounded, actor-scoped recall of completed Owner Hermes dialogues; added a PostgreSQL migration and APIs to inspect and clear the recalled history. Disabled by default until staged validation.
+
 - 2026-11-17: fixed Gate 1 scoped MCP identity propagation through Hermes Session Authority admissions; added regression coverage for concurrent admitted turns and profile isolation. Production validation details are in `docs/AGENT_CHANGE_REGISTER.md`.
 
 - 2026-11-17: started DELNO-owned calendar and shared appointment flow for voice, Telegram/MAX and cabinet; audit of office tools restored from the Beget backup in `docs/DELNO_OFFICE_TOOL_INVENTORY_2026-11-17.md`.
