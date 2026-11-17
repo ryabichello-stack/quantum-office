@@ -18,6 +18,7 @@ from app.adapters.connectors import get_connector
 from app.core.tenant import TenantContext
 from app.models.tenant import Tenant
 from app.services.connectors import connector_config_for
+from app.services.connector_connect import mail_delivery_access, conference_delivery_access
 from app.services.tenant_broker_access import apply_access
 
 
@@ -219,7 +220,7 @@ def _book(
         timezone=str(params.get("timezone") or "") or None,
         end=str(params.get("end") or "") or None,
         source=str(params.get("source") or "") or None,
-        create_telemost=True,
+        create_telemost=False,
         invitees=[email] if email else None,
     )
     conference_url = ""
@@ -227,7 +228,7 @@ def _book(
     if conf is not None:
         conf_res = conf.create(  # type: ignore[attr-defined]
             tenant_slug=ctx.tenant_slug,
-            config=connector_config_for(db, ctx, "conference"),
+            config={**connector_config_for(db, ctx, "conference"), "_conference_delivery_access": conference_delivery_access(db, ctx, str(params.get("provider") or "yandex"))},
             title=title,
             provider=str(params.get("provider") or "yandex"),
             invitees=[email] if email else [],
@@ -253,7 +254,7 @@ def _book(
                     conference_url=conference_url,
                     company=tenant.name or "",
                 ),
-                "include_presentation": bool(params.get("include_presentation", True)),
+                "attachment_id": params.get("attachment_id"),
             },
             commit=False,
         )
@@ -409,17 +410,23 @@ def _send(
             conference_url=str(params.get("conference_url") or ""),
             company=tenant.name or "",
         )
-    if params.get("include_presentation"):
-        body += "\n\nК письму можно приложить презентацию — она в материалах компании."
+    attachment = None
+    if params.get("attachment_id"):
+        from app.services.tenant_attachments import attachment_for
+        try:
+            attachment = attachment_for(db, ctx, str(params["attachment_id"]))
+        except (ValueError, OSError):
+            return {"ok": False, "error": "attachment_unavailable", "message_ru": "Выбранный файл этой компании не найден; письмо не отправлено."}
     mail = get_connector("mail")
     if mail is None:
         return {"ok": False, "error": "no_mail", "message_ru": "Почта на платформе недоступна."}
     result = mail.send_draft(  # type: ignore[attr-defined]
         tenant_slug=ctx.tenant_slug,
-        config=connector_config_for(db, ctx, "mail"),
+        config={**connector_config_for(db, ctx, "mail"), "_mail_delivery_access": mail_delivery_access(db, ctx)},
         to=email,
         subject=subject,
         body=body,
+        attachment=attachment,
     )
     ok = bool(getattr(result, "ok", False))
     if commit:
@@ -429,7 +436,7 @@ def _send(
         "to": email,
         "subject": subject,
         "message_ru": (
-            f"Письмо для {email} подготовлено."
+            f"Письмо для {email} отправлено."
             if ok
             else "Письмо не отправилось. Проверим почту и попробуем ещё раз."
         ),

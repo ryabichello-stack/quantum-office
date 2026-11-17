@@ -129,9 +129,13 @@ def _book(db: Session, ctx: TenantContext, tenant: Tenant, params: dict[str, Any
     # Conference and mail are optional. Never treat a stub URL or unsent email as delivered.
     if _ready(db, ctx, "conference"):
         try:
+            from app.services.connector_connect import conference_delivery_access
+            conference_provider = str(params.get("provider") or "yandex")
+            conference_config = dict(connector_config_for(db, ctx, "conference"))
+            conference_config["_conference_delivery_access"] = conference_delivery_access(db, ctx, conference_provider)
             result = get_connector("conference").create(
-                tenant_slug=ctx.tenant_slug, config=connector_config_for(db, ctx, "conference"),
-                title=row.title, provider=str(params.get("provider") or "yandex"),
+                tenant_slug=ctx.tenant_slug, config=conference_config,
+                title=row.title, provider=conference_provider,
                 invitees=[], when_text=start.isoformat(),
             )
             data = getattr(result, "data", None) or {}
@@ -150,7 +154,7 @@ def _book(db: Session, ctx: TenantContext, tenant: Tenant, params: dict[str, Any
         message += f" Ссылка на видеовстречу: {row.conference_url}."
     if email and _ready(db, ctx, "mail"):
         from app.services.appointments import _invite_text, _send
-        mailed = _send(db, ctx, tenant, {"email": email, "subject": f"Встреча {start.isoformat()}", "body": _invite_text(title=row.title, start=start.isoformat(), conference_url=row.conference_url or "", company=tenant.name or "")})
+        mailed = _send(db, ctx, tenant, {"email": email, "subject": f"Встреча {start.isoformat()}", "body": _invite_text(title=row.title, start=start.isoformat(), conference_url=row.conference_url or "", company=tenant.name or ""), "attachment_id": params.get("attachment_id")})
         message += f" Письмо {'отправлено' if mailed.get('ok') else 'не отправлено'} на {email}."
     else:
         mailed = None
@@ -164,6 +168,8 @@ def _change(db: Session, ctx: TenantContext, tenant: Tenant, action: str, params
     if error:
         return error
     assert row is not None
+    if row.status == "cancelled":
+        return {"ok": False, "error": "appointment_cancelled", "message_ru": "Эта встреча уже отменена."}
     if action == "reschedule_meeting":
         try:
             start = calendar_store.parse_time(str(params.get("start") or ""), str(params.get("timezone") or "Europe/Moscow"))
@@ -178,13 +184,36 @@ def _change(db: Session, ctx: TenantContext, tenant: Tenant, action: str, params
     else:
         row.status = "cancelled"
     row.sync_version += 1
-    row.sync_status = "pending" if row.external_event_id else "local_only"
+    if row.external_event_id and action in {"reschedule_meeting", "cancel_meeting"}:
+        source = str(row.external_provider or "")
+        config, access_error = apply_access(
+            db, ctx, dict(connector_config_for(db, ctx, "calendar")),
+            kind="calendar", source=source,
+        )
+        if config is None or access_error:
+            row.sync_status = "sync_failed"
+        else:
+            try:
+                changed = get_connector("calendar").change_event(
+                    tenant_slug=ctx.tenant_slug, config=config,
+                    action="delete" if action == "cancel_meeting" else "update",
+                    event_id=row.external_event_id, source=source,
+                    start=row.start_at.isoformat(), end=row.end_at.isoformat(),
+                    summary=row.title,
+                )
+                row.sync_status = "synced" if getattr(changed, "ok", False) else "sync_failed"
+            except Exception:
+                row.sync_status = "sync_failed"
+    elif row.external_event_id:
+        row.sync_status = "synced"
+    else:
+        row.sync_status = "local_only"
     db.add(row)
     _mirror(db, tenant)
     db.commit()
     message = f"Встреча {('перенесена' if action == 'reschedule_meeting' else 'подтверждена' if action == 'confirm_meeting' else 'отменена')} в календаре DELNO."
-    if row.sync_status == "pending":
-        message += " Изменение во внешнем календаре ещё не подтверждено."
+    if row.sync_status == "sync_failed":
+        message += " Изменение во внешнем календаре не подтверждено; требуется повторная синхронизация."
     return {"ok": True, "rescheduled": action == "reschedule_meeting", "appointment": calendar_store.as_dict(row), "message_ru": message}
 
 

@@ -64,6 +64,63 @@ def _tenant(db, slug: str, **settings) -> Tenant:
     return tenant
 
 
+def test_shared_outreach_is_never_opened_for_another_company(db, monkeypatch):
+    from app.adapters.connectors.outreach import OutreachConnector
+    from app.services.connectors import connector_config_for
+
+    monkeypatch.setenv("OUTREACH_BASE_URL", "http://shared-quantum-outreach:8012")
+    get_settings.cache_clear()
+    client = _tenant(db, "unrelated-client")
+    service = _tenant(db, "quantum-labs", service_tenant=True)
+    assert OutreachConnector()._base(connector_config_for(db, _ctx(client), "outreach")) == ""
+    assert OutreachConnector()._base(connector_config_for(db, _ctx(service), "outreach")) == "http://shared-quantum-outreach:8012"
+    get_settings.cache_clear()
+
+
+def test_outgoing_file_upload_is_tenant_scoped(db, tmp_path, monkeypatch):
+    import asyncio
+    from io import BytesIO
+    from fastapi import UploadFile
+    from app.services.tenant_attachments import save_file, attachment_for
+    from app.services.tenant_files import tenant_prefix
+
+    monkeypatch.setattr("app.services.tenant_files.tenants_root", lambda: tmp_path)
+    first = _tenant(db, "files-a")
+    second = _tenant(db, "files-b")
+    payload = b"spreadsheet bytes"
+    result = asyncio.run(save_file(db, _ctx(first), UploadFile(file=BytesIO(payload), filename="offer.xlsx")))
+    assert result["name"] == "offer.xlsx"
+    assert attachment_for(db, _ctx(first), result["id"])["name"] == "offer.xlsx"
+    assert tenant_prefix(first.id).exists()
+    with pytest.raises(ValueError, match="file_not_found"):
+        attachment_for(db, _ctx(second), result["id"])
+
+
+def test_company_folders_and_generated_files_do_not_cross_tenants(db, tmp_path, monkeypatch):
+    from app.services import tenant_attachments as files
+
+    monkeypatch.setattr("app.services.tenant_files.tenants_root", lambda: tmp_path)
+    first = _tenant(db, "folder-a")
+    second = _tenant(db, "folder-b")
+    a, b = _ctx(first), _ctx(second)
+    folder = files.create_folder(db, a, "Предложения")
+    item = files.create_text_file(db, a, "offer.md", "Предложение для клиента", folder["id"])
+    assert files.list_files(db, a)[0]["folder_id"] == folder["id"]
+    assert files.read_text_file(db, a, item["id"])["content"] == "Предложение для клиента"
+    assert files.list_files(db, b) == []
+    assert files.list_folders(db, b) == []
+    with pytest.raises(ValueError, match="file_not_found"):
+        files.read_text_file(db, b, item["id"])
+    with pytest.raises(ValueError, match="folder_not_found"):
+        files.create_text_file(db, b, "leak.txt", "wrong tenant", folder["id"])
+    with pytest.raises(ValueError, match="folder_not_empty"):
+        files.delete_folder(db, a, folder["id"])
+    files.move_file(db, a, item["id"], None)
+    files.delete_folder(db, a, folder["id"])
+    files.delete_file(db, a, item["id"])
+    assert files.list_files(db, a) == []
+
+
 def _ctx(tenant: Tenant) -> TenantContext:
     return TenantContext(tenant_id=tenant.id, tenant_slug=tenant.slug, role="tenant_owner")
 

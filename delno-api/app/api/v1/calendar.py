@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import uuid
-from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -12,7 +11,6 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_tenant_context_auth
 from app.core.db import get_db
 from app.core.tenant import TenantContext
-from app.models.appointment import Appointment
 from app.models.tenant import Tenant
 from app.services import calendar_store
 
@@ -54,18 +52,14 @@ def create_appointment(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(get_tenant_context_auth),
 ) -> dict:
-    try:
-        start = calendar_store.parse_time(body.start)
-        end = calendar_store.parse_time(body.end) if body.end else start + timedelta(hours=1)
-        row = calendar_store.create(
-            db, _tenant(db, ctx), start=start, end=end, title=body.title,
-            phone=body.phone, email=body.email,
-        )
-        db.commit()
-    except ValueError as exc:
-        db.rollback()
-        raise HTTPException(status_code=409 if str(exc) == "slot_busy" else 422, detail=str(exc)) from exc
-    return {"ok": True, "appointment": calendar_store.as_dict(row)}
+    from app.services.meeting_flow import handle as handle_meeting
+
+    result = handle_meeting(
+        db, ctx, "book_meeting", body.model_dump(exclude_none=True), "cabinet",
+    )
+    if not result.get("booked"):
+        raise HTTPException(status_code=409 if result.get("error") == "slot_busy" else 422, detail=result)
+    return result
 
 
 @router.patch("/appointments/{appointment_id}")
@@ -75,29 +69,10 @@ def change_appointment(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(get_tenant_context_auth),
 ) -> dict:
-    tenant = _tenant(db, ctx)
-    row = db.query(Appointment).filter(
-        Appointment.id == appointment_id, Appointment.tenant_id == ctx.tenant_id,
-    ).with_for_update().one_or_none()
-    if row is None:
-        raise HTTPException(status_code=404, detail="appointment_not_found")
-    if row.status == "cancelled":
-        raise HTTPException(status_code=409, detail="appointment_cancelled")
-    if body.action == "reschedule":
-        if not body.start:
-            raise HTTPException(status_code=422, detail="start_required")
-        try:
-            start = calendar_store.parse_time(body.start)
-            end = calendar_store.parse_time(body.end) if body.end else start + (row.end_at - row.start_at)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        if not calendar_store.slot_free(db, tenant, start, end, excluding=row.id):
-            raise HTTPException(status_code=409, detail="slot_busy")
-        row.start_at, row.end_at, row.status = start, end, "rescheduled"
-    else:
-        row.status = "confirmed" if body.action == "confirm" else "cancelled"
-    row.sync_version += 1
-    row.sync_status = "pending" if row.external_event_id else "local_only"
-    db.add(row)
-    db.commit()
-    return {"ok": True, "appointment": calendar_store.as_dict(row)}
+    from app.services.meeting_flow import handle as handle_meeting
+
+    action = {"reschedule": "reschedule_meeting", "confirm": "confirm_meeting", "cancel": "cancel_meeting"}[body.action]
+    result = handle_meeting(db, ctx, action, {"appointment_id": str(appointment_id), **body.model_dump(exclude_none=True)}, "cabinet")
+    if not result.get("ok"):
+        raise HTTPException(status_code=404 if result.get("error") == "appointment_not_found_or_unverified" else 409, detail=result)
+    return result

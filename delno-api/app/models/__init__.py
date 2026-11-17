@@ -14,6 +14,7 @@ from app.models.party_cache import PartyCache
 from app.models.phone_number import PhoneNumber
 from app.models.platform_event import PlatformEvent
 from app.models.tenant import Tenant
+from app.models.tenant_folder import TenantFolder
 from app.models.tenant_voice_profile import TenantVoiceProfile
 from app.models.usage_record import UsageRecord
 from app.models.user import User
@@ -41,6 +42,7 @@ __all__ = [
     "PhoneNumber",
     "PlatformEvent",
     "Tenant",
+    "TenantFolder",
     "TenantVoiceProfile",
     "UsageRecord",
     "User",

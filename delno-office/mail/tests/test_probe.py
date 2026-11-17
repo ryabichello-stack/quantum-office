@@ -32,6 +32,7 @@ def test_probe_uses_supplied_credentials_and_does_not_send(monkeypatch):
     response = client.post(
         "/api/mail/probe",
         json={"tenant_id": "tenant-a", "provider": "yandex", "username": "a@example.ru", "password": "private"},
+        headers={"X-Tenant-Id": "tenant-a"},
     )
     assert response.status_code == 200
     assert response.json()["status"] == "connected"
@@ -43,6 +44,7 @@ def test_probe_rejects_unknown_provider():
     response = client.post(
         "/api/mail/probe",
         json={"tenant_id": "tenant-a", "provider": "custom", "username": "a@example.ru", "password": "private"},
+        headers={"X-Tenant-Id": "tenant-a"},
     )
     assert response.status_code == 400
 
@@ -83,6 +85,7 @@ def test_send_uses_only_request_tenant_account(monkeypatch):
             "username": "b@example.ru", "password": "tenant-b-secret",
             "to": "client@example.ru", "subject": "Test", "body": "Hello",
         },
+        headers={"X-Tenant-Id": "b"},
     )
     assert response.status_code == 200
     assert response.json()["sent"] is True

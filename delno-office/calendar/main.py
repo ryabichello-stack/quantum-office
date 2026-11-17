@@ -159,6 +159,19 @@ class CalendarCreateRequest(BaseModel):
     create_telemost: Optional[bool] = None
     send_telemost_invite: bool = False
     invitees: List[str] = Field(default_factory=list)
+    send_welcome_email: bool = False
+
+
+class CalendarChangeRequest(BaseModel):
+    tenant_id: str = Field(..., min_length=1, max_length=80)
+    source: str
+    event_id: str = Field(..., min_length=1, max_length=1000)
+    start: Optional[str] = None
+    end: Optional[str] = None
+    summary: str = "Встреча"
+    timezone: Optional[str] = None
+    credentials: Optional[CalendarCredentials] = None
+    allow_env_fallback: bool = False
 
 
 def _resolve_provider(source: Optional[str]):
@@ -189,6 +202,44 @@ def _cred_dict(creds: Optional[CalendarCredentials], allow_flag: bool) -> dict:
     if allow_flag:
         data["allow_env_fallback"] = True
     return data
+
+
+@app.post("/api/calendar/change")
+def calendar_change(
+    req: CalendarChangeRequest,
+    action: str,
+    x_webhook_token: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
+):
+    _check_token(x_webhook_token)
+    tenant_id = _require_tenant(req.tenant_id, x_tenant_id)
+    if not x_tenant_id or x_tenant_id.strip() != tenant_id:
+        raise HTTPException(status_code=403, detail="tenant_header_required")
+    if action not in {"update", "delete"}:
+        raise HTTPException(status_code=400, detail="unsupported_action")
+    provider = _resolve_provider(req.source)
+    try:
+        with bind_request(
+            tenant_id=tenant_id,
+            credentials=_cred_dict(req.credentials, req.allow_env_fallback),
+            allow_env_fallback=req.allow_env_fallback,
+        ):
+            if not provider.configured():
+                raise HTTPException(status_code=403, detail="tenant_credentials_required")
+            if action == "delete":
+                result = provider.delete_event(req.event_id)
+            else:
+                if not req.start or not req.end:
+                    raise HTTPException(status_code=400, detail="time_required")
+                result = provider.update_event(
+                    req.event_id,
+                    start_dt=cal.parse_dt(req.start, req.timezone),
+                    end_dt=cal.parse_dt(req.end, req.timezone),
+                    summary=cal.clean_text(req.summary),
+                )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {**result, "tenant_id": tenant_id, "source": provider.name}
 
 
 @app.get("/health")
@@ -407,7 +458,7 @@ async def calendar_create(
                 "end": end_dt.isoformat(),
             }
 
-        want_telemost = (
+        want_telemost = req.allow_env_fallback and (
             conference_client.CREATE_TELEMOST_BY_DEFAULT
             if req.create_telemost is None
             else bool(req.create_telemost)
@@ -463,7 +514,9 @@ async def calendar_create(
             message += f". Телемост не создан ({telemost_error})"
 
         welcome: dict = {"ok": False, "skipped": True}
-        if attendee_email:
+        # Legacy ava-mailer uses a server-wide sender and presentation. It must
+        # never be triggered by a tenant-scoped DELNO calendar booking.
+        if attendee_email and req.send_welcome_email and req.allow_env_fallback:
             welcome = mailer_client.queue_welcome_presentation(
                 attendee_email=attendee_email,
                 summary=summary,

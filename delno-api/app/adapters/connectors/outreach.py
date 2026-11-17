@@ -34,6 +34,8 @@ class OutreachConnector:
     kind = "outreach"
 
     def _base(self, config: dict[str, Any]) -> str:
+        if config.get("_blocked_shared_upstream"):
+            return ""
         return str(config.get("base_url") or get_settings().outreach_base_url or "").strip()
 
     def _token(self, config: dict[str, Any]) -> str | None:
@@ -221,14 +223,14 @@ class OutreachConnector:
         )
         if not base:
             return ConnectorResult(
-                ok=True,
+                ok=False,
                 configured=False,
                 kind=self.kind,
                 error="not_configured",
-                message="Campaign staged locally; SMTP/outreach not wired (dry_run enforced)",
+                message="Рассылка не отправлена: отдельный контур этой компании пока не подключён",
                 data={
                     "stub": True,
-                    "staged": True,
+                    "staged": False,
                     "sent": False,
                     "dry_run": True,
                     "tenant_slug": tenant_slug,

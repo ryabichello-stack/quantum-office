@@ -147,7 +147,11 @@ def connector_config_for(db: Session, ctx: TenantContext, kind: str) -> dict[str
     tenant = db.query(Tenant).filter(Tenant.id == ctx.tenant_id).one()
     blob = _tenant_connectors_blob(tenant)
     raw = blob.get(kind)
-    return raw if isinstance(raw, dict) else {}
+    config = dict(raw) if isinstance(raw, dict) else {}
+    if kind == "outreach":
+        from app.services.tenant_broker_access import is_service_tenant
+        config["_blocked_shared_upstream"] = not is_service_tenant(tenant)
+    return config
 
 
 def list_tenant_connector_readiness(db: Session, ctx: TenantContext) -> list[dict[str, Any]]:

@@ -2,7 +2,8 @@ from pydantic import BaseModel, Field
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, Response
+from urllib.parse import quote
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_tenant_context_auth
@@ -27,6 +28,108 @@ from app.services.onboarding_summary import (
 )
 
 router = APIRouter(prefix="/tenant", tags=["tenant"])
+
+
+@router.get("/files")
+def tenant_files_list(
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    _require_tenant_admin(ctx)
+    from app.services.tenant_attachments import list_files, list_folders
+    return {"items": list_files(db, ctx, limit=limit, offset=offset), "folders": list_folders(db, ctx)}
+
+
+@router.post("/files")
+async def tenant_file_upload(
+    file: UploadFile = File(...),
+    folder_id: str | None = Form(None),
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    _require_tenant_admin(ctx)
+    from app.services.tenant_attachments import save_file
+    try:
+        item = await save_file(db, ctx, file, folder_id)
+        write_audit(db, ctx, action="tenant.file_upload", resource=f"file:{item['id']}")
+        db.commit()
+        return {"ok": True, "file": item}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+class FolderCreate(BaseModel):
+    name: str
+    parent_id: str | None = None
+
+
+class FileMove(BaseModel):
+    folder_id: str | None = None
+
+
+@router.post("/folders")
+def tenant_folder_create(body: FolderCreate, db: Session = Depends(get_db), ctx: TenantContext = Depends(get_tenant_context_auth)) -> dict:
+    _require_tenant_admin(ctx)
+    from app.services.tenant_attachments import create_folder
+    try:
+        folder = create_folder(db, ctx, body.name, body.parent_id)
+        write_audit(db, ctx, action="tenant.folder_create", resource=f"folder:{folder['id']}")
+        db.commit()
+        return {"folder": folder}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/folders/{folder_id}")
+def tenant_folder_delete(folder_id: str, db: Session = Depends(get_db), ctx: TenantContext = Depends(get_tenant_context_auth)) -> dict:
+    _require_tenant_admin(ctx)
+    from app.services.tenant_attachments import delete_folder
+    try:
+        delete_folder(db, ctx, folder_id)
+        write_audit(db, ctx, action="tenant.folder_delete", resource=f"folder:{folder_id}")
+        db.commit()
+        return {"ok": True}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/files/{file_id}")
+def tenant_file_download(file_id: str, db: Session = Depends(get_db), ctx: TenantContext = Depends(get_tenant_context_auth)) -> Response:
+    _require_tenant_admin(ctx)
+    from app.services.tenant_attachments import download_file
+    try:
+        name, content, content_type = download_file(db, ctx, file_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(content, media_type=content_type, headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
+
+
+@router.patch("/files/{file_id}")
+def tenant_file_move(file_id: str, body: FileMove, db: Session = Depends(get_db), ctx: TenantContext = Depends(get_tenant_context_auth)) -> dict:
+    _require_tenant_admin(ctx)
+    from app.services.tenant_attachments import move_file
+    try:
+        item = move_file(db, ctx, file_id, body.folder_id)
+        write_audit(db, ctx, action="tenant.file_move", resource=f"file:{file_id}")
+        db.commit()
+        return {"file": item}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/files/{file_id}")
+def tenant_file_delete(file_id: str, db: Session = Depends(get_db), ctx: TenantContext = Depends(get_tenant_context_auth)) -> dict:
+    _require_tenant_admin(ctx)
+    from app.services.tenant_attachments import delete_file
+    try:
+        delete_file(db, ctx, file_id)
+        write_audit(db, ctx, action="tenant.file_delete", resource=f"file:{file_id}")
+        db.commit()
+        return {"ok": True}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 class FeatureFlagResponse(BaseModel):

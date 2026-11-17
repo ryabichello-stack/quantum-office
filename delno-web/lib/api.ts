@@ -45,6 +45,45 @@ export function apiAppointmentChange(token: string, id: string, data: {action: "
   });
 }
 
+export type TenantFileItem = {id: string; name: string; bytes: number; folder_id: string | null};
+export type TenantFolderItem = {id: string; name: string; parent_id: string | null};
+
+export function apiTenantFilesList(token: string, offset = 0) {
+  return apiFetch<{items: TenantFileItem[]; folders: TenantFolderItem[]}>(`/v1/tenant/files?limit=500&offset=${offset}`, token);
+}
+
+export function apiTenantFileUpload(token: string, file: File, folderId?: string | null) {
+  const form = new FormData();
+  form.append("file", file);
+  if (folderId) form.append("folder_id", folderId);
+  return apiFetch<{ok: boolean; file: TenantFileItem}>("/v1/tenant/files", token, {method: "POST", body: form});
+}
+
+export function apiTenantFolderCreate(token: string, name: string, parentId: string | null) {
+  return apiFetch<{folder: TenantFolderItem}>("/v1/tenant/folders", token, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name, parent_id: parentId})});
+}
+
+export function apiTenantFolderDelete(token: string, id: string) {
+  return apiFetch<{ok: boolean}>(`/v1/tenant/folders/${id}`, token, {method: "DELETE"});
+}
+
+export function apiTenantFileMove(token: string, id: string, folderId: string | null) {
+  return apiFetch<{file: TenantFileItem}>(`/v1/tenant/files/${id}`, token, {method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify({folder_id: folderId})});
+}
+
+export function apiTenantFileDelete(token: string, id: string) {
+  return apiFetch<{ok: boolean}>(`/v1/tenant/files/${id}`, token, {method: "DELETE"});
+}
+
+export async function apiTenantFileDownload(token: string, file: TenantFileItem) {
+  const res = await fetch(`${API_URL}/v1/tenant/files/${file.id}`, {headers: {Authorization: `Bearer ${token}`}});
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const url = URL.createObjectURL(await res.blob());
+  const link = document.createElement("a");
+  link.href = url; link.download = file.name; document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export type ConversationItem = {
   id: string;
   channel: string;

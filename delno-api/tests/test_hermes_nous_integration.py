@@ -93,9 +93,9 @@ def test_mcp_filter_fail_closed_and_pack(db):
     names = {t["name"] for t in onboarding}
     assert "upload_knowledge_snippet" in names or "office.import_website" in names
     assert "office.health" in names
-    # conduct has mail draft; onboarding pack should not include it unless in pack
+    # Mail is optional but usable during onboarding when the owner has connected it.
     if "send_mail_draft" in {t["name"] for t in catalog}:
-        assert not tool_allowed("send_mail_draft", pack_for_mode("onboarding"))
+        assert tool_allowed("send_mail_draft", pack_for_mode("onboarding"))
         assert tool_allowed("send_mail_draft", pack_for_mode("conduct"))
 
 
