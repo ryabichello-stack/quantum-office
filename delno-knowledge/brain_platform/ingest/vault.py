@@ -21,7 +21,7 @@ except Exception:  # pragma: no cover
 
 
 SKIP_NAMES = {"readme.md"}
-SKIP_DIR_PARTS = {"_meta", ".git"}
+SKIP_DIR_PARTS = {"_meta", "_draft", ".git"}
 
 
 def default_vault_path() -> Path:
@@ -114,6 +114,20 @@ def ingest_vault(
             "deny_users": [],
             "deny_groups": [],
         }
+        # Published public shards are readable by guest/widget principals via
+        # publication flags; also grant services explicitly for defense-in-depth.
+        if visibility == "public" and approved_public:
+            acl["allow_services"] = list(
+                dict.fromkeys(
+                    [
+                        *acl["allow_services"],
+                        "service:text-guest",
+                        "service:voice-public",
+                        "service:delno-widget-guest",
+                        "service:delno-text-guest",
+                    ]
+                )
+            )
 
         result = repo.upsert_document(
             doc_id=doc_id,

@@ -10,6 +10,11 @@
 
 ## [Unreleased]
 
+### Added (2026-11-17) — публичная KB delno-public в Brain
+- Vault `delno-knowledge/vault/delno-public/public/*.md` (продукт, тарифы, FAQ, скрипт, 152‑ФЗ).
+- Seed `brain_platform seed-public` при старте knowledge; `_draft` не индексируется.
+- Публичные Telegram/MAX боты читают Brain вместо только `_FACTS`; лид — после согласия на ПДн.
+
 ### Ops (2026-11-17) — delno-public боевой контур
 - Hermes multiplex pool: профиль `tenant_delno-public__company_main` + goal-led задача владельца (сайт/мессенджеры/демо/лиды).
 - Почта Reg.ru (`regru`/`mail_regru`): на C4B SMTP-login и vault `connected` после обновления пароля ящика.
