@@ -1,0 +1,58 @@
+# Combat Hermes multiplex pool — ONE gateway for all companies.
+# HERMES_HOME=.../workers/pool
+# Company profiles: .../workers/pool/profiles/<profile_id> → /p/<profile_id>/v1/...
+# Extra workers only when load requires them (optional compose override), not by default.
+#
+# Usage (from delno-api/):
+#   export API_SERVER_KEY=dev-hermes-key-aaaaaaaa
+#   docker compose -f hermes_runtime/docker-compose.hermes.yml up --build
+services:
+  hermes-pool:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        HERMES_AGENT_GIT_REF: v0.23.2
+    image: delno-hermes-runtime:v0.23.2
+    container_name: delno-hermes-pool
+    environment:
+      HERMES_PROFILES_ROOT: /data/hermes-profiles
+      HERMES_WORKER_ID: pool
+      HERMES_HOME: /data/hermes-profiles/workers/pool
+      API_SERVER_ENABLED: "true"
+      API_SERVER_HOST: 0.0.0.0
+      API_SERVER_PORT: "8642"
+      API_SERVER_KEY: ${API_SERVER_KEY:-dev-hermes-key-aaaaaaaa}
+      # Worker process: empty. Per-company keys live in profiles/<id>/.env
+      DELNO_MCP_KEY: ""
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      HTTPS_PROXY: ${OPENAI_HTTP_PROXY:-}
+    volumes:
+      - hermes-pool-data:/data/hermes
+      - hermes-profiles:/data/hermes-profiles
+      - ./templates/home:/opt/delno-hermes-templates:ro
+      - ./templates/worker_root:/opt/delno-hermes-templates-root:ro
+      - ./entrypoint.sh:/entrypoint.sh:ro
+    ports:
+      - "127.0.0.1:18642:8642"
+    init: true
+    mem_limit: 4g
+    pids_limit: 1024
+    networks:
+      - hermes-lab
+      - delno-internal
+
+networks:
+  hermes-lab:
+    name: delno-hermes-lab
+  delno-internal:
+    external: true
+    name: delno-internal
+
+volumes:
+  hermes-pool-data:
+  hermes-profiles:
+    name: hermes-profiles
+    external: true
