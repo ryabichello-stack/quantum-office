@@ -39,7 +39,7 @@ def main() -> None:
         delno_run_scope.call_tool = fake_call
     try:
         handler = mcp_tool_handlers._make_tool_handler(
-            "delno_office", "hermes.profile" if live_api else "office.health", 5)
+            "delno_office", "get_tenant_summary" if live_api else "office.health", 5)
 
         class Owner:
             _memory_sessions = SimpleNamespace(checkin=lambda _agent: None)
@@ -62,7 +62,7 @@ def main() -> None:
         )
 
         def one_run(i):
-            identity = identities[i % 2] if identities else None
+            identity = identities[i % len(identities)] if identities else None
             profile = identity["profile"] if identity else f"tenant_gate-{i % 2}__company_main"
             run = _RunLaunch(
                 owner, f"upstream-{i}", None, f"session-{i}", None, False,
@@ -77,10 +77,11 @@ def main() -> None:
         with ThreadPoolExecutor(max_workers=8) as pool:
             actual_runs = list(pool.map(one_run, range(24)))
         if live_api:
-            assert [r["tenant_id"] for r in actual_runs] == [
-                identities[i % 2]["tenant_id"] for i in range(24)
+            assert [r["tenant_slug"] for r in actual_runs] == [
+                identities[i % len(identities)]["tenant_slug"] for i in range(24)
             ]
-            assert all("mcp_api_key" not in r for r in actual_runs)
+            assert all("mcp_api_key" not in json.dumps(r) and
+                       "run_tokens" not in json.dumps(r) for r in actual_runs)
         else:
             assert [r["run"] for r in actual_runs] == [f"run-{i}" for i in range(24)]
             assert [r["profile"] for r in actual_runs] == [
@@ -90,8 +91,8 @@ def main() -> None:
             assert json.loads(handler({}))["error"] == "delno_run_scope_missing"
             swapped = delno_run_scope.bind_run_scope(
                 token=identities[0]["token"] if live_api else "test-token-0",
-                run_id=identities[1]["run_id"] if live_api else "run-1",
-                profile_id=identities[1]["profile"] if live_api else "tenant_gate-1__company_main")
+                run_id=identities[2]["run_id"] if live_api else "run-1",
+                profile_id=identities[2]["profile"] if live_api else "tenant_gate-1__company_main")
             try:
                 denied = json.loads(handler({}))
                 assert denied == {"error": "delno_mcp_rejected", "status": 403}
@@ -110,11 +111,27 @@ def main() -> None:
                                               headers=headers,
                                               json={"name": "get_tenant_summary", "arguments": {}})
                     assert legacy_call.status_code == 403
+                evidence = client.get("http://delno-api:8020/lab/evidence").json()
+                assert len(evidence) == 24
+                expected = {item["run_id"]: item["tenant_id"] for item in identities}
+                assert all(item["auth_via"] == "run_token" and
+                           expected[item["run_id"]] == item["tenant_id"] and
+                           item["tool"] == "get_tenant_summary" for item in evidence)
+                # A token cannot be replayed for a different run or profile.
+                first = identities[0]
+                wrong_profile = client.post("http://delno-api:8020/v1/mcp/tools/call",
+                    headers={"Authorization": f"Bearer {first['token']}",
+                             "X-Delno-Run-Id": first["run_id"],
+                             "X-Delno-Profile-Id": identities[2]["profile"]},
+                    json={"name": "get_tenant_summary", "arguments": {}})
+                assert wrong_profile.status_code == 403
+                # Background runs are system-scoped and cannot send mail.
+                assert "send_mail_draft" not in identities[1]["grants"]
             denied_handler = mcp_tool_handlers._make_tool_handler(
                 "delno_office", "send_mail_draft", 5)
             authorized = delno_run_scope.bind_run_scope(
-                token=identities[0]["token"], run_id=identities[0]["run_id"],
-                profile_id=identities[0]["profile"])
+                token=identities[1]["token"], run_id=identities[1]["run_id"],
+                profile_id=identities[1]["profile"])
             try:
                 assert json.loads(denied_handler({})) == {
                     "error": "delno_mcp_rejected", "status": 403,

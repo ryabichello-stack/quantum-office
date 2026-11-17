@@ -21,12 +21,15 @@ from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.platform_event import PlatformEvent
 from app.operator.tools import register_builtin_tools
+from app.operator.tools.builtin import UpdateTenantSettingsTool
 from app.services.hermes_nous.run_bindings import bind_run_token, revoke_binding
 from app.models.hermes_runtime import HermesRunBinding
 from app.models.agent_task import AgentRun
+from app.models.agent_task import AgentTask
 from app.core.security import create_access_token
 from app.services.hermes_nous.run_tokens import issue_run_token, revoke_run_token
 from app.services.mcp_gateway import ensure_mcp_api_key
+from app.services.agent_schedule import execute_scheduled_task
 
 
 @pytest.fixture()
@@ -315,3 +318,66 @@ def test_terminal_run_and_revoked_grant_cannot_be_replayed(gateway, monkeypatch)
     assert client.get("/v1/mcp/tools", headers=_headers(a)).status_code == 401
     assert client.get("/v1/mcp/tools", headers={"Authorization": f"Bearer {a['key']}",
                        "X-Delno-Run-Id": a["run_id"], "X-Delno-Profile-Id": a["profile"]}).status_code == 401
+
+
+def test_company_summary_does_not_disclose_mcp_key_or_run_grants(gateway, monkeypatch):
+    client, _, (a, _) = gateway
+    monkeypatch.setenv("DELNO_MCP_REQUIRE_RUN_BINDING", "1")
+    response = client.post("/v1/mcp/tools/call", headers=_headers(a),
+                           json={"name": "get_tenant_summary", "arguments": {}})
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["tenant_slug"] == a["slug"]
+    assert "mcp_api_key" not in str(result)
+    assert "run_tokens" not in str(result)
+
+
+def test_settings_tool_cannot_replace_auth_or_run_state(gateway):
+    _, sessions, (a, _) = gateway
+    with sessions() as db:
+        ctx = TenantContext(tenant_id=a["id"], tenant_slug=a["slug"],
+                            user_id=a["user_id"], role="tenant_owner")
+        result = UpdateTenantSettingsTool().run(db, ctx, patch={
+            "mcp_api_key": "attacker-key", "hermes_nous": {"run_tokens": {}},
+        })
+        assert not result.ok
+        tenant = db.query(Tenant).filter(Tenant.id == a["id"]).one()
+        assert tenant.settings["mcp_api_key"] == a["key"]
+        assert tenant.settings["hermes_nous"]["run_tokens"]
+        allowed = UpdateTenantSettingsTool().run(db, ctx, patch={"greeting": "Добрый день"})
+        assert allowed.ok
+        assert allowed.data["settings"] == {"greeting": "Добрый день"}
+        assert "mcp_api_key" not in str(allowed.data)
+
+
+def test_scheduler_uses_system_scope_and_rechecks_owner(gateway, monkeypatch):
+    _, sessions, (a, _) = gateway
+    monkeypatch.setattr("app.services.hermes_nous.flags.is_hermes_nous_enabled", lambda *_args: True)
+    calls = []
+
+    def fake_create_run(_db, ctx, **kwargs):
+        calls.append((ctx, kwargs))
+        return {"output": "done", "run_id": "scheduled-test"}
+
+    monkeypatch.setattr("app.services.hermes_nous.bridge.create_run", fake_create_run)
+    with sessions() as db:
+        system_task = AgentTask(tenant_id=a["id"], owner_user_id=None,
+                                goal="Summarize new lead", trigger_kind="schedule")
+        owned_task = AgentTask(tenant_id=a["id"], owner_user_id=a["user_id"],
+                               goal="Check inbox", trigger_kind="schedule")
+        db.add_all([system_task, owned_task])
+        db.commit()
+        assert execute_scheduled_task(db, system_task)["ok"]
+        assert calls[-1][0].role == "system"
+        assert calls[-1][1]["mode"] == "system_event"
+        assert execute_scheduled_task(db, owned_task)["ok"]
+        assert calls[-1][0].role == "tenant_owner"
+        assert calls[-1][1]["mode"] == "tasks"
+        user = db.query(User).filter(User.id == a["user_id"]).one()
+        user.role = "tenant_admin"
+        db.commit()
+        assert execute_scheduled_task(db, owned_task)["ok"]
+        assert calls[-1][0].role == "tenant_admin"
+        db.delete(user)
+        db.commit()
+        assert execute_scheduled_task(db, owned_task)["error"] == "task_owner_revoked"
