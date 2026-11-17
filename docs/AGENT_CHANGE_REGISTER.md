@@ -4,6 +4,14 @@
 
 Формат записи: дата (МСК), автор, цель, файлы, изменение, проверка, статус, следующий шаг/ограничение.
 
+## 2026-11-17 ~10:15 МСК — Cursor: боевой выпуск боты+календарь+файлы
+
+- Ветка `cursor/delno-bots-calendar-files-9b51` / PR #113 выложена на C4B: api/web/calendar/files/conference/mail.
+- Compose: `TENANT_FILES_ROOT=/data/tenants`, volume `delno-tenant-files` смонтирован в api. Backup: `/opt/delno/backups/prod-bots-cal-files-*`.
+- Alembic: таблицы уже были → `stamp 009_tenant_folders`. Health api/calendar/files/conference/mail = 200. Каналы delno-public TG+MAX active.
+- Образы rollback: `delno-*:before-bots-cal-files-*`. Телефонию/Mango/Asterisk/VPN не трогали.
+- Осталось: живой e2e ботов→лид; UI smoke календарь/файлы; merge #113 после зелёного CI.
+
 ## 2026-11-17 — Cursor: боевой контур боты + календарь + файлы
 
 - Ветка `cursor/delno-bots-calendar-files-9b51` (base `main`): слиты #112 (публичные боты) и #111 (календарь/файлы). Конфликт `channel_auto_reply`: сначала `delno-public` marketing bot, иначе identity для встреч.
