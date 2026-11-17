@@ -4,6 +4,15 @@
 
 Формат записи: дата (МСК), автор, цель, файлы, изменение, проверка, статус, следующий шаг/ограничение.
 
+## 2026-11-17 ~10:20 МСК — Cursor: #113 merged + prod e2e
+
+- GitHub: PR #113 влит в `main` (`4fed2eb`).
+- E2E `delno-public` marketing bot: ответ по фактам → подтверждение телефона → lead создан.
+- Файлы: tenant A видит свой файл; B list пуст; download B → `file_not_found` (IDOR закрыт).
+- Календарь: встреча создана у A, у B той же записи нет.
+- Webhook TG smoke из контейнера API (секрет не логировался). Health 200.
+- Телефонию/Mango/Asterisk/VPN не трогали.
+
 ## 2026-11-17 ~10:15 МСК — Cursor: боевой выпуск боты+календарь+файлы
 
 - Ветка `cursor/delno-bots-calendar-files-9b51` / PR #113 выложена на C4B: api/web/calendar/files/conference/mail.
