@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from unittest.mock import patch
 
 from app.core.db import Base
 from app.core.tenant import TenantContext
@@ -53,3 +54,19 @@ def test_save_secret_masks_login():
     db.refresh(tenant)
     secrets = (tenant.settings or {}).get("secrets") or {}
     assert secrets["mango_sip"]["password"] == "mD0Q^m8HsBgK"
+
+
+def test_bot_token_not_duplicated_in_tenant_settings():
+    db = _db()
+    tenant = Tenant(slug="bot-test", name="Bot", settings={}, is_active=True)
+    db.add(tenant)
+    db.commit()
+    db.refresh(tenant)
+    ctx = TenantContext(tenant_id=tenant.id, tenant_slug=tenant.slug, user_id=None, role="tenant_owner")
+    token = "123456789:AAHabcdefghijklmnopqrstuvwxyz1234567890"
+    with patch("app.services.telegram_connect.connect_telegram_branded", return_value={"ok": True, "account": {"bot_username": "testbot"}}):
+        result = save_secret(db, ctx, kind="telegram_bot", password=token)
+    db.refresh(tenant)
+    assert result["configured"] is True
+    assert token not in str(tenant.settings)
+    assert tenant.settings["secrets"]["telegram_bot"]["has_token"] is True

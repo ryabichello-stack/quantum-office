@@ -73,6 +73,7 @@ from app.operator.tools.web import WebBrowseTool, WebFetchTool, WebResearchTool,
 from app.operator.tools.website_import_tool import OfficeImportWebsiteTool
 from app.operator.tools.kb_build_tool import OfficeBuildKbDraftTool, OfficeConfirmKbDraftTool
 from app.operator.tools.registry import registry
+from app.operator.tools.tenant_files import FileFoldersTool, FileFolderCreateTool, FileCreateTextTool, FileReadTextTool, FileMoveTool, FileDeleteTool, FileFolderDeleteTool
 
 
 def register_builtin_tools() -> None:
@@ -89,6 +90,8 @@ def register_builtin_tools() -> None:
     registry.register(SuggestCalendarSlotsTool())
     registry.register(SendMailDraftTool())
     registry.register(ListFilesTool())
+    for tool in (FileFoldersTool(), FileFolderCreateTool(), FileCreateTextTool(), FileReadTextTool(), FileMoveTool(), FileDeleteTool(), FileFolderDeleteTool()):
+        registry.register(tool)
     registry.register(CreateConferenceTool())
     # CRM-lite (local leads funnel)
     registry.register(CrmFunnelTool())

@@ -7,9 +7,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.core.config import get_settings
+
 from app.core.tenant import TenantContext
 from app.models.channel_account import ChannelAccount
 from app.services import telegram_connect
+
+
+@pytest.fixture(autouse=True)
+def encryption_key(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET", "test-only-secret-with-enough-entropy-for-bot-tests-123")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture

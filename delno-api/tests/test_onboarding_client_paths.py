@@ -64,6 +64,63 @@ def _tenant(db, slug: str, **settings) -> Tenant:
     return tenant
 
 
+def test_shared_outreach_is_never_opened_for_another_company(db, monkeypatch):
+    from app.adapters.connectors.outreach import OutreachConnector
+    from app.services.connectors import connector_config_for
+
+    monkeypatch.setenv("OUTREACH_BASE_URL", "http://shared-quantum-outreach:8012")
+    get_settings.cache_clear()
+    client = _tenant(db, "unrelated-client")
+    service = _tenant(db, "quantum-labs", service_tenant=True)
+    assert OutreachConnector()._base(connector_config_for(db, _ctx(client), "outreach")) == ""
+    assert OutreachConnector()._base(connector_config_for(db, _ctx(service), "outreach")) == "http://shared-quantum-outreach:8012"
+    get_settings.cache_clear()
+
+
+def test_outgoing_file_upload_is_tenant_scoped(db, tmp_path, monkeypatch):
+    import asyncio
+    from io import BytesIO
+    from fastapi import UploadFile
+    from app.services.tenant_attachments import save_file, attachment_for
+    from app.services.tenant_files import tenant_prefix
+
+    monkeypatch.setattr("app.services.tenant_files.tenants_root", lambda: tmp_path)
+    first = _tenant(db, "files-a")
+    second = _tenant(db, "files-b")
+    payload = b"spreadsheet bytes"
+    result = asyncio.run(save_file(db, _ctx(first), UploadFile(file=BytesIO(payload), filename="offer.xlsx")))
+    assert result["name"] == "offer.xlsx"
+    assert attachment_for(db, _ctx(first), result["id"])["name"] == "offer.xlsx"
+    assert tenant_prefix(first.id).exists()
+    with pytest.raises(ValueError, match="file_not_found"):
+        attachment_for(db, _ctx(second), result["id"])
+
+
+def test_company_folders_and_generated_files_do_not_cross_tenants(db, tmp_path, monkeypatch):
+    from app.services import tenant_attachments as files
+
+    monkeypatch.setattr("app.services.tenant_files.tenants_root", lambda: tmp_path)
+    first = _tenant(db, "folder-a")
+    second = _tenant(db, "folder-b")
+    a, b = _ctx(first), _ctx(second)
+    folder = files.create_folder(db, a, "Предложения")
+    item = files.create_text_file(db, a, "offer.md", "Предложение для клиента", folder["id"])
+    assert files.list_files(db, a)[0]["folder_id"] == folder["id"]
+    assert files.read_text_file(db, a, item["id"])["content"] == "Предложение для клиента"
+    assert files.list_files(db, b) == []
+    assert files.list_folders(db, b) == []
+    with pytest.raises(ValueError, match="file_not_found"):
+        files.read_text_file(db, b, item["id"])
+    with pytest.raises(ValueError, match="folder_not_found"):
+        files.create_text_file(db, b, "leak.txt", "wrong tenant", folder["id"])
+    with pytest.raises(ValueError, match="folder_not_empty"):
+        files.delete_folder(db, a, folder["id"])
+    files.move_file(db, a, item["id"], None)
+    files.delete_folder(db, a, folder["id"])
+    files.delete_file(db, a, item["id"])
+    assert files.list_files(db, a) == []
+
+
 def _ctx(tenant: Tenant) -> TenantContext:
     return TenantContext(tenant_id=tenant.id, tenant_slug=tenant.slug, role="tenant_owner")
 
@@ -287,7 +344,7 @@ def test_two_companies_do_not_share_meetings_or_keys(db, tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
-def test_book_when_busy_offers_other_time_and_does_not_create(db, monkeypatch):
+def test_internal_calendar_books_without_external_provider(db, monkeypatch):
     tenant = _tenant(db, "busy")
     ctx = _ctx(tenant)
 
@@ -318,9 +375,9 @@ def test_book_when_busy_offers_other_time_and_does_not_create(db, monkeypatch):
         db, ctx, "book_meeting", {"start": "2026-11-16T10:00:00", "email": "c@client.test"}
     )
     assert out["ok"] is True
-    assert out.get("booked") is False
-    assert "2026-11-16T15:00:00" in out["message_ru"]
-    assert not (tenant.settings or {}).get("appointments")
+    assert out.get("booked") is True
+    assert out["appointment"]["sync_status"] == "local_only"
+    assert (tenant.settings or {}).get("appointments")
 
 
 def test_book_then_reschedule_confirm_cancel_same_record(db):
@@ -339,8 +396,8 @@ def test_book_then_reschedule_confirm_cancel_same_record(db):
         channel="telegram",
     )
     assert booked["booked"] is True
-    assert booked["appointment"]["conference_url"]
-    assert "c@client.test" in booked["message_ru"] or booked["mail"]["ok"]
+    assert booked["appointment"]["conference_url"] == ""
+    assert "Почта не подключена" in booked["message_ru"]
     apt_id = booked["appointment"]["id"]
     moved = handle_appointment(
         db,
@@ -353,6 +410,62 @@ def test_book_then_reschedule_confirm_cancel_same_record(db):
     assert confirmed["appointment"]["status"] == "confirmed"
     cancelled = handle_appointment(db, ctx, "cancel_meeting", {"appointment_id": apt_id})
     assert cancelled["appointment"]["status"] == "cancelled"
+
+
+def test_internal_calendar_rejects_overlap_and_keeps_tenants_separate(db):
+    first = _tenant(db, "calendar-first")
+    second = _tenant(db, "calendar-second")
+    params = {"start": "2026-12-10T10:00:00+03:00", "title": "Консультация"}
+    a = handle_appointment(db, _ctx(first), "book_meeting", params)
+    conflict = handle_appointment(db, _ctx(first), "book_meeting", params)
+    b = handle_appointment(db, _ctx(second), "book_meeting", params)
+    assert a["booked"] is True
+    assert conflict["booked"] is False
+    assert b["booked"] is True
+
+
+def test_public_caller_cannot_cancel_other_phone_or_guess_id(db):
+    tenant = _tenant(db, "calendar-identity")
+    booked = handle_appointment(
+        db, _ctx(tenant), "book_meeting",
+        {"start": "2026-12-10T10:00:00+03:00", "phone": "+79001112233"},
+    )
+    from app.services.appointments import current_verified_phone
+
+    public = TenantContext(tenant_id=tenant.id, tenant_slug=tenant.slug, role="public")
+    token = current_verified_phone.set("+79009998877")
+    try:
+        denied = handle_appointment(
+            db, public, "cancel_meeting",
+            {"appointment_id": booked["appointment"]["id"], "phone": "+79001112233"},
+            channel="voice",
+        )
+    finally:
+        current_verified_phone.reset(token)
+    assert denied["ok"] is False
+    assert denied["error"] == "appointment_not_found_or_unverified"
+
+
+def test_shared_phone_requires_appointment_choice(db):
+    tenant = _tenant(db, "calendar-shared-phone")
+    ctx = _ctx(tenant)
+    for hour in (10, 12):
+        assert handle_appointment(
+            db, ctx, "book_meeting",
+            {"start": f"2026-12-10T{hour}:00:00+03:00", "phone": "+79001112233"},
+        )["booked"]
+    from app.services.appointments import current_verified_phone
+
+    token = current_verified_phone.set("+79001112233")
+    try:
+        ambiguous = handle_appointment(
+            db, TenantContext(tenant.id, tenant.slug, role="public"),
+            "cancel_meeting", {}, channel="voice",
+        )
+    finally:
+        current_verified_phone.reset(token)
+    assert ambiguous["error"] == "ambiguous_appointment"
+    assert len(ambiguous["choices"]) == 2
 
 
 def test_voice_and_messenger_share_booking(db, monkeypatch):

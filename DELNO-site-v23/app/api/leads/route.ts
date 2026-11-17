@@ -16,7 +16,7 @@ const clean = (value: unknown, max = 200) =>
 export async function POST(request: Request) {
   const apiBase = (process.env.DELNO_API_URL || process.env.NEXT_PUBLIC_DELNO_API_URL || "")
     .replace(/\/$/, "");
-  const tenantSlug = process.env.DELNO_TENANT_SLUG || "delno-demo";
+  const tenantSlug = process.env.DELNO_TENANT_SLUG || "delno-public";
 
   let input: LeadPayload;
   try {

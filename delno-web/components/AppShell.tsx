@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  CalendarDays,
   FileText,
+  FolderOpen,
   LogOut,
   MessageCircle,
   Settings2,
@@ -20,6 +22,8 @@ const nav = [
   { href: "/dashboard/hermes", label: "Hermes", hint: "Главный помощник", Icon: Sparkles, primary: true },
   { href: "/dashboard/inbox", label: "Диалоги", hint: "Переписки и звонки", Icon: MessageCircle },
   { href: "/dashboard/leads", label: "Заявки", hint: "Лиды с сайта", Icon: UserRound },
+  { href: "/dashboard/calendar", label: "Календарь", hint: "Встречи и записи", Icon: CalendarDays },
+  { href: "/dashboard/files", label: "Файлы", hint: "Документы и таблицы", Icon: FolderOpen },
   { href: "/dashboard/knowledge", label: "Знания", hint: "База ответов", Icon: FileText },
   { href: "/dashboard/billing", label: "Затраты", hint: "Токены и деньги", Icon: Wallet },
 ];

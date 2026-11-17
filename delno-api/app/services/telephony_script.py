@@ -44,6 +44,11 @@ AVAILABLE_TOOLS: list[dict[str, str]] = [
         "title": "Только ВКС",
         "hint": "Ссылка на конференцию без слота",
     },
+    {"id": "book_meeting", "title": "Записать клиента", "hint": "Запись в календарь DELNO"},
+    {"id": "suggest_other_time", "title": "Предложить время", "hint": "Свободные окна DELNO"},
+    {"id": "reschedule_meeting", "title": "Перенести встречу", "hint": "Изменить запись клиента"},
+    {"id": "confirm_meeting", "title": "Подтвердить встречу", "hint": "Подтверждение записи"},
+    {"id": "cancel_meeting", "title": "Отменить встречу", "hint": "Отмена записи"},
     {
         "id": "hangup_call",
         "title": "Завершить звонок",
@@ -53,8 +58,11 @@ AVAILABLE_TOOLS: list[dict[str, str]] = [
 
 _DEFAULT_TOOLS = [
     "get_company_knowledge",
-    "check_calendar",
-    "create_calendar_event",
+    "book_meeting",
+    "suggest_other_time",
+    "reschedule_meeting",
+    "confirm_meeting",
+    "cancel_meeting",
     "hangup_call",
 ]
 

@@ -114,14 +114,14 @@ _BUILTIN: tuple[Instrument, ...] = (
     Instrument(
         id="files",
         title="Файлы",
-        hint="Диск, откуда брать презентации и документы. Можно позже",
+        hint="Файлы компании для писем и других поручений. Можно позже",
         optional=True,
         order=60,
         group="office",
         connect_tool="credentials.open_form",
         stitches_with=("mail",),
         stitch_ru={
-            "mail": "Файлы и почта: презентацию с диска можно приложить к письму клиенту.",
+            "mail": "Файлы и почта: выбранный файл можно приложить к письму клиенту по вашему правилу.",
         },
         plain_offer=_offer("Файлы"),
     ),

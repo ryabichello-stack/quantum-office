@@ -37,8 +37,8 @@ def test_outreach_stub_preview_and_stage():
     assert "Acme" in preview.data["subject"] or "Acme" in preview.data["body"]
 
     staged = conn.stage_send(tenant_slug="demo", config={}, to="a@b.ru", company="Acme")
-    assert staged.ok is True
-    assert staged.data["staged"] is True
+    assert staged.ok is False
+    assert staged.data["staged"] is False
     assert staged.data["sent"] is False
     assert staged.data["dry_run"] is True
 

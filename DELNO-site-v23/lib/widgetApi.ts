@@ -1,6 +1,6 @@
 import { prepareTtsText } from "./ttsText";
 
-const SITE_KEY = process.env.NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY || "demo_dlno";
+const SITE_KEY = process.env.NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY || "delno_public";
 
 export function getBasePath() {
   return process.env.NEXT_PUBLIC_BASE_PATH || "";

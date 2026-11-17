@@ -65,18 +65,18 @@ class MailConnector:
         to: str,
         subject: str,
         body: str,
+        attachment: dict[str, str] | None = None,
     ) -> ConnectorResult:
         base = self._base(config)
         if not base:
             return ConnectorResult(
-                ok=True,
+                ok=False,
                 configured=False,
                 kind=self.kind,
                 error="not_configured",
-                message="Draft accepted locally; mailer not wired yet",
+                message="Почтовый сервис недоступен; письмо не отправлено",
                 data={
-                    "queued": False,
-                    "stub": True,
+                    "sent": False,
                     "to": to,
                     "subject": subject[:200],
                     "body_preview": body[:240],
@@ -100,8 +100,12 @@ class MailConnector:
                 "tenant_slug": tenant_slug, "tenant_id": access["tenant_id"],
                 "provider": access["provider"], "username": access["username"],
                 "password": access["password"],
+                "sender_name": str(config.get("sender_name") or tenant_slug),
+                "attachment_name": (attachment or {}).get("name") or "",
+                "attachment_base64": (attachment or {}).get("content_base64") or "",
             },
             token=self._token(config),
+            headers={"X-Tenant-Id": access["tenant_id"]},
         )
         if err or not isinstance(resp, dict) or not resp.get("sent"):
             return ConnectorResult(ok=False, configured=True, kind=self.kind, error="send_failed", message=err or "Письмо не отправлено")

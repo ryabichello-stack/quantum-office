@@ -451,7 +451,7 @@ def list_secret_status(db: Session, ctx: TenantContext) -> dict[str, Any]:
         items.append(
             {
                 "kind": kind,
-                "configured": bool(row.get("password") or row.get("login")),
+                "configured": bool(row.get("password") or row.get("login") or row.get("has_token")),
                 "login_masked": _mask(str(row.get("login") or "")),
                 "foreign_consent": bool(row.get("foreign_consent_at")),
                 "updated_at": row.get("updated_at"),
@@ -505,8 +505,11 @@ def save_secret(
         login_s = normalize_mango_login(login_s)
     if login_s:
         current["login"] = login_s[:120]
-    if password_s:
+    if password_s and kind not in ("telegram_bot", "max_bot"):
         current["password"] = password_s[:max_pw]
+    elif kind in ("telegram_bot", "max_bot"):
+        # The bot token belongs only in the encrypted ChannelAccount record.
+        current.pop("password", None)
     if kind in _FOREIGN_SECRET_KINDS and foreign_consent:
         current["foreign_consent_at"] = datetime.now(timezone.utc).isoformat()
     for key, value in (extra or {}).items():
@@ -539,9 +542,9 @@ def save_secret(
     )
     db.commit()
     if kind == "telegram_bot":
-        msg = "Токен Telegram сохранён. В чат не попал."
+        msg = "Подключаю Telegram. Токен в чат не попал."
     elif kind == "max_bot":
-        msg = "Токен MAX сохранён. В чат не попал."
+        msg = "Подключаю MAX. Токен в чат не попал."
     elif kind in CLOUD_KINDS or kind in CALENDAR_KINDS or kind in MAIL_KINDS or kind in CONFERENCE_KINDS:
         msg = "Данные сохранены в сейфе тенанта. В чат не попали."
     else:
@@ -557,7 +560,7 @@ def save_secret(
         try:
             from app.services.telegram_connect import connect_telegram_branded
 
-            connected = connect_telegram_branded(db, ctx, str(current.get("password") or ""))
+            connected = connect_telegram_branded(db, ctx, password_s)
             out["channel_connect"] = {
                 k: connected.get(k)
                 for k in ("ok", "error", "account", "bot", "username", "message_ru", "webhook")
@@ -572,17 +575,17 @@ def save_secret(
                 )
             else:
                 out["message"] = (
-                    "Токен сохранён в сейфе, но подключить канал не удалось: "
+                    "Подключить канал не удалось: "
                     + str(connected.get("error") or connected.get("message_ru") or "ошибка")
                 )
         except Exception as exc:  # noqa: BLE001
             out["channel_connect"] = {"ok": False, "error": "telegram_connect_failed"}
-            out["message"] = f"Токен сохранён, connect упал: {str(exc)[:120]}"
+            out["message"] = "Подключить Telegram не удалось. Повторите попытку."
     if kind == "max_bot":
         try:
             from app.services.max_connect import connect_max_branded
 
-            connected = connect_max_branded(db, ctx, str(current.get("password") or ""))
+            connected = connect_max_branded(db, ctx, password_s)
             out["channel_connect"] = {
                 k: connected.get(k)
                 for k in ("ok", "error", "account", "message_ru", "webhook")
@@ -592,12 +595,20 @@ def save_secret(
                 out["message"] = "MAX бот подключён. Токен в чат не попал."
             else:
                 out["message"] = (
-                    "Токен сохранён в сейфе, но подключить MAX не удалось: "
+                    "Подключить MAX не удалось: "
                     + str(connected.get("error") or "ошибка")
                 )
         except Exception as exc:  # noqa: BLE001
             out["channel_connect"] = {"ok": False, "error": "max_connect_failed"}
-            out["message"] = f"Токен сохранён, MAX connect упал: {str(exc)[:120]}"
+            out["message"] = "Подключить MAX не удалось. Повторите попытку."
+    if kind in ("telegram_bot", "max_bot"):
+        connected_ok = bool((out.get("channel_connect") or {}).get("ok"))
+        current["has_token"] = connected_ok
+        blob[kind] = current
+        settings["secrets"] = blob
+        tenant.settings = settings
+        db.commit()
+        out["configured"] = connected_ok
     if kind == "mango_sip":
         try:
             from app.models.phone_number import PhoneNumber

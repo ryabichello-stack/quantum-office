@@ -129,7 +129,7 @@ class SuggestCalendarSlotsTool:
             "source": {
                 "type": "string",
                 "description": "mailru | yandex | google | outlook",
-                "default": "mailru",
+                "default": "tenant",
             },
         },
         "required": ["start"],
@@ -176,8 +176,8 @@ class SuggestCalendarSlotsTool:
 class SendMailDraftTool:
     name = "send_mail_draft"
     description = (
-        "Send or stage an email draft via mail connector. "
-        "Without MAILER_BASE_URL returns stub queued=false payload."
+        "Send email through this company's connected mailbox. "
+        "Optional attachment_id selects one file uploaded by this company."
     )
     critical_write = True
     parameters_schema = {
@@ -186,6 +186,7 @@ class SendMailDraftTool:
             "to": {"type": "string"},
             "subject": {"type": "string"},
             "body": {"type": "string"},
+            "attachment_id": {"type": "string", "description": "ID выбранного файла этой компании из list_files(source=tenant)"},
         },
         "required": ["to", "subject", "body"],
     }
@@ -209,12 +210,20 @@ class SendMailDraftTool:
             )
         config = dict(connector_config_for(db, ctx, "mail"))
         config["_mail_delivery_access"] = access
+        attachment = None
+        if params.get("attachment_id"):
+            from app.services.tenant_attachments import attachment_for
+            try:
+                attachment = attachment_for(db, ctx, str(params["attachment_id"]))
+            except (ValueError, OSError):
+                return ToolResult(ok=False, data={"error": "attachment_unavailable"}, message="Выбранный файл этой компании не найден; письмо не отправлено.")
         result = connector.send_draft(  # type: ignore[attr-defined]
             tenant_slug=ctx.tenant_slug,
             config=config,
             to=to,
             subject=subject,
             body=body,
+            attachment=attachment,
         )
         write_audit(
             db,
@@ -229,8 +238,8 @@ class SendMailDraftTool:
 class ListFilesTool:
     name = "list_files"
     description = (
-        "List files/folders via files connector. "
-        "Sources: mailru | yadisk | gdrive | onedrive | local (stub until FILES_BASE_URL)."
+        "List this company's uploaded files (source=tenant) or connected cloud files. "
+        "Sources: tenant | mailru | yadisk | gdrive | onedrive."
     )
     critical_write = False
     parameters_schema = {
@@ -239,14 +248,26 @@ class ListFilesTool:
             "source": {
                 "type": "string",
                 "default": "mailru",
-                "description": "mailru | yadisk | gdrive | onedrive | local",
+            "description": "tenant | mailru | yadisk | gdrive | onedrive",
             },
             "path": {"type": "string", "default": "/"},
+            "limit": {"type": "integer", "default": 100},
+            "offset": {"type": "integer", "default": 0},
         },
     }
 
     def run(self, db: Session, ctx: TenantContext, **params: Any) -> ToolResult:
-        source = str(params.get("source") or "local").strip() or "local"
+        source = str(params.get("source") or "tenant").strip() or "tenant"
+        if source == "tenant":
+            from app.services.tenant_attachments import list_files
+            from app.services.tenant_attachments import list_folders
+            try:
+                limit = max(1, min(500, int(params.get("limit") or 100)))
+                offset = max(0, int(params.get("offset") or 0))
+            except (TypeError, ValueError):
+                return ToolResult(ok=False, data={"error": "invalid_pagination"}, message="invalid_pagination")
+            rows = list_files(db, ctx, limit=limit, offset=offset)
+            return ToolResult(ok=True, data={"source": "tenant", "items": rows, "folders": list_folders(db, ctx), "next_offset": offset + len(rows) if len(rows) == limit else None}, message=f"Файлов на странице: {len(rows)}")
         path = str(params.get("path") or "/").strip() or "/"
         connector = get_connector("files")
         assert connector is not None
@@ -308,7 +329,9 @@ class CreateConferenceTool:
         when_text = str(params.get("when_text") or "").strip()
         connector = get_connector("conference")
         assert connector is not None
-        config = connector_config_for(db, ctx, "conference")
+        from app.services.connector_connect import conference_delivery_access
+        config = dict(connector_config_for(db, ctx, "conference"))
+        config["_conference_delivery_access"] = conference_delivery_access(db, ctx, provider)
         result = connector.create(  # type: ignore[attr-defined]
             tenant_slug=ctx.tenant_slug,
             config=config,

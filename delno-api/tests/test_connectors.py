@@ -36,10 +36,10 @@ def test_mail_stub_send_draft():
         subject="Hi",
         body="Body",
     )
-    assert result.ok is True
+    assert result.ok is False
     assert result.configured is False
     assert result.error == "not_configured"
-    assert result.data["stub"] is True
+    assert result.data["sent"] is False
 
 
 def test_calendar_stub_suggest():
@@ -68,9 +68,9 @@ def test_conference_stub_create():
         invitees=["a@b.c"],
         provider="zoom",
     )
-    assert result.ok is True
+    assert result.ok is False
     assert result.data["provider"] == "zoom"
-    assert "stub.zoom.delno.local" in result.data["join_url"]
+    assert "join_url" not in result.data
 
 
 def test_office_tools_registered_confirmation():
@@ -102,9 +102,8 @@ def test_office_tools_run_stub(monkeypatch):
     assert files.ok is True
 
     conf = CreateConferenceTool().run(db, ctx, title="Meet", provider="jitsi")
-    assert conf.ok is True
-    assert conf.data["stub"] is True
-    assert conf.data["provider"] == "jitsi"
+    assert conf.ok is False
+    assert conf.data["error"] == "not_configured"
 
 
 def test_list_and_enable_connector_service():

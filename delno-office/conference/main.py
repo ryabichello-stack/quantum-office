@@ -45,6 +45,8 @@ def _check_token(
 
 
 class ConferenceCreateRequest(BaseModel):
+    tenant_id: str = Field(..., min_length=1, max_length=120)
+    access_token: str = Field(default="", max_length=4096)
     title: str = Field(default="Встреча Quantum Labs", max_length=200)
     provider: Optional[str] = Field(
         default=None,
@@ -61,7 +63,7 @@ class ConferenceCreateRequest(BaseModel):
         default=None,
         description="PUBLIC | ADMINS | USERS — Telemost waiting room",
     )
-    send_invites: bool = Field(default=True)
+    send_invites: bool = Field(default=False)
 
 
 class ConferenceCreateResponse(BaseModel):
@@ -105,6 +107,7 @@ def conference_providers(x_webhook_token: Optional[str] = Header(None)):
 def create_conference(
     req: ConferenceCreateRequest,
     x_webhook_token: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
 ):
     """
     On-demand conference:
@@ -112,14 +115,23 @@ def create_conference(
     2) optional email invites
     """
     _check_token(x_webhook_token)
+    if not x_tenant_id or x_tenant_id.strip() != req.tenant_id.strip():
+        raise HTTPException(status_code=403, detail="tenant_mismatch")
+    if req.send_invites:
+        raise HTTPException(status_code=403, detail="use_tenant_mail_for_invites")
+    selected_provider = (req.provider or providers.DEFAULT_PROVIDER).strip().lower()
+    if selected_provider != "jitsi" and not req.access_token.strip():
+        raise HTTPException(status_code=403, detail="tenant_credentials_required")
 
     title = (req.title or "").strip() or "Встреча Quantum Labs"
     try:
-        provider = providers.get_provider(req.provider)
+        provider = providers.get_provider(selected_provider)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    created = provider.create(title=title, waiting_room_level=req.waiting_room_level)
+    created = provider.create(title=title, waiting_room_level=req.waiting_room_level, access_token=req.access_token.strip())
+    if created.get("stub"):
+        raise HTTPException(status_code=502, detail="provider_not_connected")
     join_url = str(created.get("join_url") or "")
     conf_id = str(created.get("conference_id") or "")
     stub = bool(created.get("stub"))

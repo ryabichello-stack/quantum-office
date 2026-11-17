@@ -64,6 +64,9 @@ def _check_token(x_webhook_token: Optional[str] = None) -> None:
 
 
 class FileSendRequest(BaseModel):
+    tenant_id: str = Field(..., min_length=1, max_length=80)
+    credentials: Optional[FileCredentials] = None
+    delivery_credentials: dict[str, str] = Field(default_factory=dict)
     source: FetchSource = Field(
         ...,
         description="Where to read the file from",
@@ -249,11 +252,29 @@ def files_fetch(
 def files_send(
     req: FileSendRequest,
     x_webhook_token: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
 ):
     """Fetch file from source and send via email or Telegram."""
     _check_token(x_webhook_token)
+    tenant_scope.require_tenant(req.tenant_id, x_tenant_id)
+    if not x_tenant_id or x_tenant_id.strip() != req.tenant_id.strip():
+        raise HTTPException(status_code=403, detail="tenant_header_required")
+    if req.source in {"local", "repo", "github"}:
+        raise HTTPException(status_code=403, detail="tenant_file_source_required")
+    source_creds = _creds_dict(req.credentials) or {}
+    if source_creds.get("allow_env_fallback") or not (
+        source_creds.get("token") if req.source != "mailru" else
+        (source_creds.get("username") or source_creds.get("login")) and source_creds.get("password")
+    ):
+        raise HTTPException(status_code=403, detail="tenant_source_credentials_required")
+    delivery_creds = req.delivery_credentials
+    if req.via in {"email", "mail"} and not all(delivery_creds.get(key) for key in ("host", "username", "password")):
+        raise HTTPException(status_code=403, detail="tenant_delivery_credentials_required")
+    if req.via in {"telegram", "tg"} and not delivery_creds.get("bot_token"):
+        raise HTTPException(status_code=403, detail="tenant_delivery_credentials_required")
     try:
-        f = sources.fetch(req.source, req.path, ref=req.ref, repo=req.repo)
+        with sources.credentials_override(_bound_creds(req)):
+            f = sources.fetch(req.source, req.path, ref=req.ref, repo=req.repo)
     except SourceError as exc:
         logger.warning("fetch failed: %s %s", exc.code, exc.message)
         return {
@@ -269,6 +290,7 @@ def files_send(
         f,
         caption=req.caption,
         subject=req.subject,
+        credentials=req.delivery_credentials,
     )
     if not ok:
         return {

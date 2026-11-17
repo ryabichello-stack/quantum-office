@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.adapters.channels import get_channel_adapter
 from app.core.db import get_db
 from app.services.channel_auto_reply import process_inbound_auto_reply
+from app.services.channel_crypto import bot_token, decrypt
 from app.services.channel_router import ChannelContext
 from app.services.events import emit_event
 from app.services.inbound_messages import resolve_channel_account
@@ -52,7 +53,9 @@ async def _handle_channel_webhook(
         raise HTTPException(status_code=503, detail=f"{channel_type}_adapter_unavailable")
 
     meta = account.meta if isinstance(account.meta, dict) else {}
-    expected_secret = meta.get("webhook_secret")
+    expected_secret = decrypt(meta.get("webhook_secret"))
+    if not expected_secret:
+        raise HTTPException(status_code=403, detail="webhook_secret_missing")
     if not adapter.verify_webhook_secret(
         secret_header=secret_header,
         expected_secret=str(expected_secret) if expected_secret else None,
@@ -71,7 +74,7 @@ async def _handle_channel_webhook(
 
     account.tenant = tenant  # type: ignore[attr-defined]
     ctx = _context_for_account(account)
-    credentials = account.credentials_encrypted if isinstance(account.credentials_encrypted, dict) else {}
+    credentials = {"bot_token": bot_token(account.credentials_encrypted)}
 
     inbounds = adapter.parse_webhook(payload)
     emit_event(

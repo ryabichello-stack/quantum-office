@@ -89,3 +89,75 @@ def test_env_calendar_hidden_until_service_flag():
     )
     assert allowed.status_code == 200
     assert _summaries(allowed) == ["Env secret"]
+
+
+def test_change_rejects_foreign_tenant_and_missing_credentials(monkeypatch):
+    class Provider:
+        name = "google"
+
+        def configured(self):
+            return bool(providers.google_token())
+
+        def delete_event(self, event_id):
+            raise AssertionError("must not call provider without tenant credentials")
+
+    monkeypatch.setattr(main, "_resolve_provider", lambda _: Provider())
+    client = TestClient(main.app)
+    body = {"tenant_id": "tenant-a", "source": "google", "event_id": "event-1"}
+    foreign = client.post("/api/calendar/change?action=delete", json=body, headers={"X-Tenant-Id": "tenant-b"})
+    missing = client.post("/api/calendar/change?action=delete", json=body, headers={"X-Tenant-Id": "tenant-a"})
+    assert foreign.status_code == 403
+    assert missing.status_code == 403
+
+
+def test_change_uses_only_current_tenant_token(monkeypatch):
+    seen = []
+
+    class Provider:
+        name = "google"
+
+        def configured(self):
+            return bool(providers.google_token())
+
+        def delete_event(self, event_id):
+            seen.append((providers.google_token(), event_id))
+            return {"ok": True, "deleted": True}
+
+    monkeypatch.setattr(main, "_resolve_provider", lambda _: Provider())
+    client = TestClient(main.app)
+    for tenant, token in (("tenant-a", "token-a"), ("tenant-b", "token-b")):
+        response = client.post(
+            "/api/calendar/change?action=delete",
+            json={"tenant_id": tenant, "source": "google", "event_id": "event-1", "credentials": {"token": token}},
+            headers={"X-Tenant-Id": tenant},
+        )
+        assert response.status_code == 200
+    assert seen == [("token-a", "event-1"), ("token-b", "event-1")]
+
+
+def test_tenant_booking_never_sends_legacy_welcome_mail(monkeypatch):
+    class Provider:
+        name = "google"
+
+        def configured(self):
+            return True
+
+        def slot_is_free(self, start, end):
+            return True
+
+        def create_event(self, **kwargs):
+            return {"ok": True, "created": True, "event_id": "own-event", "stub": False}
+
+    monkeypatch.setattr(main, "_resolve_provider", lambda source: Provider())
+    monkeypatch.setattr(main.mailer_client, "queue_welcome_presentation", lambda **kwargs: (_ for _ in ()).throw(AssertionError("legacy sender used")))
+    response = TestClient(main.app).post(
+        "/api/calendar/create",
+        json={
+            "tenant_id": "tenant-a", "source": "google", "credentials": {"token": "tenant-token"},
+            "start": "2026-12-10T10:00:00+03:00", "attendee_email": "customer@example.test",
+            "create_telemost": False,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["event_id"] == "own-event"
+    assert response.json()["welcome_email_queued"] is False

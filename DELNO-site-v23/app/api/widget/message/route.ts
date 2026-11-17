@@ -22,7 +22,7 @@ function apiBase() {
   return (process.env.DELNO_API_URL || process.env.NEXT_PUBLIC_DELNO_API_URL || "").replace(/\/$/, "");
 }
 
-const tenantSlug = process.env.DELNO_TENANT_SLUG || "delno-demo";
+const tenantSlug = process.env.DELNO_TENANT_SLUG || "delno-public";
 
 async function proxyWidget(path: string, payload: Record<string, unknown>) {
   const base = apiBase();
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
   if (action === "session") {
     try {
       return await proxyWidget("/v1/public/widget/session", {
-        site_key: body.site_key || "demo_dlno",
+        site_key: body.site_key || "delno_public",
         visitor_id: body.visitor_id || null,
         page_url: body.page_url || body.visitor?.page_url || null,
         referrer: body.referrer || body.visitor?.referrer || null,
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
     }
     try {
       return await proxyWidget("/v1/public/widget/visitor", {
-        site_key: body.site_key || "demo_dlno",
+        site_key: body.site_key || "delno_public",
         session_id: body.session_id,
         visitor_id: body.visitor_id || null,
         name: name || null,
@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
 
   try {
     return await proxyWidget("/v1/public/widget/message", {
-      site_key: body.site_key || "demo_dlno",
+      site_key: body.site_key || "delno_public",
       session_id: body.session_id || null,
       visitor_id: body.visitor_id || null,
       message,

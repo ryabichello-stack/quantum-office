@@ -70,5 +70,5 @@ class TelegramAdapter:
                 if response.status_code != 200 or not data.get("ok"):
                     return {"ok": False, "status": response.status_code, "detail": data}
                 return {"ok": True, "message_id": data.get("result", {}).get("message_id")}
-        except httpx.HTTPError as exc:
-            return {"ok": False, "error": str(exc)[:300]}
+        except httpx.HTTPError:
+            return {"ok": False, "error": "telegram_transport_error"}

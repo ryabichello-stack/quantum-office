@@ -1,5 +1,6 @@
 from app.models.cms import CmsPage, CmsRevision
 from app.models.agent_task import AgentRun, AgentStep, AgentTask
+from app.models.appointment import Appointment
 from app.models.audit import AuditLog
 from app.models.call_job import CallJob
 from app.models.call_session import CallSession
@@ -13,6 +14,7 @@ from app.models.party_cache import PartyCache
 from app.models.phone_number import PhoneNumber
 from app.models.platform_event import PlatformEvent
 from app.models.tenant import Tenant
+from app.models.tenant_folder import TenantFolder
 from app.models.tenant_voice_profile import TenantVoiceProfile
 from app.models.usage_record import UsageRecord
 from app.models.user import User
@@ -21,6 +23,7 @@ __all__ = [
     "CmsPage",
     "CmsRevision",
     "AgentTask",
+    "Appointment",
     "AgentRun",
     "AgentStep",
     "AuditLog",
@@ -39,6 +42,7 @@ __all__ = [
     "PhoneNumber",
     "PlatformEvent",
     "Tenant",
+    "TenantFolder",
     "TenantVoiceProfile",
     "UsageRecord",
     "User",

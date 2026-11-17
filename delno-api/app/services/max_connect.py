@@ -16,6 +16,8 @@ from app.core.tenant import TenantContext
 from app.models.channel_account import ChannelAccount
 from app.services.audit import write_audit
 from app.services.channel_webhooks import webhook_url_for_account
+from app.services.channel_crypto import bot_token, encrypt
+from app.services.max_tls import max_tls_context
 from app.services.events import emit_event
 
 ACCESS_TOKEN_RE = re.compile(r"^[A-Za-z0-9._-]{16,256}$")
@@ -53,7 +55,7 @@ def _max_request(
     if json is not None:
         headers["Content-Type"] = "application/json"
     try:
-        with httpx.Client(timeout=20.0) as client:
+        with httpx.Client(timeout=20.0, verify=max_tls_context()) as client:
             response = client.request(http_method, url, headers=headers, params=params, json=json)
             data = response.json() if response.content else {}
             if response.status_code != 200:
@@ -104,8 +106,7 @@ def _token_used_by_other_tenant(db: Session, token: str, tenant_id: UUID) -> boo
         .all()
     )
     for row in rows:
-        creds = row.credentials_encrypted if isinstance(row.credentials_encrypted, dict) else {}
-        stored = str(creds.get("bot_token") or creds.get("access_token") or "")
+        stored = bot_token(row.credentials_encrypted)
         if stored == token:
             return True
     return False
@@ -190,12 +191,12 @@ def connect_max_branded(db: Session, ctx: TenantContext, access_token: str) -> d
     username = validation.get("username")
     account.status = "active"
     account.verified_at = _utc_now()
-    account.credentials_encrypted = {"bot_token": token, "access_token": token}
+    account.credentials_encrypted = {"bot_token": encrypt(token)}
     account.meta = {
         "bot_username": username,
         "bot_name": validation.get("first_name"),
         "bot_id": validation.get("bot_id"),
-        "webhook_secret": webhook_secret,
+        "webhook_secret": encrypt(webhook_secret),
         "webhook_url": webhook_url,
         "mode": "branded",
     }
@@ -237,7 +238,7 @@ def disconnect_max_branded(db: Session, ctx: TenantContext, account_id: UUID) ->
         return {"ok": False, "error": "not_found"}
 
     creds = account.credentials_encrypted if isinstance(account.credentials_encrypted, dict) else {}
-    token = str(creds.get("bot_token") or creds.get("access_token") or "").strip()
+    token = bot_token(creds).strip()
     meta = account.meta if isinstance(account.meta, dict) else {}
     webhook_url = str(meta.get("webhook_url") or webhook_url_for_account(account.id, "max"))
     if token:
@@ -284,7 +285,7 @@ def healthcheck_max_branded(db: Session, ctx: TenantContext, account_id: UUID) -
         return {"ok": False, "error": "not_found"}
 
     creds = account.credentials_encrypted if isinstance(account.credentials_encrypted, dict) else {}
-    token = str(creds.get("bot_token") or creds.get("access_token") or "").strip()
+    token = bot_token(creds).strip()
     if not token:
         return {"ok": False, "error": "missing_token", "account": public_channel_account(account)}
 

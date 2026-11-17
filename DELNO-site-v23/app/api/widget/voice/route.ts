@@ -2,8 +2,8 @@ import { prepareTtsText } from "@/lib/ttsText";
 
 export const runtime = "edge";
 
-const SITE_KEY = process.env.NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY || "demo_dlno";
-const tenantSlug = process.env.DELNO_TENANT_SLUG || "delno-demo";
+const SITE_KEY = process.env.NEXT_PUBLIC_DELNO_WIDGET_SITE_KEY || "delno_public";
+const tenantSlug = process.env.DELNO_TENANT_SLUG || "delno-public";
 
 function apiBase() {
   return (process.env.DELNO_API_URL || process.env.NEXT_PUBLIC_DELNO_API_URL || "").replace(/\/$/, "");

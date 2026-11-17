@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     /\/$/,
     "",
   );
-  const tenantSlug = process.env.DELNO_TENANT_SLUG || "delno-demo";
+  const tenantSlug = process.env.DELNO_TENANT_SLUG || "delno-public";
 
   if (!apiBase) {
     return Response.json({ error: "DELNO_API_URL not set" }, { status: 503 });

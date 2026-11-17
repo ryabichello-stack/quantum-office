@@ -19,11 +19,6 @@ _CONNECTOR = {
     "send_email": "mail",
     "send_welcome_email": "mail",
     "create_conference": "conference",
-    "book_meeting": "calendar",
-    "suggest_other_time": "calendar",
-    "reschedule_meeting": "calendar",
-    "confirm_meeting": "calendar",
-    "cancel_meeting": "calendar",
 }
 _WRITES = {
     "create_calendar_event",
@@ -37,7 +32,7 @@ _WRITES = {
 }
 # Same meeting verbs as messenger tools. Allowed when the line has the pieces.
 _MEETING_NEEDS = {
-    "book_meeting": ("check_calendar", "create_calendar_event", "send_email", "create_conference"),
+    "book_meeting": ("check_calendar", "create_calendar_event"),
     "suggest_other_time": ("check_calendar",),
     "reschedule_meeting": ("check_calendar",),
     "confirm_meeting": ("check_calendar",),
@@ -76,6 +71,12 @@ def dispatch(
         tenant_slug=tenant.slug,
         role=PRINCIPAL_VOICE_PUBLIC,
     )
+    # The caller number comes from the authenticated call session, never from
+    # model-supplied params. A different phone cannot select another booking.
+    params = dict(params)
+    if calls[0].direction == "inbound":
+        params["phone"] = calls[0].from_e164 or ""
+        params["from_number"] = calls[0].from_e164 or ""
     enabled = list(get_telephony_config(db, ctx)["tools"])
     for name, needs in _MEETING_NEEDS.items():
         if name not in enabled and all(n in enabled for n in needs):
@@ -151,9 +152,13 @@ def dispatch(
             invitees=params.get("invitees") or [],
         )
     elif action in {"send_email", "send_welcome_email", "book_meeting", "suggest_other_time", "reschedule_meeting", "confirm_meeting", "cancel_meeting"}:
-        from app.services.appointments import handle as handle_appointment
+        from app.services.appointments import current_verified_phone, handle as handle_appointment
 
-        out = handle_appointment(db, ctx, action, params, channel="voice")
+        token = current_verified_phone.set(calls[0].from_e164 if calls[0].direction == "inbound" else None)
+        try:
+            out = handle_appointment(db, ctx, action, params, channel="voice")
+        finally:
+            current_verified_phone.reset(token)
         return out
     elif action == "create_conference":
         from app.operator.tools.office import CreateConferenceTool

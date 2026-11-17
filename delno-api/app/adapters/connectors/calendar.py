@@ -240,11 +240,12 @@ class CalendarConnector:
             payload["invitees"] = invitees
         if not base:
             return ConnectorResult(
-                ok=True,
+                ok=False,
                 configured=False,
                 kind=self.kind,
-                message="Stub booking — wire CALENDAR_BASE_URL for live create",
-                data={"created": True, "stub": True, **payload},
+                error="not_configured",
+                message="Внешний календарь недоступен; событие не создано",
+                data={"created": False, **payload},
             )
         code, resp, err = post_json(base, "/api/calendar/create", json=payload, token=self._token(config))
         if err:
@@ -257,3 +258,23 @@ class CalendarConnector:
             message=str(upstream.get("message") or "Calendar create"),
             data={"upstream": upstream, "status_code": code, "stub": bool(upstream.get("stub")), **upstream},
         )
+
+    def change_event(
+        self, *, tenant_slug: str, config: dict[str, Any], action: str,
+        event_id: str, source: str, start: str | None = None,
+        end: str | None = None, summary: str = "Встреча",
+    ) -> ConnectorResult:
+        base = self._base(config)
+        if not base or not config.get("_tenant_id") or not config.get("_request_credentials"):
+            return ConnectorResult(ok=False, configured=bool(base), kind=self.kind, error="tenant_calendar_not_connected", message="Календарь компании не подключён")
+        payload = self._with_access(config, {
+            "source": source, "event_id": event_id, "start": start,
+            "end": end, "summary": summary,
+        })
+        code, resp, err = post_json(
+            base, f"/api/calendar/change?action={action}", json=payload,
+            token=self._token(config), headers={"X-Tenant-Id": str(config["_tenant_id"])},
+        )
+        if err or not isinstance(resp, dict) or not resp.get("ok"):
+            return ConnectorResult(ok=False, configured=True, kind=self.kind, error="change_failed", message=err or "Внешний календарь не подтвердил изменение")
+        return ConnectorResult(ok=True, configured=True, kind=self.kind, message="Внешний календарь обновлён", data=resp)
