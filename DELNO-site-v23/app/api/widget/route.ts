@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 
-const tenantSlug = process.env.DELNO_TENANT_SLUG || "delno-demo";
+const tenantSlug = process.env.DELNO_TENANT_SLUG || "delno-public";
 
 function apiBase() {
   return (process.env.DELNO_API_URL || process.env.NEXT_PUBLIC_DELNO_API_URL || "").replace(/\/$/, "");
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
 
   if (resolved === "session") {
     return proxyTo("/v1/public/widget/session", {
-      site_key: body.site_key || "demo_dlno",
+      site_key: body.site_key || "delno_public",
       visitor_id: body.visitor_id || null,
       page_url: body.page_url || null,
       referrer: body.referrer || null,
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "name or phone required" }, { status: 400 });
     }
     return proxyTo("/v1/public/widget/visitor", {
-      site_key: body.site_key || "demo_dlno",
+      site_key: body.site_key || "delno_public",
       session_id: body.session_id,
       visitor_id: body.visitor_id || null,
       name: body.name || null,

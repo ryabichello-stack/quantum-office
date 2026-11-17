@@ -17,6 +17,7 @@ from app.core.principals import (
 from app.models.channel_account import ChannelAccount
 from app.models.phone_number import PhoneNumber
 from app.models.tenant import Tenant
+from app.services.channel_crypto import bot_token
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,7 +82,7 @@ def resolve_by_messenger_token(db: Session, token: str, *, owner_context: bool =
         .all()
     )
     for ch in accounts:
-        if (ch.credentials_encrypted or {}).get("bot_token") != token:
+        if bot_token(ch.credentials_encrypted) != token:
             continue
         tenant = _active_tenant(db, ch.tenant_id)
         if not tenant:

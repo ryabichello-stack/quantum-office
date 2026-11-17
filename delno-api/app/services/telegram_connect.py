@@ -15,6 +15,7 @@ from app.core.tenant import TenantContext
 from app.models.channel_account import ChannelAccount
 from app.services.audit import write_audit
 from app.services.channel_webhooks import webhook_url_for_account
+from app.services.channel_crypto import bot_token, encrypt
 from app.services.events import emit_event
 from app.services.max_connect import public_channel_account
 
@@ -35,8 +36,8 @@ def _telegram_call(token: str, method: str, *, json: dict[str, Any] | None = Non
             if response.status_code != 200 or not data.get("ok"):
                 return {"ok": False, "status": response.status_code, "detail": data}
             return {"ok": True, "result": data.get("result")}
-    except httpx.HTTPError as exc:
-        return {"ok": False, "error": str(exc)[:300]}
+    except httpx.HTTPError:
+        return {"ok": False, "error": "telegram_transport_error"}
 
 
 def validate_bot_token(token: str) -> dict[str, Any]:
@@ -76,8 +77,7 @@ def _token_used_by_other_tenant(db: Session, token: str, tenant_id: UUID) -> boo
         .all()
     )
     for row in rows:
-        creds = row.credentials_encrypted if isinstance(row.credentials_encrypted, dict) else {}
-        if creds.get("bot_token") == token:
+        if bot_token(row.credentials_encrypted) == token:
             return True
     return False
 
@@ -139,12 +139,12 @@ def connect_telegram_branded(db: Session, ctx: TenantContext, bot_token: str) ->
     username = validation.get("username")
     account.status = "active"
     account.verified_at = _utc_now()
-    account.credentials_encrypted = {"bot_token": token}
+    account.credentials_encrypted = {"bot_token": encrypt(token)}
     account.meta = {
         "bot_username": username,
         "bot_name": validation.get("first_name"),
         "bot_id": validation.get("bot_id"),
-        "webhook_secret": webhook_secret,
+        "webhook_secret": encrypt(webhook_secret),
         "webhook_url": webhook_url,
         "mode": "branded",
     }
@@ -186,7 +186,7 @@ def disconnect_telegram_branded(db: Session, ctx: TenantContext, account_id: UUI
         return {"ok": False, "error": "not_found"}
 
     creds = account.credentials_encrypted if isinstance(account.credentials_encrypted, dict) else {}
-    token = str(creds.get("bot_token") or "").strip()
+    token = bot_token(creds).strip()
     if token:
         _telegram_call(token, "deleteWebhook", json={"drop_pending_updates": True})
 
@@ -231,7 +231,7 @@ def healthcheck_telegram_branded(db: Session, ctx: TenantContext, account_id: UU
         return {"ok": False, "error": "not_found"}
 
     creds = account.credentials_encrypted if isinstance(account.credentials_encrypted, dict) else {}
-    token = str(creds.get("bot_token") or "").strip()
+    token = bot_token(creds).strip()
     if not token:
         return {"ok": False, "error": "missing_token", "account": _public_account(account)}
 

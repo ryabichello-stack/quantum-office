@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.adapters.channels.base import ChannelAdapter, InboundMessage
 from app.core.tenant import TenantContext
-from app.models.conversation import Message
+from app.models.conversation import Conversation, Message
 from app.operator.agent import run_operator_turn
 from app.services.channel_router import ChannelContext
 from app.services.channel_delivery import send_channel_reply_with_retry
@@ -35,6 +35,26 @@ def _operator_reply(
     inbound: InboundMessage,
     conversation_id,
 ) -> dict[str, Any]:
+    if ctx.tenant_slug == "delno-public":
+        from app.services.public_marketing_bot import answer_public_bot
+
+        conversation = db.query(Conversation).filter(
+            Conversation.id == conversation_id,
+            Conversation.tenant_id == ctx.tenant_id,
+        ).one()
+        reply = answer_public_bot(
+            db, _tenant_ctx(ctx), conversation,
+            message=inbound.text, display_name=inbound.display_name,
+            source=f"{inbound.channel_type}_bot",
+        )
+        db.add(Message(
+            tenant_id=ctx.tenant_id, conversation_id=conversation_id,
+            role="assistant", body=reply,
+            meta={"source": f"webhook.{inbound.channel_type}.public_marketing"},
+        ))
+        db.flush()
+        return {"reply": reply, "conversation_id": str(conversation_id)}
+
     try:
         return run_operator_turn(
             db,
