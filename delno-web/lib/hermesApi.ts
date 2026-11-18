@@ -1,5 +1,46 @@
 import { apiFetch } from "./api";
 
+export type HermesMemoryFact = {
+  id: string;
+  key: string;
+  kind: string;
+  value: string;
+  history: Array<{ kind: string; value: string }>;
+  updated_at?: string | null;
+};
+
+export function apiHermesMemoryFacts(token: string) {
+  return apiFetch<{ ok: boolean; items: HermesMemoryFact[] }>("/v1/hermes-nous/memory/facts", token);
+}
+
+export function apiHermesMemoryEdit(token: string, id: string, value: string) {
+  return apiFetch<{ ok: boolean }>(`/v1/hermes-nous/memory/facts/${encodeURIComponent(id)}`, token, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value }),
+  });
+}
+
+export function apiHermesMemoryDelete(token: string, id: string) {
+  return apiFetch<{ ok: boolean }>(`/v1/hermes-nous/memory/facts/${encodeURIComponent(id)}`, token, { method: "DELETE" });
+}
+
+export function apiHermesMemoryBlock(token: string, key: string) {
+  return apiFetch<{ ok: boolean }>("/v1/hermes-nous/memory/blocks", token, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key }),
+  });
+}
+
+export function apiHermesMemoryClear(token: string) {
+  return apiFetch<{ ok: boolean; deleted: number }>("/v1/hermes-nous/memory/turns", token, { method: "DELETE" });
+}
+
+export function apiHermesMemoryBlocks(token: string) {
+  return apiFetch<{ ok: boolean; keys: string[] }>("/v1/hermes-nous/memory/blocks", token);
+}
+
+export function apiHermesMemoryUnblock(token: string, key: string) {
+  return apiFetch<{ ok: boolean }>(`/v1/hermes-nous/memory/blocks/${encodeURIComponent(key)}`, token, { method: "DELETE" });
+}
+
 export type HermesSetupStep = {
   id: string;
   title: string;

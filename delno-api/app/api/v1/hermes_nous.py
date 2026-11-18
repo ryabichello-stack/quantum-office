@@ -93,6 +93,14 @@ class RunCreateBody(BaseModel):
     session_id: str | None = Field(default=None, max_length=200)
 
 
+class MemoryEditBody(BaseModel):
+    value: str = Field(..., min_length=1, max_length=350)
+
+
+class MemoryBlockBody(BaseModel):
+    key: str = Field(..., min_length=3, max_length=120)
+
+
 class PhaseBody(BaseModel):
     phase: str = Field(..., max_length=32)
 
@@ -233,16 +241,15 @@ def nous_create_run(
     tools = _clamp_tools(body.tool_ids, body.mode)
     # Server builds session — ignore client session_id unless it already matches tenant prefix.
     conv = body.conversation_id or body.session_id
-    session_id = f"{ctx.tenant_slug}:{conv}" if conv else f"{ctx.tenant_slug}:owner:{ctx.user_id}"
-    from app.services.hermes_nous.owner_memory import owner_memory_enabled
+    session_id = (f"{ctx.tenant_slug}:user:{ctx.user_id}:{conv}" if conv else
+                  f"{ctx.tenant_slug}:owner:{ctx.user_id}")
+    from app.services.hermes_nous.owner_memory import memory_epoch, owner_context, owner_memory_enabled
 
     is_owner_turn = (owner_memory_enabled(db, ctx) and ctx.user_id is not None and
                      body.task_id is None and body.mode in ("onboarding", "conduct"))
-    owner_history = ""
+    owner_history = owner_context(db, ctx, body.message) if is_owner_turn else ""
     if is_owner_turn:
-        from app.services.hermes_nous.owner_memory import recent_owner_context
-
-        owner_history = recent_owner_context(db, ctx)
+        session_id = f"{session_id}:memory-v{memory_epoch(db, ctx)}"
     try:
         result = create_run(
             db,
@@ -260,10 +267,16 @@ def nous_create_run(
                 result.get("output") and result.get("delno_run_id")):
             from app.services.hermes_nous.owner_memory import remember_owner_turn
 
-            remember_owner_turn(
-                db, ctx, session_id=session_id, run_id=result["delno_run_id"],
-                request_text=body.message, response_text=result["output"],
-            )
+            try:
+                remember_owner_turn(
+                    db, ctx, session_id=session_id, run_id=result["delno_run_id"],
+                    request_text=body.message, response_text=result["output"],
+                )
+            except Exception:
+                import logging
+
+                db.rollback()
+                logging.getLogger(__name__).warning("owner_memory_write_failed")
         return result
     except HermesBridgeError as exc:
         raise HTTPException(
@@ -285,8 +298,8 @@ def nous_owner_memory_turns(
         raise HTTPException(status_code=404, detail="owner_memory_disabled")
     rows = list_owner_turns(db, ctx, limit=limit)
     return {"ok": True, "items": [
-        {"id": str(row.id), "session_id": row.session_id, "request": row.request_text,
-         "response": row.response_text, "created_at": row.created_at.isoformat() if row.created_at else None}
+        {"id": str(row.id), "session_id": row.session_id, "summary": row.summary,
+         "created_at": row.created_at.isoformat() if row.created_at else None}
         for row in rows
     ]}
 
@@ -302,6 +315,101 @@ def nous_owner_memory_clear(
     if not owner_memory_enabled(db, ctx):
         raise HTTPException(status_code=404, detail="owner_memory_disabled")
     return {"ok": True, "deleted": clear_owner_turns(db, ctx)}
+
+
+@router.get("/memory/facts")
+def nous_owner_memory_facts(
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict[str, Any]:
+    from app.services.hermes_nous.owner_memory import list_memories, owner_memory_enabled
+
+    _require_flag(db, ctx)
+    if not owner_memory_enabled(db, ctx):
+        raise HTTPException(status_code=404, detail="owner_memory_disabled")
+    return {"ok": True, "items": [
+        {"id": str(row.id), "key": row.memory_key, "kind": row.kind, "value": row.value,
+         "history": row.history or [], "updated_at": row.updated_at.isoformat() if row.updated_at else None}
+        for row in list_memories(db, ctx)
+    ]}
+
+
+@router.patch("/memory/facts/{memory_id}")
+def nous_owner_memory_edit(
+    memory_id: UUID,
+    body: MemoryEditBody,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict[str, Any]:
+    from app.services.hermes_nous.owner_memory import edit_memory, owner_memory_enabled
+
+    _require_flag(db, ctx)
+    if not owner_memory_enabled(db, ctx):
+        raise HTTPException(status_code=404, detail="owner_memory_disabled")
+    if not edit_memory(db, ctx, memory_id, body.value):
+        raise HTTPException(status_code=404, detail="memory_not_found_or_invalid")
+    return {"ok": True}
+
+
+@router.delete("/memory/facts/{memory_id}")
+def nous_owner_memory_delete(
+    memory_id: UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict[str, Any]:
+    from app.services.hermes_nous.owner_memory import delete_memory, owner_memory_enabled
+
+    _require_flag(db, ctx)
+    if not owner_memory_enabled(db, ctx):
+        raise HTTPException(status_code=404, detail="owner_memory_disabled")
+    if not delete_memory(db, ctx, memory_id):
+        raise HTTPException(status_code=404, detail="memory_not_found")
+    return {"ok": True}
+
+
+@router.post("/memory/blocks")
+def nous_owner_memory_block(
+    body: MemoryBlockBody,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict[str, Any]:
+    from app.services.hermes_nous.owner_memory import block_memory_key, owner_memory_enabled
+
+    _require_flag(db, ctx)
+    if not owner_memory_enabled(db, ctx):
+        raise HTTPException(status_code=404, detail="owner_memory_disabled")
+    if not block_memory_key(db, ctx, body.key):
+        raise HTTPException(status_code=422, detail="invalid_memory_key")
+    return {"ok": True}
+
+
+@router.get("/memory/blocks")
+def nous_owner_memory_blocks(
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict[str, Any]:
+    from app.services.hermes_nous.owner_memory import list_memory_blocks, owner_memory_enabled
+
+    _require_flag(db, ctx)
+    if not owner_memory_enabled(db, ctx):
+        raise HTTPException(status_code=404, detail="owner_memory_disabled")
+    return {"ok": True, "keys": list_memory_blocks(db, ctx)}
+
+
+@router.delete("/memory/blocks/{key}")
+def nous_owner_memory_unblock(
+    key: str,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict[str, Any]:
+    from app.services.hermes_nous.owner_memory import owner_memory_enabled, unblock_memory_key
+
+    _require_flag(db, ctx)
+    if not owner_memory_enabled(db, ctx):
+        raise HTTPException(status_code=404, detail="owner_memory_disabled")
+    if not unblock_memory_key(db, ctx, key):
+        raise HTTPException(status_code=404, detail="memory_block_not_found")
+    return {"ok": True}
 
 
 @router.get("/runs")

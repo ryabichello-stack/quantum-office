@@ -8,6 +8,7 @@ from app.core.db import Base
 from app.core.tenant import TenantContext
 from app.models.conversation import Conversation, Message
 from app.models.tenant import Tenant
+from app.models.user import User
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -32,7 +33,10 @@ def test_delete_conversation_removes_messages():
     db.add(tenant)
     db.commit()
     db.refresh(tenant)
-    conv = Conversation(tenant_id=tenant.id, channel="hermes")
+    user = User(tenant_id=tenant.id, email="owner@del.example", role="tenant_owner")
+    db.add(user)
+    db.flush()
+    conv = Conversation(tenant_id=tenant.id, channel="hermes", meta={"owner_user_id": str(user.id)})
     db.add(conv)
     db.flush()
     db.add(Message(tenant_id=tenant.id, conversation_id=conv.id, role="user", body="hi"))
@@ -45,7 +49,7 @@ def test_delete_conversation_removes_messages():
         yield db
 
     def _override_ctx():
-        return TenantContext(tenant_id=tenant.id, tenant_slug=tenant.slug, role="tenant_owner")
+        return TenantContext(tenant_id=tenant.id, tenant_slug=tenant.slug, user_id=user.id, role="tenant_owner")
 
     app.dependency_overrides[get_db] = _override_db
     app.dependency_overrides[get_tenant_context_auth] = _override_ctx

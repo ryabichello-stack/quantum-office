@@ -22,6 +22,5 @@ class HermesOwnerTurn(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     session_id: Mapped[str] = mapped_column(String(200), nullable=False)
     run_id: Mapped[str] = mapped_column(String(120), nullable=False)
-    request_text: Mapped[str] = mapped_column(Text, nullable=False)
-    response_text: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

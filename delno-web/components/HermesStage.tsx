@@ -11,6 +11,7 @@ import {
 import {
   AlertTriangle,
   ArrowUp,
+  Brain,
   Camera,
   CheckCircle2,
   LifeBuoy,
@@ -71,6 +72,14 @@ import {
   apiOfficeLoop,
   apiHermesToolkit,
   apiKbDraftConfirm,
+  apiHermesMemoryFacts,
+  apiHermesMemoryEdit,
+  apiHermesMemoryDelete,
+  apiHermesMemoryBlock,
+  apiHermesMemoryBlocks,
+  apiHermesMemoryUnblock,
+  apiHermesMemoryClear,
+  type HermesMemoryFact,
   type AgentTaskItem,
   type HermesToolkit,
   type BillingSummary,
@@ -282,6 +291,14 @@ export function HermesStage({ token }: { token: string }) {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  const [memoryAvailable, setMemoryAvailable] = useState(false);
+  const [memoryFacts, setMemoryFacts] = useState<HermesMemoryFact[]>([]);
+  const [memoryBlocks, setMemoryBlocks] = useState<string[]>([]);
+  const [memoryBusy, setMemoryBusy] = useState(false);
+  const [memoryError, setMemoryError] = useState("");
+  const [memoryEditing, setMemoryEditing] = useState<string | null>(null);
+  const [memoryDraft, setMemoryDraft] = useState("");
   const [helpNote, setHelpNote] = useState("");
   const [helpBusy, setHelpBusy] = useState(false);
   const mountRef = useRef<HTMLDivElement>(null);
@@ -322,6 +339,36 @@ export function HermesStage({ token }: { token: string }) {
       /* panels are best-effort; chat still works */
     }
   }, [token]);
+
+  const refreshMemory = useCallback(async () => {
+    try {
+      const [facts, blocks] = await Promise.all([
+        apiHermesMemoryFacts(token), apiHermesMemoryBlocks(token),
+      ]);
+      setMemoryAvailable(true);
+      setMemoryFacts(facts.items || []);
+      setMemoryBlocks(blocks.keys || []);
+      setMemoryError("");
+    } catch {
+      setMemoryAvailable(false);
+    }
+  }, [token]);
+
+  useEffect(() => { void refreshMemory(); }, [refreshMemory]);
+
+  async function changeMemory(action: () => Promise<unknown>) {
+    setMemoryBusy(true);
+    setMemoryError("");
+    try {
+      await action();
+      setMemoryEditing(null);
+      await refreshMemory();
+    } catch {
+      setMemoryError("Не удалось изменить память. Повторите попытку.");
+    } finally {
+      setMemoryBusy(false);
+    }
+  }
 
   async function startQr(channelType: string) {
     if (qrBusy) return;
@@ -560,6 +607,7 @@ export function HermesStage({ token }: { token: string }) {
           ];
         });
         void refreshPanels();
+        if (memoryAvailable) void refreshMemory();
         return result.reply;
       } catch {
         setLines((prev) => {
@@ -576,7 +624,7 @@ export function HermesStage({ token }: { token: string }) {
         setSending(false);
       }
     },
-    [token, conversationId, sending, refreshPanels, clearPending],
+    [token, conversationId, sending, refreshPanels, clearPending, memoryAvailable, refreshMemory],
   );
 
   const { voiceActive, voicePhase, toggleVoice, audioRef } = useOperatorVoice(
@@ -1197,6 +1245,18 @@ export function HermesStage({ token }: { token: string }) {
               <CrystalOrb voiceActive={voiceActive} voicePhase={voicePhase} onOrbClick={toggleVoice} />
             </div>
           )}
+          {memoryAvailable && (
+            <Tooltip>
+              <TooltipTrigger render={
+                <Button variant="outline" size="icon" className="hx-top-btn"
+                  onClick={() => { setMemoryOpen(true); void refreshMemory(); }}
+                  aria-label="Память Гермеса" />
+              }>
+                <Brain size={compact ? 16 : 18} />
+              </TooltipTrigger>
+              <TooltipContent>Память: что Гермес запомнил</TooltipContent>
+            </Tooltip>
+          )}
           <Tooltip>
             <TooltipTrigger
               render={
@@ -1586,6 +1646,73 @@ export function HermesStage({ token }: { token: string }) {
           </div>
         </main>
       </div>
+
+      <Sheet open={memoryOpen} onOpenChange={setMemoryOpen}>
+        <SheetContent side={compact ? "bottom" : "right"}
+          className={cn("flex flex-col gap-3", compact ? "h-[85dvh] rounded-t-2xl" : "w-[min(440px,92vw)] sm:max-w-md")}>
+          <SheetHeader className="text-left">
+            <SheetTitle className="flex items-center gap-2"><Brain size={18} /> Память Гермеса</SheetTitle>
+            <SheetDescription>
+              Здесь только ваши сохранённые факты и решения. Гермес сверяет актуальные данные через инструменты.
+            </SheetDescription>
+          </SheetHeader>
+          {memoryError && <p role="alert" className="text-sm text-red-500">{memoryError}</p>}
+          <ScrollArea className="min-h-0 flex-1 pr-2">
+            <div className="space-y-3 pb-5">
+              {memoryFacts.length === 0 && <p className="text-sm text-muted-foreground">Пока ничего не сохранено.</p>}
+              {memoryFacts.map((fact) => (
+                <section key={fact.id} className="rounded-xl border border-border p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <Badge variant="secondary">{fact.kind}</Badge>
+                    <span className="text-xs text-muted-foreground">{fact.key}</span>
+                  </div>
+                  {memoryEditing === fact.id ? (
+                    <div className="space-y-2">
+                      <Textarea value={memoryDraft} maxLength={350} rows={3}
+                        onChange={(event) => setMemoryDraft(event.target.value)} aria-label="Исправить воспоминание" />
+                      <div className="flex gap-2">
+                        <Button size="sm" disabled={memoryBusy || !memoryDraft.trim()}
+                          onClick={() => void changeMemory(() => apiHermesMemoryEdit(token, fact.id, memoryDraft))}>Сохранить</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setMemoryEditing(null)}>Отмена</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm leading-relaxed">{fact.value}</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" disabled={memoryBusy}
+                          onClick={() => { setMemoryEditing(fact.id); setMemoryDraft(fact.value); }}>Исправить</Button>
+                        <Button size="sm" variant="outline" disabled={memoryBusy}
+                          onClick={() => void changeMemory(() => apiHermesMemoryDelete(token, fact.id))}>Удалить</Button>
+                        <Button size="sm" variant="ghost" disabled={memoryBusy}
+                          onClick={() => void changeMemory(() => apiHermesMemoryBlock(token, fact.key))}>Не запоминать тему</Button>
+                      </div>
+                    </>
+                  )}
+                </section>
+              ))}
+              {memoryBlocks.length > 0 && (
+                <section className="rounded-xl border border-border p-3">
+                  <h3 className="mb-2 text-sm font-medium">Темы, которые не сохраняются</h3>
+                  {memoryBlocks.map((key) => (
+                    <div key={key} className="flex items-center justify-between gap-2 py-1 text-sm">
+                      <span>{key}</span>
+                      <Button size="sm" variant="ghost" disabled={memoryBusy}
+                        onClick={() => void changeMemory(() => apiHermesMemoryUnblock(token, key))}>Разрешить</Button>
+                    </div>
+                  ))}
+                </section>
+              )}
+            </div>
+          </ScrollArea>
+          <Button variant="outline" disabled={memoryBusy || memoryFacts.length === 0}
+            onClick={() => {
+              if (window.confirm("Удалить все сохранённые воспоминания?")) {
+                void changeMemory(() => apiHermesMemoryClear(token));
+              }
+            }}>Очистить память</Button>
+        </SheetContent>
+      </Sheet>
 
       <Sheet open={helpOpen} onOpenChange={setHelpOpen}>
         <SheetContent

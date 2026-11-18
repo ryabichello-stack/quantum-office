@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -2358,6 +2359,9 @@ def operator_chat(
             try:
                 from app.services.hermes_nous.onboarding import get_office_loop
                 from app.services.hermes_nous.tool_packs import pack_for_mode
+                from app.services.hermes_nous.owner_memory import (
+                    memory_epoch, owner_context, owner_memory_enabled, remember_owner_turn,
+                )
 
                 # The owner can ask for real work immediately. Missing optional
                 # connectors must not restrict Hermes to an onboarding-only pack.
@@ -2389,17 +2393,22 @@ def operator_chat(
                 from datetime import timezone as _tz
 
                 run_started = datetime.now(_tz.utc)
+                memory_on = owner_memory_enabled(db, ctx) and ctx.user_id is not None
+                owner_history = owner_context(db, ctx, message) if memory_on else ""
+                owner_session = (
+                    f"{ctx.tenant_slug}:user:{ctx.user_id}:{body.conversation_id}"
+                    if body.conversation_id else f"{ctx.tenant_slug}:owner:{ctx.user_id}"
+                )
+                if memory_on:
+                    owner_session = f"{owner_session}:memory-v{memory_epoch(db, ctx)}"
                 nous = create_run(
                     db,
                     ctx,
                     message=message,
-                    session_id=(
-                        f"{ctx.tenant_slug}:{body.conversation_id}"
-                        if body.conversation_id
-                        else None
-                    ),
+                    session_id=owner_session,
                     tool_ids=pack_for_mode(pack_mode),
                     mode=pack_mode,
+                    owner_history=owner_history,
                     office_context={
                         "phase": phase,
                         "kb_ok": bool(loop.get("kb_ok")),
@@ -2437,6 +2446,21 @@ def operator_chat(
                     or (nous.get("hermes") or {}).get("output")
                     or "Hermes run started — progress via /v1/hermes-nous/runs/{run_id}."
                 )
+                terminal = nous.get("hermes") if isinstance(nous.get("hermes"), dict) else {}
+                if (memory_on and terminal.get("status") == "completed" and
+                        nous.get("output") and nous.get("delno_run_id")):
+                    try:
+                        remember_owner_turn(
+                            db, ctx, session_id=owner_session, run_id=nous["delno_run_id"],
+                            request_text=message, response_text=nous["output"],
+                        )
+                    except Exception:
+                        # Recall is optional; a memory-store error must not turn a
+                        # completed customer-facing Hermes run into a failed chat.
+                        import logging
+
+                        db.rollback()
+                        logging.getLogger(__name__).warning("owner_memory_write_failed")
                 if agent_mode and reply and not str(reply).lstrip().startswith(("1.", "1)", "План", "Шаг")):
                     # Keep UI honest: agent was asked to plan; prefix if runtime omitted it.
                     reply = f"План выполнен агентом (режим {pack_mode}).\n\n{reply}"
@@ -2798,6 +2822,10 @@ def list_conversations(
     rows = (
         db.query(Conversation)
         .filter(Conversation.tenant_id == ctx.tenant_id)
+        .filter(or_(
+            Conversation.channel != "hermes",
+            Conversation.meta["owner_user_id"].astext == str(ctx.user_id),
+        ))
         .order_by(Conversation.updated_at.desc())
         .limit(min(limit, 100))
         .all()
@@ -2814,10 +2842,22 @@ def get_conversation(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(get_tenant_context_auth),
 ) -> dict:
+    _require_visible_conversation(db, ctx, conversation_id)
     detail = get_conversation_detail(db, ctx.tenant_id, conversation_id)
     if not detail:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return detail
+
+
+def _require_visible_conversation(db: Session, ctx: TenantContext, conversation_id: UUID) -> Conversation:
+    row = db.query(Conversation).filter(
+        Conversation.id == conversation_id, Conversation.tenant_id == ctx.tenant_id,
+    ).one_or_none()
+    if row is None or (row.channel == "hermes" and (
+        ctx.user_id is None or str((row.meta or {}).get("owner_user_id")) != str(ctx.user_id)
+    )):
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return row
 
 
 def _purge_conversation(db: Session, tenant_id: UUID, conversation_id: UUID) -> int:
@@ -2850,13 +2890,7 @@ def delete_conversation(
     ctx: TenantContext = Depends(get_tenant_context_auth),
 ) -> dict:
     """Delete one conversation and its messages for this tenant."""
-    conv = (
-        db.query(Conversation)
-        .filter(Conversation.id == conversation_id, Conversation.tenant_id == ctx.tenant_id)
-        .one_or_none()
-    )
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+    _require_visible_conversation(db, ctx, conversation_id)
     deleted_messages = _purge_conversation(db, ctx.tenant_id, conversation_id)
     db.commit()
     return {"ok": True, "deleted_id": str(conversation_id), "deleted_messages": deleted_messages}
@@ -2883,6 +2917,10 @@ def bulk_delete_conversations(
     else:
         raise HTTPException(status_code=400, detail="Provide ids or channel")
 
+    q = q.filter(or_(
+        Conversation.channel != "hermes",
+        Conversation.meta["owner_user_id"].astext == str(ctx.user_id),
+    ))
     rows = q.order_by(Conversation.updated_at.desc()).all()
     if body.keep_latest_hermes and body.channel == "hermes" and rows:
         rows = rows[1:]
@@ -2901,6 +2939,7 @@ def list_messages(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(get_tenant_context_auth),
 ) -> dict:
+    _require_visible_conversation(db, ctx, conversation_id)
     rows = (
         db.query(Message)
         .filter(Message.conversation_id == conversation_id, Message.tenant_id == ctx.tenant_id)
