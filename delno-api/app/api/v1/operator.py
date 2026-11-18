@@ -1274,8 +1274,7 @@ def _finish_diy(
     return out
 
 
-@router.post("/chat")
-def operator_chat(
+def _operator_chat_impl(
     body: OperatorChatRequest,
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(get_tenant_context_auth),
@@ -2594,6 +2593,37 @@ def operator_chat(
         input_modality=modality,
         attachments=attachments or None,
     )
+
+
+@router.post("/chat")
+def operator_chat(
+    body: OperatorChatRequest,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context_auth),
+) -> dict:
+    """One Owner entry point, including deterministic and DIY shortcuts."""
+    result = _operator_chat_impl(body, db, ctx)
+    if (ctx.user_id is not None and body.channel in {"hermes", "web"} and
+            not body.attachments and result.get("reply") and
+            result.get("engine") not in {"nous_hermes_agent", "hermes_unavailable"}):
+        from app.services.hermes_nous.owner_memory import owner_memory_enabled, remember_owner_turn
+
+        if owner_memory_enabled(db, ctx):
+            try:
+                import uuid
+
+                remember_owner_turn(
+                    db, ctx,
+                    session_id=f"{ctx.tenant_slug}:user:{ctx.user_id}:{result.get('conversation_id') or 'cabinet'}",
+                    run_id=f"operator-diy:{uuid.uuid4()}",
+                    request_text=body.message or "", response_text=str(result["reply"]),
+                )
+            except Exception:
+                import logging
+
+                db.rollback()
+                logging.getLogger(__name__).warning("owner_memory_write_failed")
+    return result
 
 
 @router.get("/tts")

@@ -102,6 +102,26 @@ def test_questions_and_requests_never_overwrite_decisions(monkeypatch):
     assert calls == []
 
 
+def test_owner_shortcut_updates_memory_without_duplicate_nous_write(monkeypatch):
+    from app.api.v1 import operator as operator_api
+    a = TenantContext(tenant_id=__import__("uuid").uuid4(), tenant_slug="company-a",
+                      user_id=__import__("uuid").uuid4(), role="tenant_owner")
+    writes = []
+    monkeypatch.setattr(memory, "owner_memory_enabled", lambda _db, _ctx: True)
+    monkeypatch.setattr(memory, "remember_owner_turn", lambda *_args, **kwargs: writes.append(kwargs))
+    monkeypatch.setattr(operator_api, "_operator_chat_impl", lambda *_args: {
+        "reply": "Принял новое решение", "conversation_id": "123", "engine": None,
+    })
+    body = operator_api.OperatorChatRequest(message="Теперь продажи через рекомендации", channel="hermes")
+    operator_api.operator_chat(body, db=object(), ctx=a)
+    assert len(writes) == 1 and writes[0]["request_text"] == body.message
+    monkeypatch.setattr(operator_api, "_operator_chat_impl", lambda *_args: {
+        "reply": "Принял", "conversation_id": "123", "engine": "nous_hermes_agent",
+    })
+    operator_api.operator_chat(body, db=object(), ctx=a)
+    assert len(writes) == 1
+
+
 def test_owner_conversation_cannot_be_read_or_reused_by_colleague():
     engine, db = _db()
     try:
