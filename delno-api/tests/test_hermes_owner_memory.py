@@ -167,6 +167,21 @@ def test_owner_shortcut_updates_memory_without_duplicate_nous_write(monkeypatch)
     assert len(writes) == 1
 
 
+def test_new_cabinet_chats_get_distinct_conversation_sessions(monkeypatch):
+    from app.api.v1 import operator as operator_api
+    seen = []
+    def capture(body, _db, _ctx):
+        seen.append(body.conversation_id)
+        return {"reply": "", "conversation_id": str(body.conversation_id)}
+    monkeypatch.setattr(operator_api, "_operator_chat_impl", capture)
+    a = TenantContext(tenant_id=__import__("uuid").uuid4(), tenant_slug="company-a",
+                      user_id=__import__("uuid").uuid4(), role="tenant_owner")
+    for _ in range(2):
+        operator_api.operator_chat(operator_api.OperatorChatRequest(message="Новый диалог", channel="hermes"),
+                                   db=object(), ctx=a)
+    assert seen[0] is not None and seen[1] is not None and seen[0] != seen[1]
+
+
 def test_owner_conversation_cannot_be_read_or_reused_by_colleague():
     engine, db = _db()
     try:
@@ -174,6 +189,9 @@ def test_owner_conversation_cannot_be_read_or_reused_by_colleague():
         conv = _get_or_create_conversation(db, owner, "hermes", None)
         db.commit()
         assert _require_visible_conversation(db, owner, conv.id).id == conv.id
+        requested = __import__("uuid").uuid4()
+        fresh = _get_or_create_conversation(db, owner, "hermes", requested)
+        assert fresh.id == requested and _get_or_create_conversation(db, owner, "hermes", requested).id == requested
         for actor in (colleague, other_tenant):
             for action in (
                 lambda: _require_visible_conversation(db, actor, conv.id),

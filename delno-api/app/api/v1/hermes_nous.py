@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -244,7 +244,7 @@ def nous_create_run(
     if is_non_declarative(body.message):
         tools = [tool for tool in tools if tool != "hermes.goal_set"]
     # Server builds session — ignore client session_id unless it already matches tenant prefix.
-    conv = body.conversation_id or body.session_id
+    conv = body.conversation_id or body.session_id or uuid4()
     session_id = (f"{ctx.tenant_slug}:user:{ctx.user_id}:{conv}" if conv else
                   f"{ctx.tenant_slug}:owner:{ctx.user_id}")
     from app.services.hermes_nous.owner_memory import memory_epoch, owner_context, owner_memory_enabled

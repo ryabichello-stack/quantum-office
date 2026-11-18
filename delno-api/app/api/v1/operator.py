@@ -2606,6 +2606,10 @@ def operator_chat(
     ctx: TenantContext = Depends(get_tenant_context_auth),
 ) -> dict:
     """One Owner entry point, including deterministic and DIY shortcuts."""
+    if body.conversation_id is None:
+        import uuid
+
+        body = body.model_copy(update={"conversation_id": uuid.uuid4()})
     result = _operator_chat_impl(body, db, ctx)
     if (ctx.user_id is not None and body.channel in {"hermes", "web"} and
             not body.attachments and result.get("reply") and
