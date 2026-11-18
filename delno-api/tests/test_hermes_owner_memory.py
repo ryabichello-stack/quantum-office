@@ -120,6 +120,24 @@ def test_duplicate_extracted_key_keeps_primary_and_qualification(monkeypatch):
         db.close(); engine.dispose()
 
 
+def test_unrelated_preference_cannot_replace_sales_decision(monkeypatch):
+    engine, db = _db()
+    try:
+        owner, _, _ = _contexts(db)
+        monkeypatch.setattr(memory, "_extract", lambda *_: _decision("Продажи через партнёров"))
+        memory.remember_owner_turn(db, owner, session_id="company-a:one", run_id="run-first",
+                                   request_text="Продажи через партнёров", response_text="Принято")
+        monkeypatch.setattr(memory, "_extract", lambda *_: {"summary": "Личные заметки", "memories": [
+            {"key": "sales.channel", "kind": "preference", "value": "Предпочитаю короткие заголовки"},
+        ]})
+        memory.remember_owner_turn(db, owner, session_id="company-a:two", run_id="run-wrong-key",
+                                   request_text="Предпочитаю короткие заголовки", response_text="Принято")
+        fact = memory.list_memories(db, owner)[0]
+        assert fact.kind == "decision" and fact.value == "Продажи через партнёров"
+    finally:
+        db.close(); engine.dispose()
+
+
 def test_owner_shortcut_updates_memory_without_duplicate_nous_write(monkeypatch):
     from app.api.v1 import operator as operator_api
     a = TenantContext(tenant_id=__import__("uuid").uuid4(), tenant_slug="company-a",

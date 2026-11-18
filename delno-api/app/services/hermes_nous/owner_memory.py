@@ -142,8 +142,9 @@ def _extract(message: str, reply: str, existing_keys: list[str]) -> dict[str, An
         + ", ".join(sorted(KINDS)) + ", \"value\": короткий факт по-русски}]}. "
         "Каждый key может встретиться только один раз. Если в одном сообщении есть несколько "
         "уточнений одного решения, объедини их в одно value, не теряя основной выбор. "
-        "Используй существующий key при изменении решения, если подходит. "
-        f"Существующие ключи: {json.dumps(existing_keys[:80], ensure_ascii=False)}"
+        "Создавай устойчивый key из смысла самого сообщения: sales.channel для основного "
+        "канала продаж, sales.cold_calls для холодных звонков, writing.headline_phrase "
+        "для любимой фразы заголовка. Не привязывай новый предмет к ключу другой темы."
     )
     result = get_model_provider().chat_completion(
         messages=[{"role": "system", "content": prompt},
@@ -208,7 +209,11 @@ def remember_owner_turn(
             db.add(row)
             current[key] = row
             changed = True
-        elif row.value != value or row.kind != kind:
+        elif row.kind != kind:
+            # A different semantic type under the same key is usually model
+            # key reuse, not a legitimate correction. Keep the existing fact.
+            continue
+        elif row.value != value:
             row.history = [*(row.history or [])[-9:], {"kind": row.kind, "value": row.value}]
             row.kind, row.value, row.source_run_id = kind, value, run_id
             changed = True
