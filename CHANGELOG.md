@@ -222,7 +222,7 @@
 
 # 2026-11-16
 
-- 2026-11-18: deployed Gate 2 Owner memory to production behind tenant flags. Verified backup restoration, real Hermes E2E A–H, personal isolation, memory erasure, and Gate 1 MCP smoke. Final working-tenant enablement and PR merge remain pending.
+- 2026-11-18: deployed Gate 2 Owner memory to production behind tenant flags. Verified backup restoration, real Hermes E2E A–H, personal isolation, memory erasure, and Gate 1 MCP smoke. Enabled and verified the Quantum Labs owner profile; other tenants remain disabled pending their own checks.
 
 - 2026-11-18: extended Gate 2 Owner Hermes memory to the real cabinet chat path; added curated tenant/user-scoped facts, correction and erasure controls, transcript ownership and a memory panel. Staged validation and production rollout remain pending.
 
