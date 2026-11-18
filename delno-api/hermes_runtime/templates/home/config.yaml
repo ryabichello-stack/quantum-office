@@ -5,6 +5,12 @@
 model:
   default: gpt-6-luna
 
+# DELNO stores curated Owner memory by tenant and user in PostgreSQL. Hermes's
+# built-in profile-wide memory would mix users of one company and outlive erase.
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+
 # DELNO MCP — business tools only. Use INTERNAL docker URL (not public api.dlno.ru;
 # that hostname is SNI-routed and must not be assumed). Prefer per-run:
 #   Authorization: Bearer <X-Delno-Run-Token>  and/or header X-Delno-Run-Id

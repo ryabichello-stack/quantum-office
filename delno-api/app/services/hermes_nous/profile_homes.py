@@ -164,6 +164,8 @@ def _seed_profile_files(
         # Named profiles are served by the worker multiplex root — not standalone daemons.
         if "multiplex_profiles: false" in text:
             text = text.replace("multiplex_profiles: false", "multiplex_profiles: true")
+        if "\nmemory:" not in text and not text.startswith("memory:"):
+            text = text.rstrip() + "\n\nmemory:\n  memory_enabled: false\n  user_profile_enabled: false\n"
         if mcp_url and ("delno_office:" not in text or "mcp_servers: {}" in text):
             block = (
                 "mcp_servers:\n"

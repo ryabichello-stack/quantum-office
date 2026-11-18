@@ -548,12 +548,25 @@ def _get_or_create_conversation(
     if conversation_id:
         row = (
             db.query(Conversation)
-            .filter(Conversation.id == conversation_id, Conversation.tenant_id == ctx.tenant_id)
+            .filter(Conversation.id == conversation_id)
             .one_or_none()
         )
         if row:
+            if row.tenant_id != ctx.tenant_id:
+                from fastapi import HTTPException
+
+                raise HTTPException(status_code=404, detail="Conversation not found")
+            private = row.channel in {"hermes", "web"} or bool((row.meta or {}).get("owner_user_id"))
+            if private and (ctx.user_id is None or str((row.meta or {}).get("owner_user_id")) != str(ctx.user_id)):
+                from fastapi import HTTPException
+
+                raise HTTPException(status_code=404, detail="Conversation not found")
             return row
-    row = Conversation(tenant_id=ctx.tenant_id, channel=channel)
+    row = Conversation(
+        id=conversation_id or uuid.uuid4(),
+        tenant_id=ctx.tenant_id, channel=channel,
+        meta={"owner_user_id": str(ctx.user_id)} if ctx.user_id else {},
+    )
     db.add(row)
     db.flush()
     return row
