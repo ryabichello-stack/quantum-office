@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import uuid
@@ -46,6 +47,7 @@ _REQUEST = re.compile(
     r"remind|tell|show|check|find|what|how|when|where|why)\b"
 )
 _IMPERATIVE = re.compile(r"(?i)\b(?:напомни|расскажи|скажи|покажи|проверь|найди|вызови|создай|сделай|remind|tell|show|check|find)\b")
+_LOG = logging.getLogger(__name__)
 
 
 def is_non_declarative(message: str) -> bool:
@@ -185,14 +187,17 @@ def remember_owner_turn(
     request_text: str, response_text: str,
 ) -> bool:
     if ctx.user_id is None or not session_id.startswith(f"{ctx.tenant_slug}:") or not run_id:
+        _LOG.info("owner_memory_skip reason=invalid_scope")
         return False
     if db.scalar(select(HermesOwnerTurn.id).where(
         HermesOwnerTurn.tenant_id == ctx.tenant_id, HermesOwnerTurn.run_id == run_id,
     )):
+        _LOG.info("owner_memory_skip reason=duplicate_run")
         return False
     existing = list(db.scalars(select(HermesMemory).where(*_scope(ctx))).all())
     extracted = _extract(request_text, response_text, [m.memory_key for m in existing])
     if extracted is None:
+        _LOG.info("owner_memory_skip reason=no_extract")
         return False
     summary = _safe(extracted.get("summary"), 400)
     candidates = extracted.get("memories") if isinstance(extracted.get("memories"), list) else []
@@ -248,6 +253,7 @@ def remember_owner_turn(
                                session_id=session_id[:200], run_id=run_id[:120], summary=summary))
     if changed or summary:
         db.commit()
+    _LOG.info("owner_memory_store changed=%s summary=%s candidates=%d", changed, bool(summary), len(candidates))
     return changed or bool(summary)
 
 
