@@ -102,6 +102,24 @@ def test_questions_and_requests_never_overwrite_decisions(monkeypatch):
     assert calls == []
 
 
+def test_duplicate_extracted_key_keeps_primary_and_qualification(monkeypatch):
+    engine, db = _db()
+    try:
+        owner, _, _ = _contexts(db)
+        monkeypatch.setattr(memory, "_extract", lambda *_: {"summary": "Каналы продаж", "memories": [
+            {"key": "sales.channel", "kind": "decision", "value": "Основной канал — рекомендации клиентов."},
+            {"key": "sales.channel", "kind": "rejected_option", "value": "Партнёрский канал откладываем."},
+        ]})
+        assert memory.remember_owner_turn(db, owner, session_id="company-a:chat", run_id="run-dupe",
+                                          request_text="Теперь рекомендации", response_text="Принято")
+        rows = memory.list_memories(db, owner)
+        assert len(rows) == 1
+        assert "рекомендации" in rows[0].value and "откладываем" in rows[0].value
+        assert rows[0].kind == "decision"
+    finally:
+        db.close(); engine.dispose()
+
+
 def test_owner_shortcut_updates_memory_without_duplicate_nous_write(monkeypatch):
     from app.api.v1 import operator as operator_api
     a = TenantContext(tenant_id=__import__("uuid").uuid4(), tenant_slug="company-a",

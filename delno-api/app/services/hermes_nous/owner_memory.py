@@ -140,6 +140,8 @@ def _extract(message: str, reply: str, existing_keys: list[str]) -> dict[str, An
         "Верни строго JSON: {\"summary\": короткая тема или пусто, \"memories\": "
         "[{\"key\": английский устойчивый ключ вида sales.channel, \"kind\": один из "
         + ", ".join(sorted(KINDS)) + ", \"value\": короткий факт по-русски}]}. "
+        "Каждый key может встретиться только один раз. Если в одном сообщении есть несколько "
+        "уточнений одного решения, объедини их в одно value, не теряя основной выбор. "
         "Используй существующий key при изменении решения, если подходит. "
         f"Существующие ключи: {json.dumps(existing_keys[:80], ensure_ascii=False)}"
     )
@@ -181,6 +183,7 @@ def remember_owner_turn(
     current = {m.memory_key: m for m in existing}
     changed = False
     superseded = False
+    grouped: dict[str, tuple[str, str]] = {}
     for candidate in candidates[:8]:
         if not isinstance(candidate, dict):
             continue
@@ -189,6 +192,15 @@ def remember_owner_turn(
         value = _safe(candidate.get("value"), 350)
         if not _KEY.fullmatch(key) or kind not in KINDS or not value or _block_hash(key) in blocks:
             continue
+        if key in grouped:
+            old_kind, old_value = grouped[key]
+            if value not in old_value:
+                combined = _safe(old_value.rstrip(". ") + "; " + value, 350)
+                if combined:
+                    grouped[key] = (old_kind, combined)
+        else:
+            grouped[key] = (kind, value)
+    for key, (kind, value) in grouped.items():
         row = current.get(key)
         if row is None:
             row = HermesMemory(tenant_id=ctx.tenant_id, user_id=ctx.user_id,
