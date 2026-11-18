@@ -223,6 +223,7 @@ def test_owner_api_route_rehydrates_new_dialogue(monkeypatch):
         assert first.status_code == second.status_code == 200
         assert create.call_args_list[0].kwargs["owner_history"] == ""
         assert "Продаём через партнёров" in create.call_args_list[1].kwargs["owner_history"]
+        assert "hermes.goal_set" not in create.call_args_list[1].kwargs["tool_ids"]
         assert f"user:{a.user_id}" in create.call_args_list[1].kwargs["session_id"]
         listed = client.get("/v1/hermes-nous/memory/facts")
         assert listed.status_code == 200 and len(listed.json()["items"]) == 1

@@ -239,6 +239,10 @@ def nous_create_run(
 ) -> dict[str, Any]:
     _require_flag(db, ctx)
     tools = _clamp_tools(body.tool_ids, body.mode)
+    from app.services.hermes_nous.owner_memory import is_non_declarative
+
+    if is_non_declarative(body.message):
+        tools = [tool for tool in tools if tool != "hermes.goal_set"]
     # Server builds session — ignore client session_id unless it already matches tenant prefix.
     conv = body.conversation_id or body.session_id
     session_id = (f"{ctx.tenant_slug}:user:{ctx.user_id}:{conv}" if conv else

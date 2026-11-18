@@ -2359,7 +2359,8 @@ def _operator_chat_impl(
                 from app.services.hermes_nous.onboarding import get_office_loop
                 from app.services.hermes_nous.tool_packs import pack_for_mode
                 from app.services.hermes_nous.owner_memory import (
-                    memory_epoch, owner_context, owner_memory_enabled, remember_owner_turn,
+                    is_non_declarative, memory_epoch, owner_context,
+                    owner_memory_enabled, remember_owner_turn,
                 )
 
                 # The owner can ask for real work immediately. Missing optional
@@ -2400,12 +2401,15 @@ def _operator_chat_impl(
                 )
                 if memory_on:
                     owner_session = f"{owner_session}:memory-v{memory_epoch(db, ctx)}"
+                granted_tools = pack_for_mode(pack_mode)
+                if is_non_declarative(message):
+                    granted_tools = [tool for tool in granted_tools if tool != "hermes.goal_set"]
                 nous = create_run(
                     db,
                     ctx,
                     message=message,
                     session_id=owner_session,
-                    tool_ids=pack_for_mode(pack_mode),
+                    tool_ids=granted_tools,
                     mode=pack_mode,
                     owner_history=owner_history,
                     office_context={

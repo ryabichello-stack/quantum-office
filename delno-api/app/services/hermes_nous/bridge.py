@@ -312,7 +312,8 @@ def create_run(
     else:
         mission = (
             "Ask what task the owner wants, then plan → DELNO MCP tools → report. "
-            "Call hermes.goal_set when the owner states a goal; include only tools "
+            "Call hermes.goal_set only when the owner explicitly states a durable company goal; "
+            "never for a question, recall request, personal preference, or one-off task. Include only tools "
             "the owner chose. No KB, phone, mail, or channel is mandatory. "
             "Read hermes.capabilities before recommending connections. For a "
             "message secretary, explain that answers about the company benefit "
