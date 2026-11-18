@@ -2605,10 +2605,15 @@ def operator_chat(
     ctx: TenantContext = Depends(get_tenant_context_auth),
 ) -> dict:
     """One Owner entry point, including deterministic and DIY shortcuts."""
-    if body.conversation_id is None:
+    if body.conversation_id is None and ctx.user_id is not None:
         import uuid
 
-        body = body.model_copy(update={"conversation_id": uuid.uuid4()})
+        new_conversation_id = uuid.uuid4()
+        if isinstance(body, OperatorChatRequest):
+            body = body.model_copy(update={"conversation_id": new_conversation_id})
+        else:
+            # Older internal callers and tests pass a request-shaped object.
+            body.conversation_id = new_conversation_id
     result = _operator_chat_impl(body, db, ctx)
     if (ctx.user_id is not None and body.channel in {"hermes", "web"} and
             not body.attachments and result.get("reply") and
