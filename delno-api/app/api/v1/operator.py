@@ -2823,8 +2823,9 @@ def list_conversations(
         db.query(Conversation)
         .filter(Conversation.tenant_id == ctx.tenant_id)
         .filter(or_(
-            Conversation.channel != "hermes",
             Conversation.meta["owner_user_id"].astext == str(ctx.user_id),
+            (Conversation.channel.notin_(("hermes", "web"))) &
+            Conversation.meta["owner_user_id"].astext.is_(None),
         ))
         .order_by(Conversation.updated_at.desc())
         .limit(min(limit, 100))
@@ -2853,9 +2854,8 @@ def _require_visible_conversation(db: Session, ctx: TenantContext, conversation_
     row = db.query(Conversation).filter(
         Conversation.id == conversation_id, Conversation.tenant_id == ctx.tenant_id,
     ).one_or_none()
-    if row is None or (row.channel == "hermes" and (
-        ctx.user_id is None or str((row.meta or {}).get("owner_user_id")) != str(ctx.user_id)
-    )):
+    private = row is not None and (row.channel in {"hermes", "web"} or bool((row.meta or {}).get("owner_user_id")))
+    if row is None or (private and (ctx.user_id is None or str((row.meta or {}).get("owner_user_id")) != str(ctx.user_id))):
         raise HTTPException(status_code=404, detail="Conversation not found")
     return row
 
@@ -2918,8 +2918,9 @@ def bulk_delete_conversations(
         raise HTTPException(status_code=400, detail="Provide ids or channel")
 
     q = q.filter(or_(
-        Conversation.channel != "hermes",
         Conversation.meta["owner_user_id"].astext == str(ctx.user_id),
+        (Conversation.channel.notin_(("hermes", "web"))) &
+        Conversation.meta["owner_user_id"].astext.is_(None),
     ))
     rows = q.order_by(Conversation.updated_at.desc()).all()
     if body.keep_latest_hermes and body.channel == "hermes" and rows:

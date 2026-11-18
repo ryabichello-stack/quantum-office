@@ -552,20 +552,19 @@ def _get_or_create_conversation(
             .one_or_none()
         )
         if row:
-            if row.channel == "hermes" and (
-                ctx.user_id is None or str((row.meta or {}).get("owner_user_id")) != str(ctx.user_id)
-            ):
+            private = row.channel in {"hermes", "web"} or bool((row.meta or {}).get("owner_user_id"))
+            if private and (ctx.user_id is None or str((row.meta or {}).get("owner_user_id")) != str(ctx.user_id)):
                 from fastapi import HTTPException
 
                 raise HTTPException(status_code=404, detail="Conversation not found")
             return row
-        if channel == "hermes":
+        if channel in {"hermes", "web"}:
             from fastapi import HTTPException
 
             raise HTTPException(status_code=404, detail="Conversation not found")
     row = Conversation(
         tenant_id=ctx.tenant_id, channel=channel,
-        meta={"owner_user_id": str(ctx.user_id)} if channel == "hermes" and ctx.user_id else {},
+        meta={"owner_user_id": str(ctx.user_id)} if ctx.user_id else {},
     )
     db.add(row)
     db.flush()

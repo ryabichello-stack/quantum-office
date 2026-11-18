@@ -113,6 +113,14 @@ def test_owner_conversation_cannot_be_read_or_reused_by_colleague():
         shared = Conversation(tenant_id=owner.tenant_id, channel="telegram", meta={})
         db.add(shared); db.commit()
         assert _require_visible_conversation(db, colleague, shared.id).id == shared.id
+        spoofed = _get_or_create_conversation(db, owner, "telegram", None)
+        db.commit()
+        try:
+            _require_visible_conversation(db, colleague, spoofed.id)
+        except HTTPException as exc:
+            assert exc.status_code == 404
+        else:
+            raise AssertionError("Client-supplied channel exposed private transcript")
     finally:
         db.close(); engine.dispose()
 

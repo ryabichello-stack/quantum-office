@@ -20,7 +20,7 @@ def upgrade() -> None:
             SELECT tenant_id, MIN(id::text)::uuid AS id
             FROM users GROUP BY tenant_id HAVING COUNT(*) = 1
         ) AS u
-        WHERE c.tenant_id = u.tenant_id AND c.channel = 'hermes'
+        WHERE c.tenant_id = u.tenant_id AND c.channel IN ('hermes', 'web')
           AND NOT COALESCE(c.meta, '{}'::jsonb) ? 'owner_user_id'
     """)
     op.create_table(
