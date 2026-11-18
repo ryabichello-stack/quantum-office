@@ -36,6 +36,11 @@ _INJECTION = re.compile(
 )
 _NO_STORE = re.compile(r"(?i)\b(?:не запоминай|не сохраняй|забудь это|не заноси в память|do not remember|don't remember)\b")
 _PII = re.compile(r"(?i)(?:[\w.+-]+@[\w.-]+\.[a-z]{2,}|\+?\d[\d\s()\-]{9,}\d)")
+_REQUEST = re.compile(
+    r"(?i)^\s*(?:продолжим|напомни|расскажи|скажи|покажи|проверь|найди|"
+    r"какое|какой|какая|что|как|когда|где|почему|вызови|создай|сделай|"
+    r"remind|tell|show|check|find|what|how|when|where|why)\b"
+)
 
 
 def owner_memory_enabled(db: Session, ctx: TenantContext) -> bool:
@@ -122,10 +127,13 @@ def _extract(message: str, reply: str, existing_keys: list[str]) -> dict[str, An
     from app.services.model_provider import get_model_provider
     from app.services.tenant_vault import looks_like_credential_paste
 
-    if (_SECRET.search(message) or looks_like_credential_paste(message) or _NO_STORE.search(message)):
+    if ("?" in message or _REQUEST.search(message) or _SECRET.search(message) or
+            looks_like_credential_paste(message) or _NO_STORE.search(message)):
         return None
     prompt = (
         "Извлеки только явно сказанные пользователем устойчивые факты и решения. "
+        "Если сообщение только вопрос, просьба или команда без нового факта — верни пустые memories и summary. "
+        "Не выводи факт из формулировки вопроса и не заменяй решение предположением. "
         "Сделай краткую безопасную тему разговора только по словам пользователя. "
         "Не сохраняй пароли, токены, ключи, платёжные реквизиты и личные данные клиентов. "
         "Если пользователь просит не запоминать — верни пустые memories и summary. "

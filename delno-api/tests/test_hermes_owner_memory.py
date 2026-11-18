@@ -92,6 +92,16 @@ def test_blocked_key_and_secret_are_not_persisted(monkeypatch):
         db.close(); engine.dispose()
 
 
+def test_questions_and_requests_never_overwrite_decisions(monkeypatch):
+    calls = []
+    from app.services import model_provider
+    monkeypatch.setattr(model_provider, "get_model_provider", lambda: calls.append(1))
+    assert memory._extract("Какое наше актуальное решение по продажам?", "Ответ", ["sales.channel"]) is None
+    assert memory._extract("Продолжим вчерашнее. На чём остановились?", "Ответ", ["sales.channel"]) is None
+    assert memory._extract("Напомни решение по продажам", "Ответ", ["sales.channel"]) is None
+    assert calls == []
+
+
 def test_owner_conversation_cannot_be_read_or_reused_by_colleague():
     engine, db = _db()
     try:
