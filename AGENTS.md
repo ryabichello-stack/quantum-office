@@ -1,3 +1,7 @@
+# DELNO SOURCE MOVED
+
+As of 2026-11-18, DELNO product code is maintained in the private `ryabichello-stack/delno` repository. Do not make new DELNO product changes or releases from this repository. This copy remains only for legacy deployment comparison and rollback until the DELNO release pipeline is switched and verified. Quantum Labs legacy components remain here.
+
 # Quantum Labs Office — Agent Onboarding
 
 **Это репозиторий office-сервисов Quantum Labs + DELNO**, не Polyhub trading.
