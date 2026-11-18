@@ -11,6 +11,10 @@ depends_on = None
 
 
 def upgrade() -> None:
+    if "conversation_id" in {
+        column["name"] for column in sa.inspect(op.get_bind()).get_columns("leads")
+    }:
+        return
     op.add_column(
         "leads",
         sa.Column("conversation_id", postgresql.UUID(as_uuid=True), nullable=True),

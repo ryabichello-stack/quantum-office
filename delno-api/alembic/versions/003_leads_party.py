@@ -11,6 +11,10 @@ depends_on = None
 
 
 def upgrade() -> None:
+    if {"inn", "party_json", "party_enriched_at"}.issubset(
+        {column["name"] for column in sa.inspect(op.get_bind()).get_columns("leads")}
+    ):
+        return
     op.add_column("leads", sa.Column("inn", sa.String(length=12), nullable=True))
     op.add_column("leads", sa.Column("party_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True))
     op.add_column("leads", sa.Column("party_enriched_at", sa.DateTime(timezone=True), nullable=True))

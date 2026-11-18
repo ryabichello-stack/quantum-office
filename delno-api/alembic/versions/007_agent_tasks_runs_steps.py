@@ -11,6 +11,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    existing = [sa.inspect(op.get_bind()).has_table(name) for name in ("agent_tasks", "agent_runs", "agent_steps")]
+    if all(existing):
+        return
+    if any(existing):
+        raise RuntimeError("partial agent schema; manual migration repair required")
     op.create_table(
         "agent_tasks",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),

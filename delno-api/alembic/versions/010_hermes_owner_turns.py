@@ -23,6 +23,13 @@ def upgrade() -> None:
         WHERE c.tenant_id = u.tenant_id AND c.channel IN ('hermes', 'web')
           AND NOT COALESCE(c.meta, '{}'::jsonb) ? 'owner_user_id'
     """)
+    existing = [sa.inspect(op.get_bind()).has_table(name) for name in (
+        "hermes_owner_turns", "hermes_memories", "hermes_memory_blocks", "hermes_memory_states"
+    )]
+    if all(existing):
+        return
+    if any(existing):
+        raise RuntimeError("partial Hermes memory schema; manual migration repair required")
     op.create_table(
         "hermes_owner_turns",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),

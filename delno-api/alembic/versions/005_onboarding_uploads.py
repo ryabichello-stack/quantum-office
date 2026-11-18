@@ -11,6 +11,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    if sa.inspect(op.get_bind()).has_table("onboarding_uploads"):
+        return
     op.create_table(
         "onboarding_uploads",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),

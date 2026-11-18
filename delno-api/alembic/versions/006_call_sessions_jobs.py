@@ -11,6 +11,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    existing = [sa.inspect(op.get_bind()).has_table(name) for name in ("call_jobs", "call_sessions")]
+    if all(existing):
+        return
+    if any(existing):
+        raise RuntimeError("partial call schema; manual migration repair required")
     op.create_table(
         "call_jobs",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),

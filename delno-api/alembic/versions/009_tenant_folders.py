@@ -11,6 +11,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    if sa.inspect(op.get_bind()).has_table("tenant_folders"):
+        return
     op.create_table(
         "tenant_folders",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),

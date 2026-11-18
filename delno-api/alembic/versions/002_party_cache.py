@@ -11,6 +11,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    if sa.inspect(op.get_bind()).has_table("party_cache"):
+        return
     op.create_table(
         "party_cache",
         sa.Column("inn", sa.String(length=12), nullable=False),
