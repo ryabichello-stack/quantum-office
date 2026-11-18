@@ -11,6 +11,7 @@ import httpx
 from app.core.db import SessionLocal
 from app.core.security import create_access_token
 from app.models.hermes_memory import HermesMemory
+from app.models.hermes_runtime import HermesRunBinding
 from app.models.tenant import Tenant
 from app.models.user import User
 
@@ -53,8 +54,20 @@ def before():
     ha, hb = auth(ts[A], us[A]), auth(ts[B], us[B])
     with client() as c:
         clear(c, ha)
-        assert chat(c, ha, "Мы решили развивать продажи через партнёров. Холодные звонки пока не используем.").get("engine") == "nous_hermes_agent"
-        reply = chat(c, ha, "Продолжим вчерашнее. На чём остановились по продажам?")["reply"].lower()
+        first = chat(c, ha, "Мы решили развивать продажи через партнёров. Холодные звонки пока не используем.")
+        assert first.get("engine") == "nous_hermes_agent"
+        stored = facts(c, ha)
+        assert any(f["key"] == "sales.channel" and "партн" in f["value"].lower() for f in stored)
+        assert any(f["key"] == "sales.cold_calls" for f in stored)
+        second = chat(c, ha, "Продолжим вчерашнее. На чём остановились по продажам?")
+        assert first["conversation_id"] != second["conversation_id"]
+        with SessionLocal() as db:
+            sessions = [row.session_id or "" for row in db.query(HermesRunBinding).filter(
+                HermesRunBinding.tenant_id == ts[A].id,
+            ).order_by(HermesRunBinding.created_at.desc()).limit(8).all()]
+            assert any(first["conversation_id"] in s for s in sessions)
+            assert any(second["conversation_id"] in s for s in sessions)
+        reply = second["reply"].lower()
         assert "партн" in reply and "холодн" in reply
         print("A PASS", flush=True)
         chat(c, ha, "Теперь основной канал продаж — рекомендации существующих клиентов. Партнёрский канал откладываем. Холодные звонки не используем.")
@@ -65,6 +78,7 @@ def before():
         print("B PASS", flush=True)
         clear(c, ha)
         seed = chat(c, ha, "Моя любимая фраза для заголовков — серебряная комета.")
+        assert any(PHRASE in f["value"].lower() for f in facts(c, ha)), "seed fact not persisted"
         notes = [
             "Для личных заметок по понедельникам предпочитаю короткие заголовки.",
             "Для личных заметок по вторникам предпочитаю спокойный тон.",

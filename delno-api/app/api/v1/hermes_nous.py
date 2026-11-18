@@ -266,15 +266,14 @@ def nous_create_run(
             mode=body.mode,
             owner_history=owner_history,
         )
-        terminal = result.get("hermes") if isinstance(result.get("hermes"), dict) else {}
-        if (is_owner_turn and terminal.get("status") == "completed" and
-                result.get("output") and result.get("delno_run_id")):
+        final_text = result.get("output") or (result.get("hermes") or {}).get("output")
+        if (is_owner_turn and result.get("ok") and final_text and result.get("delno_run_id")):
             from app.services.hermes_nous.owner_memory import remember_owner_turn
 
             try:
                 remember_owner_turn(
                     db, ctx, session_id=session_id, run_id=result["delno_run_id"],
-                    request_text=body.message, response_text=result["output"],
+                    request_text=body.message, response_text=str(final_text),
                 )
             except Exception:
                 import logging

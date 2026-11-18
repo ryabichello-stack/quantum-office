@@ -2449,13 +2449,12 @@ def _operator_chat_impl(
                     or (nous.get("hermes") or {}).get("output")
                     or "Hermes run started — progress via /v1/hermes-nous/runs/{run_id}."
                 )
-                terminal = nous.get("hermes") if isinstance(nous.get("hermes"), dict) else {}
-                if (memory_on and terminal.get("status") == "completed" and
-                        nous.get("output") and nous.get("delno_run_id")):
+                if (memory_on and nous.get("ok") and reply and
+                        not str(reply).startswith("Hermes run started") and nous.get("delno_run_id")):
                     try:
                         remember_owner_turn(
                             db, ctx, session_id=owner_session, run_id=nous["delno_run_id"],
-                            request_text=message, response_text=nous["output"],
+                            request_text=message, response_text=str(reply),
                         )
                     except Exception:
                         # Recall is optional; a memory-store error must not turn a

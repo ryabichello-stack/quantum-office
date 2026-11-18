@@ -104,6 +104,21 @@ def test_questions_and_requests_never_overwrite_decisions(monkeypatch):
     assert calls == []
 
 
+def test_extraction_retries_transient_empty_model_output(monkeypatch):
+    from app.services import model_provider
+    class Provider:
+        calls = 0
+        def chat_completion(self, **_kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return {"ok": True, "data": {"choices": [{"message": {"content": ""}}]}}
+            return {"ok": True, "data": {"choices": [{"message": {"content": '{"summary":"тема","memories":[{"key":"writing.headline_phrase","kind":"preference","value":"Любимая фраза — серебряная комета"}]}'}}]}}
+    provider = Provider()
+    monkeypatch.setattr(model_provider, "get_model_provider", lambda: provider)
+    result = memory._extract("Моя любимая фраза — серебряная комета.", "", [])
+    assert provider.calls == 2 and result["memories"][0]["key"] == "writing.headline_phrase"
+
+
 def test_duplicate_extracted_key_keeps_primary_and_qualification(monkeypatch):
     engine, db = _db()
     try:
@@ -231,7 +246,7 @@ def test_owner_api_route_rehydrates_new_dialogue(monkeypatch):
         app.dependency_overrides[get_tenant_context_auth] = lambda: a
         client = TestClient(app)
         outputs = [
-            {"ok": True, "engine": "nous_hermes_agent", "output": "Принято", "delno_run_id": "run-1", "hermes": {"status": "completed"}},
+            {"ok": True, "engine": "nous_hermes_agent", "output": "", "delno_run_id": "run-1", "hermes": {"status": "completed", "output": "Принято"}},
             {"ok": True, "engine": "nous_hermes_agent", "output": "Да", "delno_run_id": "run-2", "hermes": {"status": "completed"}},
         ]
         with patch("app.api.v1.hermes_nous.create_run", side_effect=outputs) as create, \

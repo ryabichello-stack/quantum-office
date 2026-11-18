@@ -156,19 +156,28 @@ def _extract(message: str, reply: str, existing_keys: list[str]) -> dict[str, An
         "канала продаж, sales.cold_calls для холодных звонков, writing.headline_phrase "
         "для любимой фразы заголовка. Не привязывай новый предмет к ключу другой темы."
     )
-    result = get_model_provider().chat_completion(
-        messages=[{"role": "system", "content": prompt},
-                  {"role": "user", "content": message[:2000]}],
-        max_tokens=450,
-    )
-    if not result.get("ok"):
-        return None
-    content = str((((result.get("data") or {}).get("choices") or [{}])[0].get("message") or {}).get("content") or "")
-    try:
-        parsed = json.loads(content)
-        return parsed if isinstance(parsed, dict) else None
-    except (ValueError, TypeError):
-        return None
+    provider = get_model_provider()
+    for _ in range(2):
+        result = provider.chat_completion(
+            messages=[{"role": "system", "content": prompt},
+                      {"role": "user", "content": message[:2000]}],
+            max_tokens=900,
+        )
+        if not result.get("ok"):
+            continue
+        content = str((((result.get("data") or {}).get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+        if content.startswith("```json") and content.endswith("```"):
+            content = content[7:-3].strip()
+        try:
+            parsed = json.loads(content)
+            if isinstance(parsed, dict) and (parsed.get("summary") or parsed.get("memories")):
+                return parsed
+        except (ValueError, TypeError):
+            pass
+    import logging
+
+    logging.getLogger(__name__).warning("owner_memory_extract_unavailable")
+    return None
 
 
 def remember_owner_turn(
