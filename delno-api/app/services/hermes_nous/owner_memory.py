@@ -45,6 +45,7 @@ _REQUEST = re.compile(
     r"какое|какой|какая|что|как|когда|где|почему|вызови|создай|сделай|"
     r"remind|tell|show|check|find|what|how|when|where|why)\b"
 )
+_IMPERATIVE = re.compile(r"(?i)\b(?:напомни|расскажи|скажи|покажи|проверь|найди|вызови|создай|сделай|remind|tell|show|check|find)\b")
 
 
 def owner_memory_enabled(db: Session, ctx: TenantContext) -> bool:
@@ -131,7 +132,8 @@ def _extract(message: str, reply: str, existing_keys: list[str]) -> dict[str, An
     from app.services.model_provider import get_model_provider
     from app.services.tenant_vault import looks_like_credential_paste
 
-    if ("?" in message or _REQUEST.search(message) or _SECRET.search(message) or
+    if ("?" in message or _REQUEST.search(message) or _IMPERATIVE.search(message) or
+            _INJECTION.search(message) or _SECRET.search(message) or
             looks_like_credential_paste(message) or _NO_STORE.search(message)):
         return None
     prompt = (
