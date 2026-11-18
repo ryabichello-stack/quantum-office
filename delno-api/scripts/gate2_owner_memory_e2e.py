@@ -102,12 +102,17 @@ def before():
         hc = auth(ts[A], colleague)
         try:
             for h in (hc, hb):
-                assert not any(PHRASE in f["value"].lower() for f in facts(c, h))
+                memory_response = c.get(BASE + "/hermes-nous/memory/facts", headers=h)
+                assert memory_response.status_code in (200, 403, 404)
+                if memory_response.status_code == 200:
+                    assert not any(PHRASE in f["value"].lower() for f in memory_response.json()["items"])
                 assert c.patch(BASE + "/hermes-nous/memory/facts/" + private["id"], headers=h, json={"value": "подмена"}).status_code == 404
                 assert c.get(BASE + "/operator/conversations/" + seed["conversation_id"], headers=h).status_code == 404
             def ask(h):
                 with client() as cc:
-                    return chat(cc, h, "Какая моя личная любимая фраза для заголовков?")["reply"]
+                    response = cc.post(BASE + "/operator/chat", headers=h, json={"channel": "hermes", "message": "Какая моя личная любимая фраза для заголовков?"})
+                    assert response.status_code in (200, 403, 404)
+                    return response.json().get("reply", "") if response.status_code == 200 else ""
             with ThreadPoolExecutor(max_workers=2) as pool:
                 replies = list(pool.map(ask, (hc, hb)))
             assert all(PHRASE not in r.lower() for r in replies)

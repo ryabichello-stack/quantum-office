@@ -222,6 +222,8 @@
 
 # 2026-11-16
 
+- 2026-11-18: deployed Gate 2 Owner memory to production behind tenant flags. Verified backup restoration, real Hermes E2E A–H, personal isolation, memory erasure, and Gate 1 MCP smoke. Final working-tenant enablement and PR merge remain pending.
+
 - 2026-11-18: extended Gate 2 Owner Hermes memory to the real cabinet chat path; added curated tenant/user-scoped facts, correction and erasure controls, transcript ownership and a memory panel. Staged validation and production rollout remain pending.
 
 - 2026-11-17: started Gate 2 with bounded, actor-scoped recall of completed Owner Hermes dialogues; added a PostgreSQL migration and APIs to inspect and clear the recalled history. Disabled by default until staged validation.
