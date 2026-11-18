@@ -22,6 +22,10 @@ from app.models.hermes_memory import HermesMemory, HermesMemoryBlock, HermesMemo
 from app.models.hermes_owner_turn import HermesOwnerTurn
 
 KINDS = {"company_fact", "preference", "decision", "rejected_option", "project", "goal", "open_task", "result"}
+_KIND_TRANSITIONS = {
+    ("decision", "rejected_option"), ("rejected_option", "decision"),
+    ("open_task", "result"), ("result", "open_task"),
+}
 _KEY = re.compile(r"^[a-z][a-z0-9_.-]{2,119}$")
 _SECRET = re.compile(
     r"(?i)(?:\b(?:password|пароль|api[_-]?key|secret|token|токен)\b\s*[:=]\s*\S+"
@@ -209,7 +213,7 @@ def remember_owner_turn(
             db.add(row)
             current[key] = row
             changed = True
-        elif row.kind != kind:
+        elif row.kind != kind and (row.kind, kind) not in _KIND_TRANSITIONS:
             # A different semantic type under the same key is usually model
             # key reuse, not a legitimate correction. Keep the existing fact.
             continue

@@ -134,6 +134,13 @@ def test_unrelated_preference_cannot_replace_sales_decision(monkeypatch):
                                    request_text="Предпочитаю короткие заголовки", response_text="Принято")
         fact = memory.list_memories(db, owner)[0]
         assert fact.kind == "decision" and fact.value == "Продажи через партнёров"
+        monkeypatch.setattr(memory, "_extract", lambda *_: {"summary": "Канал продаж отложен", "memories": [
+            {"key": "sales.channel", "kind": "rejected_option", "value": "Партнёрские продажи отложены"},
+        ]})
+        memory.remember_owner_turn(db, owner, session_id="company-a:three", run_id="run-change",
+                                   request_text="Партнёрские продажи отложены", response_text="Принято")
+        fact = memory.list_memories(db, owner)[0]
+        assert fact.kind == "rejected_option" and fact.value == "Партнёрские продажи отложены"
     finally:
         db.close(); engine.dispose()
 
