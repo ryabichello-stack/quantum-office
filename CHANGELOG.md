@@ -10,6 +10,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Text-bot / «Заметки эпохи» (`channel_curate`): альбомы публикуются одним `sendMediaGroup`;
+  фото/видео без текста — без выдуманной подписи (только футер); жёстче sanitize HTML
+  (без видимых `<br>`/`<p>`/`<div>`), retry plain при ошибке parse entities
+
 ### Added
 
 - Text-bot: restore channel curate — forward → rewrite → publish to Telegram channel
