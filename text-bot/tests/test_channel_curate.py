@@ -75,6 +75,26 @@ def test_prepare_body_without_key_keeps_source_html():
     assert out == "<b>Сырой текст</b>"
 
 
+def test_rewrite_mode_off_passthrough(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_CURATE_REWRITE_MODE", "off")
+    out = channel_curate.prepare_body(
+        source="Живая новость с перчинкой",
+        source_html="<b>Живая новость с перчинкой</b>",
+        openai_api_key="sk-test",
+        model="gpt-4.1-mini",
+        has_media=False,
+    )
+    assert out == "<b>Живая новость с перчинкой</b>"
+
+
+def test_strip_foreign_cta_keeps_news():
+    src = "Важная новость про рынок.\n\nПодписывайтесь на наш канал\nhttps://t.me/other_channel"
+    out = channel_curate.strip_foreign_cta(src)
+    assert "Важная новость" in out
+    assert "Подписывайтесь" not in out
+    assert "other_channel" not in out
+
+
 def test_enabled_requires_channel_token(monkeypatch):
     monkeypatch.setenv("TELEGRAM_CURATE_ENABLED", "true")
     monkeypatch.delenv("TELEGRAM_CHANNEL_BOT_TOKEN", raising=False)

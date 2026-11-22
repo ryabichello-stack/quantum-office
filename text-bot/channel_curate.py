@@ -26,38 +26,42 @@ _MEDIA_GROUPS: dict[str, dict[str, Any]] = {}
 _MEDIA_GROUP_TIMERS: dict[str, threading.Timer] = {}
 MEDIA_GROUP_WAIT_S = float(os.getenv("TELEGRAM_CURATE_ALBUM_WAIT_S", "2.8"))
 
-REWRITE_SYSTEM = """Ты старший копирайтер авторского Telegram-канала «Заметки эпохи».
-Задача: переписать исходный пост так, чтобы его было удобно читать в Telegram.
+REWRITE_SYSTEM = """Ты редактор канала «Заметки эпохи». Задача — МАКСИМАЛЬНО близко к исходному тексту.
+
+ГЛАВНОЕ:
+• Сохрани тон, ритм, иронию, резкость, «изюминку» и живые формулировки автора.
+• Не превращай новость в бездушный пересказ, лид или «копирайтинг».
+• Не меняй структуру ради «удобства чтения». Не придумывай заголовок/хук/вывод, если их не было.
+• Почти дословно: правь только то, без чего нельзя (см. ниже). Если сомневаешься — оставь как было.
+
+МОЖНО УБРАТЬ / ПОПРАВИТЬ:
+• чужие «подписывайтесь», рекламу, водяные ссылки на другие каналы;
+• явный мусор/битые символы;
+• при необходимости — лёгкая правка опечаток, без смены смысла и стиля.
 
 ЖЁСТКИЕ ЗАПРЕТЫ:
-• Если вход пустой или только пробелы — верни пустую строку. Ничего не выдумывай.
-• Не описывай фото/видео и не придумывай подпись «из балды».
-• Не выдумывай цифры, имена, даты, факты и детали, которых нет во входе.
-• Не добавляй подпись канала и ссылку на нас — их приклеит система.
-• Убери чужие призывы подписаться, рекламу, водяные ссылки на другие каналы.
-
-СМЫСЛ:
-• Сохрани факты и смысл, слегка освежи формулировки.
-
-СТРУКТУРА (копирайтинг для Telegram):
-1) Первая строка — сильный заголовок/хук: сразу понятно, о чём речь.
-   Оформи заголовок жирным: <b>…</b>
-2) Короткий лид (1–2 предложения) — суть.
-3) Дальше — воздух: короткие абзацы (1–3 строки), пустая строка между блоками.
-4) Если есть перечисления, шаги, плюсы/минусы, факты — сделай список:
-   каждая строка с «• » (теги <ul>/<li> в Telegram не работают).
-5) Ключевые слова и цифры выделяй <b>…</b> или <i>…</i>.
-6) В конце можно одну спокойную мысль-вывод (без агрессивного CTA).
+• Если вход пустой — верни пустую строку. Ничего не выдумывай.
+• Не описывай фото/видео и не придумывай подпись.
+• Не выдумывай цифры, имена, даты, факты.
+• Не добавляй подпись нашего канала — её приклеит система.
+• Не раздувай текст, не сглаживай характер, не делай «нейтральный пресс-релиз».
 
 ОФОРМЛЕНИЕ (Telegram HTML):
-• Разрешены ТОЛЬКО теги: <b> <i> <u> <s> <code> <a href="">
-• Не используй Markdown (**bold**, _italic_) — только HTML-теги.
-• Не используй <br> <p> <div> <span> <ul> <li> <h1>–<h6> — только перевод строки.
-• Не используй заголовки #, цитаты >, таблицы.
-• Эмодзи — умеренно (0–3), только если помогают сканировать текст.
-• Без стены текста: лучше короче и яснее.
+• Разрешены ТОЛЬКО: <b> <i> <u> <s> <code> <a href="">
+• Сохрани исходные выделения, если они уже есть по смыслу.
+• Без Markdown, без <br>/<p>/<div>/<ul>/<li>/<h1>–<h6>.
 
-Верни ТОЛЬКО готовый текст поста (HTML), без кавычек, без пояснений и без ```."""
+Верни ТОЛЬКО текст поста (HTML), без кавычек, без пояснений и без ```."""
+
+
+def rewrite_mode() -> str:
+    """off | light (default) | full — how aggressively to rewrite source text."""
+    raw = (os.getenv("TELEGRAM_CURATE_REWRITE_MODE") or "light").strip().lower()
+    if raw in {"0", "false", "no", "off", "none", "passthrough"}:
+        return "off"
+    if raw in {"full", "copywriter", "aggressive"}:
+        return "full"
+    return "light"
 
 
 def enabled() -> bool:
@@ -480,6 +484,29 @@ def extract_post(message: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_FOREIGN_CTA_LINE = re.compile(
+    r"(?im)^(?:\s*(?:👉|➡️|❗️|‼️|📢|📣)?\s*)?(?:"
+    r"подпис(?:ывайтесь|ка|итесь)|"
+    r"наш\s+канал|"
+    r"читать\s+далее\s+в\s+канале|"
+    r"t\.me/(?!epoch_z)[A-Za-z0-9_]+"
+    r").*$"
+)
+
+
+def strip_foreign_cta(text: str) -> str:
+    """Drop obvious foreign subscribe/promo lines; keep the rest intact."""
+    s = text or ""
+    lines = []
+    for line in s.splitlines():
+        if _FOREIGN_CTA_LINE.search(line.strip()):
+            continue
+        lines.append(line)
+    out = "\n".join(lines)
+    out = re.sub(r"\n{3,}", "\n\n", out)
+    return out.strip()
+
+
 def rewrite_text(source: str, *, openai_api_key: str, model: str) -> str:
     src = (source or "").strip()
     if not src:
@@ -490,17 +517,24 @@ def rewrite_text(source: str, *, openai_api_key: str, model: str) -> str:
     from openai import OpenAI
 
     client = OpenAI(api_key=openai_api_key)
+    mode = rewrite_mode()
+    user = (
+        "Отредактируй МАКСИМАЛЬНО близко к оригиналу (почти дословно). "
+        "Сохрани характер и формулировки. Убери только чужой CTA/рекламу.\n\n"
+        f"{src[:6000]}"
+    )
     kwargs: dict = {
         "model": model or "gpt-4.1-mini",
         "messages": [
             {"role": "system", "content": REWRITE_SYSTEM},
-            {"role": "user", "content": src[:6000]},
+            {"role": "user", "content": user},
         ],
     }
     # gpt-5* / some mini models reject custom temperature
     model_l = (model or "").lower()
     if not model_l.startswith("gpt-5"):
-        kwargs["temperature"] = 0.7
+        # Low temperature → stay close to source (was 0.7 → bland rewrite)
+        kwargs["temperature"] = 0.35 if mode == "full" else 0.15
     resp = client.chat.completions.create(**kwargs)
     out = (resp.choices[0].message.content or "").strip()
     out = re.sub(r"^```(?:\w+)?\n|\n```$", "", out).strip()
@@ -533,19 +567,33 @@ def prepare_body(
     model: str,
     has_media: bool,
 ) -> str:
-    """Rewrite when there is real text; media-only → empty (footer only)."""
+    """Keep source voice; media-only → empty (footer only).
+
+    TELEGRAM_CURATE_REWRITE_MODE:
+      off   — publish original (entities HTML if any), only strip foreign CTA lines
+      light — default; near-verbatim LLM edit (tone/spice kept)
+      full  — same fidelity prompt, slightly higher temperature
+    """
     src = (source or "").strip()
     if not src:
         # No caption/text: do not invent. Publish media as-is (+ footer).
         return ""
-    if not (openai_api_key or "").strip():
-        # Keep original formatting if we have entities HTML
-        return (source_html or html_escape(src)).strip()
+
+    mode = rewrite_mode()
+    original = (source_html or html_escape(src)).strip()
+
+    if mode == "off" or not (openai_api_key or "").strip():
+        if not (openai_api_key or "").strip() and mode != "off":
+            logger.warning("rewrite skipped: OPENAI_API_KEY missing — publishing source text")
+        # Prefer original formatting; still drop obvious foreign CTAs from plain path
+        if source_html:
+            return original
+        return html_escape(strip_foreign_cta(src))
+
     rewritten = rewrite_text(src, openai_api_key=openai_api_key, model=model)
     out = (rewritten or "").strip()
     if not out:
-        # Model returned empty — fall back to original, never invent
-        return (source_html or html_escape(src)).strip()
+        return original
     return out
 
 
@@ -886,10 +934,10 @@ def handle_owner_message(
                 "text": (
                     "Лента «Заметки эпохи»\n\n"
                     "Перешлите сюда пост (текст / фото / видео / карусель):\n"
-                    "• есть текст — перепишу и опубликую;\n"
-                    "• только фото/видео без текста — опубликую как есть "
-                    "(без выдуманной подписи), альбом целиком;\n"
-                    "• в конце — ссылка на канал.\n\n"
+                    "• есть текст — почти дословно (сохраняю тон), уберу чужой CTA;\n"
+                    "• только фото/видео без текста — как есть, без выдуманной подписи;\n"
+                    "• альбом — целиком; в конце ссылка на канал.\n"
+                    "Режим: TELEGRAM_CURATE_REWRITE_MODE=light|off|full\n\n"
                     f"Канал: {ch}\n"
                     f"Ссылка: {channel_link(ch) or '—'}\n"
                     "Сменить канал: /channel @epoch_z\n"
