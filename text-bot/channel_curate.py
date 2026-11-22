@@ -489,7 +489,7 @@ _FOREIGN_CTA_LINE = re.compile(
     r"подпис(?:ывайтесь|ка|итесь)|"
     r"наш\s+канал|"
     r"читать\s+далее\s+в\s+канале|"
-    r"t\.me/(?!epoch_z)[A-Za-z0-9_]+"
+    r"(?:https?://)?t\.me/(?!epoch_z)[A-Za-z0-9_]+"
     r").*$"
 )
 
