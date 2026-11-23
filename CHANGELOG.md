@@ -17,6 +17,8 @@
   (без видимых `<br>`/`<p>`/`<div>`), retry plain при ошибке parse entities
 - Text-bot / «Заметки эпохи»: rewrite почти дословный (тон/изюминка), не «копирайтинг»;
   `TELEGRAM_CURATE_REWRITE_MODE=light|off|full` (default light; `off` = исходник + футер)
+- Text-bot / «Заметки эпохи»: по умолчанию `REWRITE_MODE=off` — исходный текст без LLM;
+  отсекаем «пресс-релиз» с `<ul>`/выдуманными буллетами; sanitize жёстче режет junk-теги
 
 ### Added
 

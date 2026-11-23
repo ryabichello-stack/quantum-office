@@ -44,6 +44,21 @@ def test_sanitize_strips_junk_block_tags():
     assert "мир" in clean
 
 
+def test_sanitize_strips_ul_wrapper_like_epoch_bug():
+    dirty = (
+        "НАТО призывает готовиться\n\n"
+        "<ul>\n"
+        "• Война может затронуть разные сферы жизни\n"
+        "• Важно, чтобы все были готовы к вызовам\n"
+        "</ul>\n\n"
+        "В условиях нестабильности готовность — ключ к безопасности."
+    )
+    clean = channel_curate.sanitize_telegram_html(dirty)
+    assert "<ul" not in clean.lower()
+    assert "</ul>" not in clean.lower()
+    assert "НАТО" in clean
+
+
 def test_sanitize_keeps_safe_tags():
     src = '<b>Заголовок</b>\n\nТекст с <i>акцентом</i> и <a href="https://t.me/epoch_z">ссылкой</a>'
     clean = channel_curate.sanitize_telegram_html(src)
@@ -85,6 +100,31 @@ def test_rewrite_mode_off_passthrough(monkeypatch):
         has_media=False,
     )
     assert out == "<b>Живая новость с перчинкой</b>"
+
+
+def test_default_mode_is_off_no_llm(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_CURATE_REWRITE_MODE", raising=False)
+    assert channel_curate.rewrite_mode() == "off"
+    out = channel_curate.prepare_body(
+        source="Оригинал со смаком",
+        source_html="",
+        openai_api_key="sk-test",
+        model="gpt-4.1-mini",
+        has_media=False,
+    )
+    assert "Оригинал со смаком" in out
+
+
+def test_rewrite_is_faithful_rejects_ul_and_invented_bullets():
+    src = "Генсек НАТО призвал готовиться к войне на заседании в Берлине."
+    bad = (
+        "НАТО призывает готовиться к возможной войне\n\n"
+        "<ul>\n• Война может затронуть разные сферы жизни\n"
+        "• Важно, чтобы все были готовы к вызовам\n</ul>\n\n"
+        "В условиях нестабильности готовность — ключ к безопасности."
+    )
+    assert channel_curate.rewrite_is_faithful(src, bad) is False
+    assert channel_curate.rewrite_is_faithful(src, src) is True
 
 
 def test_strip_foreign_cta_keeps_news():

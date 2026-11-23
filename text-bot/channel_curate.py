@@ -55,14 +55,19 @@ REWRITE_SYSTEM = """Ты редактор канала «Заметки эпох
 
 
 def rewrite_mode() -> str:
-    """off | light (default) | full — how aggressively to rewrite source text."""
-    raw = (os.getenv("TELEGRAM_CURATE_REWRITE_MODE") or "light").strip().lower()
-    if raw in {"0", "false", "no", "off", "none", "passthrough"}:
-        return "off"
-    if raw in {"full", "copywriter", "aggressive"}:
-        return "full"
-    return "light"
+    """off (default) | light | full — how aggressively to rewrite source text.
 
+    Default is off: keep the original wording (user asked to stop soulless rewrites).
+    light = same as off (CTA strip only, no LLM).
+    full  = optional LLM edit with fidelity guard (falls back to original if mangled).
+    """
+    raw = (os.getenv("TELEGRAM_CURATE_REWRITE_MODE") or "off").strip().lower()
+    if raw in {"full", "copywriter", "aggressive", "llm"}:
+        return "full"
+    if raw in {"light", "soft", "cta"}:
+        return "light"
+    # off / false / none / passthrough / unset
+    return "off"
 
 def enabled() -> bool:
     flag = (os.getenv("TELEGRAM_CURATE_ENABLED") or "true").strip().lower()
@@ -146,6 +151,11 @@ _STRIP_TAG = re.compile(
     r"</?(?:span|ul|ol|table|thead|tbody|td|th|font|center|hr|img|html|body|head|meta|style|script)(?:\s[^>]*)?/?>",
     flags=re.I,
 )
+# Also kill escaped / spaced junk the model sometimes emits as visible text
+_LITERAL_JUNK_TAG = re.compile(
+    r"(?i)&lt;/?(?:ul|ol|li|br|p|div|span|h[1-6]|blockquote)\b[^&]*&gt;"
+    r"|</?\s*(?:ul|ol|li|br|p|div|span|h[1-6]|blockquote)\b[^>]*>"
+)
 
 
 def strip_html_to_plain(text: str) -> str:
@@ -166,15 +176,17 @@ def strip_html_to_plain(text: str) -> str:
 
 
 def sanitize_telegram_html(text: str) -> str:
-    """Keep safe Telegram HTML tags; never leave raw <br>/<p>/… visible in the post."""
+    """Keep safe Telegram HTML tags; never leave raw <br>/<p>/<ul>/… visible in the post."""
     s = (text or "").strip()
     if not s:
         return ""
     # Drop fences / accidental wrappers from the model
     s = re.sub(r"^```(?:html|xml|markdown)?\s*", "", s, flags=re.I)
     s = re.sub(r"\s*```$", "", s)
+    # Pass 1: turn block tags into newlines / drop wrappers
     s = _BLOCK_TAG_TO_NL.sub("\n", s)
     s = _STRIP_TAG.sub("", s)
+    s = _LITERAL_JUNK_TAG.sub("", s)
     s = _md_to_telegram_html(s)
     s = s.replace("<strong>", "<b>").replace("</strong>", "</b>")
     s = s.replace("<em>", "<i>").replace("</em>", "</i>")
@@ -213,7 +225,52 @@ def sanitize_telegram_html(text: str) -> str:
     cleaned = "".join(out)
     # Drop empty / unpaired emphasis leftovers that Telegram rejects
     cleaned = re.sub(r"</?(?:b|i|u|s|code|pre)>\s*</?(?:b|i|u|s|code|pre)>", "", cleaned)
+    # Final sweep: any leftover junk tags (LLM sometimes re-emits after md convert)
+    cleaned = _LITERAL_JUNK_TAG.sub("", cleaned)
+    cleaned = _STRIP_TAG.sub("", cleaned)
+    cleaned = _BLOCK_TAG_TO_NL.sub("\n", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
+
+
+def _has_list_bullets(text: str) -> bool:
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    bullets = sum(1 for ln in lines if ln.startswith(("•", "·", "- ", "* ", "— ")))
+    return bullets >= 2
+
+
+def rewrite_is_faithful(source: str, rewritten: str) -> bool:
+    """Reject soulless copywriter rewrites (invented lists/hooks/HTML junk)."""
+    src = (source or "").strip()
+    out = (rewritten or "").strip()
+    if not out:
+        return False
+    # Never accept visible/leftover list markup
+    if re.search(r"(?i)</?\s*(?:ul|ol|li)\b", out):
+        return False
+    if re.search(r"(?i)&lt;/?\s*(?:ul|ol|li)\b", out):
+        return False
+    # Invented bullet block when source had none
+    if _has_list_bullets(out) and not _has_list_bullets(src):
+        return False
+    # Length swung too hard → almost certainly a rewrite, not an edit
+    if len(src) >= 80:
+        ratio = len(out) / max(len(src), 1)
+        if ratio < 0.55 or ratio > 1.85:
+            return False
+    # Generic closing platitudes the model loves to invent
+    platitudes = (
+        "ключ к безопасности",
+        "в условиях нестабильности",
+        "готовность — ключ",
+        "важно, чтобы все были готовы",
+    )
+    out_l = out.lower()
+    src_l = src.lower()
+    for p in platitudes:
+        if p in out_l and p not in src_l:
+            return False
+    return True
 
 
 def entities_to_html(text: str, entities: list[Any] | None) -> str:
@@ -559,6 +616,15 @@ def compose_post_html(body: str, *, channel_id: str | None = None) -> str:
     return f"{body_html}{sig}"
 
 
+def _passthrough_body(source: str, source_html: str) -> str:
+    """Original text + strip foreign CTA; preserve Telegram entities HTML when present."""
+    src = (source or "").strip()
+    if source_html and source_html.strip():
+        # Entities path: keep formatting; CTA strip is best-effort on plain only
+        return source_html.strip()
+    return html_escape(strip_foreign_cta(src))
+
+
 def prepare_body(
     *,
     source: str,
@@ -570,9 +636,9 @@ def prepare_body(
     """Keep source voice; media-only → empty (footer only).
 
     TELEGRAM_CURATE_REWRITE_MODE:
-      off   — publish original (entities HTML if any), only strip foreign CTA lines
-      light — default; near-verbatim LLM edit (tone/spice kept)
-      full  — same fidelity prompt, slightly higher temperature
+      off   — default; original text (entities HTML if any) + strip foreign CTA
+      light — same as off (no LLM; user asked to stop soulless rewrites)
+      full  — optional LLM; rejected if result invents lists/hooks/platitudes
     """
     src = (source or "").strip()
     if not src:
@@ -580,19 +646,18 @@ def prepare_body(
         return ""
 
     mode = rewrite_mode()
-    original = (source_html or html_escape(src)).strip()
+    original = _passthrough_body(src, source_html)
 
-    if mode == "off" or not (openai_api_key or "").strip():
-        if not (openai_api_key or "").strip() and mode != "off":
+    if mode in {"off", "light"} or not (openai_api_key or "").strip():
+        if not (openai_api_key or "").strip() and mode == "full":
             logger.warning("rewrite skipped: OPENAI_API_KEY missing — publishing source text")
-        # Prefer original formatting; still drop obvious foreign CTAs from plain path
-        if source_html:
-            return original
-        return html_escape(strip_foreign_cta(src))
+        return original
 
+    # mode == full: try LLM, but never publish a mangled "press release"
     rewritten = rewrite_text(src, openai_api_key=openai_api_key, model=model)
     out = (rewritten or "").strip()
-    if not out:
+    if not out or not rewrite_is_faithful(src, out):
+        logger.info("epoch rewrite rejected as unfaithful — publishing original")
         return original
     return out
 
@@ -934,10 +999,10 @@ def handle_owner_message(
                 "text": (
                     "Лента «Заметки эпохи»\n\n"
                     "Перешлите сюда пост (текст / фото / видео / карусель):\n"
-                    "• есть текст — почти дословно (сохраняю тон), уберу чужой CTA;\n"
-                    "• только фото/видео без текста — как есть, без выдуманной подписи;\n"
+                    "• текст — публикую как есть (без бездушного переписывания);\n"
+                    "• только фото/видео — как есть, без выдуманной подписи;\n"
                     "• альбом — целиком; в конце ссылка на канал.\n"
-                    "Режим: TELEGRAM_CURATE_REWRITE_MODE=light|off|full\n\n"
+                    "REWRITE_MODE=off|light|full (по умолчанию off)\n\n"
                     f"Канал: {ch}\n"
                     f"Ссылка: {channel_link(ch) or '—'}\n"
                     "Сменить канал: /channel @epoch_z\n"
