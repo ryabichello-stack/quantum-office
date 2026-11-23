@@ -24,36 +24,50 @@ STATE_PATH = DATA_DIR / "channel_curate.json"
 _MEDIA_GROUP_LOCK = threading.Lock()
 _MEDIA_GROUPS: dict[str, dict[str, Any]] = {}
 _MEDIA_GROUP_TIMERS: dict[str, threading.Timer] = {}
-MEDIA_GROUP_WAIT_S = float(os.getenv("TELEGRAM_CURATE_ALBUM_WAIT_S", "1.6"))
+MEDIA_GROUP_WAIT_S = float(os.getenv("TELEGRAM_CURATE_ALBUM_WAIT_S", "2.8"))
 
-REWRITE_SYSTEM = """Ты старший копирайтер авторского Telegram-канала «Заметки эпохи».
-Задача: переписать исходный пост так, чтобы его было удобно читать в Telegram.
+REWRITE_SYSTEM = """Ты редактор канала «Заметки эпохи». Задача — МАКСИМАЛЬНО близко к исходному тексту.
 
-СМЫСЛ:
-• Сохрани факты и смысл, слегка освежи формулировки.
-• Не выдумывай цифры, имена, даты и детали.
-• Убери чужие призывы подписаться, рекламу, водяные ссылки на другие каналы.
-• Не добавляй подпись канала и ссылку на нас — их приклеит система.
+ГЛАВНОЕ:
+• Сохрани тон, ритм, иронию, резкость, «изюминку» и живые формулировки автора.
+• Не превращай новость в бездушный пересказ, лид или «копирайтинг».
+• Не меняй структуру ради «удобства чтения». Не придумывай заголовок/хук/вывод, если их не было.
+• Почти дословно: правь только то, без чего нельзя (см. ниже). Если сомневаешься — оставь как было.
 
-СТРУКТУРА (копирайтинг для Telegram):
-1) Первая строка — сильный заголовок/хук: сразу понятно, о чём речь.
-   Оформи заголовок жирным: <b>…</b>
-2) Короткий лид (1–2 предложения) — суть.
-3) Дальше — воздух: короткие абзацы (1–3 строки), пустая строка между блоками.
-4) Если есть перечисления, шаги, плюсы/минусы, факты — сделай список:
-   каждая строка с «• » (теги <ul>/<li> в Telegram не работают).
-5) Ключевые слова и цифры выделяй <b>…</b> или <i>…</i>.
-6) В конце можно одну спокойную мысль-вывод (без агрессивного CTA).
+МОЖНО УБРАТЬ / ПОПРАВИТЬ:
+• чужие «подписывайтесь», рекламу, водяные ссылки на другие каналы;
+• явный мусор/битые символы;
+• при необходимости — лёгкая правка опечаток, без смены смысла и стиля.
+
+ЖЁСТКИЕ ЗАПРЕТЫ:
+• Если вход пустой — верни пустую строку. Ничего не выдумывай.
+• Не описывай фото/видео и не придумывай подпись.
+• Не выдумывай цифры, имена, даты, факты.
+• Не добавляй подпись нашего канала — её приклеит система.
+• Не раздувай текст, не сглаживай характер, не делай «нейтральный пресс-релиз».
 
 ОФОРМЛЕНИЕ (Telegram HTML):
-• Разрешены ТОЛЬКО теги: <b> <i> <u> <s> <code> <a href="">
-• Не используй Markdown (**bold**, _italic_) — только HTML-теги.
-• Не используй заголовки #, цитаты >, таблицы.
-• Эмодзи — умеренно (0–3), только если помогают сканировать текст.
-• Без стены текста: лучше короче и яснее.
+• Разрешены ТОЛЬКО: <b> <i> <u> <s> <code> <a href="">
+• Сохрани исходные выделения, если они уже есть по смыслу.
+• Без Markdown, без <br>/<p>/<div>/<ul>/<li>/<h1>–<h6>.
 
-Верни ТОЛЬКО готовый текст поста (HTML), без кавычек, без пояснений и без ```."""
+Верни ТОЛЬКО текст поста (HTML), без кавычек, без пояснений и без ```."""
 
+
+def rewrite_mode() -> str:
+    """off (default) | light | full — how aggressively to rewrite source text.
+
+    Default is off: keep the original wording (user asked to stop soulless rewrites).
+    light = same as off (CTA strip only, no LLM).
+    full  = optional LLM edit with fidelity guard (falls back to original if mangled).
+    """
+    raw = (os.getenv("TELEGRAM_CURATE_REWRITE_MODE") or "off").strip().lower()
+    if raw in {"full", "copywriter", "aggressive", "llm"}:
+        return "full"
+    if raw in {"light", "soft", "cta"}:
+        return "light"
+    # off / false / none / passthrough / unset
+    return "off"
 
 def enabled() -> bool:
     flag = (os.getenv("TELEGRAM_CURATE_ENABLED") or "true").strip().lower()
@@ -128,20 +142,63 @@ _ALLOWED_TG_TAGS = {
     "tg-spoiler",
 }
 
+# LLM/CMS junk that must become newlines / disappear — never show as literal tags.
+_BLOCK_TAG_TO_NL = re.compile(
+    r"</?(?:br|p|div|section|article|header|footer|h[1-6]|li|tr|blockquote)(?:\s[^>]*)?/?>",
+    flags=re.I,
+)
+_STRIP_TAG = re.compile(
+    r"</?(?:span|ul|ol|table|thead|tbody|td|th|font|center|hr|img|html|body|head|meta|style|script)(?:\s[^>]*)?/?>",
+    flags=re.I,
+)
+# Also kill escaped / spaced junk the model sometimes emits as visible text
+_LITERAL_JUNK_TAG = re.compile(
+    r"(?i)&lt;/?(?:ul|ol|li|br|p|div|span|h[1-6]|blockquote)\b[^&]*&gt;"
+    r"|</?\s*(?:ul|ol|li|br|p|div|span|h[1-6]|blockquote)\b[^>]*>"
+)
+
+
+def strip_html_to_plain(text: str) -> str:
+    """Drop all tags; keep readable plain text (fallback when HTML parse fails)."""
+    s = text or ""
+    s = _BLOCK_TAG_TO_NL.sub("\n", s)
+    s = _STRIP_TAG.sub("", s)
+    s = re.sub(r"</?(?:b|strong|i|em|u|ins|s|strike|del|code|pre|a|tg-spoiler)(?:\s[^>]*)?/?>", "", s, flags=re.I)
+    s = (
+        s.replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", '"')
+    )
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    return s.strip()
+
 
 def sanitize_telegram_html(text: str) -> str:
-    """Keep safe Telegram HTML tags; escape everything else."""
-    s = _md_to_telegram_html((text or "").strip())
+    """Keep safe Telegram HTML tags; never leave raw <br>/<p>/<ul>/… visible in the post."""
+    s = (text or "").strip()
+    if not s:
+        return ""
+    # Drop fences / accidental wrappers from the model
+    s = re.sub(r"^```(?:html|xml|markdown)?\s*", "", s, flags=re.I)
+    s = re.sub(r"\s*```$", "", s)
+    # Pass 1: turn block tags into newlines / drop wrappers
+    s = _BLOCK_TAG_TO_NL.sub("\n", s)
+    s = _STRIP_TAG.sub("", s)
+    s = _LITERAL_JUNK_TAG.sub("", s)
+    s = _md_to_telegram_html(s)
     s = s.replace("<strong>", "<b>").replace("</strong>", "</b>")
     s = s.replace("<em>", "<i>").replace("</em>", "</i>")
+    s = re.sub(r"\n{3,}", "\n\n", s)
 
     tokens: list[str] = []
 
     def protect(tag_html: str, name: str) -> str:
         name = name.lower()
-        # Leave unknown/invalid tags as raw text — final html_escape handles them once.
         if name not in _ALLOWED_TG_TAGS:
-            return tag_html
+            # Unknown tag → drop entirely (never show literal <tag> in the channel)
+            return ""
         low = tag_html.lower()
         if name == "a" and not low.startswith("</"):
             if not re.match(
@@ -149,7 +206,7 @@ def sanitize_telegram_html(text: str) -> str:
                 tag_html,
                 flags=re.I,
             ):
-                return tag_html
+                return ""
         tokens.append(tag_html)
         return f"\x00TG{len(tokens) - 1}\x00"
 
@@ -165,6 +222,134 @@ def sanitize_telegram_html(text: str) -> str:
             out.append(tokens[int(tm.group(1))])
         else:
             out.append(html_escape(part))
+    cleaned = "".join(out)
+    # Drop empty / unpaired emphasis leftovers that Telegram rejects
+    cleaned = re.sub(r"</?(?:b|i|u|s|code|pre)>\s*</?(?:b|i|u|s|code|pre)>", "", cleaned)
+    # Final sweep: any leftover junk tags (LLM sometimes re-emits after md convert)
+    cleaned = _LITERAL_JUNK_TAG.sub("", cleaned)
+    cleaned = _STRIP_TAG.sub("", cleaned)
+    cleaned = _BLOCK_TAG_TO_NL.sub("\n", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
+def _has_list_bullets(text: str) -> bool:
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    bullets = sum(1 for ln in lines if ln.startswith(("•", "·", "- ", "* ", "— ")))
+    return bullets >= 2
+
+
+def rewrite_is_faithful(source: str, rewritten: str) -> bool:
+    """Reject soulless copywriter rewrites (invented lists/hooks/HTML junk)."""
+    src = (source or "").strip()
+    out = (rewritten or "").strip()
+    if not out:
+        return False
+    # Never accept visible/leftover list markup
+    if re.search(r"(?i)</?\s*(?:ul|ol|li)\b", out):
+        return False
+    if re.search(r"(?i)&lt;/?\s*(?:ul|ol|li)\b", out):
+        return False
+    # Invented bullet block when source had none
+    if _has_list_bullets(out) and not _has_list_bullets(src):
+        return False
+    # Length swung too hard → almost certainly a rewrite, not an edit
+    if len(src) >= 80:
+        ratio = len(out) / max(len(src), 1)
+        if ratio < 0.55 or ratio > 1.85:
+            return False
+    # Generic closing platitudes the model loves to invent
+    platitudes = (
+        "ключ к безопасности",
+        "в условиях нестабильности",
+        "готовность — ключ",
+        "важно, чтобы все были готовы",
+    )
+    out_l = out.lower()
+    src_l = src.lower()
+    for p in platitudes:
+        if p in out_l and p not in src_l:
+            return False
+    return True
+
+
+def entities_to_html(text: str, entities: list[Any] | None) -> str:
+    """Rebuild Telegram HTML from message entities (UTF-16 offsets)."""
+    raw = text or ""
+    if not raw:
+        return ""
+    if not entities:
+        return html_escape(raw)
+
+    # Work in UTF-16 code units (Telegram entity offsets)
+    encoded = raw.encode("utf-16-le")
+    units = [encoded[i : i + 2] for i in range(0, len(encoded), 2)]
+
+    opens: dict[int, list[str]] = {}
+    closes: dict[int, list[str]] = {}
+
+    def add_open(pos: int, tag: str) -> None:
+        opens.setdefault(pos, []).append(tag)
+
+    def add_close(pos: int, tag: str) -> None:
+        closes.setdefault(pos, []).insert(0, tag)
+
+    for ent in entities:
+        if not isinstance(ent, dict):
+            continue
+        et = str(ent.get("type") or "")
+        try:
+            off = int(ent.get("offset") or 0)
+            length = int(ent.get("length") or 0)
+        except (TypeError, ValueError):
+            continue
+        if length <= 0 or off < 0 or off + length > len(units):
+            continue
+        end = off + length
+        if et in {"bold", "strong"}:
+            add_open(off, "<b>")
+            add_close(end, "</b>")
+        elif et in {"italic", "em"}:
+            add_open(off, "<i>")
+            add_close(end, "</i>")
+        elif et in {"underline", "ins"}:
+            add_open(off, "<u>")
+            add_close(end, "</u>")
+        elif et in {"strikethrough", "strike", "s"}:
+            add_open(off, "<s>")
+            add_close(end, "</s>")
+        elif et == "code":
+            add_open(off, "<code>")
+            add_close(end, "</code>")
+        elif et == "pre":
+            add_open(off, "<pre>")
+            add_close(end, "</pre>")
+        elif et == "spoiler":
+            add_open(off, "<tg-spoiler>")
+            add_close(end, "</tg-spoiler>")
+        elif et == "text_link":
+            url = str(ent.get("url") or "").strip()
+            if url.startswith(("http://", "https://", "tg://")):
+                add_open(off, f'<a href="{html_escape(url)}">')
+                add_close(end, "</a>")
+        elif et == "text_mention":
+            user = ent.get("user") or {}
+            uid = user.get("id")
+            if uid:
+                add_open(off, f'<a href="tg://user?id={uid}">')
+                add_close(end, "</a>")
+        # mention / hashtag / cashtag / url / email / phone / bot_command — leave plain
+
+    out: list[str] = []
+    for i, unit in enumerate(units):
+        for tag in closes.get(i, []):
+            out.append(tag)
+        for tag in opens.get(i, []):
+            out.append(tag)
+        ch = unit.decode("utf-16-le")
+        out.append(html_escape(ch))
+    for tag in closes.get(len(units), []):
+        out.append(tag)
     return "".join(out)
 
 
@@ -267,7 +452,11 @@ def extract_media_item(message: dict[str, Any]) -> dict[str, Any] | None:
 
 def extract_post(message: dict[str, Any]) -> dict[str, Any]:
     """Text/caption + media file_ids. Never use forwardMessage — re-send as new posts."""
-    text = str(message.get("text") or message.get("caption") or "").strip()
+    raw_text = str(message.get("text") or message.get("caption") or "")
+    text = raw_text.strip()
+    entities = message.get("entities") or message.get("caption_entities") or []
+    if not isinstance(entities, list):
+        entities = []
     photo_file_id = None
     video_file_id = None
     animation_file_id = None
@@ -328,8 +517,12 @@ def extract_post(message: dict[str, Any]) -> dict[str, Any]:
     elif message.get("forward_sender_name"):
         forward_from = str(message.get("forward_sender_name"))
 
+    # Prefer original Telegram formatting when we publish without LLM rewrite
+    text_html = entities_to_html(raw_text, entities) if text else ""
+
     return {
         "text": text,
+        "text_html": text_html,
         "photo_file_id": photo_file_id,
         "video_file_id": video_file_id,
         "animation_file_id": animation_file_id,
@@ -348,6 +541,29 @@ def extract_post(message: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_FOREIGN_CTA_LINE = re.compile(
+    r"(?im)^(?:\s*(?:👉|➡️|❗️|‼️|📢|📣)?\s*)?(?:"
+    r"подпис(?:ывайтесь|ка|итесь)|"
+    r"наш\s+канал|"
+    r"читать\s+далее\s+в\s+канале|"
+    r"(?:https?://)?t\.me/(?!epoch_z)[A-Za-z0-9_]+"
+    r").*$"
+)
+
+
+def strip_foreign_cta(text: str) -> str:
+    """Drop obvious foreign subscribe/promo lines; keep the rest intact."""
+    s = text or ""
+    lines = []
+    for line in s.splitlines():
+        if _FOREIGN_CTA_LINE.search(line.strip()):
+            continue
+        lines.append(line)
+    out = "\n".join(lines)
+    out = re.sub(r"\n{3,}", "\n\n", out)
+    return out.strip()
+
+
 def rewrite_text(source: str, *, openai_api_key: str, model: str) -> str:
     src = (source or "").strip()
     if not src:
@@ -358,17 +574,24 @@ def rewrite_text(source: str, *, openai_api_key: str, model: str) -> str:
     from openai import OpenAI
 
     client = OpenAI(api_key=openai_api_key)
+    mode = rewrite_mode()
+    user = (
+        "Отредактируй МАКСИМАЛЬНО близко к оригиналу (почти дословно). "
+        "Сохрани характер и формулировки. Убери только чужой CTA/рекламу.\n\n"
+        f"{src[:6000]}"
+    )
     kwargs: dict = {
         "model": model or "gpt-4.1-mini",
         "messages": [
             {"role": "system", "content": REWRITE_SYSTEM},
-            {"role": "user", "content": src[:6000]},
+            {"role": "user", "content": user},
         ],
     }
     # gpt-5* / some mini models reject custom temperature
     model_l = (model or "").lower()
     if not model_l.startswith("gpt-5"):
-        kwargs["temperature"] = 0.7
+        # Low temperature → stay close to source (was 0.7 → bland rewrite)
+        kwargs["temperature"] = 0.35 if mode == "full" else 0.15
     resp = client.chat.completions.create(**kwargs)
     out = (resp.choices[0].message.content or "").strip()
     out = re.sub(r"^```(?:\w+)?\n|\n```$", "", out).strip()
@@ -380,12 +603,63 @@ def rewrite_text(source: str, *, openai_api_key: str, model: str) -> str:
 
 
 def compose_post_html(body: str, *, channel_id: str | None = None) -> str:
-    """Sanitize Telegram HTML body + append clickable footer."""
+    """Sanitize Telegram HTML body + append clickable footer.
+
+    Empty body → footer only (media-only posts: no invented caption).
+    """
     body_html = sanitize_telegram_html((body or "").rstrip())
     sig = signature(channel_id)
     if "📣" in body_html or "t.me/epoch_z" in body_html:
         return body_html
+    if not body_html:
+        return sig.lstrip("\n")
     return f"{body_html}{sig}"
+
+
+def _passthrough_body(source: str, source_html: str) -> str:
+    """Original text + strip foreign CTA; preserve Telegram entities HTML when present."""
+    src = (source or "").strip()
+    if source_html and source_html.strip():
+        # Entities path: keep formatting; CTA strip is best-effort on plain only
+        return source_html.strip()
+    return html_escape(strip_foreign_cta(src))
+
+
+def prepare_body(
+    *,
+    source: str,
+    source_html: str = "",
+    openai_api_key: str,
+    model: str,
+    has_media: bool,
+) -> str:
+    """Keep source voice; media-only → empty (footer only).
+
+    TELEGRAM_CURATE_REWRITE_MODE:
+      off   — default; original text (entities HTML if any) + strip foreign CTA
+      light — same as off (no LLM; user asked to stop soulless rewrites)
+      full  — optional LLM; rejected if result invents lists/hooks/platitudes
+    """
+    src = (source or "").strip()
+    if not src:
+        # No caption/text: do not invent. Publish media as-is (+ footer).
+        return ""
+
+    mode = rewrite_mode()
+    original = _passthrough_body(src, source_html)
+
+    if mode in {"off", "light"} or not (openai_api_key or "").strip():
+        if not (openai_api_key or "").strip() and mode == "full":
+            logger.warning("rewrite skipped: OPENAI_API_KEY missing — publishing source text")
+        return original
+
+    # mode == full: try LLM, but never publish a mangled "press release"
+    rewritten = rewrite_text(src, openai_api_key=openai_api_key, model=model)
+    out = (rewritten or "").strip()
+    if not out or not rewrite_is_faithful(src, out):
+        logger.info("epoch rewrite rejected as unfaithful — publishing original")
+        return original
+    return out
 
 
 def apply_signature(body: str, *, channel_id: str | None = None) -> str:
@@ -431,10 +705,13 @@ def _queue_album_piece(
                 "message_id": int(message.get("message_id") or 0),
                 "item": item,
                 "text": post.get("text") or "",
+                "text_html": post.get("text_html") or "",
             }
         )
         if post.get("text"):
             bucket["texts"].append(post["text"])
+            if post.get("text_html"):
+                bucket.setdefault("texts_html", []).append(post["text_html"])
 
         old = _MEDIA_GROUP_TIMERS.pop(media_group_id, None)
         if old is not None:
@@ -493,15 +770,20 @@ def _flush_album(*, media_group_id: str) -> None:
         return
 
     source = ""
+    source_html = ""
     for piece in pieces:
         if piece.get("text"):
             source = str(piece["text"])
+            source_html = str(piece.get("text_html") or "")
             break
     if not source:
         for txt in bucket.get("texts") or []:
             if txt:
                 source = str(txt)
                 break
+        htmls = bucket.get("texts_html") or []
+        if htmls:
+            source_html = str(htmls[0] or "")
 
     channel = target_channel()
     if not channel:
@@ -513,32 +795,25 @@ def _flush_album(*, media_group_id: str) -> None:
         )
         return
 
-    rewritten = ""
-    if source:
-        if not openai_api_key:
-            tg_post(
-                "sendMessage",
-                {"chat_id": chat_id, "text": "OPENAI_API_KEY не настроен на сервере."},
-                token=bot_token(),
-                timeout=20.0,
-            )
-            return
-        try:
-            rewritten = rewrite_text(
-                source, openai_api_key=openai_api_key, model=model
-            )
-        except Exception as exc:
-            logger.exception("album rewrite failed")
-            tg_post(
-                "sendMessage",
-                {"chat_id": chat_id, "text": f"Не смог переписать: {exc}"},
-                token=bot_token(),
-                timeout=20.0,
-            )
-            return
+    try:
+        body = prepare_body(
+            source=source,
+            source_html=source_html,
+            openai_api_key=openai_api_key,
+            model=model,
+            has_media=True,
+        )
+    except Exception as exc:
+        logger.exception("album rewrite failed")
+        tg_post(
+            "sendMessage",
+            {"chat_id": chat_id, "text": f"Не смог переписать: {exc}"},
+            token=bot_token(),
+            timeout=20.0,
+        )
+        return
 
-    body = (rewritten or source or "").rstrip()
-    final = apply_signature(body if body else " ", channel_id=channel)
+    final = apply_signature(body, channel_id=channel)
 
     try:
         pub = _publish_album(
@@ -572,6 +847,48 @@ def _flush_album(*, media_group_id: str) -> None:
         )
 
 
+def _is_html_parse_error(raw: dict[str, Any]) -> bool:
+    desc = str(raw.get("description") or "").lower()
+    return "parse" in desc and ("entities" in desc or "html" in desc or "tag" in desc)
+
+
+def _send_message_html_or_plain(
+    tg_post: "TgPostFn",
+    *,
+    channel: str,
+    text: str,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """sendMessage with HTML; on parse error retry as plain text."""
+    payload = {
+        "chat_id": channel,
+        "text": (text or "")[:4096],
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+    }
+    if extra:
+        payload.update(extra)
+    raw = tg_post("sendMessage", payload, token=bot_token(), timeout=20.0)
+    if raw.get("ok"):
+        return raw
+    if _is_html_parse_error(raw):
+        logger.warning("HTML parse failed on sendMessage — retry plain: %s", raw.get("description"))
+        plain = strip_html_to_plain(text)
+        # Keep footer link readable even in plain mode
+        payload_plain = {
+            "chat_id": channel,
+            "text": (plain or text or "")[:4096],
+            "disable_web_page_preview": True,
+        }
+        if extra:
+            payload_plain.update({k: v for k, v in extra.items() if k != "parse_mode"})
+        raw2 = tg_post("sendMessage", payload_plain, token=bot_token(), timeout=20.0)
+        if raw2.get("ok"):
+            return raw2
+        raise RuntimeError(raw2.get("description") or str(raw2))
+    raise RuntimeError(raw.get("description") or str(raw))
+
+
 def _publish_album(
     tg_post: "TgPostFn",
     *,
@@ -593,7 +910,7 @@ def _publish_album(
         return _publish_native(tg_post, channel=channel, text=text, post=post)
 
     caption_limit = 1024
-    full = text or ""
+    full = (text or "").strip()
     media_payload: list[dict[str, Any]] = []
     for i, item in enumerate(media_items):
         entry = {"type": item["type"], "media": item["media"]}
@@ -608,6 +925,22 @@ def _publish_album(
         token=bot_token(),
         timeout=120.0,
     )
+    if not raw.get("ok") and _is_html_parse_error(raw) and full:
+        # Retry album with plain caption (no parse_mode) so gallery still posts as one group
+        logger.warning("HTML parse failed on album — retry plain caption: %s", raw.get("description"))
+        media_payload = []
+        plain = strip_html_to_plain(full) or full
+        for i, item in enumerate(media_items):
+            entry = {"type": item["type"], "media": item["media"]}
+            if i == 0 and plain and len(plain) <= caption_limit:
+                entry["caption"] = plain
+            media_payload.append(entry)
+        raw = tg_post(
+            "sendMediaGroup",
+            {"chat_id": channel, "media": media_payload},
+            token=bot_token(),
+            timeout=120.0,
+        )
     if not raw.get("ok"):
         raise RuntimeError(raw.get("description") or str(raw))
     results = raw.get("result") or []
@@ -616,19 +949,7 @@ def _publish_album(
 
     # Caption did not fit on first item — send text as follow-up native message
     if full and len(full) > caption_limit:
-        raw2 = tg_post(
-            "sendMessage",
-            {
-                "chat_id": channel,
-                "text": full[:4096],
-                "parse_mode": "HTML",
-                "disable_web_page_preview": True,
-            },
-            token=bot_token(),
-            timeout=20.0,
-        )
-        if not raw2.get("ok"):
-            raise RuntimeError(raw2.get("description") or str(raw2))
+        _send_message_html_or_plain(tg_post, channel=channel, text=full)
 
     return {
         "message_id": mid,
@@ -677,9 +998,11 @@ def handle_owner_message(
                 "chat_id": chat_id,
                 "text": (
                     "Лента «Заметки эпохи»\n\n"
-                    "Перешлите сюда пост (текст / фото / видео / карусель) — "
-                    "сразу перепишу и опубликую в канал как обычное сообщение "
-                    "(не репост), с подписью и ссылкой.\n\n"
+                    "Перешлите сюда пост (текст / фото / видео / карусель):\n"
+                    "• текст — публикую как есть (без бездушного переписывания);\n"
+                    "• только фото/видео — как есть, без выдуманной подписи;\n"
+                    "• альбом — целиком; в конце ссылка на канал.\n"
+                    "REWRITE_MODE=off|light|full (по умолчанию off)\n\n"
                     f"Канал: {ch}\n"
                     f"Ссылка: {channel_link(ch) or '—'}\n"
                     "Сменить канал: /channel @epoch_z\n"
@@ -784,15 +1107,6 @@ def handle_owner_message(
         )
         return
 
-    if source and not openai_api_key:
-        tg_post(
-            "sendMessage",
-            {"chat_id": chat_id, "text": "OPENAI_API_KEY не настроен на сервере."},
-            token=bot_token(),
-            timeout=20.0,
-        )
-        return
-
     channel = target_channel()
     if not channel:
         tg_post(
@@ -810,24 +1124,25 @@ def handle_owner_message(
         timeout=10.0,
     )
 
-    rewritten = ""
-    if source:
-        try:
-            rewritten = rewrite_text(
-                source, openai_api_key=openai_api_key, model=model
-            )
-        except Exception as exc:
-            logger.exception("rewrite failed")
-            tg_post(
-                "sendMessage",
-                {"chat_id": chat_id, "text": f"Не смог переписать: {exc}"},
-                token=bot_token(),
-                timeout=20.0,
-            )
-            return
+    try:
+        body = prepare_body(
+            source=source,
+            source_html=str(post.get("text_html") or ""),
+            openai_api_key=openai_api_key,
+            model=model,
+            has_media=has_media,
+        )
+    except Exception as exc:
+        logger.exception("rewrite failed")
+        tg_post(
+            "sendMessage",
+            {"chat_id": chat_id, "text": f"Не смог переписать: {exc}"},
+            token=bot_token(),
+            timeout=20.0,
+        )
+        return
 
-    body = (rewritten or source or "").rstrip()
-    final = apply_signature(body if body else " ", channel_id=channel)
+    final = apply_signature(body, channel_id=channel)
 
     try:
         pub = _publish_native(
@@ -870,14 +1185,14 @@ def _publish_native(
 ) -> dict[str, Any]:
     """Publish as a fresh channel post (not forwardMessage / not 'переслано')."""
     caption_limit = 1024
-    full = text or ""
+    full = (text or "").strip()
     photo = post.get("photo_file_id")
     video = post.get("video_file_id")
     animation = post.get("animation_file_id")
     document = post.get("document_file_id")
 
     def _send_media(method: str, file_field: str, file_id: str, kind: str) -> dict[str, Any]:
-        if len(full) <= caption_limit:
+        if full and len(full) <= caption_limit:
             raw = tg_post(
                 method,
                 {
@@ -890,34 +1205,38 @@ def _publish_native(
                 token=bot_token(),
                 timeout=60.0,
             )
+            if not raw.get("ok") and _is_html_parse_error(raw):
+                logger.warning(
+                    "HTML parse failed on %s — retry plain caption: %s",
+                    method,
+                    raw.get("description"),
+                )
+                plain = strip_html_to_plain(full) or full
+                raw = tg_post(
+                    method,
+                    {
+                        "chat_id": channel,
+                        file_field: file_id,
+                        "caption": plain[:caption_limit],
+                        "disable_web_page_preview": True,
+                    },
+                    token=bot_token(),
+                    timeout=60.0,
+                )
             if not raw.get("ok"):
                 raise RuntimeError(raw.get("description") or str(raw))
             result = raw.get("result") or {}
             return {"message_id": result.get("message_id"), "kind": kind, "result": result}
 
-        # Caption too long: media first, then text as follow-up (still native posts)
-        raw = tg_post(
-            method,
-            {"chat_id": channel, file_field: file_id},
-            token=bot_token(),
-            timeout=60.0,
-        )
+        # No caption, or caption too long: media first, then text follow-up
+        payload: dict[str, Any] = {"chat_id": channel, file_field: file_id}
+        raw = tg_post(method, payload, token=bot_token(), timeout=60.0)
         if not raw.get("ok"):
             raise RuntimeError(raw.get("description") or str(raw))
         mid = (raw.get("result") or {}).get("message_id")
-        raw2 = tg_post(
-            "sendMessage",
-            {
-                "chat_id": channel,
-                "text": full[:4096],
-                "parse_mode": "HTML",
-                "disable_web_page_preview": True,
-            },
-            token=bot_token(),
-            timeout=20.0,
-        )
-        if not raw2.get("ok"):
-            raise RuntimeError(raw2.get("description") or str(raw2))
+        if not full:
+            return {"message_id": mid, "kind": kind, "result": raw.get("result")}
+        raw2 = _send_message_html_or_plain(tg_post, channel=channel, text=full)
         return {
             "message_id": mid or (raw2.get("result") or {}).get("message_id"),
             "kind": f"{kind}+text",
@@ -933,19 +1252,7 @@ def _publish_native(
     if document:
         return _send_media("sendDocument", "document", document, "document")
 
-    raw = tg_post(
-        "sendMessage",
-        {
-            "chat_id": channel,
-            "text": full[:4096],
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True,
-        },
-        token=bot_token(),
-        timeout=20.0,
-    )
-    if not raw.get("ok"):
-        raise RuntimeError(raw.get("description") or str(raw))
+    raw = _send_message_html_or_plain(tg_post, channel=channel, text=full)
     result = raw.get("result") or {}
     return {"message_id": result.get("message_id"), "kind": "text", "result": result}
 
