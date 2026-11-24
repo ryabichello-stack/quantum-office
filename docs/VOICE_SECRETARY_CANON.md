@@ -36,6 +36,8 @@
 
 Компания = tenant. Инструменты = то, что линия реально отдала.
 
+**Продуктовый код Hermes/SIP/tools** — в `ryabichello-stack/delno` (`docs/VOICE_SECRETARY_UNIVERSAL.md`): multi-tenant Mango + `telephony.script_*` + meeting-verbs уже есть; канон здесь — поведение AVA host yaml + правила сценария.
+
 ## Деплой на C4B
 
 ```bash
