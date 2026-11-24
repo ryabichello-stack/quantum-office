@@ -1,7 +1,7 @@
 # Канон голосового секретаря (AVA → Hermes)
 
 **Зачем:** единые правила для QL dogfood и всех следующих клиентов.  
-**Конфиг-шаблон:** [`voice/ai-agent.secretary.canon.yaml`](voice/ai-agent.secretary.canon.yaml) → прод `/root/ava/config/ai-agent.local.yaml`.  
+**Конфиг-шаблон:** [`voice/secretary.inbound.canon.yaml`](voice/secretary.inbound.canon.yaml) → прод `/root/ava/config/ai-agent.local.yaml`.  
 **Связанный RCA линии:** [`TELEPHONY_RCA_2026-11-24_MANGO_UNAVAILABLE.md`](TELEPHONY_RCA_2026-11-24_MANGO_UNAVAILABLE.md).
 
 ## Проблема 2026-11-24 (после подъёма SIP)

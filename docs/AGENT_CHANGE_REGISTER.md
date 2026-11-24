@@ -22,4 +22,4 @@
 
 - Урезанный C4B `ai-agent.local.yaml` (mini, без readback, VAD 1700 ms) заменён каноном с Beget-логики подтверждений.
 - Tools: только через `list_enabled_tools` / `ready=true`; универсальные meeting verbs (`book_meeting` и др.), без хардкода старых calendar-only имён.
-- Док: [`VOICE_SECRETARY_CANON.md`](VOICE_SECRETARY_CANON.md), yaml [`voice/ai-agent.secretary.canon.yaml`](voice/ai-agent.secretary.canon.yaml) → прод `/root/ava/config/ai-agent.local.yaml`, `ai_engine` restarted.
+- Док: [`VOICE_SECRETARY_CANON.md`](VOICE_SECRETARY_CANON.md), yaml [`voice/secretary.inbound.canon.yaml`](voice/secretary.inbound.canon.yaml) → прод `/root/ava/config/ai-agent.local.yaml`, `ai_engine` restarted.
