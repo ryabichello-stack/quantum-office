@@ -17,6 +17,9 @@
 
 ### Added
 
+- Сравнение голосового конфига Beget backup vs C4B thin vs канон: `docs/VOICE_CONFIG_COMPARE_BEGET_VS_C4B.md`
+
+
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
 - Юридический футер + «Отписаться» / List-Unsubscribe в шаблонах; презентация PDF на 1-м письме
 - API `GET/POST /api/packs` (+ apply) и вкладка «Кампания» в UI (Console embed + standalone)

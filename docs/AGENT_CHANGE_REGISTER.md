@@ -23,3 +23,10 @@
 - Урезанный C4B `ai-agent.local.yaml` (mini, без readback, VAD 1700 ms) заменён каноном с Beget-логики подтверждений.
 - Tools: только через `list_enabled_tools` / `ready=true`; универсальные meeting verbs (`book_meeting` и др.), без хардкода старых calendar-only имён.
 - Док: [`VOICE_SECRETARY_CANON.md`](VOICE_SECRETARY_CANON.md), yaml [`voice/secretary.inbound.canon.yaml`](voice/secretary.inbound.canon.yaml) → прод `/root/ava/config/ai-agent.local.yaml`, `ai_engine` restarted.
+
+---
+
+## 2026-11-25 ~00:05 Europe/Moscow — Cursor: сравнение Beget backup vs C4B
+
+- Три среза: Beget `ai-agent.local.yaml` (~1831 строк, silence 1700, full readback) → C4B thin (95 строк, mini, без ASR/readback) → канон (222 строк, realtime-2.1, silence 550, discovery tools).
+- Док: [`VOICE_CONFIG_COMPARE_BEGET_VS_C4B.md`](VOICE_CONFIG_COMPARE_BEGET_VS_C4B.md).
