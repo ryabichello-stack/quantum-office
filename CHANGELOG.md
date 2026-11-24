@@ -13,6 +13,7 @@
 ### Fixed
 
 - Телефония QL (C4B): RCA и прод-фикс «номер недоступен» при живом внут. 12 — legacy `mango-registration` без невалидного `enabled=no`, UFW Mango `81.88.80.0/20`, identify→`delno-quantum-labs`; канон для агентов в `docs/TELEPHONY_RCA_2026-11-24_MANGO_UNAVAILABLE.md` и `docs/AGENT_CHANGE_REGISTER.md`
+- Voice secretary: канон readback (имя/email/дата) + discovery tools (`list_enabled_tools` / ready); barge-in/VAD; шаблон `docs/voice/ai-agent.secretary.canon.yaml` выкатан на C4B
 
 ### Added
 

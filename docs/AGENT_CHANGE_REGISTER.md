@@ -15,3 +15,11 @@
 - **Сделано на проде:** одна `delno-quantum-labs-reg`; UFW `81.88.80.0/20`; `[mango-identify]`; `local_net`; SSH через `POLYHUB_SSH_KEY`.
 - **Полный RCA:** [`TELEPHONY_RCA_2026-11-24_MANGO_UNAVAILABLE.md`](TELEPHONY_RCA_2026-11-24_MANGO_UNAVAILABLE.md)
 - **Не делать:** `enabled=no` на `type=registration`; второй REGISTER того же `garik`; Beget как прод.
+
+---
+
+## 2026-11-24 ~23:55 Europe/Moscow — Cursor: voice secretary canon (readback + universal tools)
+
+- Урезанный C4B `ai-agent.local.yaml` (mini, без readback, VAD 1700 ms) заменён каноном с Beget-логики подтверждений.
+- Tools: только через `list_enabled_tools` / `ready=true`; универсальные meeting verbs (`book_meeting` и др.), без хардкода старых calendar-only имён.
+- Док: [`VOICE_SECRETARY_CANON.md`](VOICE_SECRETARY_CANON.md), yaml [`voice/ai-agent.secretary.canon.yaml`](voice/ai-agent.secretary.canon.yaml) → прод `/root/ava/config/ai-agent.local.yaml`, `ai_engine` restarted.
