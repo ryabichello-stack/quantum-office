@@ -4,6 +4,11 @@
 
 **Стек на этом сервере:** Asterisk AI Voice Agent (`/root/ava`) + FastAPI mailer (`/opt/ava-mailer`) + Asterisk PJSIP (Mango Office) + OpenAI Realtime API.
 
+> **Прод-хост телефонии (2026-11):** Cloud4Box `161.104.89.123` (Москва). Beget `5.35.86.62` уничтожен.  
+> RCA «номер недоступен» / внутр. 12 vs DID: [`TELEPHONY_RCA_2026-11-24_MANGO_UNAVAILABLE.md`](TELEPHONY_RCA_2026-11-24_MANGO_UNAVAILABLE.md).  
+> Реестр: [`AGENT_CHANGE_REGISTER.md`](AGENT_CHANGE_REGISTER.md).  
+> SSH для агентов: env `POLYHUB_SSH_KEY` → `root@161.104.89.123`.
+
 > Секреты **не** документируются. Только пути к `.env` и имена переменных.
 
 ---

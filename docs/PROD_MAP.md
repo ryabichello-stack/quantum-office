@@ -1,8 +1,11 @@
 # PROD MAP — Quantum Labs Office
 
-**Host:** `5.35.86.62`  
+**Host (актуально):** Cloud4Box `161.104.89.123` (Москва) — SSH `root@161.104.89.123`, ключ агента: env `POLYHUB_SSH_KEY`  
+**Бывший Beget:** `5.35.86.62` (СПб) — **уничтожен**, не SSH  
 **User:** `root`  
-**Public:** https://a.47z.ru
+**Public:** https://a.47z.ru  
+
+Телефония Mango/AVA RCA (2026-11-24): [`TELEPHONY_RCA_2026-11-24_MANGO_UNAVAILABLE.md`](TELEPHONY_RCA_2026-11-24_MANGO_UNAVAILABLE.md)
 
 ## Services
 

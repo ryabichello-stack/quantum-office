@@ -10,6 +10,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Телефония QL (C4B): RCA и прод-фикс «номер недоступен» при живом внут. 12 — legacy `mango-registration` без невалидного `enabled=no`, UFW Mango `81.88.80.0/20`, identify→`delno-quantum-labs`; канон для агентов в `docs/TELEPHONY_RCA_2026-11-24_MANGO_UNAVAILABLE.md` и `docs/AGENT_CHANGE_REGISTER.md`
+
 ### Added
 
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
