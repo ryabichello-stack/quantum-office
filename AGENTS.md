@@ -26,7 +26,9 @@
 
 ## Прод (справочно)
 
-- SSH: `ssh root@5.35.86.62`
+- SSH (актуально): `ssh root@161.104.89.123` (Cloud4Box, Москва); ключ у агентов: env `POLYHUB_SSH_KEY`
+- Бывший Beget `5.35.86.62` уничтожен — не использовать
+- Телефония RCA: [`docs/TELEPHONY_RCA_2026-11-24_MANGO_UNAVAILABLE.md`](docs/TELEPHONY_RCA_2026-11-24_MANGO_UNAVAILABLE.md) · реестр [`docs/AGENT_CHANGE_REGISTER.md`](docs/AGENT_CHANGE_REGISTER.md)
 - Сайт: https://a.47z.ru
 - UI outreach: https://a.47z.ru/_ava_outreach/ui/
 - Пульт: https://a.47z.ru/_quantum_console/

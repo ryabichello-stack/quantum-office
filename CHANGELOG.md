@@ -10,7 +10,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Телефония QL (C4B): RCA и прод-фикс «номер недоступен» при живом внут. 12 — legacy `mango-registration` без невалидного `enabled=no`, UFW Mango `81.88.80.0/20`, identify→`delno-quantum-labs`; канон для агентов в `docs/TELEPHONY_RCA_2026-11-24_MANGO_UNAVAILABLE.md` и `docs/AGENT_CHANGE_REGISTER.md`
+- Voice secretary: канон readback (имя/email/дата) + discovery tools (`list_enabled_tools` / ready); barge-in/VAD; шаблон `docs/voice/secretary.inbound.canon.yaml` выкатан на C4B
+
 ### Added
+
+- Сравнение голосового конфига Beget backup vs C4B thin vs канон: `docs/VOICE_CONFIG_COMPARE_BEGET_VS_C4B.md`
+
 
 - Outreach: отраслевые пакеты писем (ломбарды, МФО, trade-in, гиг, вторсырьё) с 3-шаговыми цепочками
 - Юридический футер + «Отписаться» / List-Unsubscribe в шаблонах; презентация PDF на 1-м письме
